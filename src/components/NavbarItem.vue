@@ -8,13 +8,19 @@
       <div class="collapse">
         <ul class="nav-list">
           <li class="nav-item">
-            <a href="/" class="nav-link"></a>
+            <a href="/" class="nav-link">Home</a>
           </li>
           <li class="navbar-item">
-            <a href="/" class="nav-link"></a>
+            <a href="/" class="nav-link">Shorten</a>
           </li>
           <li class="navbar-item">
-            <a href="/" class="nav-link"></a>
+            <a href="/" class="nav-link">Pastebin</a>
+          </li>
+          <li class="navbar-item">
+            <a href="/" class="nav-link">Upload</a>
+          </li>
+          <li class="navbar-item">
+            <a href="/" class="nav-link">Contact</a>
           </li>
         </ul>
         <div class="nav-list-right"></div>
