@@ -1,12 +1,12 @@
 <template>
   <nav>
     <a href="">vb2007.hu</a>
-    <button class="navbar-toggler">
-      <span class="navbar-toggler-icon"></span>
+    <button class="nav-toggler">
+      <span class="nav-toggler-icon"></span>
     </button>
-    <div class="collapse">
+    <div class="nav-collapse">
       <ul class="nav-list">
-        <li class="nav-item">
+        <li class="nav-home">
           <a href="/" class="nav-link">Home</a>
         </li>
         <li class="nav-item">
@@ -30,8 +30,10 @@
 <style scoped>
 nav {
   display: flex;
+  justify-content: center;
   overflow: hidden;
   position: fixed;
+  right: 0;
   top: 0;
   width: 100%;
   background-color: rgb(18, 22, 29);
