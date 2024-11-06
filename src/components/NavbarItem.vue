@@ -22,8 +22,13 @@
           <li class="nav--item">
             <a href="/" class="nav--link">Contact</a>
           </li>
+          <li class="nav--item">
+            <a href="" class="nav--link nav--button">Login</a>
+          </li>
+          <li class="nav--item">
+            <a href="" class="nav--link nav--button">Register</a>
+          </li>
         </ul>
-        <div class="nav--list-right"></div>
       </div>
     </div>
   </nav>
@@ -63,6 +68,13 @@ nav {
 }
 
 .nav--list {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  height: 100%;
+}
+
+.nav--list-right {
   display: flex;
   align-items: center;
   list-style: none;
