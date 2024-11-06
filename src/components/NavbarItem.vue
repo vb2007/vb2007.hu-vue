@@ -22,10 +22,10 @@
           <li class="nav--item">
             <a href="/" class="nav--link">Contact</a>
           </li>
-          <li class="nav--item">
+          <li class="nav--item nav--item-button">
             <a href="" class="nav--link nav--button">Login</a>
           </li>
-          <li class="nav--item">
+          <li class="nav--item nav--item-button">
             <a href="" class="nav--link nav--button">Register</a>
           </li>
         </ul>
@@ -74,22 +74,36 @@ nav {
   height: 100%;
 }
 
-.nav--list-right {
-  display: flex;
-  align-items: center;
-  list-style: none;
-  height: 100%;
-}
-
 .nav--item {
   display: flex;
   align-items: center;
   margin-right: 20px;
+  height: 100%;
+  width: 100%;
+}
+
+.nav--item-button {
+  padding: 10px 20px;
 }
 
 .nav--link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: white;
   text-align: center;
   text-decoration: none;
+}
+
+.nav--button {
+  height: 100%;
+  width: 100%;
+  outline: none;
+  border-radius: 3px;
+  background-color: green;
+  border-style: solid;
+  border-width: 2px;
+  border-color: lightblue;
+  cursor: pointer;
 }
 </style>
