@@ -7,7 +7,7 @@
       </button>
       <div class="nav--collapse">
         <ul class="nav--list">
-          <li class="nav--home">
+          <li id="nav--home" class="nav--item">
             <a href="/" class="nav--link">Home</a>
           </li>
           <li class="nav--item">
@@ -54,24 +54,30 @@ nav {
 }
 
 .nav--title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 1.5rem;
 }
 
 .nav--list {
   display: flex;
+  align-items: center;
   list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.nav--list-right {
+  height: 100%;
 }
 
 .nav--item {
+  display: flex;
+  align-items: center;
   margin-right: 20px;
 }
 
 .nav--link {
   color: white;
+  text-align: center;
   text-decoration: none;
 }
 </style>
