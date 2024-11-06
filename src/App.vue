@@ -2,6 +2,7 @@
 import HelloWorld from './components/HelloWorld.vue'
 import TheWelcome from './components/TheWelcome.vue'
 import NavbarItem from './components/NavbarItem.vue'
+import FooterItem from './components/FooterItem.vue'
 </script>
 
 <template>
@@ -18,6 +19,8 @@ import NavbarItem from './components/NavbarItem.vue'
   <main>
     <TheWelcome />
   </main>
+
+  <FooterItem />
 </template>
 
 <style scoped>
