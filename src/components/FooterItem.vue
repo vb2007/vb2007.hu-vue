@@ -5,4 +5,13 @@
   </footer>
 </template>
 
-<style scoped></style>
+<style scoped>
+footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  bottom: 0;
+  height: 60px;
+  background-color: white;
+}
+</style>
