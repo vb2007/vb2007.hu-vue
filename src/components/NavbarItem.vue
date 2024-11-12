@@ -39,9 +39,11 @@ nav {
   background-color: rgb(18, 22, 29);
   height: 60px;
   width: 100%;
+  margin-left: 20px;
+  margin-right: 20px;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-content: center;
   /* overflow: hidden; */
   position: fixed;
   top: 0;

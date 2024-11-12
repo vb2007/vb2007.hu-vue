@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import MainItem from './components/HomepageMainItem.vue'
 import TheWelcome from './components/TheWelcome.vue'
 import NavbarItem from './components/NavbarItem.vue'
 import FooterItem from './components/FooterItem.vue'
@@ -12,7 +12,7 @@ import FooterItem from './components/FooterItem.vue'
     <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
 
     <div class="wrapper">
-      <HelloWorld msg="You did it!" />
+      <MainItem msg="Welcome home" />
     </div>
   </header>
 
@@ -31,6 +31,12 @@ header {
 .logo {
   display: block;
   margin: 0 auto 2rem;
+}
+
+:deep(body) {
+  position: relative;
+  min-height: 100vh;
+  padding-bottom: 60px; /* Same as footer height */
 }
 
 @media (min-width: 1024px) {
