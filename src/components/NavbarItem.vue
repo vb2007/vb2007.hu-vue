@@ -31,10 +31,10 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
             <a href="/" class="nav--link">Contact</a>
           </li>
           <li class="nav--item nav--item-button">
-            <a href="" class="nav--link nav--button">Login</a>
+            <a href="/" class="nav--link nav--button">Login</a>
           </li>
           <li class="nav--item nav--item-button">
-            <a href="" class="nav--link nav--button">Register</a>
+            <a href="/" class="nav--link nav--button">Register</a>
           </li>
         </ul>
       </div>

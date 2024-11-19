@@ -1,9 +1,20 @@
 <template>
   <footer>
-    <!-- TODO: automatically replace the second year with the current one -->
-    <p>VB2007 | 2023 - 2024</p>
+    <p>VB2007 | 2023 - {{ currentYear }}</p>
   </footer>
 </template>
+
+<script lang="ts">
+import { getCurrentYear } from '../scripts/utility/dateUtil'
+
+export default {
+  data() {
+    return {
+      currentYear: getCurrentYear()
+    }
+  }
+}
+</script>
 
 <style scoped>
 footer {
@@ -14,6 +25,6 @@ footer {
   bottom: 0;
   width: 100%;
   height: 60px;
-  background-color: white;
+  background-color: rgb(131, 111, 111);
 }
 </style>
