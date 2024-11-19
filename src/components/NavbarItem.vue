@@ -119,13 +119,40 @@ nav {
 
 .nav--toggler {
   display: none;
+  align-content: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.nav--toggler-icon {
+  width: 24px;
+  height: 24px;
 }
 
 /* Tablet styles */
 @media screen and (max-width: 768px) {
+  .nav--collapse {
+    display: none;
+  }
+
+  .nav--toggler {
+    display: flex;
+  }
 }
 
 /* Mobile styles */
 @media screen and (max-width: 480px) {
+  .nav--collapse {
+    display: none;
+  }
+
+  .nav--toggler {
+    display: flex;
+  }
 }
 </style>
