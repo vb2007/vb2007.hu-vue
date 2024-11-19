@@ -1,9 +1,17 @@
+<script setup>
+import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
+</script>
+
 <template>
   <nav>
     <div class="nav--box">
       <a class="nav--title" href="">vb2007.hu</a>
       <button class="nav--toggler">
-        <span class="nav--toggler-icon"></span>
+        <img
+          :src="navbarDrodownLight"
+          alt="Navbar dropdown menu toggler"
+          class="nav--toggler-icon"
+        />
       </button>
       <div class="nav--collapse">
         <ul class="nav--list">
@@ -107,6 +115,10 @@ nav {
   border-width: 2px;
   border-color: lightblue;
   cursor: pointer;
+}
+
+.nav--toggler {
+  display: none;
 }
 
 /* Tablet styles */
