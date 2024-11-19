@@ -108,4 +108,9 @@ nav {
   border-color: lightblue;
   cursor: pointer;
 }
+
+@media screen and (max-width: 768px) {
+  .
+
+}
 </style>
