@@ -109,8 +109,11 @@ nav {
   cursor: pointer;
 }
 
+/* Tablet styles */
 @media screen and (max-width: 768px) {
-  .
+}
 
+/* Mobile styles */
+@media screen and (max-width: 480px) {
 }
 </style>
