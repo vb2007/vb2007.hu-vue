@@ -47,14 +47,15 @@ nav {
   background-color: rgb(18, 22, 29);
   height: 60px;
   width: 100%;
-  margin-left: 20px;
-  margin-right: 20px;
+  margin-left: 60px;
+  margin-right: 60px;
   display: flex;
   justify-content: center;
   align-content: center;
   /* overflow: hidden; */
   position: fixed;
   top: 0;
+  z-index: 999;
   /* width: 100%; */
 }
 

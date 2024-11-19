@@ -1,24 +1,10 @@
 <script setup lang="ts">
-import MainItem from './components/HomepageMainItem.vue'
-import TheWelcome from './components/TheWelcome.vue'
 import NavbarItem from './components/NavbarItem.vue'
 import FooterItem from './components/FooterItem.vue'
 </script>
 
 <template>
   <NavbarItem />
-
-  <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
-
-    <div class="wrapper">
-      <MainItem msg="Welcome home" />
-    </div>
-  </header>
-
-  <main>
-    <TheWelcome />
-  </main>
 
   <FooterItem />
 </template>
