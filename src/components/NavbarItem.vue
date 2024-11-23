@@ -30,12 +30,14 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
           <li class="nav--item">
             <a href="/" class="nav--link">Contact</a>
           </li>
-          <li class="nav--item nav--item-button">
-            <a href="/" class="nav--link nav--button">Login</a>
-          </li>
-          <li class="nav--item nav--item-button">
-            <a href="/" class="nav--link nav--button">Register</a>
-          </li>
+          <div class="nav--buttons">
+            <li class="nav--item nav--item-button">
+              <a href="/" class="nav--link nav--button">Login</a>
+            </li>
+            <li class="nav--item nav--item-button">
+              <a href="/" class="nav--link nav--button">Register</a>
+            </li>
+          </div>
         </ul>
       </div>
     </div>
@@ -44,116 +46,83 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
 
 <style scoped>
 nav {
-  background-color: rgb(18, 22, 29);
-  height: 60px;
-  width: 100%;
-  margin-left: 60px;
-  margin-right: 60px;
-  display: flex;
-  justify-content: center;
-  align-content: center;
-  /* overflow: hidden; */
-  position: fixed;
+  position: sticky;
   top: 0;
-  z-index: 999;
-  /* width: 100%; */
+  background-color: #00ff80;
+  box-shadow: 0 2px 10px rgb(253, 251, 251);
+  z-index: 1000;
+  margin: 0 20px;
+  /* for round bottom corners */
+  border-radius: 0 0 15px 15px;
 }
 
 .nav--box {
   display: flex;
   justify-content: space-between;
-  height: 60px;
-  max-width: 1300px;
-  padding-right: 50px;
-  padding-left: 50px;
-  z-index: 1;
+  align-items: center;
+  padding: 10px 20px;
 }
 
 .nav--title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-decoration: none;
+  color: #333;
+}
+
+.nav--collapse {
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  text-decoration: none;
-  font-size: 1.5rem;
+  flex-grow: 1;
+  justify-content: space-between;
 }
 
 .nav--list {
   display: flex;
-  align-items: center;
   list-style: none;
-  height: 100%;
+  padding: 0;
+  margin: 0 auto;
 }
 
 .nav--item {
-  display: flex;
-  align-items: center;
+  /* space between the items */
   margin-right: 20px;
-  height: 100%;
-  width: 100%;
-}
-
-.nav--item-button {
-  padding: 10px 20px;
 }
 
 .nav--link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  text-align: center;
   text-decoration: none;
+  color: #333;
+  font-size: 1rem;
+}
+
+.nav--buttons {
+  display: flex;
+  gap: 10px;
 }
 
 .nav--button {
-  height: 100%;
-  width: 100%;
-  outline: none;
-  border-radius: 3px;
-  background-color: green;
-  border-style: solid;
-  border-width: 2px;
-  border-color: lightblue;
+  background-color: #007bff;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 25px;
+  text-align: center;
   cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.nav--button:hover {
+  background-color: #0056b3;
 }
 
 .nav--toggler {
-  display: none;
-  align-content: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 8px;
-  background: none;
+  background: transparent;
   border: none;
   cursor: pointer;
 }
 
 .nav--toggler-icon {
-  width: 24px;
-  height: 24px;
-}
-
-/* Tablet styles */
-@media screen and (max-width: 768px) {
-  .nav--collapse {
-    display: none;
-  }
-
-  .nav--toggler {
-    display: flex;
-  }
-}
-
-/* Mobile styles */
-@media screen and (max-width: 480px) {
-  .nav--collapse {
-    display: none;
-  }
-
-  .nav--toggler {
-    display: flex;
-  }
+  width: 30px;
+  height: auto;
 }
 </style>
