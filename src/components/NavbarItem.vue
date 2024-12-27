@@ -5,7 +5,7 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
 <template>
   <nav>
     <div class="nav--box">
-      <a class="nav--title" href="">vb2007.hu</a>
+      <a class="nav--title" href="/index.html">vb2007.hu</a>
       <button class="nav--toggler">
         <img
           :src="navbarDrodownLight"
@@ -30,14 +30,14 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
           <li class="nav--item">
             <a href="/" class="nav--link">Contact</a>
           </li>
-          <div class="nav--buttons">
-            <li class="nav--item nav--item-button">
-              <a href="/" class="nav--link nav--button">Login</a>
-            </li>
-            <li class="nav--item nav--item-button">
-              <a href="/" class="nav--link nav--button">Register</a>
-            </li>
-          </div>
+        </ul>
+        <ul class="nav--list">
+          <li class="nav--item nav--item-button">
+            <a href="/" class="nav--link nav--button">Login</a>
+          </li>
+          <li class="nav--item nav--item-button">
+            <a href="/" class="nav--link nav--button">Register</a>
+          </li>
         </ul>
       </div>
     </div>
