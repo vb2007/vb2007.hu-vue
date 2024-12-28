@@ -7,5 +7,8 @@
 
 <style lang="css" scoped>
 .welcome--box {
+  margin: 20px 12%;
+  position: relative;
+  z-index: 1;
 }
 </style>
