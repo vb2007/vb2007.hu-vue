@@ -5,13 +5,25 @@ import FooterItem from './components/FooterItem.vue'
 </script>
 
 <template>
-  <NavbarItem />
-
-  <WelcomeItem />
-
-  <FooterItem />
+  <div class="app-container">
+    <NavbarItem />
+    <div class="content">
+      <WelcomeItem />
+    </div>
+    <FooterItem />
+  </div>
 </template>
 
 <style scoped>
 @import './assets/main.css';
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+}
 </style>

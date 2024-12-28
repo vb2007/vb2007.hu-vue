@@ -20,13 +20,12 @@ export default {
 
 <style scoped>
 footer {
-  position: sticky;
-  top: 0;
   background-color: rgba(219, 219, 219, 0.8);
   box-shadow: 0 2px 10px rgb(253, 251, 251);
   z-index: 1000;
-  margin: 0 12%;
-  /* for round top corners */
+  margin-left: 12%;
+  margin-right: 12%;
+  margin-bottom: 0;
   border-radius: 15px 15px 0 0;
   text-align: center;
   font-family: Inter, sans-serif;
