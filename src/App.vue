@@ -1,7 +1,19 @@
-<script setup lang="ts">
+<script setup>
+import { createRouter, createWebHistory } from 'vue-router'
 import NavbarItem from './components/NavbarItem.vue'
 import WelcomeItem from './components/WelcomeItem.vue'
 import FooterItem from './components/FooterItem.vue'
+import ShortenItem from './components/pages/ShortenItem.vue'
+
+const routes = [
+  { path: '/', component: WelcomeItem },
+  { path: '/shorten', component: ShortenItem }
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
 </script>
 
 <template>
