@@ -27,3 +27,27 @@ const shortenUrl = async () => {
   }
 }
 </script>
+
+<style scoped>
+.shorten-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 50px;
+}
+
+input {
+  padding: 10px;
+  margin-bottom: 10px;
+  width: 300px;
+}
+
+button {
+  padding: 10px 20px;
+}
+
+a {
+  color: blue;
+  text-decoration: underline;
+}
+</style>
