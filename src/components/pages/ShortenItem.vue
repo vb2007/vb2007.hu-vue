@@ -3,8 +3,10 @@
     <h1>URL Shortener</h1>
     <input v-model="longUrl" placeholder="Enter URL here" />
     <button @click="shortenUrl">Shorten</button>
-    <div v-if="shortenUrl">
-      <p>Shortened URL: <a :href="shortUrl" target="_blank" {{ shortUrl }}></a></p>
+    <div v-if="shortUrl">
+      <p>
+        Shortened URL: <a :href="shortUrl" target="_blank">{{ shortUrl }}</a>
+      </p>
     </div>
   </div>
 </template>
