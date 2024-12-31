@@ -25,5 +25,8 @@ import FooterItem from './components/FooterItem.vue'
 
 .content {
   flex: 1;
+  margin: 20px 12%;
+  position: relative;
+  z-index: 1;
 }
 </style>

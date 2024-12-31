@@ -1,14 +1,6 @@
 <template>
-  <div class="welcome--box">
-    <h1>Welcome home</h1>
-    <h2>Meet a feature-rich site with tools for your various needs!</h2>
-  </div>
+  <h1>Welcome home</h1>
+  <h2>Meet a feature-rich site with tools for your various needs!</h2>
 </template>
 
-<style lang="css" scoped>
-.welcome--box {
-  margin: 20px 12%;
-  position: relative;
-  z-index: 1;
-}
-</style>
+<style lang="css" scoped></style>
