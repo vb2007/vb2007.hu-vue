@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
 </script>
 
