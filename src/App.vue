@@ -16,17 +16,4 @@ import FooterItem from './components/FooterItem.vue'
 
 <style scoped>
 @import './assets/main.css';
-
-.app-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.content {
-  flex: 1;
-  margin: 20px 12%;
-  position: relative;
-  z-index: 1;
-}
 </style>
