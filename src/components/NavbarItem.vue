@@ -34,10 +34,10 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
         </ul>
         <ul class="nav--list">
           <li class="nav--item nav--item-button">
-            <a href="/" class="nav--link nav--button">Login</a>
+            <RouterLink to="/login" class="nav--link nav--button">Login</RouterLink>
           </li>
           <li class="nav--item nav--item-button">
-            <a href="/" class="nav--link nav--button">Register</a>
+            <RouterLink to="/register" class="nav--link nav--button">Register</RouterLink>
           </li>
         </ul>
       </div>
