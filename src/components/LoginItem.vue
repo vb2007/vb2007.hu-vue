@@ -14,9 +14,28 @@
 </template>
 
 <style lang="css" scoped>
-form {
+.login--container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  height: auto;
+  gap: 20px;
+  align-items: center;
+}
+
+form {
+  width: 25%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+input {
+  padding: 5px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+label {
+  font-weight: bold;
 }
 </style>
