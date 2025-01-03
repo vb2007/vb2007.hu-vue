@@ -3,36 +3,70 @@ import { ref } from 'vue'
 
 const email = ref('')
 const password = ref('')
+const loginStatus = ref('')
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault()
 
-  const response = await fetch('http://localhost:3000/auth/login', {
-    method: 'POST',
-    headers: {
-      'Content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      email: email.value,
-      password: password.value
+  try {
+    const response = await fetch('http://localhost:3000/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: email.value,
+        password: password.value
+      })
     })
-  })
 
-  const data = await response.json()
-  console.log(data)
+    switch (response.status) {
+      case 200:
+        const data = await response.json()
+        console.log('Response data:', data)
+        document.cookie = `VB-AUTH=${data.authentication.sessionToken}; path=/`
+        loginStatus.value = 'success'
+        break
+      case 400:
+        loginStatus.value = 'user-not-found'
+        break
+      case 403:
+        loginStatus.value = 'incorrect-password'
+        break
+      default:
+        throw new Error(`HTTP error! status: ${response.status}`)
+    }
+  } catch (error) {
+    console.error('Error: ', error)
+    loginStatus.value = 'error'
+  }
 }
 </script>
 
 <template>
   <div class="login--container">
     <h1>Login</h1>
-    <form @submit="handleSubmit">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" v-model="email" />
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" v-model="password" />
-      <button type="submit">Login</button>
-    </form>
+    <div v-if="loginStatus === 'success'">
+      <p>Login successful!</p>
+    </div>
+    <div v-else>
+      <form @submit="handleSubmit">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" v-model="email" />
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" v-model="password" />
+        <button type="submit">Login</button>
+      </form>
+    </div>
+    <div v-if="loginStatus === 'user-not-found'">
+      <p>User with that email address doesn't exists.</p>
+    </div>
+    <div v-if="loginStatus === 'incorrect-password'">
+      <p>Incorrect password. Please try again.</p>
+    </div>
+    <div v-if="loginStatus === 'error'">
+      <p>Login failed. Please try again.</p>
+    </div>
   </div>
 </template>
 
