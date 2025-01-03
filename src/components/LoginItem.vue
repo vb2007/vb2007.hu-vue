@@ -5,6 +5,14 @@ const email = ref('')
 const password = ref('')
 const loginStatus = ref('')
 
+const checkAuthCookie = () => {
+  const cookies = document.cookie.split('; ')
+  const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
+  if (authCookie) {
+    loginStatus.value = 'success'
+  }
+}
+
 const handleSubmit = async (event: Event) => {
   event.preventDefault()
 
@@ -41,6 +49,10 @@ const handleSubmit = async (event: Event) => {
     loginStatus.value = 'error'
   }
 }
+
+onMounted(() => {
+  checkAuthCookie()
+})
 </script>
 
 <template>
