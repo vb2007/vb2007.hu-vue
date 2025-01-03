@@ -1,6 +1,31 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
+
+const userEmail = ref('')
+const isLoggedIn = ref(false)
+
+const checkAuthCookie = () => {
+  const cookies = document.cookie.split('; ')
+  const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
+  if (authCookie) {
+    // Assuming the user email is stored in the cookie value or can be retrieved
+    // For simplicity, we'll just set a dummy email here
+    userEmail.value = 'user@example.com' // Replace with actual logic to get user email
+    isLoggedIn.value = true
+  }
+}
+
+const handleLogout = () => {
+  document.cookie = 'VB-AUTH=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+  userEmail.value = ''
+  isLoggedIn.value = false
+}
+
+onMounted(() => {
+  checkAuthCookie()
+})
 </script>
 
 <template>
@@ -32,7 +57,15 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
             <RouterLink to="/contact" class="nav--link">Contact</RouterLink>
           </li>
         </ul>
-        <ul class="nav--list">
+        <ul v-if="isLoggedIn" class="nav--list">
+          <li class="nav--item">
+            <span class="nav--link">{{ userEmail }}</span>
+          </li>
+          <li class="nav--item nav--item-button">
+            <button @click="handleLogout" class="nav--link nav--button">Logout</button>
+          </li>
+        </ul>
+        <ul v-else class="nav--list">
           <li class="nav--item nav--item-button">
             <RouterLink to="/login" class="nav--link nav--button">Login</RouterLink>
           </li>

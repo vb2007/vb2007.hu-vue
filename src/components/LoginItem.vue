@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 
 const email = ref('')
 const password = ref('')
@@ -45,7 +45,7 @@ const handleSubmit = async (event: Event) => {
         throw new Error(`HTTP error! status: ${response.status}`)
     }
   } catch (error) {
-    console.error('Error: ', error)
+    console.error('Error:', error)
     loginStatus.value = 'error'
   }
 }
