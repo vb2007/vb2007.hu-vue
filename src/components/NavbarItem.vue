@@ -1,6 +1,48 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
+import { isLoggedIn, userEmail } from '@/states/loginState'
+
+const checkAuthCookie = () => {
+  const cookies = document.cookie.split('; ')
+  const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
+  if (authCookie) {
+    isLoggedIn.value = true
+    fetchUserDetails()
+  }
+}
+
+const fetchUserDetails = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/user', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      userEmail.value = data.email
+    } else {
+      console.error('Failed to fetch user details')
+    }
+  } catch (error) {
+    console.error('Error fetching user details:', error)
+  }
+}
+
+const handleLogout = () => {
+  document.cookie = 'VB-AUTH=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+  userEmail.value = ''
+  isLoggedIn.value = false
+}
+
+onMounted(() => {
+  checkAuthCookie()
+})
 </script>
 
 <template>
@@ -32,12 +74,20 @@ import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
             <RouterLink to="/contact" class="nav--link">Contact</RouterLink>
           </li>
         </ul>
-        <ul class="nav--list">
-          <li class="nav--item nav--item-button">
-            <a href="/" class="nav--link nav--button">Login</a>
+        <ul v-if="isLoggedIn" class="nav--list">
+          <li class="nav--item">
+            <span class="nav--link">{{ userEmail }}</span>
           </li>
           <li class="nav--item nav--item-button">
-            <a href="/" class="nav--link nav--button">Register</a>
+            <button @click="handleLogout" class="nav--link nav--button">Logout</button>
+          </li>
+        </ul>
+        <ul v-else class="nav--list">
+          <li class="nav--item nav--item-button">
+            <RouterLink to="/login" class="nav--link nav--button">Login</RouterLink>
+          </li>
+          <li class="nav--item nav--item-button">
+            <RouterLink to="/register" class="nav--link nav--button">Register</RouterLink>
           </li>
         </ul>
       </div>
