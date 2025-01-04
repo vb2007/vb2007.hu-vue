@@ -12,9 +12,9 @@ provide('userEmail', userEmail)
 <template>
   <div class="app-container">
     <NavbarItem />
-    <div class="content">
+    <main class="content">
       <RouterView />
-    </div>
+    </main>
     <FooterItem />
   </div>
 </template>
