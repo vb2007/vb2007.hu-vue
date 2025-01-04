@@ -49,7 +49,7 @@ const handleSubmit = async (event: Event) => {
         throw new Error(`HTTP error! status: ${response.status}`)
     }
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error while trying to log in user:', error)
     loginStatus.value = 'error'
   }
 }
