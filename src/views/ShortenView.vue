@@ -3,7 +3,5 @@ import ShortenItem from '@/components/ShortenItem.vue'
 </script>
 
 <template>
-  <div>
-    <ShortenItem />
-  </div>
+  <ShortenItem />
 </template>
