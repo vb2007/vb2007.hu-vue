@@ -10,10 +10,29 @@ const checkAuthCookie = () => {
   const cookies = document.cookie.split('; ')
   const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
   if (authCookie) {
-    // Assuming the user email is stored in the cookie value or can be retrieved
-    // For simplicity, we'll just set a dummy email here
-    userEmail.value = 'user@example.com' // Replace with actual logic to get user email
     isLoggedIn.value = true
+    fetchUserDetails()
+  }
+}
+
+const fetchUserDetails = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/user', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      userEmail.value = data.email
+    } else {
+      console.error('Failed to fetch user details')
+    }
+  } catch (error) {
+    console.error('Error fetching user details:', error)
   }
 }
 
