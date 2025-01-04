@@ -73,8 +73,9 @@ watch(isLoggedIn, (newVal) => {
     </div>
     <div v-else>
       <form @submit="handleSubmit">
-        <label for="email">Email</label>
+        <label for="email">E-mail</label>
         <input type="email" id="email" name="email" v-model="email" />
+
         <label for="password">Password</label>
         <input type="password" id="password" name="password" v-model="password" />
         <button type="submit">Login</button>

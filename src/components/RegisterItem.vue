@@ -38,10 +38,14 @@ const handleSubmit = async (event: Event) => {
         console.log('Response data: ', data)
         registerStatus.value = 'success'
         break
-      case 400:
+      case 403:
         registerStatus.value = 'username-exists'
         break
+      case 400:
+        registerStatus.value = 'missing-fields'
+        break
       default:
+        registerStatus.value = 'error'
         throw new Error(`HTTP error! status: ${response.status}`)
     }
   } catch (error) {
@@ -84,8 +88,11 @@ watch(isLoggedIn, (newVal) => {
         <label for="autologin">Log me in automatically after registration</label>
         <input type="checkbox" id="autologin" name="autologin" checked />
 
-        <button type="submit">Login</button>
+        <button type="submit">Register</button>
       </form>
+    </div>
+    <div v-if="registerStatus === 'missing-fields'">
+      <p>Please fill out all required input fields.</p>
     </div>
     <div v-if="registerStatus === 'username-exists'">
       <p>This username is already taken.</p>
