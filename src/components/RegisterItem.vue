@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from 'vue'
-import { isLoggedIn } from '@/states/loginState'
+import { isLoggedIn } from '@/scripts/authentication/authState'
 
 const username = ref('')
 const email = ref('')

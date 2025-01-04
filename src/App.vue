@@ -3,7 +3,7 @@ import { provide } from 'vue'
 import { RouterView } from 'vue-router'
 import NavbarItem from './components/NavbarItem.vue'
 import FooterItem from './components/FooterItem.vue'
-import { isLoggedIn, userEmail } from '@/states/loginState'
+import { isLoggedIn, userEmail } from '@/scripts/authentication/authState'
 
 provide('isLoggedIn', isLoggedIn)
 provide('userEmail', userEmail)

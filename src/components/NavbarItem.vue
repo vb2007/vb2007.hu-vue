@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
-import { isLoggedIn, userEmail } from '@/states/loginState'
+import { isLoggedIn, userEmail } from '@/scripts/authentication/authState'
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split('; ')
@@ -220,7 +220,7 @@ nav {
   font-size: 1.5rem;
 }
 
-@media screen and (max-width: 852px) {
+@media screen and (max-width: 990px) {
   .nav--box {
     flex-wrap: wrap;
   }
