@@ -64,7 +64,10 @@ watch(isLoggedIn, (newVal) => {
 <template>
   <div class="register--container">
     <h1>Register</h1>
-    <div>
+    <div v-if="registerStatus === 'success'">
+      <p>Registration successful!</p>
+    </div>
+    <div v-else>
       <form @submit="handleSubmit">
         <label for="email">Email</label>
         <input type="email" id="email" name="email" v-model="email" />
@@ -83,6 +86,12 @@ watch(isLoggedIn, (newVal) => {
 
         <button type="submit">Login</button>
       </form>
+    </div>
+    <div v-if="registerStatus === 'username-exists'">
+      <p>This username is already taken.</p>
+    </div>
+    <div v-if="registerStatus === 'error'">
+      <p>Registration failed. Please try again.</p>
     </div>
   </div>
 </template>
