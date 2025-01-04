@@ -33,7 +33,7 @@ const handleSubmit = async (event: Event) => {
     switch (response.status) {
       case 200:
         const data = await response.json()
-        console.log('Response data:', data)
+        console.log('Response data: ', data)
         document.cookie = `VB-AUTH=${data.authentication.sessionToken}; path=/`
         loginStatus.value = 'success'
         isLoggedIn.value = true
