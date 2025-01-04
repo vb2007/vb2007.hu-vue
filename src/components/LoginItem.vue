@@ -97,12 +97,9 @@ watch(isLoggedIn, (newVal) => {
   display: flex;
   flex-direction: column;
   height: auto;
+  width: 100%;
   gap: 20px;
   align-items: center;
-  /* background-color: #f9f9f9; */
-  padding: 40px;
-  border-radius: 10px;
-  /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); */
 }
 
 h1 {
@@ -112,13 +109,15 @@ h1 {
 
 form {
   width: 100%;
-  max-width: 400px;
+  max-width: auto;
+  min-width: 400px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 input {
+  width: 100%;
   padding: 10px;
   border-radius: 5px;
   border: 1px solid #ccc;
