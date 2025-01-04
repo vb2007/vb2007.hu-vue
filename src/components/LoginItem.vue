@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { isLoggedIn, userEmail } from '@/states/loginState'
 
 const email = ref('')
 const password = ref('')
@@ -10,6 +11,7 @@ const checkAuthCookie = () => {
   const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
   if (authCookie) {
     loginStatus.value = 'success'
+    isLoggedIn.value = true
   }
 }
 
@@ -34,6 +36,8 @@ const handleSubmit = async (event: Event) => {
         console.log('Response data:', data)
         document.cookie = `VB-AUTH=${data.authentication.sessionToken}; path=/`
         loginStatus.value = 'success'
+        isLoggedIn.value = true
+        userEmail.value = data.email
         break
       case 400:
         loginStatus.value = 'user-not-found'
@@ -52,6 +56,12 @@ const handleSubmit = async (event: Event) => {
 
 onMounted(() => {
   checkAuthCookie()
+})
+
+watch(isLoggedIn, (newVal) => {
+  if (!newVal) {
+    loginStatus.value = ''
+  }
 })
 </script>
 

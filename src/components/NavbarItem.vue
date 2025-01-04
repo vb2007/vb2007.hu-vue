@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
-
-const userEmail = ref('')
-const isLoggedIn = ref(false)
+import { isLoggedIn, userEmail } from '@/states/loginState'
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split('; ')
