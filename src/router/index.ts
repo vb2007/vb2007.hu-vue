@@ -18,6 +18,11 @@ const router = createRouter({
       component: () => import('../views/AboutView.vue')
     },
     {
+      path: '/shorten',
+      name: 'shorten',
+      component: () => import('../views/ShortenView.vue')
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue')
