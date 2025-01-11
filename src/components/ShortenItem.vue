@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import { isLoggedIn } from '@/scripts/authentication/authState'
+
+const shortenUrl = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/shorten', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    })
+  } catch (error) {
+    console.error('Error shortening url: ', error)
+  }
+}
 </script>
 
 <template>
   <div class="shorten--container">
     <h1>Shorten</h1>
     <div>
-      <form>
+      <form v-if="isLoggedIn === true">
         <label for="original-url">URL</label>
         <input type="text" id="original-url" name="url" />
 
