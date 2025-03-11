@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { isLoggedIn } from '@/scripts/authentication/authState'
+import { isLoggedIn } from "@/scripts/authentication/authState";
+
+const originalUrl = ref("");
 
 const shortenUrl = async () => {
   try {
-    const response = await fetch('http://localhost:3000/shorten', {
-      method: 'POST',
+    const response = await fetch("http://localhost:3000/shortenUrl/create", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       },
-      credentials: 'include'
-    })
+      body: JSON.stringify({
+        url: originalUrl.value
+      }),
+      credentials: "include"
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+    } else {
+      console.error("Failed to shorten url: ", response.status);
+    }
   } catch (error) {
-    console.error('Error shortening url: ', error)
+    console.error("Error shortening url: ", error);
   }
-}
+};
 </script>
 
 <template>
