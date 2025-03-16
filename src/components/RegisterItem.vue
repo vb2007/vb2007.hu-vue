@@ -6,6 +6,7 @@ const username = ref("");
 const email = ref("");
 const password = ref("");
 const registerStatus = ref("");
+const autologin = ref();
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
@@ -20,7 +21,7 @@ const handleSubmit = async (event: Event) => {
   event.preventDefault();
 
   try {
-    const response = await fetch("http://localhost:3000/auth/register", {
+    const registerResponse = await fetch("http://localhost:3000/auth/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -32,11 +33,37 @@ const handleSubmit = async (event: Event) => {
       })
     });
 
-    switch (response.status) {
+    switch (registerResponse.status) {
       case 200:
-        const data = await response.json();
+        const data = await registerResponse.json();
         console.log("Response data: ", data);
         registerStatus.value = "success";
+
+        if (autologin.value) {
+          try {
+            const loginResponse = await fetch("http://localhost:3000/auth/login", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                email: email.value,
+                password: password.value
+              })
+            });
+
+            if (loginResponse.status === 200) {
+              const loginData = await loginResponse.json();
+              document.cookie = `VB-AUTH=${loginData.authentication.sessionToken}; path=/`;
+              isLoggedIn.value = true;
+              email.value = loginData.email;
+            } else {
+              console.error("Auto-login failed after successful registration");
+            }
+          } catch (loginError) {
+            console.error("Error while trying to auto-login:", loginError);
+          }
+        }
         break;
       case 403:
         registerStatus.value = "username-exists";
@@ -46,7 +73,7 @@ const handleSubmit = async (event: Event) => {
         break;
       default:
         registerStatus.value = "error";
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${registerResponse.status}`);
     }
   } catch (error) {
     console.error("Error while trying to register user: ", error);
@@ -86,7 +113,7 @@ watch(isLoggedIn, (newVal) => {
         <input type="password" id="confirm-password" name="confirm-password" />
 
         <label for="autologin">Log me in automatically after registration</label>
-        <input type="checkbox" id="autologin" name="autologin" checked />
+        <input type="checkbox" id="autologin" name="autologin" v-model="autologin" checked />
 
         <button type="submit">Register</button>
       </form>
