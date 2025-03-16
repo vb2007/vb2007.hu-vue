@@ -1,68 +1,68 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch } from 'vue'
-import { isLoggedIn } from '@/scripts/authentication/authState'
+import { ref, onMounted, watch } from "vue";
+import { isLoggedIn } from "@/scripts/authentication/authState";
 
-const username = ref('')
-const email = ref('')
-const password = ref('')
-const registerStatus = ref('')
+const username = ref("");
+const email = ref("");
+const password = ref("");
+const registerStatus = ref("");
 
 const checkAuthCookie = () => {
-  const cookies = document.cookie.split('; ')
-  const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
+  const cookies = document.cookie.split("; ");
+  const authCookie = cookies.find((cookie) => cookie.startsWith("VB-AUTH="));
   if (authCookie) {
-    registerStatus.value = 'success'
-    isLoggedIn.value = true
+    registerStatus.value = "success";
+    isLoggedIn.value = true;
   }
-}
+};
 
 const handleSubmit = async (event: Event) => {
-  event.preventDefault()
+  event.preventDefault();
 
   try {
-    const response = await fetch('http://localhost:3000/auth/register', {
-      method: 'POST',
+    const response = await fetch("http://localhost:3000/auth/register", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         username: username.value,
         email: email.value,
         password: password.value
       })
-    })
+    });
 
     switch (response.status) {
       case 200:
-        const data = await response.json()
-        console.log('Response data: ', data)
-        registerStatus.value = 'success'
-        break
+        const data = await response.json();
+        console.log("Response data: ", data);
+        registerStatus.value = "success";
+        break;
       case 403:
-        registerStatus.value = 'username-exists'
-        break
+        registerStatus.value = "username-exists";
+        break;
       case 400:
-        registerStatus.value = 'missing-fields'
-        break
+        registerStatus.value = "missing-fields";
+        break;
       default:
-        registerStatus.value = 'error'
-        throw new Error(`HTTP error! status: ${response.status}`)
+        registerStatus.value = "error";
+        throw new Error(`HTTP error! status: ${response.status}`);
     }
   } catch (error) {
-    console.error('Error while trying to register user: ', error)
-    registerStatus.value = 'error'
+    console.error("Error while trying to register user: ", error);
+    registerStatus.value = "error";
   }
-}
+};
 
 onMounted(() => {
-  checkAuthCookie()
-})
+  checkAuthCookie();
+});
 
 watch(isLoggedIn, (newVal) => {
   if (!newVal) {
-    registerStatus.value = ''
+    registerStatus.value = "";
   }
-})
+});
 </script>
 
 <template>
