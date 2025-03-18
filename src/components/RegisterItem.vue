@@ -1,12 +1,12 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from "vue";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 
 const username = ref("");
 const email = ref("");
 const password = ref("");
 const registerStatus = ref("");
-const autologin = ref();
+const autologin = ref(true);
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
@@ -40,29 +40,31 @@ const handleSubmit = async (event: Event) => {
         registerStatus.value = "success";
 
         if (autologin.value) {
-          try {
-            const loginResponse = await fetch("http://localhost:3000/auth/login", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                email: email.value,
-                password: password.value
-              })
-            });
+          setTimeout(async () => {
+            try {
+              const loginResponse = await fetch("http://localhost:3000/auth/login", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  email: email.value,
+                  password: password.value
+                })
+              });
 
-            if (loginResponse.status === 200) {
-              const loginData = await loginResponse.json();
-              document.cookie = `VB-AUTH=${loginData.authentication.sessionToken}; path=/`;
-              isLoggedIn.value = true;
-              email.value = loginData.email;
-            } else {
-              console.error("Auto-login failed after successful registration");
+              if (loginResponse.status === 200) {
+                const loginData = await loginResponse.json();
+                document.cookie = `VB-AUTH=${loginData.authentication.sessionToken}; path=/`;
+                isLoggedIn.value = true;
+                userEmail.value = loginData.email;
+              } else {
+                console.error("Auto-login failed after successful registration");
+              }
+            } catch (loginError) {
+              console.error("Error while trying to auto-login:", loginError);
             }
-          } catch (loginError) {
-            console.error("Error while trying to auto-login:", loginError);
-          }
+          }, 1000);
         }
         break;
       case 403:
