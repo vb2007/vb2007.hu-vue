@@ -114,8 +114,12 @@ watch(isLoggedIn, (newVal) => {
         <label for="confirm-password">Confirm password</label>
         <input type="password" id="confirm-password" name="confirm-password" />
 
-        <label for="autologin">Log me in automatically after registration</label>
-        <input type="checkbox" id="autologin" name="autologin" v-model="autologin" checked />
+        <div class="checkbox-container">
+          <input type="checkbox" id="autologin" name="autologin" v-model="autologin" checked />
+          <label for="autologin" class="checkbox-label"
+            >Log me in automatically after registration</label
+          >
+        </div>
 
         <button type="submit">Register</button>
       </form>
@@ -175,6 +179,22 @@ input:focus {
 label {
   font-weight: bold;
   color: #555;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 5px 0;
+}
+
+.checkbox-label {
+  margin: 0;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  margin: 0;
 }
 
 button {
