@@ -5,6 +5,7 @@ import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 const username = ref("");
 const email = ref("");
 const password = ref("");
+const confirmPassword = ref("");
 const registerStatus = ref("");
 const autologin = ref(true);
 
@@ -17,8 +18,44 @@ const checkAuthCookie = () => {
   }
 };
 
+const validateRegisterData = (
+  username: string,
+  email: string,
+  password: string,
+  confirmPassword: string
+) => {
+  try {
+    if (username.length < 2 || username.length > 16) {
+      return "invalid-username";
+    }
+
+    if (password.length < 6 || password.length > 30) {
+      return "invalid-password";
+    }
+
+    if (password !== confirmPassword) {
+      return "unmatched-passwords";
+    }
+
+    return;
+  } catch (error) {
+    console.error("Error validating the registration data: ", error);
+  }
+};
+
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
+
+  const registerDataValidation = validateRegisterData(
+    username.value,
+    email.value,
+    password.value,
+    confirmPassword.value
+  );
+  if (registerDataValidation) {
+    registerStatus.value = registerDataValidation;
+    return;
+  }
 
   try {
     const registerResponse = await fetch("http://localhost:3000/auth/register", {
@@ -103,16 +140,22 @@ watch(isLoggedIn, (newVal) => {
     <div v-else>
       <form @submit="handleSubmit">
         <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" v-model="email" />
+        <input type="email" id="email" name="email" v-model="email" required />
 
         <label for="username">Username</label>
-        <input type="text" id="username" name="username" v-model="username" />
+        <input type="text" id="username" name="username" v-model="username" required />
 
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" v-model="password" />
+        <input type="password" id="password" name="password" v-model="password" required />
 
-        <label for="confirm-password">Confirm password</label>
-        <input type="password" id="confirm-password" name="confirm-password" />
+        <label for="confirmPassword">Confirm password</label>
+        <input
+          type="password"
+          id="confirmPassword"
+          name="confirmPassword"
+          v-model="confirmPassword"
+          required
+        />
 
         <div class="checkbox-container">
           <input type="checkbox" id="autologin" name="autologin" v-model="autologin" checked />
@@ -132,6 +175,15 @@ watch(isLoggedIn, (newVal) => {
     </div>
     <div v-if="registerStatus === 'error'">
       <p>Registration failed. Please try again.</p>
+    </div>
+    <div v-if="registerStatus === 'invalid-username'">
+      <p>Your username's length must be between 2 and 16 characters.</p>
+    </div>
+    <div v-if="registerStatus === 'invalid-password'">
+      <p>Your password's length must be between 6 and 30 characters.</p>
+    </div>
+    <div v-if="registerStatus === 'unmatched-passwords'">
+      <p>The two passowrds doesn't match.</p>
     </div>
   </div>
 </template>

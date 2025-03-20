@@ -1,68 +1,68 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch } from 'vue'
-import { isLoggedIn, userEmail } from '@/scripts/authentication/authState'
+import { ref, onMounted, watch } from "vue";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 
-const email = ref('')
-const password = ref('')
-const loginStatus = ref('')
+const email = ref("");
+const password = ref("");
+const loginStatus = ref("");
 
 const checkAuthCookie = () => {
-  const cookies = document.cookie.split('; ')
-  const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
+  const cookies = document.cookie.split("; ");
+  const authCookie = cookies.find((cookie) => cookie.startsWith("VB-AUTH="));
   if (authCookie) {
-    loginStatus.value = 'success'
-    isLoggedIn.value = true
+    loginStatus.value = "success";
+    isLoggedIn.value = true;
   }
-}
+};
 
 const handleSubmit = async (event: Event) => {
-  event.preventDefault()
+  event.preventDefault();
 
   try {
-    const response = await fetch('http://localhost:3000/auth/login', {
-      method: 'POST',
+    const response = await fetch("http://localhost:3000/auth/login", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         email: email.value,
         password: password.value
       })
-    })
+    });
 
     switch (response.status) {
       case 200:
-        const data = await response.json()
-        console.log('Response data: ', data)
-        document.cookie = `VB-AUTH=${data.authentication.sessionToken}; path=/`
-        loginStatus.value = 'success'
-        isLoggedIn.value = true
-        userEmail.value = data.email
-        break
+        const data = await response.json();
+        console.log("Response data: ", data);
+        document.cookie = `VB-AUTH=${data.authentication.sessionToken}; path=/`;
+        loginStatus.value = "success";
+        isLoggedIn.value = true;
+        userEmail.value = data.email;
+        break;
       case 400:
-        loginStatus.value = 'user-not-found'
-        break
+        loginStatus.value = "user-not-found";
+        break;
       case 403:
-        loginStatus.value = 'incorrect-password'
-        break
+        loginStatus.value = "incorrect-password";
+        break;
       default:
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`HTTP error! status: ${response.status}`);
     }
   } catch (error) {
-    console.error('Error while trying to log in user:', error)
-    loginStatus.value = 'error'
+    console.error("Error while trying to log in user:", error);
+    loginStatus.value = "error";
   }
-}
+};
 
 onMounted(() => {
-  checkAuthCookie()
-})
+  checkAuthCookie();
+});
 
 watch(isLoggedIn, (newVal) => {
   if (!newVal) {
-    loginStatus.value = ''
+    loginStatus.value = "";
   }
-})
+});
 </script>
 
 <template>
