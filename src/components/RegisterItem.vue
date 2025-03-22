@@ -1,13 +1,13 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch, type Ref, computed } from "vue";
+import { ref, onMounted, watch, computed } from "vue";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 
-const username: Ref<string, string> = ref("");
-const email: Ref<string, string> = ref("");
-const password: Ref<string, string> = ref("");
-const confirmPassword: Ref<string, string> = ref("");
-const registerStatus: Ref<string, string> = ref("");
-const autologin: Ref<boolean, boolean> = ref(true);
+const username = ref<string>("");
+const email = ref<string>("");
+const password = ref<string>("");
+const confirmPassword = ref<string>("");
+const registerStatus = ref<string>("");
+const autologin = ref<boolean>(true);
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
@@ -48,12 +48,12 @@ const validateRegisterData = (
   }
 };
 
-const isButtonError = ref(false);
+const isButtonError = ref<boolean>(false);
 const buttonClass = computed(() => {
   return isButtonError.value ? "error-button" : "";
 });
 
-const isLoading: Ref<boolean, boolean> = ref(false);
+const isLoading = ref<boolean>(false);
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
