@@ -48,19 +48,15 @@ const validateRegisterData = (
   }
 };
 
-const errorCounter = ref(0);
+const isButtonError = ref(false);
 const buttonClass = computed(() => {
-  if (registerStatus.value && registerStatus.value !== "success") {
-    return `error-button-${errorCounter.value}`;
-  }
-  return "";
+  return isButtonError.value ? "error-button" : "";
 });
 
 const isLoading: Ref<boolean, boolean> = ref(false);
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
-  registerStatus.value = "";
 
   const registerDataValidation = validateRegisterData(
     username.value,
@@ -70,7 +66,10 @@ const handleSubmit = async (event: Event) => {
   );
   if (registerDataValidation) {
     registerStatus.value = registerDataValidation;
-    errorCounter.value++;
+    isButtonError.value = true;
+    setTimeout(() => {
+      isButtonError.value = false;
+    }, 1000);
     return;
   }
 
@@ -136,7 +135,10 @@ const handleSubmit = async (event: Event) => {
   } catch (error) {
     console.error("Error while trying to register user: ", error);
     registerStatus.value = "error";
-    errorCounter.value++;
+    isButtonError.value = true;
+    setTimeout(() => {
+      isButtonError.value = false;
+    }, 1000);
   } finally {
     isLoading.value = false;
   }
@@ -150,10 +152,6 @@ watch(isLoggedIn, (newVal) => {
   if (!newVal) {
     registerStatus.value = "";
   }
-  //avoids the button error animation trigger on load
-  setTimeout(() => {
-    errorCounter.value = 1;
-  }, 500);
 });
 </script>
 
@@ -303,11 +301,11 @@ button:active {
   transform: scale(1);
 }
 
-[class^="error-button-"] {
-  animation: flashError 1s;
+.error-button {
+  animation: fadeBackToBlue 2s;
 }
 
-@keyframes flashError {
+@keyframes fadeBackToBlue {
   0% {
     background-color: #dc3545;
   }
