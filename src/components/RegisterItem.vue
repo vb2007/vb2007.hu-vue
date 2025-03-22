@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch, type Ref } from "vue";
+import { ref, onMounted, watch, type Ref, computed } from "vue";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 
 const username: Ref<string, string> = ref("");
@@ -25,6 +25,11 @@ const validateRegisterData = (
   confirmPassword: string
 ) => {
   try {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return "invalid-email";
+    }
+
     if (username.length < 2 || username.length > 16) {
       return "invalid-username";
     }
@@ -43,10 +48,19 @@ const validateRegisterData = (
   }
 };
 
-const isLoading: boolean = ref(false);
+const errorCounter = ref(0);
+const buttonClass = computed(() => {
+  if (registerStatus.value && registerStatus.value !== "success") {
+    return `error-button-${errorCounter.value}`;
+  }
+  return "";
+});
+
+const isLoading: Ref<boolean, boolean> = ref(false);
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
+  registerStatus.value = "";
 
   const registerDataValidation = validateRegisterData(
     username.value,
@@ -56,8 +70,11 @@ const handleSubmit = async (event: Event) => {
   );
   if (registerDataValidation) {
     registerStatus.value = registerDataValidation;
+    errorCounter.value++;
     return;
   }
+
+  isLoading.value = true;
 
   try {
     const registerResponse = await fetch("http://localhost:3000/auth/register", {
@@ -119,6 +136,9 @@ const handleSubmit = async (event: Event) => {
   } catch (error) {
     console.error("Error while trying to register user: ", error);
     registerStatus.value = "error";
+    errorCounter.value++;
+  } finally {
+    isLoading.value = false;
   }
 };
 
@@ -130,6 +150,10 @@ watch(isLoggedIn, (newVal) => {
   if (!newVal) {
     registerStatus.value = "";
   }
+  //avoids the button error animation trigger on load
+  setTimeout(() => {
+    errorCounter.value = 1;
+  }, 500);
 });
 </script>
 
@@ -166,7 +190,9 @@ watch(isLoggedIn, (newVal) => {
           >
         </div>
 
-        <button type="submit">Register</button>
+        <button type="submit" :disabled="isLoading" :class="buttonClass">
+          {{ isLoading ? "Registering..." : "Register" }}
+        </button>
       </form>
     </div>
     <div v-if="registerStatus === 'missing-fields'">
@@ -178,6 +204,9 @@ watch(isLoggedIn, (newVal) => {
     <div v-if="registerStatus === 'error'">
       <p>Registration failed. Please try again.</p>
     </div>
+    <div v-if="registerStatus === 'invalid-email'">
+      <p>Please enter a valid email address.</p>
+    </div>
     <div v-if="registerStatus === 'invalid-username'">
       <p>Your username's length must be between 2 and 16 characters.</p>
     </div>
@@ -185,7 +214,7 @@ watch(isLoggedIn, (newVal) => {
       <p>Your password's length must be between 6 and 30 characters.</p>
     </div>
     <div v-if="registerStatus === 'unmatched-passwords'">
-      <p>The two passowrds doesn't match.</p>
+      <p>The two passowrds don't match.</p>
     </div>
   </div>
 </template>
@@ -272,5 +301,18 @@ button:hover {
 button:active {
   background-color: #004085;
   transform: scale(1);
+}
+
+[class^="error-button-"] {
+  animation: flashError 1s;
+}
+
+@keyframes flashError {
+  0% {
+    background-color: #dc3545;
+  }
+  100% {
+    background-color: #007bff;
+  }
 }
 </style>
