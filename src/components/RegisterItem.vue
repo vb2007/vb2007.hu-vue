@@ -124,12 +124,20 @@ const handleSubmit = async (event: Event) => {
         break;
       case 403:
         registerStatus.value = "username-exists";
+        isButtonError.value = true;
+        setTimeout(() => {
+          isButtonError.value = false;
+        }, 1000);
         break;
       case 400:
         registerStatus.value = "missing-fields";
         break;
       default:
         registerStatus.value = "error";
+        isButtonError.value = true;
+        setTimeout(() => {
+          isButtonError.value = false;
+        }, 1000);
         throw new Error(`HTTP error! status: ${registerResponse.status}`);
     }
   } catch (error) {
