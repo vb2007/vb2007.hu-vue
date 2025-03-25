@@ -48,7 +48,8 @@ onMounted(() => {
 <template>
   <nav>
     <div class="nav--box">
-      <a class="nav--title" href="/">vb2007.hu</a>
+      <!-- <a class="nav--title" href="/">vb2007.hu</a> -->
+      <RouterLink class="nav--title" to="/">vb2007.hu</RouterLink>
       <button class="nav--toggler">
         <img
           :src="navbarDrodownLight"

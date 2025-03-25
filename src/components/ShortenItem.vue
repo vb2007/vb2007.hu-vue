@@ -1,11 +1,19 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 
-const originalUrl = ref("");
+const originalUrl = ref<string>("");
+
+const validateUrl = (originalUrl: string) => {
+  try {
+  } catch (error) {
+    console.error("Error validating the url: ", error);
+  }
+};
 
 const shortenUrl = async () => {
   try {
-    const response = await fetch("http://localhost:3000/shortenUrl/create", {
+    const shortenResponse = await fetch("http://localhost:3000/shortenUrl/create", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -16,10 +24,11 @@ const shortenUrl = async () => {
       credentials: "include"
     });
 
-    if (response.ok) {
-      const data = await response.json();
+    if (shortenResponse.ok) {
+      const shortenData = await shortenResponse.json();
+      return shortenData.url;
     } else {
-      console.error("Failed to shorten url: ", response.status);
+      console.error("Failed to shorten url: ", shortenResponse.status);
     }
   } catch (error) {
     console.error("Error shortening url: ", error);
@@ -31,9 +40,16 @@ const shortenUrl = async () => {
   <div class="shorten--container">
     <h1>Shorten</h1>
     <div>
-      <form v-if="isLoggedIn === true">
-        <label for="original-url">URL</label>
-        <input type="text" id="original-url" name="url" />
+      <form v-if="isLoggedIn === true" @submit="shortenUrl">
+        <label for="originalUrl">URL</label>
+        <input
+          type="text"
+          id="originalUrl"
+          name="originalUrl"
+          placeholder="https://fos.hu"
+          v-model="originalUrl"
+          required
+        />
 
         <button type="submit">Shorten</button>
       </form>
