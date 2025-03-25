@@ -1,54 +1,54 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
-import navbarDrodownLight from '../assets/navbarDropdownLight.svg'
-import { isLoggedIn, userEmail } from '@/states/loginState'
+import { onMounted } from "vue";
+import { RouterLink } from "vue-router";
+import navbarDrodownLight from "../assets/navbarDropdownLight.svg";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 
 const checkAuthCookie = () => {
-  const cookies = document.cookie.split('; ')
-  const authCookie = cookies.find((cookie) => cookie.startsWith('VB-AUTH='))
+  const cookies = document.cookie.split("; ");
+  const authCookie = cookies.find((cookie) => cookie.startsWith("VB-AUTH="));
   if (authCookie) {
-    isLoggedIn.value = true
-    fetchUserDetails()
+    isLoggedIn.value = true;
+    fetchUserDetails();
   }
-}
+};
 
 const fetchUserDetails = async () => {
   try {
-    const response = await fetch('http://localhost:3000/user', {
-      method: 'GET',
+    const response = await fetch("http://localhost:3000/user", {
+      method: "GET",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       },
-      credentials: 'include'
-    })
+      credentials: "include"
+    });
 
     if (response.ok) {
-      const data = await response.json()
-      userEmail.value = data.email
+      const data = await response.json();
+      userEmail.value = data.email;
     } else {
-      console.error('Failed to fetch user details')
+      console.error("Failed to fetch user details");
     }
   } catch (error) {
-    console.error('Error fetching user details:', error)
+    console.error("Error fetching user details:", error);
   }
-}
+};
 
 const handleLogout = () => {
-  document.cookie = 'VB-AUTH=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
-  userEmail.value = ''
-  isLoggedIn.value = false
-}
+  document.cookie = "VB-AUTH=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+  userEmail.value = "";
+  isLoggedIn.value = false;
+};
 
 onMounted(() => {
-  checkAuthCookie()
-})
+  checkAuthCookie();
+});
 </script>
 
 <template>
   <nav>
     <div class="nav--box">
-      <a class="nav--title" href="/index.html">vb2007.hu</a>
+      <a class="nav--title" href="/">vb2007.hu</a>
       <button class="nav--toggler">
         <img
           :src="navbarDrodownLight"
@@ -64,7 +64,7 @@ onMounted(() => {
           <li class="nav--item">
             <RouterLink to="/shorten" class="nav--link">Shorten</RouterLink>
           </li>
-          <li class="nav--item">
+          <!-- <li class="nav--item">
             <RouterLink to="/pastebin" class="nav--link">Pastebin</RouterLink>
           </li>
           <li class="nav--item">
@@ -72,7 +72,7 @@ onMounted(() => {
           </li>
           <li class="nav--item">
             <RouterLink to="/contact" class="nav--link">Contact</RouterLink>
-          </li>
+          </li> -->
         </ul>
         <ul v-if="isLoggedIn" class="nav--list">
           <li class="nav--item">
@@ -220,7 +220,7 @@ nav {
   font-size: 1.5rem;
 }
 
-@media screen and (max-width: 852px) {
+@media screen and (max-width: 990px) {
   .nav--box {
     flex-wrap: wrap;
   }
