@@ -3,16 +3,24 @@ import { ref } from "vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 
 const originalUrl = ref<string>("");
+const shortenedUrl = ref<string>("");
+const isLoading = ref<boolean>(false);
+const errorMessage = ref<string>("");
 
-const validateUrl = (originalUrl: string) => {
-  try {
-  } catch (error) {
-    console.error("Error validating the url: ", error);
-  }
-};
+// const validateUrl = (originalUrl: string) => {
+//   try {
+//   } catch (error) {
+//     console.error("Error validating the url: ", error);
+//   }
+// };
 
-const shortenUrl = async () => {
+const shortenUrl = async (event: Event) => {
+  event.preventDefault();
+
   try {
+    isLoading.value = true;
+    errorMessage.value = "";
+
     const shortenResponse = await fetch("http://localhost:3000/shortenUrl/create", {
       method: "POST",
       headers: {
@@ -26,12 +34,17 @@ const shortenUrl = async () => {
 
     if (shortenResponse.ok) {
       const shortenData = await shortenResponse.json();
-      return shortenData.url;
+      shortenedUrl.value = shortenData.shortenedUrl;
+      originalUrl.value = "";
     } else {
+      errorMessage.value = `Failed to shorten URL: ${shortenResponse.statusText}`;
       console.error("Failed to shorten url: ", shortenResponse.status);
     }
   } catch (error) {
+    errorMessage.value = "Error connecting to server";
     console.error("Error shortening url: ", error);
+  } finally {
+    isLoading.value = false;
   }
 };
 </script>
@@ -46,13 +59,31 @@ const shortenUrl = async () => {
           type="text"
           id="originalUrl"
           name="originalUrl"
-          placeholder="https://fos.hu"
+          placeholder="https://fos.hu/"
           v-model="originalUrl"
           required
         />
 
-        <button type="submit">Shorten</button>
+        <button type="submit" :disabled="isLoading">
+          {{ isLoading ? "Shortening..." : "Shorten" }}
+        </button>
       </form>
+
+      <div v-if="errorMessage" class="error-message">
+        {{ errorMessage }}
+      </div>
+
+      <div v-if="shortenedUrl" class="result-container">
+        <h3>Shortened URL:</h3>
+        <p class="shortened-url">
+          <a :href="'http://localhost:3000/r/' + shortenedUrl" target="_blank">
+            {{ "http://localhost:3000/r/" + shortenedUrl }}
+          </a>
+        </p>
+        <!-- <button class="copy-button" @click="navigator.clipboard.writeText(shortenedUrl)">
+          Copy to clipboard
+        </button> -->
+      </div>
     </div>
   </div>
 </template>
@@ -115,13 +146,56 @@ button {
     transform 0.3s;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background-color: #0056b3;
   transform: scale(1.05);
 }
 
-button:active {
+button:active:not(:disabled) {
   background-color: #004085;
   transform: scale(1);
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.result-container {
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 5px;
+  background-color: #222222;
+  text-align: center;
+}
+
+.shortened-url {
+  font-size: 1.2em;
+  margin: 10px 0;
+  word-break: break-all;
+}
+
+.shortened-url a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.shortened-url a:hover {
+  text-decoration: underline;
+}
+
+.copy-button {
+  margin-top: 10px;
+  background-color: #28a745;
+}
+
+.copy-button:hover {
+  background-color: #218838;
+}
+
+.error-message {
+  color: #dc3545;
+  margin-top: 10px;
+  text-align: center;
 }
 </style>
