@@ -47,6 +47,16 @@ const shortenUrl = async (event: Event) => {
     isLoading.value = false;
   }
 };
+
+const copyToClipboard = () => {
+  if (shortenedUrl.value) {
+    navigator.clipboard
+      .writeText("http://localhost:3000/r/" + shortenedUrl.value)
+      .catch((error) => {
+        console.error("Failed to copy to clipboard: ", error);
+      });
+  }
+};
 </script>
 
 <template>
@@ -80,9 +90,7 @@ const shortenUrl = async (event: Event) => {
             {{ "http://localhost:3000/r/" + shortenedUrl }}
           </a>
         </p>
-        <!-- <button class="copy-button" @click="navigator.clipboard.writeText(shortenedUrl)">
-          Copy to clipboard
-        </button> -->
+        <button class="copy-button" @click="copyToClipboard">Copy to clipboard</button>
       </div>
     </div>
   </div>
