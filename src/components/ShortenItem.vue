@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { validateUrl } from "@/scripts/utility/text";
 
@@ -76,6 +77,16 @@ const copyToClipboard = () => {
           {{ isLoading ? "Shortening..." : "Shorten" }}
         </button>
       </form>
+
+      <div v-else>
+        <p>
+          Sorry, currently only logged-in users can shorten links. This will change in the future.
+        </p>
+        <p>
+          <RouterLink to="/register">Create a new account</RouterLink> or
+          <RouterLink to="/login">Log in</RouterLink>
+        </p>
+      </div>
 
       <div v-if="errorMessage" class="error-message">
         {{ errorMessage }}
