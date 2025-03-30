@@ -78,13 +78,13 @@ const copyToClipboard = () => {
         </button>
       </form>
 
-      <div v-else>
-        <p>
+      <div v-else class="login-notification-container">
+        <p class="login-text">
           Sorry, currently only logged-in users can shorten links. This will change in the future.
         </p>
-        <p>
-          <RouterLink to="/register">Create a new account</RouterLink> or
-          <RouterLink to="/login">Log in</RouterLink>
+        <p class="login-text">
+          <RouterLink class="login-link" to="/register">Create a new account</RouterLink> or
+          <RouterLink class="login-link" to="/login">Log in</RouterLink>
         </p>
       </div>
 
@@ -176,6 +176,25 @@ button:active:not(:disabled) {
 button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.login-notification-container {
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 5px;
+  background-color: #222222;
+  text-align: center;
+}
+
+.login-text {
+  font-size: 1.2em;
+  margin: 10px 0;
+  word-break: break-all;
+}
+
+.login-link {
+  color: #007bff;
+  text-decoration: none;
 }
 
 .result-container {
