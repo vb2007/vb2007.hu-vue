@@ -51,5 +51,6 @@ export const validateUrl = (originalUrl: string) => {
     }
   } catch (error) {
     console.error("Error validating the url: ", error);
+    return false;
   }
 };
