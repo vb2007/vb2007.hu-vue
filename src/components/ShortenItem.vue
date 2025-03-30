@@ -1,67 +1,12 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
+import { validateUrl } from "@/scripts/utility/text";
 
 const originalUrl = ref<string>("");
 const shortenedUrl = ref<string>("");
 const isLoading = ref<boolean>(false);
 const errorMessage = ref<string>("");
-
-const validURIType: string[] = [
-  "acap://",
-  "app://",
-  "file://",
-  "ftp://",
-  "ftps://",
-  "http://",
-  "https://",
-  "icap://",
-  "imap://",
-  "irc://",
-  "mailto:",
-  "ms-access:",
-  "ms-excel:",
-  "ms-infopath:",
-  "ms-powerpoint:",
-  "ms-project:",
-  "ms-publisher:",
-  "ms-spd:",
-  "ms-visio:",
-  "ms-word:",
-  "msteams://",
-  "mtqp://",
-  "nntp://",
-  "pop://",
-  "rsync://",
-  "rtmp://",
-  "rtsp://",
-  "sftp://",
-  "shortcuts://",
-  "smb://",
-  "smtp://",
-  "ssh://",
-  "telnet://",
-  "viber://",
-  "webcal://",
-  "wss://",
-  "xmpp://",
-  "zoomus://",
-  "zoommtg://"
-];
-
-const validateUrl = (originalUrl: string) => {
-  try {
-    if (
-      !validURIType.some((uriType) => originalUrl.toLowerCase().startsWith(uriType.toLowerCase()))
-    ) {
-      return false;
-    } else {
-      return true;
-    }
-  } catch (error) {
-    console.error("Error validating the url: ", error);
-  }
-};
 
 const shortenUrl = async (event: Event) => {
   event.preventDefault();

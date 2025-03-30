@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref } from "vue";
 
-export const isLoggedIn = ref(false)
-export const userEmail = ref('')
+export const isLoggedIn = ref(false);
+export const userEmail = ref("");
