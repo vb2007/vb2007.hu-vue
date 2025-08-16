@@ -3,7 +3,5 @@ import WelcomeItem from '../components/WelcomeItem.vue'
 </script>
 
 <template>
-  <div>
-    <WelcomeItem />
-  </div>
+  <WelcomeItem />
 </template>
