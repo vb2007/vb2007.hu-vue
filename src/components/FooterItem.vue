@@ -1,21 +1,21 @@
 <template>
   <footer>
     <div class="footer--box">
-      <p>VB2007 | 2023 - {{ currentYear }}</p>
+      <p>2023 - {{ currentYear }}</p>
     </div>
   </footer>
 </template>
 
 <script lang="ts">
-import { getCurrentYear } from '../scripts/utility/dateUtil'
+import { getCurrentYear } from "../scripts/utility/dateUtil";
 
 export default {
   data() {
     return {
       currentYear: getCurrentYear()
-    }
+    };
   }
-}
+};
 </script>
 
 <style scoped>
