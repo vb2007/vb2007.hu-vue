@@ -3,10 +3,11 @@ import { onMounted } from "vue";
 import { RouterLink } from "vue-router";
 import navbarDrodownLight from "../assets/navbarDropdownLight.svg";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { AUTH_COOKIE_NAME, UserManagement } from "@/constants/api";
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((cookie) => cookie.startsWith("VB-AUTH="));
+  const authCookie = cookies.find((cookie) => cookie.startsWith(AUTH_COOKIE_NAME));
   if (authCookie) {
     isLoggedIn.value = true;
     fetchUserDetails();
@@ -15,7 +16,7 @@ const checkAuthCookie = () => {
 
 const fetchUserDetails = async () => {
   try {
-    const response = await fetch("http://localhost:3000/user", {
+    const response = await fetch(UserManagement.Actions.getUser, {
       method: "GET",
       headers: {
         "Content-Type": "application/json"
@@ -35,7 +36,7 @@ const fetchUserDetails = async () => {
 };
 
 const handleLogout = () => {
-  document.cookie = "VB-AUTH=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+  document.cookie = `${AUTH_COOKIE_NAME}; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
   userEmail.value = "";
   isLoggedIn.value = false;
 };
