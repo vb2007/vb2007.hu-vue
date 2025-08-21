@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch, computed } from "vue";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { AUTH_COOKIE_NAME, UserManagement } from "@/constants/api";
 
 const username = ref<string>("");
 const email = ref<string>("");
@@ -11,7 +12,7 @@ const autologin = ref<boolean>(true);
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((cookie) => cookie.startsWith("VB-AUTH="));
+  const authCookie = cookies.find((cookie) => cookie.startsWith(AUTH_COOKIE_NAME));
   if (authCookie) {
     registerStatus.value = "success";
     isLoggedIn.value = true;
@@ -76,7 +77,7 @@ const handleSubmit = async (event: Event) => {
   isLoading.value = true;
 
   try {
-    const registerResponse = await fetch("http://localhost:3000/auth/register", {
+    const registerResponse = await fetch(UserManagement.Authentication.register, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -97,7 +98,7 @@ const handleSubmit = async (event: Event) => {
         if (autologin.value) {
           setTimeout(async () => {
             try {
-              const loginResponse = await fetch("http://localhost:3000/auth/login", {
+              const loginResponse = await fetch(UserManagement.Authentication.login, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json"
@@ -110,7 +111,7 @@ const handleSubmit = async (event: Event) => {
 
               if (loginResponse.status === 200) {
                 const loginData = await loginResponse.json();
-                document.cookie = `VB-AUTH=${loginData.authentication.sessionToken}; path=/`;
+                document.cookie = `${AUTH_COOKIE_NAME}${loginData.authentication.sessionToken}; path=/`;
                 isLoggedIn.value = true;
                 userEmail.value = loginData.email;
               } else {
