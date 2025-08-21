@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from "vue";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { UserManagement, AUTH_COOKIE_NAME } from "@/constants/api";
 
 const email = ref("");
 const password = ref("");
@@ -8,7 +9,7 @@ const loginStatus = ref("");
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((cookie) => cookie.startsWith("VB-AUTH="));
+  const authCookie = cookies.find((cookie) => cookie.startsWith(AUTH_COOKIE_NAME));
   if (authCookie) {
     loginStatus.value = "success";
     isLoggedIn.value = true;
@@ -19,7 +20,7 @@ const handleSubmit = async (event: Event) => {
   event.preventDefault();
 
   try {
-    const response = await fetch("http://localhost:3000/auth/login", {
+    const response = await fetch(UserManagement.Authentication.login, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -34,7 +35,7 @@ const handleSubmit = async (event: Event) => {
       case 200:
         const data = await response.json();
         console.log("Response data: ", data);
-        document.cookie = `VB-AUTH=${data.authentication.sessionToken}; path=/`;
+        document.cookie = `${AUTH_COOKIE_NAME}${data.authentication.sessionToken}; path=/`;
         loginStatus.value = "success";
         isLoggedIn.value = true;
         userEmail.value = data.email;
