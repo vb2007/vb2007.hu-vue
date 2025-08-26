@@ -8,14 +8,13 @@ export class UserManagement {
   };
 
   static Actions = class {
-    static getUsers: string = `${API_BASE_URL}/users`;
-    static getUser: string = `${API_BASE_URL}/user`;
-    static deletePatchUser: string = `${API_BASE_URL}/users/:id`;
+    static users: string = `${API_BASE_URL}/users`;
+    static user: string = `${API_BASE_URL}/user`;
+    static userWithId: string = `${API_BASE_URL}/users/:id`;
   };
 }
 
 export class UrlShortening {
-  static shortenUrl: string = `${API_BASE_URL}/shortenUrl/create`;
-  // static getOriginalUrl: string =
-  static deleteUrl: string = `${API_BASE_URL}/shortenUrl/delete`;
+  static redirect: string = `${API_BASE_URL}/r/:id`;
+  static shortenUrl: string = `${API_BASE_URL}/shortenUrl`;
 }
