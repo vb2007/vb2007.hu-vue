@@ -1,4 +1,4 @@
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || "https://api.vb2007.hu";
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
 export const AUTH_COOKIE_NAME: string = "VB-AUTH=";
 
 export class UserManagement {
