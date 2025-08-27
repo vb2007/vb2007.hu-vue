@@ -34,8 +34,8 @@ const handleSubmit = async (event: Event) => {
     switch (response.status) {
       case 200:
         const data = await response.json();
-        console.log("Response data: ", data);
-        document.cookie = `${AUTH_COOKIE_NAME}${data.authentication.sessionToken}; path=/`;
+        // console.log("Response data: ", data);
+        document.cookie = `${AUTH_COOKIE_NAME}${data.sessionToken}; path=/`;
         loginStatus.value = "success";
         isLoggedIn.value = true;
         userEmail.value = data.email;

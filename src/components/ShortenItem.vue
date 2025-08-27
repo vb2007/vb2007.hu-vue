@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { validateUrl } from "@/scripts/utility/text";
+import { UrlShortening } from "@/constants/api";
 
 const originalUrl = ref<string>("");
 const shortenedUrl = ref<string>("");
@@ -20,7 +21,7 @@ const shortenUrl = async (event: Event) => {
     isLoading.value = true;
     errorMessage.value = "";
 
-    const shortenResponse = await fetch("http://localhost:3000/shortenUrl/create", {
+    const shortenResponse = await fetch(UrlShortening.shortenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -33,7 +34,7 @@ const shortenUrl = async (event: Event) => {
 
     if (shortenResponse.ok) {
       const shortenData = await shortenResponse.json();
-      shortenedUrl.value = shortenData.shortenedUrl;
+      shortenedUrl.value = shortenData.data.shortenedUrl;
       originalUrl.value = "";
     } else {
       errorMessage.value = `Failed to shorten URL: ${shortenResponse.statusText}`;
