@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import navbarDrodownLight from "../assets/navbarDropdownLight.svg";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { AUTH_COOKIE_NAME, UserManagement } from "@/constants/api";
+
+const isMenuOpen = ref(false);
+
+const toggleMobileMenu = () => {
+  isMenuOpen.value = !isMenuOpen.value;
+};
+
+const closeMobileMenu = () => {
+  isMenuOpen.value = false;
+};
 
 const checkAuthCookie = () => {
   const cookies = document.cookie.split("; ");
@@ -40,6 +50,7 @@ const handleLogout = () => {
   document.cookie = `${AUTH_COOKIE_NAME}; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
   userEmail.value = "";
   isLoggedIn.value = false;
+  closeMobileMenu();
 };
 
 onMounted(() => {
@@ -52,20 +63,22 @@ onMounted(() => {
     <div class="nav--box">
       <!-- <a class="nav--title" href="/">vb2007.hu</a> -->
       <RouterLink class="nav--title" to="/">vb2007.hu</RouterLink>
-      <button class="nav--toggler">
+      <button class="nav--toggler" @click="toggleMobileMenu">
         <img
           :src="navbarDrodownLight"
           alt="Navbar dropdown menu toggler"
           class="nav--toggler-icon"
         />
       </button>
-      <div class="nav--collapse">
+      <div class="nav--collapse" :class="{ show: isMenuOpen }">
         <ul class="nav--list">
           <li id="nav--home" class="nav--item">
-            <RouterLink to="/" class="nav--link">Home</RouterLink>
+            <RouterLink to="/" class="nav--link" @click="closeMobileMenu">Home</RouterLink>
           </li>
           <li class="nav--item">
-            <RouterLink to="/shorten" class="nav--link">Shorten</RouterLink>
+            <RouterLink to="/shorten" class="nav--link" @click="closeMobileMenu"
+              >Shorten</RouterLink
+            >
           </li>
           <!-- <li class="nav--item">
             <RouterLink to="/pastebin" class="nav--link">Pastebin</RouterLink>
@@ -87,10 +100,14 @@ onMounted(() => {
         </ul>
         <ul v-else class="nav--list">
           <li class="nav--item nav--item-button">
-            <RouterLink to="/login" class="nav--link nav--button">Login</RouterLink>
+            <RouterLink to="/login" class="nav--link nav--button" @click="closeMobileMenu"
+              >Login</RouterLink
+            >
           </li>
           <li class="nav--item nav--item-button">
-            <RouterLink to="/register" class="nav--link nav--button">Register</RouterLink>
+            <RouterLink to="/register" class="nav--link nav--button" @click="closeMobileMenu"
+              >Register</RouterLink
+            >
           </li>
         </ul>
       </div>
@@ -217,10 +234,19 @@ nav {
   border: none;
   cursor: pointer;
   display: none;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.nav--toggler:hover {
+  background-color: rgba(0, 123, 255, 0.1);
 }
 
 .nav--toggler-icon {
-  font-size: 1.5rem;
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 
 @media screen and (max-width: 990px) {
