@@ -166,6 +166,8 @@ nav {
 .nav--item {
   /* space between the items */
   margin-right: 20px;
+  display: flex;
+  align-items: center;
 }
 
 .nav--link {
