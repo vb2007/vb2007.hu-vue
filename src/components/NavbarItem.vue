@@ -16,7 +16,7 @@ const checkAuthCookie = () => {
 
 const fetchUserDetails = async () => {
   try {
-    const response = await fetch(UserManagement.Actions.getUser, {
+    const response = await fetch(UserManagement.Actions.user, {
       method: "GET",
       headers: {
         "Content-Type": "application/json"
@@ -26,6 +26,7 @@ const fetchUserDetails = async () => {
 
     if (response.ok) {
       const data = await response.json();
+      console.log("User details fetched:", data);
       userEmail.value = data.email;
     } else {
       console.error("Failed to fetch user details");
