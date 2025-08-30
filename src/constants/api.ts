@@ -15,6 +15,6 @@ export class UserManagement {
 }
 
 export class UrlShortening {
-  static redirect: string = `${API_BASE_URL}/r/:id`;
+  static redirect: string = `${API_BASE_URL}/r/`;
   static shortenUrl: string = `${API_BASE_URL}/shortenUrl`;
 }

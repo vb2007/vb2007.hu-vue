@@ -111,7 +111,7 @@ const handleSubmit = async (event: Event) => {
 
               if (loginResponse.status === 200) {
                 const loginData = await loginResponse.json();
-                document.cookie = `${AUTH_COOKIE_NAME}${loginData.authentication.sessionToken}; path=/`;
+                document.cookie = `${AUTH_COOKIE_NAME}${loginData.sessionToken}; path=/`;
                 isLoggedIn.value = true;
                 userEmail.value = loginData.email;
               } else {

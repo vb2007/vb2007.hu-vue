@@ -50,11 +50,9 @@ const shortenUrl = async (event: Event) => {
 
 const copyToClipboard = () => {
   if (shortenedUrl.value) {
-    navigator.clipboard
-      .writeText("http://localhost:3000/r/" + shortenedUrl.value)
-      .catch((error) => {
-        console.error("Failed to copy to clipboard: ", error);
-      });
+    navigator.clipboard.writeText(UrlShortening.redirect + shortenedUrl.value).catch((error) => {
+      console.error("Failed to copy to clipboard: ", error);
+    });
   }
 };
 </script>
