@@ -90,7 +90,7 @@ const handleSubmit = async (event: Event) => {
     });
 
     switch (registerResponse.status) {
-      case 200:
+      case 201:
         const data = await registerResponse.json();
         console.log("Response data: ", data);
         registerStatus.value = "success";
@@ -123,15 +123,13 @@ const handleSubmit = async (event: Event) => {
           }, 1000);
         }
         break;
+      case 400:
       case 403:
-        registerStatus.value = "username-exists";
+        registerStatus.value = data.error;
         isButtonError.value = true;
         setTimeout(() => {
           isButtonError.value = false;
         }, 1000);
-        break;
-      case 400:
-        registerStatus.value = "missing-fields";
         break;
       default:
         registerStatus.value = "error";
@@ -206,7 +204,7 @@ watch(isLoggedIn, (newVal) => {
       <p>Please fill out all required input fields.</p>
     </div>
     <div v-if="registerStatus === 'username-exists'">
-      <p>This username is already taken.</p>
+      <p>{{ registerStatus }}</p>
     </div>
     <div v-if="registerStatus === 'error'">
       <p>Registration failed. Please try again.</p>
