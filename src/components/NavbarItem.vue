@@ -202,6 +202,8 @@ nav {
   text-align: center;
   cursor: pointer;
   transition: background-color 0.3s;
+  display: inline-block;
+  line-height: 1.2;
 }
 
 .nav--button--disabled {
