@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import navbarDrodownLight from "../assets/navbarDropdownLight.svg";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
@@ -55,6 +55,12 @@ const handleLogout = () => {
 
 onMounted(() => {
   checkAuthCookie();
+});
+
+watch(isLoggedIn, (newValue) => {
+  if (newValue && !userEmail.value) {
+    fetchUserDetails();
+  }
 });
 </script>
 
