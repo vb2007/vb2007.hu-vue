@@ -31,27 +31,24 @@ const handleSubmit = async (event: Event) => {
       })
     });
 
+    const data = await response.json();
     switch (response.status) {
       case 200:
-        const data = await response.json();
         // console.log("Response data: ", data);
         document.cookie = `${AUTH_COOKIE_NAME}${data.sessionToken}; path=/`;
-        loginStatus.value = "success";
         isLoggedIn.value = true;
         userEmail.value = data.email;
         break;
       case 400:
-        loginStatus.value = "user-not-found";
-        break;
       case 403:
-        loginStatus.value = "incorrect-password";
+        loginStatus.value = data.error;
         break;
       default:
         throw new Error(`HTTP error! status: ${response.status}`);
     }
   } catch (error) {
     console.error("Error while trying to log in user:", error);
-    loginStatus.value = "error";
+    loginStatus.value = "unknown-error";
   }
 };
 
@@ -82,14 +79,11 @@ watch(isLoggedIn, (newVal) => {
         <button type="submit">Login</button>
       </form>
     </div>
-    <div v-if="loginStatus === 'user-not-found'">
+    <div v-if="loginStatus === 'unknown-error'">
       <p>User with that email address doesn't exists.</p>
     </div>
-    <div v-if="loginStatus === 'incorrect-password'">
-      <p>Incorrect password. Please try again.</p>
-    </div>
-    <div v-if="loginStatus === 'error'">
-      <p>Login failed. Please try again.</p>
+    <div v-else>
+      <p>{{ loginStatus }}</p>
     </div>
   </div>
 </template>
@@ -105,7 +99,7 @@ watch(isLoggedIn, (newVal) => {
 }
 
 h1 {
-  color: #333;
+  color: #ffffff;
   font-size: 2em;
 }
 
