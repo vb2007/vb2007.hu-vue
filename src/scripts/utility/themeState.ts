@@ -15,10 +15,6 @@ const getInitialTheme = (): Theme => {
   if (!saved) {
     return getSystemTheme() === "dark" ? THEMES.DARK : THEMES.LIGHT;
   }
-  // If saved preference is "auto", convert to system preference
-  if (saved === THEMES.AUTO) {
-    return getSystemTheme() === "dark" ? THEMES.DARK : THEMES.LIGHT;
-  }
   return saved;
 };
 
