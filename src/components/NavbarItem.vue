@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 import navbarDrodownLight from "../assets/navbarDropdownLight.svg";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { AUTH_COOKIE_NAME, UserManagement } from "@/constants/api";
+import ThemeSwitchItem from "./ThemeSwitchItem.vue";
 
 const isMenuOpen = ref(false);
 
@@ -103,6 +104,9 @@ watch(isLoggedIn, (newValue) => {
           <li class="nav--item nav--item-button">
             <button @click="handleLogout" class="nav--link nav--button">Logout</button>
           </li>
+          <li class="nav--item">
+            <ThemeSwitchItem />
+          </li>
         </ul>
         <ul v-else class="nav--list">
           <li class="nav--item nav--item-button">
@@ -114,6 +118,9 @@ watch(isLoggedIn, (newValue) => {
             <RouterLink to="/register" class="nav--link nav--button" @click="closeMobileMenu"
               >Register</RouterLink
             >
+          </li>
+          <li class="nav--item">
+            <ThemeSwitchItem />
           </li>
         </ul>
       </div>
