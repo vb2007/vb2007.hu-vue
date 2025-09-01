@@ -1,16 +1,15 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from "vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { checkAuthCookie, login } from "@/scripts/authentication/user";
+import { checkAuthCookie, login, loginStatus } from "@/scripts/authentication/user";
 
 const email = ref("");
 const password = ref("");
-let loginResponse: string;
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
 
-  loginResponse = await login(email.value, password.value);
+  await login(email.value, password.value);
 };
 
 onMounted(() => {
@@ -19,7 +18,7 @@ onMounted(() => {
 
 watch(isLoggedIn, (newVal) => {
   if (!newVal) {
-    loginResponse = loginResponse;
+    loginStatus.value = "";
   }
 });
 </script>
@@ -27,10 +26,7 @@ watch(isLoggedIn, (newVal) => {
 <template>
   <div class="login--container">
     <h1>Login</h1>
-    <div v-if="loginResponse === 'success'">
-      <p>Login successful!</p>
-    </div>
-    <div v-else>
+    <div v-if="!isLoggedIn">
       <form @submit="handleSubmit">
         <label for="email">E-mail</label>
         <input type="email" id="email" name="email" v-model="email" />
@@ -40,11 +36,14 @@ watch(isLoggedIn, (newVal) => {
         <button type="submit">Login</button>
       </form>
     </div>
-    <div v-if="loginResponse === 'unknown-error'">
-      <p>User with that email address doesn't exists.</p>
+    <div v-if="loginStatus === 'success'">
+      <p>Login successful!</p>
+    </div>
+    <div v-else-if="loginStatus === 'unknown-error'">
+      <p>An unknown error occurred. Please try again later.</p>
     </div>
     <div v-else>
-      <p>{{ loginResponse }}</p>
+      <p>{{ loginStatus }}</p>
     </div>
   </div>
 </template>

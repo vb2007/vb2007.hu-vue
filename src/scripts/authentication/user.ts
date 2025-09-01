@@ -26,21 +26,31 @@ export const login = async (email: string, password: string) => {
       })
     });
 
-    const data = await response.json();
-    switch (response.status) {
-      case 200:
-        document.cookie = `${AUTH_COOKIE_NAME}${data.sessionToken}; path=/`;
-        isLoggedIn.value = true;
-        userEmail.value = data.email;
-        break;
-      case 400:
-      case 403:
-        return data.error;
-      default:
-        throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      let errorMessage = "unknown-error";
+
+      try {
+        const data = await response.json();
+        if (data.error) {
+          errorMessage = data.error;
+        }
+      } catch (jsonError) {
+        console.error("Error parsing JSON response:", jsonError);
+      }
+
+      loginStatus.value = errorMessage;
+      return;
     }
+
+    const data = await response.json();
+    document.cookie = `${AUTH_COOKIE_NAME}${data.sessionToken}; path=/`;
+    isLoggedIn.value = true;
+    userEmail.value = data.email;
+    loginStatus.value = "success";
+    return;
   } catch (error) {
     console.error("Error while trying to log in user:", error);
-    return "unknown-error";
+    loginStatus.value = "unknown-error";
+    return;
   }
 };
