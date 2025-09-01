@@ -1,15 +1,16 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from "vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { checkAuthCookie, login, loginStatus } from "@/scripts/authentication/user";
+import { checkAuthCookie, login } from "@/scripts/authentication/user";
 
 const email = ref("");
 const password = ref("");
+let loginResponse: string;
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
 
-  login(email.value, password.value);
+  loginResponse = await login(email.value, password.value);
 };
 
 onMounted(() => {
@@ -18,7 +19,7 @@ onMounted(() => {
 
 watch(isLoggedIn, (newVal) => {
   if (!newVal) {
-    loginStatus.value = "";
+    loginResponse = loginResponse;
   }
 });
 </script>
@@ -26,7 +27,7 @@ watch(isLoggedIn, (newVal) => {
 <template>
   <div class="login--container">
     <h1>Login</h1>
-    <div v-if="loginStatus === 'success'">
+    <div v-if="loginResponse === 'success'">
       <p>Login successful!</p>
     </div>
     <div v-else>
@@ -39,11 +40,11 @@ watch(isLoggedIn, (newVal) => {
         <button type="submit">Login</button>
       </form>
     </div>
-    <div v-if="loginStatus === 'unknown-error'">
+    <div v-if="loginResponse === 'unknown-error'">
       <p>User with that email address doesn't exists.</p>
     </div>
     <div v-else>
-      <p>{{ loginStatus }}</p>
+      <p>{{ loginResponse }}</p>
     </div>
   </div>
 </template>
