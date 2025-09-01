@@ -218,7 +218,7 @@ watch(isLoggedIn, (newVal) => {
 }
 
 h1 {
-  color: #333;
+  color: var(--color-text);
   font-size: 2em;
 }
 

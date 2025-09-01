@@ -115,7 +115,7 @@ const copyToClipboard = () => {
 }
 
 h1 {
-  color: #333;
+  color: var(--color-text);
   font-size: 2em;
 }
 
@@ -181,7 +181,7 @@ button:disabled {
   margin-top: 20px;
   padding: 15px;
   border-radius: 5px;
-  background-color: #222222;
+  background-color: var(--color-background-soft);
   text-align: center;
 }
 

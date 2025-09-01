@@ -33,7 +33,7 @@ watch(isLoggedIn, (newVal) => {
 
         <label for="password">Password</label>
         <input type="password" id="password" name="password" v-model="password" />
-        <button type="submit">Login</button>
+        <button type="submit">Log in</button>
       </form>
     </div>
     <div v-if="loginStatus === 'success'">
@@ -59,7 +59,7 @@ watch(isLoggedIn, (newVal) => {
 }
 
 h1 {
-  color: #ffffff;
+  color: var(--color-text);
   font-size: 2em;
 }
 

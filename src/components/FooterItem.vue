@@ -18,7 +18,7 @@ export default {
 };
 </script>
 
-<style scoped>
+<style lang="css" scoped>
 footer {
   background-color: rgba(219, 219, 219, 0.8);
   box-shadow: 0 2px 10px rgb(253, 251, 251);
@@ -28,7 +28,6 @@ footer {
   margin-bottom: 0;
   border-radius: 15px 15px 0 0;
   text-align: center;
-  font-family: Inter, sans-serif;
 }
 
 .footer--box {
@@ -36,5 +35,10 @@ footer {
   justify-content: center;
   align-content: center;
   padding-top: 10px;
+}
+
+p {
+  color: var(--color-text-dark);
+  font-size: 1em;
 }
 </style>

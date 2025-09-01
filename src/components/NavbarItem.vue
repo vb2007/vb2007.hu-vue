@@ -111,7 +111,7 @@ watch(isLoggedIn, (newValue) => {
         <ul v-else class="nav--list">
           <li class="nav--item nav--item-button">
             <RouterLink to="/login" class="nav--link nav--button" @click="closeMobileMenu"
-              >Login</RouterLink
+              >Log in</RouterLink
             >
           </li>
           <li class="nav--item nav--item-button">
