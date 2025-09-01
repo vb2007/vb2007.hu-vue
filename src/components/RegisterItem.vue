@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch, computed } from "vue";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { isLoggedIn } from "@/scripts/authentication/authState";
+import { login } from "@/scripts/authentication/user";
 import { AUTH_COOKIE_NAME, UserManagement } from "@/constants/api";
 
 const username = ref<string>("");
@@ -98,25 +99,7 @@ const handleSubmit = async (event: Event) => {
         if (autologin.value) {
           setTimeout(async () => {
             try {
-              const loginResponse = await fetch(UserManagement.Authentication.login, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  email: email.value,
-                  password: password.value
-                })
-              });
-
-              if (loginResponse.status === 200) {
-                const loginData = await loginResponse.json();
-                document.cookie = `${AUTH_COOKIE_NAME}${loginData.sessionToken}; path=/`;
-                isLoggedIn.value = true;
-                userEmail.value = loginData.email;
-              } else {
-                console.error("Auto-login failed after successful registration");
-              }
+              await login(email.value, password.value);
             } catch (loginError) {
               console.error("Error while trying to auto-login:", loginError);
             }
