@@ -1,55 +1,15 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from "vue";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
-import { UserManagement, AUTH_COOKIE_NAME } from "@/constants/api";
+import { isLoggedIn } from "@/scripts/authentication/authState";
+import { checkAuthCookie, login, loginStatus } from "@/scripts/authentication/user";
 
 const email = ref("");
 const password = ref("");
-const loginStatus = ref("");
-
-const checkAuthCookie = () => {
-  const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((cookie) => cookie.startsWith(AUTH_COOKIE_NAME));
-  if (authCookie) {
-    loginStatus.value = "success";
-    isLoggedIn.value = true;
-  }
-};
 
 const handleSubmit = async (event: Event) => {
   event.preventDefault();
 
-  try {
-    const response = await fetch(UserManagement.Authentication.login, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email: email.value,
-        password: password.value
-      })
-    });
-
-    const data = await response.json();
-    switch (response.status) {
-      case 200:
-        // console.log("Response data: ", data);
-        document.cookie = `${AUTH_COOKIE_NAME}${data.sessionToken}; path=/`;
-        isLoggedIn.value = true;
-        userEmail.value = data.email;
-        break;
-      case 400:
-      case 403:
-        loginStatus.value = data.error;
-        break;
-      default:
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-  } catch (error) {
-    console.error("Error while trying to log in user:", error);
-    loginStatus.value = "unknown-error";
-  }
+  login(email.value, password.value);
 };
 
 onMounted(() => {
