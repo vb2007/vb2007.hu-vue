@@ -557,7 +557,7 @@ jobs:
         if: always()
         uses: mikepenz/action-junit-report@v6
         with:
-          report_paths: "artifacts/**/*.xml"
+          report_paths: "artifacts/junit-*/*.xml"
           check_name: "Test annotations"
           include_passed: false
           fail_on_failure: false
