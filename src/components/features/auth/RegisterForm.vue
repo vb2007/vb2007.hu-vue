@@ -2,8 +2,8 @@
 import { onMounted, ref, watch, computed } from "vue";
 import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { AUTH_COOKIE_NAME } from "@/constants/api";
 import { register, registerStatus, validateRegisterData } from "@/scripts/authentication/register";
+import { restoreSession } from "@/scripts/authentication/user";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseCheckbox from "@/components/ui/BaseCheckbox.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -62,11 +62,11 @@ const handleSubmit = async () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   registerStatus.value = "";
-  if (document.cookie.split("; ").some((cookie) => cookie.startsWith(AUTH_COOKIE_NAME))) {
+  await restoreSession();
+  if (isLoggedIn.value) {
     registerStatus.value = "success";
-    isLoggedIn.value = true;
   }
 });
 

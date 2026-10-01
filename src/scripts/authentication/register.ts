@@ -61,7 +61,8 @@ export const register = async (
         }
         return true;
       case 400:
-      case 403: {
+      case 403:
+      case 409: {
         let message = "error";
         try {
           const data = await response.json();

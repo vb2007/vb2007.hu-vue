@@ -2,7 +2,7 @@
 import { onMounted, ref, watch, computed } from "vue";
 import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { checkAuthCookie, login, loginStatus } from "@/scripts/authentication/user";
+import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -30,7 +30,7 @@ const failure = computed(() => {
 });
 
 onMounted(() => {
-  checkAuthCookie();
+  restoreSession();
 });
 
 watch(isLoggedIn, (newVal) => {

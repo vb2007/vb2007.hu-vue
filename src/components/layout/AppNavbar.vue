@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
-import { fetchUserDetails, logout, restoreSession } from "@/scripts/authentication/user";
+import { isLoggedIn, isSessionChecked, userEmail } from "@/scripts/authentication/authState";
+import { logout, restoreSession } from "@/scripts/authentication/user";
 import { TOOLS_LINE } from "@/constants/stops";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -17,8 +17,8 @@ const closeMenu = () => {
   isMenuOpen.value = false;
 };
 
-const handleLogout = () => {
-  logout();
+const handleLogout = async () => {
+  await logout();
   closeMenu();
 };
 
@@ -32,12 +32,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
-
-watch(isLoggedIn, (loggedIn) => {
-  if (loggedIn && !userEmail.value) {
-    fetchUserDetails();
-  }
-});
 
 watch(() => route.fullPath, closeMenu);
 </script>
@@ -79,7 +73,7 @@ watch(() => route.fullPath, closeMenu);
             <span v-if="userEmail" class="bar__user" :title="userEmail">{{ userEmail }}</span>
             <BaseButton size="sm" variant="secondary" @click="handleLogout">Log out</BaseButton>
           </template>
-          <template v-else>
+          <template v-else-if="isSessionChecked">
             <BaseButton size="sm" variant="ghost" to="/login">Log in</BaseButton>
             <BaseButton size="sm" to="/register">Register</BaseButton>
           </template>
