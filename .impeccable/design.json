@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-01T00:00:00Z",
+  "title": "Design System: vb2007.hu",
+  "extensions": {
+    "colorMeta": {
+      "field": {"role": "neutral", "displayName": "Meadow Field", "canonical": "oklch(0.915 0.075 138)", "dark": "oklch(0.225 0.042 152)"},
+      "field-deep": {"role": "neutral", "displayName": "Deep Meadow", "canonical": "oklch(0.855 0.105 140)", "dark": "oklch(0.285 0.05 152)"},
+      "panel": {"role": "neutral", "displayName": "Enamel White", "canonical": "oklch(0.988 0.012 130)", "dark": "oklch(0.285 0.04 152)"},
+      "panel-sunk": {"role": "neutral", "displayName": "Sunk Enamel", "canonical": "oklch(0.955 0.03 134)", "dark": "oklch(0.245 0.04 152)"},
+      "ink": {"role": "neutral", "displayName": "Board Ink", "canonical": "oklch(0.24 0.045 152)", "dark": "oklch(0.95 0.035 138)"},
+      "ink-soft": {"role": "neutral", "displayName": "Soft Ink", "canonical": "oklch(0.38 0.05 152)", "dark": "oklch(0.8 0.045 140)"},
+      "line": {"role": "primary", "displayName": "Route Green", "canonical": "oklch(0.6 0.16 148)", "dark": "oklch(0.78 0.17 145)"},
+      "action": {"role": "primary", "displayName": "Signal Forest", "canonical": "oklch(0.45 0.115 152)", "dark": "oklch(0.84 0.16 142)"},
+      "action-deep": {"role": "primary", "displayName": "Deep Forest", "canonical": "oklch(0.33 0.09 152)", "dark": "oklch(0.62 0.14 145)"},
+      "on-action": {"role": "neutral", "displayName": "Enamel On Action", "canonical": "oklch(0.99 0.01 130)", "dark": "oklch(0.2 0.04 152)"},
+      "deep": {"role": "neutral", "displayName": "Terminal Band", "canonical": "oklch(0.24 0.045 152)", "dark": "oklch(0.36 0.06 152)"},
+      "works-amber": {"role": "secondary", "displayName": "Works Amber", "canonical": "oklch(0.84 0.15 88)", "dark": "oklch(0.82 0.14 88)"},
+      "danger": {"role": "tertiary", "displayName": "Fault Red", "canonical": "oklch(0.5 0.18 27)", "dark": "oklch(0.8 0.13 27)"}
+    },
+    "typographyMeta": {
+      "display": {"displayName": "Display", "purpose": "Home hero title only."},
+      "headline": {"displayName": "Headline", "purpose": "h1 on inner pages, uppercase."},
+      "title": {"displayName": "Title", "purpose": "h2, board titles."},
+      "body": {"displayName": "Body", "purpose": "Running text, 62ch max."},
+      "label": {"displayName": "Label", "purpose": "Buttons and route labels."},
+      "code": {"displayName": "Code", "purpose": "Short links and mono inputs."}
+    },
+    "shadows": [
+      {"name": "enamel-panel", "value": "0 0.4rem 0 var(--c-field-deep), 0 1.25rem 2rem -1.25rem oklch(0.3 0.06 152 / 0.5)", "purpose": "Station boards: enamel thickness plus soft cast."},
+      {"name": "key-underside", "value": "0 0.25rem 0 var(--btn-depth)", "purpose": "Button hard offset; +2px on hover, 0 on press."},
+      {"name": "line-bar", "value": "0 0.3rem 0 var(--c-line)", "purpose": "Route line under the navbar."},
+      {"name": "focus-halo", "value": "0 0 0 4px color-mix(in oklch, var(--c-line) 45%, transparent)", "purpose": "Focused input."}
+    ],
+    "motion": [
+      {"name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "All state and arrival motion."},
+      {"name": "dur-quick", "value": "140ms", "purpose": "Hover and press."},
+      {"name": "dur-base", "value": "280ms", "purpose": "Theme, drawer, message arrival."},
+      {"name": "dur-slow", "value": "640ms", "purpose": "Hero tool arrival."}
+    ],
+    "breakpoints": [
+      {"name": "board-pad", "value": "40rem"},
+      {"name": "route-map", "value": "52rem"},
+      {"name": "hero-two-col", "value": "62rem"},
+      {"name": "navbar-drawer", "value": "75rem (max-width)"}
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button", "kind": "button", "refersTo": "button-primary",
+      "description": "Pressable forest key with hard underside.",
+      "html": "<button class=\"ds-btn\">Shorten</button>",
+      "css": ".ds-btn{min-height:2.875rem;padding:0 1.5rem;border:2px solid transparent;border-radius:0.5rem;background:var(--c-action);color:var(--c-on-action);font-family:var(--font-board);font-size:1.25rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.25rem 0 var(--c-action-deep);transition:transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out)}.ds-btn:hover{transform:translateY(-2px);box-shadow:0 calc(0.25rem + 2px) 0 var(--c-action-deep)}.ds-btn:active{transform:translateY(0.25rem);box-shadow:0 0 0 var(--c-action-deep)}.ds-btn:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button", "kind": "button", "refersTo": "button-secondary",
+      "description": "Enamel key with ink edge.",
+      "html": "<button class=\"ds-btn-2\">Log in</button>",
+      "css": ".ds-btn-2{min-height:2.875rem;padding:0 1.5rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink);font-family:var(--font-board);font-size:1.25rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.25rem 0 var(--c-edge);transition:transform 140ms var(--ease-out)}.ds-btn-2:hover{transform:translateY(-2px)}.ds-btn-2:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
+    },
+    {
+      "name": "Text Input", "kind": "input", "refersTo": "input",
+      "description": "Sunk enamel field with ink edge and line halo on focus.",
+      "html": "<label class=\"ds-field\">Long link<input class=\"ds-input\" placeholder=\"https://\"></label>",
+      "css": ".ds-field{display:grid;gap:0.5rem;font-weight:600;font-size:0.875rem}.ds-input{min-height:2.875rem;padding:0 1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink)}.ds-input:hover{background:var(--c-panel)}.ds-input:focus{outline:none;background:var(--c-panel);border-color:var(--c-action);box-shadow:0 0 0 4px color-mix(in oklch,var(--c-line) 45%,transparent)}"
+    },
+    {
+      "name": "Station Board", "kind": "card", "refersTo": "station-board",
+      "description": "Enamel panel with forest header and amber kerb hatch.",
+      "html": "<section class=\"ds-board\"><header class=\"ds-head\"><h2>Shorten</h2></header><div class=\"ds-body\">Board content</div></section>",
+      "css": ".ds-board{overflow:hidden;border:2px solid var(--c-edge);border-radius:1.25rem;background:var(--c-panel);color:var(--c-ink);box-shadow:0 0.4rem 0 var(--c-field-deep),0 1.25rem 2rem -1.25rem oklch(0.3 0.06 152/0.5)}.ds-head{position:relative;padding:0.75rem 1.5rem calc(0.75rem + 0.4rem);background:var(--c-action);color:var(--c-on-action)}.ds-head h2{margin:0;font-family:var(--font-board);font-size:1.75rem;line-height:1.1;text-transform:uppercase}.ds-head::after{content:'';position:absolute;left:0;right:0;bottom:0;height:0.4rem;background:repeating-linear-gradient(-45deg,var(--c-works) 0 7px,var(--c-on-works) 7px 14px)}.ds-body{padding:1.5rem}"
+    },
+    {
+      "name": "Route Strip", "kind": "nav", "refersTo": "navbar",
+      "description": "Stops joined by a line; solid when open, dashed when planned.",
+      "html": "<ul class=\"ds-strip\"><li><a class=\"ds-stop\" href=\"#\"><span class=\"ds-dot ds-here\"></span>Home</a></li><li><a class=\"ds-stop\" href=\"#\"><span class=\"ds-dot\"></span>Shorten</a></li><li class=\"ds-planned\"><span class=\"ds-stop\"><span class=\"ds-dot\"></span>Paste</span></li></ul>",
+      "css": ".ds-strip{display:flex;align-items:center;list-style:none;margin:0;padding:0}.ds-strip li{display:flex;align-items:center}.ds-strip li+li::before{content:'';width:1.5rem;margin-inline:0.5rem;border-top:5px solid var(--c-line);border-radius:3px}.ds-strip li.ds-planned::before{border-top:4px dashed var(--c-ink-soft)}.ds-stop{display:inline-flex;align-items:center;gap:0.5rem;padding:0.5rem 0.25rem;border-radius:0.5rem;color:var(--c-ink);font-family:var(--font-board);font-size:1.125rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none}a.ds-stop:hover{background:var(--c-field-deep)}.ds-planned .ds-stop{color:var(--c-ink-soft)}.ds-dot{width:1.125rem;height:1.125rem;border:4px solid var(--c-line);border-radius:50%;background:var(--c-panel)}.ds-planned .ds-dot{border:3px dashed var(--c-ink-soft)}.ds-here{background:var(--c-action);border-color:var(--c-action);transform:scale(1.2)}"
+    },
+    {
+      "name": "Ticket Slip", "kind": "custom", "refersTo": "ticket-slip",
+      "description": "Perforated result ticket for a shortened link.",
+      "html": "<div class=\"ds-slip\"><span>Your short link</span><a href=\"#\">vb2007.hu/abc123</a></div>",
+      "css": ".ds-slip{position:relative;display:grid;gap:0.75rem;padding:1.5rem;border:2px dashed var(--c-edge);border-radius:0.875rem;background:var(--c-field)}.ds-slip span{font-size:0.875rem;font-weight:600;color:var(--c-ink-soft)}.ds-slip a{font-family:var(--font-code);font-weight:500;color:var(--c-ink);text-decoration-color:var(--c-line)}.ds-slip::before{content:'';position:absolute;left:-2px;top:50%;width:0.75rem;height:1.5rem;transform:translateY(-50%);background:var(--c-panel);border:2px solid var(--c-edge);border-left:0;border-radius:0 0.75rem 0.75rem 0}"
+    },
+    {
+      "name": "Status Message", "kind": "custom", "refersTo": "status",
+      "description": "Tinted bordered feedback strip.",
+      "html": "<div class=\"ds-status\">Link created.</div>",
+      "css": ".ds-status{padding:0.75rem 1rem;border:2px solid currentColor;border-radius:0.5rem;background:var(--c-ok-wash);color:var(--c-action);font-weight:500}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Route Board",
+    "overview": "The site is a metro line diagram. A light green field is the ground; white enamel sign panels carry content in dark green ink behind a 2px edge; one mid-green route line ties the pieces together. Open stops are solid, planned stops are dashed with an amber hatch.",
+    "keyCharacteristics": ["Green-tinted neutrals, no gray", "Condensed uppercase station-board headings over Barlow body", "Hard-offset pressable buttons and 2px ink edges", "Solid line = open, dashed + amber hatch = planned", "Reduced-motion collapses all animation"],
+    "rules": [
+      {"name": "The One Line Rule", "body": "There is one route colour. It is a stroke (lines, rings, focus), not a fill for large areas.", "section": "colors"},
+      {"name": "The Green Neutral Rule", "body": "Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.", "section": "colors"},
+      {"name": "The Hatch Means Planned Rule", "body": "The amber diagonal hatch and dashed strokes mean not built yet or work in progress, and nothing else.", "section": "colors"},
+      {"name": "The Board Voice Rule", "body": "Condensed uppercase is for headings, buttons and route labels. Running text and form labels stay in Barlow sentence case.", "section": "typography"},
+      {"name": "The Thickness Rule", "body": "Raised means a hard offset in a solid colour. A blurred shadow alone never signals elevation.", "section": "elevation"}
+    ],
+    "dos": ["Do put content on enamel panels over the green field, with a 2px ink edge and the hard thickness shadow.", "Do mark tools that do not exist yet with dashed strokes, soft-ink labels and the amber hatch.", "Do use condensed uppercase for headings, buttons and route labels.", "Do write colour as tokens only; each is a single light-dark() declaration.", "Do keep focus visible: 3px route-green outline with 3px offset.", "Do honour reduced motion."],
+    "donts": ["Don't build a dark-terminal homelab dashboard or a rounded-card SaaS page.", "Don't use gray or pure white/black.", "Don't use blur, glow or glass for elevation.", "Don't use route green as text colour on the field.", "Don't use the amber hatch for anything but planned/in-progress."]
+  }
+}

@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import RegisterItem from "@/components/RegisterItem.vue";
+import RegisterForm from "@/components/features/auth/RegisterForm.vue";
+import PageSection from "@/components/layout/PageSection.vue";
 </script>
 
 <template>
-  <RegisterItem />
+  <PageSection width="narrow">
+    <RegisterForm />
+  </PageSection>
 </template>
