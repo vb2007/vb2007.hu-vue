@@ -1,0 +1,89 @@
+/*
+  Design tokens: Route Board.
+  Every value is light-dark(light, dark). The theme class on <html> only
+  switches `color-scheme`, so a single declaration serves both themes.
+*/
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces */
+  --c-field: light-dark(oklch(0.915 0.075 138), oklch(0.225 0.042 152));
+  --c-field-deep: light-dark(oklch(0.855 0.105 140), oklch(0.285 0.05 152));
+  --c-panel: light-dark(oklch(0.988 0.012 130), oklch(0.285 0.04 152));
+  --c-panel-sunk: light-dark(oklch(0.955 0.03 134), oklch(0.245 0.04 152));
+
+  /* Ink */
+  --c-ink: light-dark(oklch(0.24 0.045 152), oklch(0.95 0.035 138));
+  --c-ink-soft: light-dark(oklch(0.38 0.05 152), oklch(0.8 0.045 140));
+  --c-edge: light-dark(oklch(0.24 0.045 152), oklch(0.72 0.07 145));
+  --c-hairline: light-dark(oklch(0.24 0.045 152 / 0.2), oklch(0.95 0.035 138 / 0.18));
+
+  /* The line, and the action colour that rides it */
+  --c-line: light-dark(oklch(0.6 0.16 148), oklch(0.78 0.17 145));
+  --c-action: light-dark(oklch(0.45 0.115 152), oklch(0.84 0.16 142));
+  --c-action-deep: light-dark(oklch(0.33 0.09 152), oklch(0.62 0.14 145));
+  --c-on-action: light-dark(oklch(0.99 0.01 130), oklch(0.2 0.04 152));
+
+  /* Deep band (footer): dark in both themes */
+  --c-deep: light-dark(oklch(0.24 0.045 152), oklch(0.36 0.06 152));
+  --c-on-deep: oklch(0.97 0.02 135);
+  --c-line-on-deep: oklch(0.78 0.17 145);
+
+  /* Signals */
+  --c-works: light-dark(oklch(0.84 0.15 88), oklch(0.82 0.14 88));
+  --c-on-works: oklch(0.25 0.05 88);
+  --c-danger: light-dark(oklch(0.5 0.18 27), oklch(0.8 0.13 27));
+  --c-danger-wash: light-dark(oklch(0.95 0.035 27), oklch(0.32 0.07 27));
+  --c-ok-wash: light-dark(oklch(0.94 0.06 140), oklch(0.33 0.07 150));
+
+  /* Type */
+  --font-sans: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-board: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  --font-code: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --fs-sm: 0.875rem;
+  --fs-base: 1.0625rem;
+  --fs-md: 1.25rem;
+  --fs-lg: 1.75rem;
+  --fs-xl: clamp(2.5rem, 1.6rem + 3.6vw, 4.25rem);
+
+  /* Space: 4px base, used in rem */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+  --sp-8: 4.5rem;
+
+  /* Shape */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.25rem;
+  --edge: 2px;
+
+  /* Depth: enamel thickness (hard offset) plus a soft cast shadow */
+  --shadow-cast: 0 1.25rem 2rem -1.25rem
+    light-dark(oklch(0.3 0.06 152 / 0.5), oklch(0.05 0.02 152 / 0.7));
+  --shadow-panel: 0 0.4rem 0 var(--c-field-deep), var(--shadow-cast);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-quick: 140ms;
+  --dur-base: 280ms;
+  --dur-slow: 640ms;
+
+  /* Layout */
+  --page-max: 78rem;
+  --page-gutter: clamp(1rem, 4vw, 2.5rem);
+  --nav-h: 4.25rem;
+}
+
+:root.light-theme {
+  color-scheme: light;
+}
+
+:root.dark-theme {
+  color-scheme: dark;
+}
