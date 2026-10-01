@@ -16,5 +16,6 @@ export class UserManagement {
 
 export class UrlShortening {
   static redirect: string = `${API_BASE_URL}/r/`;
-  static shortenUrl: string = `${API_BASE_URL}/shortenUrl`;
+  // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
+  static shortenUrl: string = `${API_BASE_URL}/shortenUrl/create`;
 }
