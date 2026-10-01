@@ -1,16 +1,42 @@
-import { UserManagement, AUTH_COOKIE_NAME } from "@/constants/api";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { UserManagement } from "@/constants/api";
+import { isLoggedIn, isSessionChecked, userEmail } from "@/scripts/authentication/authState";
 import { ref } from "vue";
 
 export const loginStatus = ref("");
 
-export const checkAuthCookie = () => {
-  const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((cookie) => cookie.startsWith(AUTH_COOKIE_NAME));
-  if (authCookie) {
-    loginStatus.value = "success";
+/**
+ * The session lives in an HttpOnly cookie set by the API, so the page can't read it.
+ * Whether the user is logged in is only known by asking the API (with credentials).
+ */
+const fetchUserDetails = async () => {
+  try {
+    const response = await fetch(UserManagement.Actions.user, {
+      method: "GET",
+      credentials: "include"
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json();
+    userEmail.value = data.email;
     isLoggedIn.value = true;
+    return true;
+  } catch (error) {
+    console.error("Error fetching user details:", error);
+    return false;
   }
+};
+
+let sessionRestore: Promise<void> | undefined;
+
+/** Looks up the current session once; later calls share the same lookup. */
+export const restoreSession = () => {
+  sessionRestore ??= fetchUserDetails().then(() => {
+    isSessionChecked.value = true;
+  });
+  return sessionRestore;
 };
 
 export const login = async (email: string, password: string) => {
@@ -23,7 +49,8 @@ export const login = async (email: string, password: string) => {
       body: JSON.stringify({
         email: email,
         password: password
-      })
+      }),
+      credentials: "include"
     });
 
     if (!response.ok) {
@@ -42,52 +69,31 @@ export const login = async (email: string, password: string) => {
       return;
     }
 
-    const data = await response.json();
-    document.cookie = `${AUTH_COOKIE_NAME}${data.sessionToken}; path=/`;
-    isLoggedIn.value = true;
-    userEmail.value = data.email;
-    loginStatus.value = "success";
-    return;
+    // The API answered 200, but only a working session cookie makes the login real.
+    if (await fetchUserDetails()) {
+      loginStatus.value = "success";
+    } else {
+      loginStatus.value =
+        "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
+    }
   } catch (error) {
     console.error("Error while trying to log in user:", error);
     loginStatus.value = "unknown-error";
-    return;
   }
 };
 
-export const fetchUserDetails = async () => {
+export const logout = async () => {
+  // The cookie is HttpOnly, so only the API can clear it.
   try {
-    const response = await fetch(UserManagement.Actions.user, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: "include"
+    await fetch(UserManagement.Authentication.logout, {
+      method: "POST",
+      credentials: "include",
+      redirect: "manual"
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      userEmail.value = data.email;
-    } else {
-      console.error("Failed to fetch user details");
-    }
   } catch (error) {
-    console.error("Error fetching user details:", error);
+    console.error("Error while trying to log out user:", error);
   }
-};
 
-/** Marks the user as logged in when the auth cookie is present and loads their details. */
-export const restoreSession = () => {
-  const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((cookie) => cookie.startsWith(AUTH_COOKIE_NAME));
-  if (authCookie) {
-    isLoggedIn.value = true;
-    fetchUserDetails();
-  }
-};
-
-export const logout = () => {
-  document.cookie = `${AUTH_COOKIE_NAME}; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
   userEmail.value = "";
   isLoggedIn.value = false;
 };

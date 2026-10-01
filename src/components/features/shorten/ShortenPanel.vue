@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useShortener } from "@/composables/useShortener";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -31,7 +31,7 @@ const { originalUrl, shortenedCode, shortenedLink, isLoading, errorMessage, shor
       </BaseButton>
     </form>
 
-    <div v-else class="gate">
+    <div v-else-if="isSessionChecked" class="gate">
       <StatusMessage tone="info">
         Sorry, currently only logged-in users can shorten links. This will change in the future.
       </StatusMessage>

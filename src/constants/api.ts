@@ -1,10 +1,10 @@
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
-export const AUTH_COOKIE_NAME: string = "VB-AUTH=";
 
 export class UserManagement {
   static Authentication = class {
     static register: string = `${API_BASE_URL}/auth/register`;
     static login: string = `${API_BASE_URL}/auth/login`;
+    static logout: string = `${API_BASE_URL}/auth/logout`;
   };
 
   static Actions = class {
@@ -16,5 +16,6 @@ export class UserManagement {
 
 export class UrlShortening {
   static redirect: string = `${API_BASE_URL}/r/`;
-  static shortenUrl: string = `${API_BASE_URL}/shortenUrl`;
+  // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
+  static shortenUrl: string = `${API_BASE_URL}/shortenUrl/create`;
 }
