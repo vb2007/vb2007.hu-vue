@@ -21,6 +21,8 @@ export default mergeConfig(
         include: ['src/**/*.{ts,vue}'],
         exclude: ['src/**/__tests__/**', '**/*.d.ts'],
         reporter: ['text', 'html', 'json-summary'],
+        // Still write coverage when a test fails, so CI's coverage stage reports real numbers.
+        reportOnFailure: true,
         // Keep in sync with the --threshold passed to .github/scripts/coverage-junit.mjs in ci.yml.
         thresholds: {
           lines: 100,

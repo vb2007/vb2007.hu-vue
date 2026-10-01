@@ -1,0 +1,564 @@
+name: PR Tests
+
+# Runs on every PR into main or dev, and on demand from the Actions tab
+# (workflow_dispatch: pick any branch under "Run workflow"). Six stages feed a
+# shared JUnit -> HTML/ODS report pipeline, aggregated and published by two
+# further jobs. typecheck, lint, build and unit-tests have no interdependency
+# between them - on this single self-hosted runner they still queue one after
+# another, but this keeps each stage's pass/fail visible on its own and keeps
+# the door open for more runners later. e2e depends on build so it tests the
+# exact bundle the build stage produced instead of building its own.
+on:
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Stage 1: typecheck (`vue-tsc --build`: app, tests, e2e and config projects)
+  # ---------------------------------------------------------------------------
+  typecheck:
+    name: Typecheck
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        id: typecheck
+        run: |
+          SECONDS=0
+          set +e
+          npm run type-check > /tmp/vb2007-hu-typecheck.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+          set -e
+          cat /tmp/vb2007-hu-typecheck.log
+
+      # vue-tsc doesn't emit JUnit XML, so this stage's report is a small
+      # hand-written one (a single synthetic case) - it still flows through
+      # the same junit-report.mjs pipeline as the real Vitest/Playwright suites.
+      - name: Write JUnit report
+        if: always()
+        run: |
+          mkdir -p reports
+          status="${{ steps.typecheck.outputs.exit_code }}"
+          duration="${{ steps.typecheck.outputs.duration }}"
+          failure=""
+          failures=0
+          if [ "$status" != "0" ]; then
+            failures=1
+            failure="<failure message=\"vue-tsc --build exited with code ${status:-skipped}\">See the Typecheck step log</failure>"
+          fi
+          cat > reports/junit-typecheck-${{ github.run_number }}.xml <<XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <testsuites name="typecheck" tests="1" failures="${failures}" time="${duration:-0}">
+            <testsuite name="typecheck" tests="1" failures="${failures}" time="${duration:-0}">
+              <testcase classname="typecheck" name="vue-tsc --build" time="${duration:-0}">${failure}</testcase>
+            </testsuite>
+          </testsuites>
+          XML
+          cat reports/junit-typecheck-${{ github.run_number }}.xml
+
+      # Named junit-<stage>-<run>.xml (not plain junit.xml) so it can upload
+      # unzipped (archive: false) with a name that won't collide with the
+      # other stages' otherwise-identically-named files.
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-typecheck-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail job if typecheck failed
+        if: always()
+        run: |
+          if [ "${{ steps.typecheck.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Typecheck failed - see the step log above"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: lint (`eslint .` without --fix - CI reports, it never rewrites)
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        id: lint
+        run: |
+          SECONDS=0
+          set +e
+          npm run lint:check > /tmp/vb2007-hu-lint.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+          set -e
+          cat /tmp/vb2007-hu-lint.log
+
+      # Same hand-written single-case report as the typecheck stage above.
+      - name: Write JUnit report
+        if: always()
+        run: |
+          mkdir -p reports
+          status="${{ steps.lint.outputs.exit_code }}"
+          duration="${{ steps.lint.outputs.duration }}"
+          failure=""
+          failures=0
+          if [ "$status" != "0" ]; then
+            failures=1
+            failure="<failure message=\"eslint exited with code ${status:-skipped}\">See the Lint step log</failure>"
+          fi
+          cat > reports/junit-lint-${{ github.run_number }}.xml <<XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <testsuites name="lint" tests="1" failures="${failures}" time="${duration:-0}">
+            <testsuite name="lint" tests="1" failures="${failures}" time="${duration:-0}">
+              <testcase classname="lint" name="eslint ." time="${duration:-0}">${failure}</testcase>
+            </testsuite>
+          </testsuites>
+          XML
+          cat reports/junit-lint-${{ github.run_number }}.xml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-lint-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail job if lint failed
+        if: always()
+        run: |
+          if [ "${{ steps.lint.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Lint failed - see the step log above"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 3: production build (`vite build`). The resulting dist/ is handed to
+  # the e2e stage, so e2e exercises the same bundle that was just verified.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # There's no .env in CI. The value only gets baked into the bundle as
+      # the API base URL; e2e intercepts every cross-origin request by path,
+      # so the real API is never contacted.
+      - name: Build
+        id: build
+        env:
+          VITE_API_BASE_URL: https://api.vb2007.hu
+        run: |
+          SECONDS=0
+          set +e
+          npm run build-only > /tmp/vb2007-hu-build.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+          set -e
+          cat /tmp/vb2007-hu-build.log
+
+      # Same hand-written single-case report as the typecheck stage above.
+      - name: Write JUnit report
+        if: always()
+        run: |
+          mkdir -p reports
+          status="${{ steps.build.outputs.exit_code }}"
+          duration="${{ steps.build.outputs.duration }}"
+          failure=""
+          failures=0
+          if [ "$status" != "0" ]; then
+            failures=1
+            failure="<failure message=\"vite build exited with code ${status:-skipped}\">See the Build step log</failure>"
+          fi
+          cat > reports/junit-build-${{ github.run_number }}.xml <<XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <testsuites name="build" tests="1" failures="${failures}" time="${duration:-0}">
+            <testsuite name="build" tests="1" failures="${failures}" time="${duration:-0}">
+              <testcase classname="build" name="vite build" time="${duration:-0}">${failure}</testcase>
+            </testsuite>
+          </testsuites>
+          XML
+          cat reports/junit-build-${{ github.run_number }}.xml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-build-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      # A directory, so this one stays zipped. Named dist-*, deliberately not
+      # junit-*: the report job globs junit-*.
+      - name: Upload dist
+        if: steps.build.outputs.exit_code == '0'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ github.run_number }}
+          path: dist/
+          retention-days: 7
+
+      - name: Fail job if build failed
+        if: always()
+        run: |
+          if [ "${{ steps.build.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Build failed - see the step log above"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 4: unit/component tests (Vitest + jsdom, no server involved) and the
+  # 100% coverage gate from vitest.config.ts. Coverage is reported as its own
+  # "coverage" stage via coverage-junit.mjs.
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The exit code is captured rather than failing the step right away, so
+      # the coverage report below still gets written and uploaded when a test
+      # or the coverage threshold fails.
+      - name: Run unit tests
+        id: vitest
+        run: |
+          set +e
+          npx vitest run --coverage --reporter=default --reporter=junit \
+            --outputFile.junit=reports/junit-unit-tests-${{ github.run_number }}.xml
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      # --threshold must match coverage.thresholds in vitest.config.ts.
+      - name: Write coverage JUnit report
+        if: always()
+        run: >
+          node .github/scripts/coverage-junit.mjs
+          --summary coverage/coverage-summary.json
+          --threshold 100
+          --out reports/junit-coverage-${{ github.run_number }}.xml
+
+      - name: Upload unit test JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-unit-tests-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload coverage JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-coverage-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      # The browsable per-file coverage report (open index.html). A directory,
+      # so this one stays zipped; named coverage-*, deliberately not junit-*.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ github.run_number }}
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail job if tests or coverage failed
+        if: always()
+        run: |
+          if [ "${{ steps.vitest.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Unit tests or the coverage gate failed - see the Run unit tests step log"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 5: e2e (Playwright, real Chromium) against the build stage's dist/,
+  # served by `vite preview`. The API is fully mocked in the browser via route
+  # interception (e2e/fixtures.ts) - no live server is ever contacted.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E tests
+    needs: [build]
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download dist
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-${{ github.run_number }}
+          path: dist
+
+      # Prefer a system Chromium (what the playwright config's CHROMIUM_PATH
+      # expects); fall back to Playwright's own download only when none exists.
+      - name: Locate Chromium
+        run: |
+          for bin in chromium chromium-browser google-chrome-stable google-chrome; do
+            if path=$(command -v "$bin"); then
+              echo "CHROMIUM_PATH=$path" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          npx playwright install chromium
+
+      # Fail once, clearly, instead of one identical launch error per test: Playwright's own
+      # download needs system libraries (libnspr4, libnss3, ...) that a bare-metal runner may lack.
+      - name: Check the browser can launch
+        run: |
+          node -e "
+            require('@playwright/test').chromium
+              .launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] })
+              .then((b) => b.close())
+              .catch((e) => {
+                console.error(e.message.split('\n').slice(0, 4).join('\n'));
+                process.exit(1);
+              });
+          " || {
+            echo "::error title=No launchable Chromium on this runner::Install one on the runner host (e.g. 'sudo apt-get install -y chromium'; this job then picks it up from PATH), or its shared libraries ('sudo npx playwright install-deps chromium')."
+            exit 1
+          }
+
+      - name: Run e2e tests
+        run: npx playwright test
+        env:
+          CI: "true"
+          E2E_JUNIT: reports/junit-e2e-${{ github.run_number }}.xml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-e2e-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      # Failure traces (screenshots, DOM snapshots, network) are what make an
+      # e2e failure diagnosable from CI; the JUnit XML alone only says which
+      # assertion. Named e2e-traces-*, deliberately not junit-*: the report
+      # job globs junit-*.
+      - name: Upload failure traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-traces-${{ github.run_number }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Aggregation: turns the junit-* artifacts into report.html/.ods and a
+  # reusable summary.md/summary.json, regardless of whether any stage failed.
+  # ---------------------------------------------------------------------------
+  reports:
+    name: Aggregate reports
+    needs: [typecheck, lint, build, unit-tests, e2e]
+    if: always()
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install report generator dependencies
+        working-directory: .github/scripts
+        run: npm ci
+
+      - name: Download JUnit artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: junit-*
+          path: artifacts
+
+      # --suffix appends the run number to every output filename, so
+      # downloading the same report across different runs into one local
+      # folder never collides.
+      - name: Generate HTML/ODS/summary reports
+        working-directory: .github/scripts
+        run: |
+          node junit-report.mjs \
+            --input "${{ github.workspace }}/artifacts" \
+            --out "${{ github.workspace }}/test-reports" \
+            --suffix "${{ github.run_number }}"
+
+      # Uploaded individually (archive: false) rather than as one zipped
+      # bundle, so each is directly downloadable/viewable from the run's
+      # Artifacts list without extracting anything first.
+      - name: Upload report.html
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/report-${{ github.run_number }}.html
+          archive: false
+          retention-days: 30
+
+      - name: Upload report.ods
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/report-${{ github.run_number }}.ods
+          archive: false
+          retention-days: 30
+
+      - name: Upload summary.md
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/summary-${{ github.run_number }}.md
+          archive: false
+          retention-days: 30
+
+      - name: Upload summary.json
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-reports/summary-${{ github.run_number }}.json
+          archive: false
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Publishing: job summary + a sticky PR comment (updated in place across
+  # pushes) + inline check-run annotations for failed tests.
+  # ---------------------------------------------------------------------------
+  summary:
+    name: Publish summary
+    needs: [reports]
+    if: always()
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      # Only summary.md is needed here (job summary + PR comment body) - the
+      # other report files are individual, unzipped artifacts on the run
+      # page for anyone who wants report.html/report.ods/summary.json.
+      - name: Download summary.md
+        uses: actions/download-artifact@v8
+        with:
+          name: summary-${{ github.run_number }}.md
+          path: test-reports
+
+      - name: Download raw JUnit files (for annotations)
+        uses: actions/download-artifact@v8
+        with:
+          pattern: junit-*
+          path: artifacts
+
+      - name: Publish job summary
+        run: cat "test-reports/summary-${{ github.run_number }}.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # Only a same-repo PR can take a comment: a manual dispatch has no PR to
+      # comment on, and a fork PR's GITHUB_TOKEN is read-only no matter what
+      # this job's `permissions:` block says, so issues.createComment would
+      # throw "Resource not accessible by integration" and fail this job even
+      # though every test stage passed. The job summary and check-run
+      # annotations below need no write access and work in every case.
+      - name: Post sticky PR comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require("fs");
+            const body = fs.readFileSync("test-reports/summary-${{ github.run_number }}.md", "utf-8");
+            const marker = "<!-- vb2007-hu-ci-summary -->";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const commentBody = `${marker}\n## Test summary\n\n${body}\n[Full HTML/ODS report and coverage](${runUrl})\n`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+      - name: Note skipped PR comment
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "ℹ️ No sticky PR comment - this run was started manually (${{ github.event_name }}), so there's no PR to comment on." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ℹ️ Sticky PR comment skipped - fork PRs get a read-only token and can't post comments. See the job summary above and the check-run annotations below for results." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Publish check-run annotations
+        if: always()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: "artifacts/**/*.xml"
+          check_name: "Test annotations"
+          include_passed: false
+          fail_on_failure: false
+          annotate_only: true
