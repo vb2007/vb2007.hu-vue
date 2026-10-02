@@ -27,3 +27,12 @@ coverage
 *.sw?
 
 *.tsbuildinfo
+
+# Other files
+.env
+
+# Test output
+reports
+test-reports
+test-results
+playwright-report

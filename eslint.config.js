@@ -19,7 +19,7 @@ export default [
   
   {
     ...pluginVitest.configs.recommended,
-    files: ['src/**/__tests__/*'],
+    files: ['src/**/__tests__/**/*'],
   },
   skipFormatting,
 ]
