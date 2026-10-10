@@ -27,6 +27,16 @@ export const pasteLink = (id: string) => `${window.location.origin}/pastebin/${i
 /** The first non-empty line, for one-line previews. */
 export const pastePreview = (content: string) => content.trim().split("\n")[0];
 
+/** The link as people read it: no protocol, which every browser fills in anyway. */
+export const displayLink = (link: string) => link.replace(/^https?:\/\//, "");
+
+/** Line and character counts, so similar pastes can be told apart, e.g. "3 lines · 120 characters". */
+export const pasteSize = (content: string) => {
+  const lines = content.split("\n").length;
+  const chars = content.length;
+  return `${lines} ${lines === 1 ? "line" : "lines"} · ${chars} ${chars === 1 ? "character" : "characters"}`;
+};
+
 /** Returns why a paste can't be sent, or "" when it can. */
 export const validatePaste = (content: string) => {
   if (content.trim().length < PASTE_MIN_LENGTH) {
