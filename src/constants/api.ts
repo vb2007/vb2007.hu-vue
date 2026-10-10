@@ -15,7 +15,10 @@ export class UserManagement {
 }
 
 export class UrlShortening {
+  /** The API's own redirect, still used as a fallback by the site's /r/:code page. */
   static redirect: string = `${API_BASE_URL}/r/`;
+  /** Resolves a short code to its target as JSON (vb2007/vb2007.hu-api#75). */
+  static lookup: string = `${API_BASE_URL}/shortenUrl/:shortenedUrl`;
   // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
   static shortenUrl: string = `${API_BASE_URL}/shortenUrl/create`;
 }
