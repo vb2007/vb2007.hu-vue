@@ -53,11 +53,13 @@ npm run lint         # fixes what it can
 npm run lint:check   # report only, as CI runs it
 ```
 
-## Deployment (Docker)
+## Docker
 
 The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
 
-### One-time setup on the server (Debian)
+### Running the stack by hand (Debian)
+
+The server is normally deployed automatically (see [Releases & deployment](#releases--deployment)); this is the manual route, e.g. for a second machine or local testing.
 
 1. Install Docker Engine and the Compose plugin from [Docker's apt repository](https://docs.docker.com/engine/install/debian/).
 2. In the Cloudflare dashboard go to **Zero Trust → Networks → Tunnels**, create a tunnel (type *Cloudflared*) and copy its token (the long string after `--token` in the install command).
@@ -85,7 +87,47 @@ git pull && docker compose up -d --build   # deploy an update
 docker compose down                # stop and remove the containers
 ```
 
-`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. Compose refuses to start if `VITE_API_BASE_URL` or `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
+`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. `VITE_API_BASE_URL` defaults to `https://api.vb2007.hu`; Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
+
+## Releases & deployment
+
+`.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runner, which lives on the production host. It can also be started from the Actions tab.
+
+| Job | What it does |
+|---|---|
+| Determine version | `.github/scripts/next-version.mjs` picks the version (see below) |
+| Build & push image | Builds the Docker image and pushes `ghcr.io/vb2007/vb2007.hu-vue` as `<version>`, `sha-<commit>` and `latest` |
+| Cut release | New versions only: tags `v<version>` and publishes a GitHub release |
+| Deploy | Pulls the `sha-<commit>` image and restarts the stack on the host, then smoke-tests the public site |
+
+Deploys run one at a time, and only after the release exists. A failing job stops the pipeline before anything is replaced.
+
+### Versions
+
+- By default every merge to `main` bumps the **patch** of the latest `v*` tag (`v0.0.1` → `v0.0.2`).
+- For a **minor or major** release, raise `version` in `package.json` in the PR. A version newer than the latest tag is released as is.
+- Re-running the workflow on a commit that is already tagged makes no new release; it just redeploys.
+
+Each release has auto-generated notes, the image digest, the test summary of the merged PR's CI run (when it can be found), and three assets: a `compose.yaml` pinned to that version, `images.json`, and `site-dist-<version>.tar.gz` (the built site, taken from the pushed image).
+
+### One-time host setup
+
+The runner needs Docker access and a deploy directory holding the tunnel token. The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
+
+```sh
+mkdir -p /mnt/raid1/vb2007.hu
+printf 'TUNNEL_TOKEN=%s\n' '<token>' > /mnt/raid1/vb2007.hu/.env
+chmod 600 /mnt/raid1/vb2007.hu/.env
+```
+
+The tunnel's public hostname must point at `http://frontend:8080` (see Docker above). Optional repository variables (Settings → Secrets and variables → Actions → Variables):
+
+| Variable | Used for | Default |
+|---|---|---|
+| `SITE_URL` | Public URL the deploy smoke-tests (`<SITE_URL>/healthz`); skipped when unset | none |
+| `VITE_API_BASE_URL` | API URL baked into the released image | `https://api.vb2007.hu` |
+
+To roll back, re-run the workflow on an older commit's run, or on the host run `IMAGE_TAG=<version> docker compose up -d --no-build` in `/mnt/raid1/vb2007.hu`.
 
 ## Testing
 
