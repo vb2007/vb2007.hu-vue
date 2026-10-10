@@ -2,6 +2,8 @@ import { ref } from "vue";
 import { validateUrl } from "@/scripts/utility/text";
 import { UrlShortening } from "@/constants/api";
 
+export const shortLink = (code: string) => `${window.location.origin}/r/${code}`;
+
 /** State and request logic for shortening a URL. Shared by Home and Shorten. */
 export const useShortener = () => {
   const originalUrl = ref("");
@@ -9,8 +11,8 @@ export const useShortener = () => {
   const isLoading = ref(false);
   const errorMessage = ref("");
 
-  const shortenedLink = () =>
-    shortenedCode.value ? UrlShortening.redirect + shortenedCode.value : "";
+  /** Short links live on this site (/r/:code), which is shorter than going through the API host. */
+  const shortenedLink = () => (shortenedCode.value ? shortLink(shortenedCode.value) : "");
 
   const shorten = async () => {
     if (!validateUrl(originalUrl.value)) {

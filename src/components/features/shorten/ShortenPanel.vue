@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useShortener } from "@/composables/useShortener";
+import { displayLink } from "@/scripts/utility/text";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -41,7 +42,12 @@ const { originalUrl, shortenedCode, shortenedLink, isLoading, errorMessage, shor
       </div>
     </div>
 
-    <TicketSlip v-if="shortenedCode" :value="shortenedLink()" @again="reset" />
+    <TicketSlip
+      v-if="shortenedCode"
+      :value="shortenedLink()"
+      :display="displayLink(shortenedLink())"
+      @again="reset"
+    />
   </StationBoard>
 </template>
 

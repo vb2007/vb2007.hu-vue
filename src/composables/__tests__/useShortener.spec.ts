@@ -36,7 +36,7 @@ describe("useShortener", () => {
       credentials: "include"
     });
     expect(shortener.shortenedCode.value).toBe("abc123");
-    expect(shortener.shortenedLink()).toBe("https://api.test/r/abc123");
+    expect(shortener.shortenedLink()).toBe(`${window.location.origin}/r/abc123`);
     expect(shortener.originalUrl.value).toBe("");
     expect(shortener.isLoading.value).toBe(false);
   });

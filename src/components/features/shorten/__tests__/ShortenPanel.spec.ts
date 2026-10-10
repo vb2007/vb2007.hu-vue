@@ -42,7 +42,10 @@ describe("ShortenPanel", () => {
     await flushPromises();
 
     expect(wrapper.find('button[type="submit"]').text()).toBe("Shorten");
-    expect(wrapper.findComponent(TicketSlip).props("value")).toBe("https://api.test/r/abc123");
+    expect(wrapper.findComponent(TicketSlip).props()).toMatchObject({
+      value: `${window.location.origin}/r/abc123`,
+      display: `${window.location.host}/r/abc123`
+    });
 
     wrapper.findComponent(TicketSlip).vm.$emit("again");
     await flushPromises();
