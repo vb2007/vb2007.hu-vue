@@ -1,5 +1,10 @@
 import { UserManagement } from "@/constants/api";
-import { isLoggedIn, isSessionChecked, userEmail } from "@/scripts/authentication/authState";
+import {
+  isLoggedIn,
+  isSessionChecked,
+  userEmail,
+  username
+} from "@/scripts/authentication/authState";
 import { ref } from "vue";
 
 export const loginStatus = ref("");
@@ -21,6 +26,7 @@ const fetchUserDetails = async () => {
 
     const data = await response.json();
     userEmail.value = data.email;
+    username.value = data.username ?? "";
     isLoggedIn.value = true;
     return true;
   } catch (error) {
@@ -95,5 +101,6 @@ export const logout = async () => {
   }
 
   userEmail.value = "";
+  username.value = "";
   isLoggedIn.value = false;
 };

@@ -136,7 +136,7 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
   - `src/__tests__/setup.ts` stubs `matchMedia` and the clipboard, and resets the shared auth state after each test.
   - `src/__tests__/helpers/` has `mockFetch()`/`jsonResponse()` for API calls and `mountWithRouter()` for components that use router links.
 - **E2E tests** live in `e2e/` and run against the production build in desktop and mobile Chromium.
-  - The `api` fixture in `e2e/fixtures.ts` answers every API request. Set up state with `api.loggedInAs(...)` or `api.shortenReturns(...)` before navigating.
+  - The `api` fixture in `e2e/fixtures.ts` answers every API request. Set up state with `api.loggedInAs(...)`, `api.shortenReturns(...)` or `api.hasPaste(...)` before navigating. Pastes live in an in-memory store (`api.pastes`) that the create, list, view and delete endpoints share.
   - A request to an endpoint the fixture doesn't know fails the test, so add a case to `MockApi.respond` when the app starts calling a new endpoint.
 
 ## CI

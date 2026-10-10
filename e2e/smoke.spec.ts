@@ -23,6 +23,10 @@ test("footer links lead to each page", async ({ page }) => {
   await footer.getByRole("link", { name: "Shorten" }).click();
   await expect(page).toHaveURL("/shorten");
   await expect(page.getByRole("heading", { level: 1, name: "Shorten" })).toBeVisible();
+
+  await footer.getByRole("link", { name: "Paste" }).click();
+  await expect(page).toHaveURL("/pastebin");
+  await expect(page.getByRole("heading", { level: 1, name: "Paste" })).toBeVisible();
 });
 
 test("the mobile menu opens and closes", async ({ page, isMobile }) => {

@@ -13,6 +13,17 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("../views/ShortenView.vue")
   },
   {
+    path: "/pastebin",
+    name: "pastebin",
+    component: () => import("../views/PastebinView.vue")
+  },
+  {
+    path: "/pastebin/:id",
+    name: "paste",
+    component: () => import("../views/PasteView.vue"),
+    props: true
+  },
+  {
     path: "/login",
     name: "login",
     component: () => import("../views/LoginView.vue")

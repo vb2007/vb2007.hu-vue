@@ -14,6 +14,7 @@ const currentYear = getCurrentYear();
       </div>
       <nav class="foot__links" aria-label="Footer">
         <RouterLink to="/shorten">Shorten</RouterLink>
+        <RouterLink to="/pastebin">Paste</RouterLink>
         <RouterLink to="/login">Log in</RouterLink>
         <RouterLink to="/register">Register</RouterLink>
       </nav>
