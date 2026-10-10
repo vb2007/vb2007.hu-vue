@@ -53,6 +53,40 @@ npm run lint         # fixes what it can
 npm run lint:check   # report only, as CI runs it
 ```
 
+## Deployment (Docker)
+
+The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
+
+### One-time setup on the server (Debian)
+
+1. Install Docker Engine and the Compose plugin from [Docker's apt repository](https://docs.docker.com/engine/install/debian/).
+2. In the Cloudflare dashboard go to **Zero Trust → Networks → Tunnels**, create a tunnel (type *Cloudflared*) and copy its token (the long string after `--token` in the install command).
+3. On that tunnel add a **public hostname** (e.g. `vb2007.hu`) with service type `HTTP` and URL `frontend:8080`.
+4. Configure the stack:
+
+   ```sh
+   git clone https://github.com/vb2007/vb2007.hu-vue.git && cd vb2007.hu-vue
+   cp .env.example .env
+   # edit .env: set TUNNEL_TOKEN (and VITE_API_BASE_URL if the API isn't https://api.vb2007.hu)
+   ```
+
+5. Start it:
+
+   ```sh
+   docker compose up -d --build
+   ```
+
+### Day to day
+
+```sh
+docker compose ps                  # frontend should be "healthy"
+docker compose logs -f cloudflared # look for "Registered tunnel connection"
+git pull && docker compose up -d --build   # deploy an update
+docker compose down                # stop and remove the containers
+```
+
+`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. Compose refuses to start if `VITE_API_BASE_URL` or `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
+
 ## Testing
 
 - **Coverage must stay at 100%** (lines, branches, functions and statements). Every file under `src/` counts, even one no test imports yet, so new code without tests fails CI.
