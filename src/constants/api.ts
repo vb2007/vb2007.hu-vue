@@ -19,3 +19,9 @@ export class UrlShortening {
   // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
   static shortenUrl: string = `${API_BASE_URL}/shortenUrl/create`;
 }
+
+export class Pastebin {
+  static paste: string = `${API_BASE_URL}/paste`;
+  static pasteWithId: string = `${API_BASE_URL}/paste/:id`;
+  static pastesByUsername: string = `${API_BASE_URL}/pastes/:username`;
+}
