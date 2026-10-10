@@ -49,4 +49,20 @@ describe("TicketSlip", () => {
 
     expect(wrapper.emitted("again")).toHaveLength(1);
   });
+
+  it("labels the slip for a short link by default", () => {
+    const wrapper = mount(TicketSlip, { props: { value } });
+
+    expect(wrapper.find(".slip__caption").text()).toBe("Your short link");
+    expect(wrapper.findAll("button")[1].text()).toBe("Shorten another");
+  });
+
+  it("takes a custom caption and again label", () => {
+    const wrapper = mount(TicketSlip, {
+      props: { value, caption: "Your paste link", againLabel: "Paste another" }
+    });
+
+    expect(wrapper.find(".slip__caption").text()).toBe("Your paste link");
+    expect(wrapper.findAll("button")[1].text()).toBe("Paste another");
+  });
 });
