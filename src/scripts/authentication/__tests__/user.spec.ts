@@ -19,8 +19,8 @@ beforeEach(() => {
 
 describe("restoreSession", () => {
   it("marks the user as logged in when the API knows the session", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
-    const { restoreSession, isLoggedIn, userEmail, isSessionChecked } = await load();
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com", username: "me" }));
+    const { restoreSession, isLoggedIn, userEmail, username, isSessionChecked } = await load();
 
     await restoreSession();
 
@@ -30,7 +30,18 @@ describe("restoreSession", () => {
     });
     expect(isLoggedIn.value).toBe(true);
     expect(userEmail.value).toBe("me@example.com");
+    expect(username.value).toBe("me");
     expect(isSessionChecked.value).toBe(true);
+  });
+
+  it("leaves the username empty when the API doesn't send one", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { restoreSession, isLoggedIn, username } = await load();
+
+    await restoreSession();
+
+    expect(isLoggedIn.value).toBe(true);
+    expect(username.value).toBe("");
   });
 
   it("only asks the API once, however often it is called", async () => {
@@ -133,9 +144,10 @@ describe("login", () => {
 describe("logout", () => {
   it("asks the API to clear the cookie and resets the local state", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200));
-    const { logout, isLoggedIn, userEmail } = await load();
+    const { logout, isLoggedIn, userEmail, username } = await load();
     isLoggedIn.value = true;
     userEmail.value = "me@example.com";
+    username.value = "me";
 
     await logout();
 
@@ -146,6 +158,7 @@ describe("logout", () => {
     });
     expect(isLoggedIn.value).toBe(false);
     expect(userEmail.value).toBe("");
+    expect(username.value).toBe("");
   });
 
   it("still logs out locally when the API is unreachable", async () => {

@@ -1,5 +1,10 @@
 import { afterEach, vi } from "vitest";
-import { isLoggedIn, isSessionChecked, userEmail } from "@/scripts/authentication/authState";
+import {
+  isLoggedIn,
+  isSessionChecked,
+  userEmail,
+  username
+} from "@/scripts/authentication/authState";
 
 // jsdom implements neither matchMedia nor the async clipboard API.
 // Tests that care about the colour scheme replace matchMedia with their own mock.
@@ -31,6 +36,7 @@ afterEach(() => {
   localStorage.clear();
   isLoggedIn.value = false;
   userEmail.value = "";
+  username.value = "";
   isSessionChecked.value = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
