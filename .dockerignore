@@ -18,7 +18,6 @@ playwright-report
 .env
 .env.*
 
-e2e
 *.log
 *.md
 Dockerfile
