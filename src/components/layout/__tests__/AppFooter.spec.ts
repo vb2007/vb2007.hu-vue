@@ -12,6 +12,7 @@ describe("AppFooter", () => {
     expect(wrapper.find(".foot__meta").text()).toContain("2023 – 2031");
     expect(wrapper.findAll(".foot__links a").map((link) => link.attributes("href"))).toEqual([
       "/shorten",
+      "/pastebin",
       "/login",
       "/register"
     ]);

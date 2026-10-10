@@ -12,8 +12,10 @@ import PageSection from "@/components/layout/PageSection.vue";
     </PageSection>
     <PageSection aria-labelledby="route-map-title">
       <h2 id="route-map-title" class="map-title">Route map</h2>
-      <p class="map-lead">Shorten is open today. More stops are planned along the line.</p>
-      <RouteMap :line="TOOLS_LINE" here-id="home" initial-id="paste" />
+      <p class="map-lead">
+        Shorten and Paste are open today. More stops are planned along the line.
+      </p>
+      <RouteMap :line="TOOLS_LINE" here-id="home" initial-id="upload" />
     </PageSection>
   </div>
 </template>

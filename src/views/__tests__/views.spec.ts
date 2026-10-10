@@ -34,7 +34,7 @@ describe("views", () => {
     expect(wrapper.findComponent(RouteMap).props()).toMatchObject({
       line: TOOLS_LINE,
       hereId: "home",
-      initialId: "paste"
+      initialId: "upload"
     });
   });
 

@@ -42,7 +42,7 @@ export const TOOLS_LINE: Line = {
       id: "paste",
       label: "Paste",
       to: "/pastebin",
-      status: "planned",
+      status: "open",
       blurb: "Share text and code snippets."
     },
     {
