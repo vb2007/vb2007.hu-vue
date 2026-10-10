@@ -1,0 +1,25 @@
+# Build context is just what `npm ci` + `vite build` need.
+node_modules
+dist
+dist-ssr
+coverage
+reports
+test-reports
+test-results
+playwright-report
+
+.git
+.github
+.vscode
+.idea
+.impeccable
+
+# The API URL is a build arg, never read from a local .env.
+.env
+.env.*
+
+*.log
+*.md
+Dockerfile
+compose.yaml
+.dockerignore
