@@ -174,7 +174,7 @@ Dark-theme counterparts live in `src/styles/tokens.css` and the sidecar; frontma
 
 ## Layout
 
-Single column, centred, max width 78rem (`--page-max`) with a fluid gutter `clamp(1rem, 4vw, 2.5rem)`. Narrow form pages cap at 34rem. Page sections start 3rem from the navbar. Spacing is a 4px-based rem scale (0.25 to 4.5rem, steps 1-8); gaps inside panels are 1.5rem (2rem from 40rem up). The home hero is one column, then two columns (1.05fr / 1fr, headline left, Shorten board right) from 62rem. The navbar sticks at 4.25rem and collapses into a drawer below 75rem, where the horizontal strip turns vertical. The route map switches layout at 52rem. Footer sits 4.5rem below content.
+Single column, centred, max width 78rem (`--page-max`) with a fluid gutter `clamp(1rem, 4vw, 2.5rem)`. Narrow form pages cap at 34rem; reading pages such as a single paste cap at 60rem (`medium`). Page sections start 3rem from the navbar. Spacing is a 4px-based rem scale (0.25 to 4.5rem, steps 1-8); gaps inside panels are 1.5rem (2rem from 40rem up). The home hero is one column, then two columns (1.05fr / 1fr, headline left, Shorten board right) from 62rem. The logged-in Pastebin is a wide two-column workspace from 62rem (composer left and sticky, list right); logged out it is a single narrow board. The navbar sticks at 4.25rem and collapses into a drawer below 75rem, where the horizontal strip turns vertical. The home tools directory puts each row on one line from 46rem. Footer sits 4.5rem below content.
 
 ## Elevation & Depth
 
@@ -206,13 +206,18 @@ Softly squared signage: 0.5rem on controls, 0.875rem on tickets, 1.25rem on boar
 Sunk-enamel fill, 2px ink border, 0.5rem radius, 2.875rem tall; Barlow 600 label above at 0.875rem, hint and error in 0.875rem. Hover and focus lift the fill to enamel; focus turns the border Signal Forest and adds the 4px line halo. Invalid state turns the border red with a bold red message. A mono variant is used for URL fields.
 
 ### Station Board (signature)
-White enamel panel, 1.25rem radius, 2px edge, enamel-thickness shadow. Header is a Signal Forest bar with title in condensed uppercase and the amber kerb hatch along its bottom. Body padding 1.5rem, 2rem from 40rem. Hosts tool UI (Shorten) and auth forms.
+White enamel panel, 1.25rem radius, 2px edge, enamel-thickness shadow. Header is a Signal Forest bar with title in condensed uppercase and the amber kerb hatch along its bottom. Body padding 1.5rem, 2rem from 40rem. Hosts tool UI (Shorten, Pastebin) and auth forms.
 
 ### Route Strip and Stop Marker (signature, navigation)
 The navbar is a horizontal strip of stops joined by connectors. Open stops: ring in route green, solid 5px connector, link text. Planned stops: dashed soft-ink ring and connector, soft-ink non-link label. Current page: filled Signal Forest marker scaled 1.2 with a pulsing outer ring, bold label. Hover scales marker 1.25 and washes the stop. Below 75rem the strip turns vertical in a drawer that wipes open via clip-path.
 
+### Tools Directory (home)
+The home page's list of destinations, one enamel board with a row per stop from `stops.ts` (Home excluded). Each row carries everything about its stop: marker, condensed uppercase name, one-line description, and for open stops a Signal Forest arrow key with a hard underside. The whole open row is the link; hover washes it Sunk Enamel, scales the marker and slides the arrow. Planned rows are not links: soft-ink name and the amber-hatched "Planned" chip. Rows stack name over description on phones and sit on one line from 46rem. Rows draw in left to right, staggered.
+
+**The Own Details Rule.** A destination's description and way in live in its own row. Never show details in a shared panel driven by hover: pointing at one thing must not change another.
+
 ### Ticket Slip
-Result of a shortened link: Meadow Field fill, 2px dashed ink border, perforation notches, mono link, actions row below. It "prints" in with a 720ms clip-path reveal.
+Result of a shortened link or a new paste: Meadow Field fill, 2px dashed ink border, perforation notches, mono link (shown without the protocol for pastes, copied in full), actions row below. It "prints" in with a 720ms clip-path reveal.
 
 ### Status Message
 Tinted 2px-bordered strip with icon: success (Confirm Wash, forest text), error (Fault Red wash and text), info (sunk enamel, soft ink). Arrives with a short 280ms drop-in.
