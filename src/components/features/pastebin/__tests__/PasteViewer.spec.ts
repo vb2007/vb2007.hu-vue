@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { flushPromises } from "@vue/test-utils";
+import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
@@ -11,6 +11,9 @@ const paste = (id: string, content = "line one\n  line two") => ({
   addedBy: "u1",
   addedOn: "2026-10-10T12:00:00.000Z"
 });
+
+const buttonNamed = (wrapper: VueWrapper, name: string) =>
+  wrapper.findAll("button").find((button) => button.text().startsWith(name))!;
 
 const mountViewer = async (id = "p1", as?: "h1") => {
   const { wrapper } = await mountWithRouter(PasteViewer, { props: { id, as } });
@@ -31,9 +34,9 @@ describe("PasteViewer", () => {
     respond(jsonResponse(200, { paste: paste("p1") }));
     await flushPromises();
 
-    expect(wrapper.find("pre").text()).toBe("line one\n  line two");
+    expect(wrapper.find(".sheet__content").text()).toBe("line one\n  line two");
     expect(wrapper.find("time").attributes("datetime")).toBe("2026-10-10T12:00:00.000Z");
-    expect(wrapper.find(".note").text()).toMatch(/^Added /);
+    expect(wrapper.find(".note").text()).toMatch(/^Added .+ · 2 lines · 19 characters$/);
     expect(wrapper.find('a[href="/pastebin"]').text()).toBe("New paste");
   });
 
@@ -41,9 +44,8 @@ describe("PasteViewer", () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(200, { paste: paste("p1") }));
     const wrapper = await mountViewer();
     await flushPromises();
-    const [copyText, copyLink] = wrapper.findAll("button");
-    expect(copyText.text()).toBe("Copy text");
-    expect(copyLink.text()).toBe("Copy link");
+    const copyText = buttonNamed(wrapper, "Copy text");
+    const copyLink = buttonNamed(wrapper, "Copy link");
 
     await copyText.trigger("click");
     await flushPromises();
@@ -70,7 +72,8 @@ describe("PasteViewer", () => {
       .mockRejectedValueOnce(new Error("denied"));
     const wrapper = await mountViewer();
     await flushPromises();
-    const [copyText, copyLink] = wrapper.findAll("button");
+    const copyText = buttonNamed(wrapper, "Copy text");
+    const copyLink = buttonNamed(wrapper, "Copy link");
 
     await copyText.trigger("click");
     await copyLink.trigger("click");
@@ -91,7 +94,7 @@ describe("PasteViewer", () => {
 
     expect(wrapper.find('[role="alert"]').text()).toBe("There is no such paste with that ID.");
     expect(wrapper.find('a[href="/pastebin"]').text()).toBe("Go to Pastebin");
-    expect(wrapper.find("pre").exists()).toBe(false);
+    expect(wrapper.find(".sheet").exists()).toBe(false);
   });
 
   it("loads the new paste when the ID changes", async () => {
@@ -106,6 +109,37 @@ describe("PasteViewer", () => {
     await flushPromises();
 
     expect(fetchMock.mock.calls[1][0]).toBe("https://api.test/paste/p2");
-    expect(wrapper.find("pre").text()).toBe("second");
+    expect(wrapper.find(".sheet__content").text()).toBe("second");
+  });
+
+  it("numbers the lines of a multi-line paste, outside the copyable text", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { paste: paste("p1", "a\nb\nc") }));
+    const wrapper = await mountViewer();
+    await flushPromises();
+    const toggle = buttonNamed(wrapper, "Line numbers");
+
+    expect(toggle.text()).toBe("Line numbers: on");
+    expect(toggle.attributes("aria-pressed")).toBe("true");
+    expect(wrapper.find(".sheet__gutter").text()).toBe("1\n2\n3");
+    expect(wrapper.find(".sheet__gutter").attributes("aria-hidden")).toBe("true");
+    expect(wrapper.find(".sheet__content").text()).toBe("a\nb\nc");
+    expect(wrapper.find(".sheet").classes()).toContain("sheet--numbered");
+
+    await toggle.trigger("click");
+
+    expect(toggle.text()).toBe("Line numbers: off");
+    expect(toggle.attributes("aria-pressed")).toBe("false");
+    expect(wrapper.find(".sheet__gutter").exists()).toBe(false);
+    expect(wrapper.find(".sheet").classes()).not.toContain("sheet--numbered");
+  });
+
+  it("wraps a single-line paste without numbers", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { paste: paste("p1", "just one line") }));
+    const wrapper = await mountViewer();
+    await flushPromises();
+
+    expect(buttonNamed(wrapper, "Line numbers").text()).toBe("Line numbers: off");
+    expect(wrapper.find(".sheet__gutter").exists()).toBe(false);
+    expect(wrapper.find(".note").text()).toMatch(/1 line · 13 characters$/);
   });
 });
