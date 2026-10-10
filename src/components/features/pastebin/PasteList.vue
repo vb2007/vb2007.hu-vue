@@ -105,9 +105,10 @@ defineExpose({ refresh: () => goToPage(1) });
                   : "Copy link"
             }}
           </BaseButton>
+          <!-- Armed, it turns solid red; the ghost variant's hover fill would wash that out. -->
           <BaseButton
             size="sm"
-            variant="ghost"
+            :variant="confirmingId === paste._id ? 'primary' : 'ghost'"
             :error="confirmingId === paste._id"
             :loading="deletingId === paste._id"
             @click="onDelete(paste._id)"

@@ -179,7 +179,9 @@ describe("PasteList", () => {
 
     await deleteButton().trigger("click");
     expect(deleteButton().text()).toBe("Confirm delete");
-    expect(deleteButton().classes()).toContain("btn--error");
+    expect(deleteButton().classes()).toEqual(
+      expect.arrayContaining(["btn--primary", "btn--error"])
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await deleteButton().trigger("click");
@@ -211,6 +213,7 @@ describe("PasteList", () => {
     await vi.advanceTimersByTimeAsync(4000);
 
     expect(labels()).toEqual(["Delete", "Delete"]);
+    expect(deleteButtons()[1].classes()).toContain("btn--ghost");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
