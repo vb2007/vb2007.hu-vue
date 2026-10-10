@@ -55,7 +55,10 @@ describe("PasteList", () => {
     const links = wrapper.findAll(".paste__preview");
     expect(links.map((link) => link.text())).toEqual(["paste p1", "indented first line"]);
     expect(links[0].attributes("href")).toBe("/pastebin/p1");
-    expect(wrapper.find(".paste__date").attributes("datetime")).toBe("2026-10-10T12:00:00.000Z");
+    expect(wrapper.find(".paste__meta time").attributes("datetime")).toBe(
+      "2026-10-10T12:00:00.000Z"
+    );
+    expect(wrapper.find(".paste__meta").text()).toMatch(/ · 2 lines · 13 characters$/);
     expect(wrapper.find(".pager").exists()).toBe(false);
   });
 

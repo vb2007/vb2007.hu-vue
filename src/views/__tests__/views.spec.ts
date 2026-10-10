@@ -59,6 +59,8 @@ describe("views", () => {
 
     expect(wrapper.findComponent(PasteComposer).props("as")).toBe("h1");
     expect(wrapper.findComponent(PasteList).exists()).toBe(false);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("narrow");
+    expect(wrapper.find(".workspace").classes()).not.toContain("workspace--split");
   });
 
   it("PastebinView refreshes the list when a paste is created", async () => {
@@ -68,6 +70,8 @@ describe("views", () => {
     const { wrapper } = await mountWithRouter(PastebinView);
     await flushPromises();
     expect(wrapper.findComponent(PasteList).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.find(".workspace").classes()).toContain("workspace--split");
     // Views mounted by earlier tests are still alive and load their own lists on login, so count from here.
     fetchMock.mockClear();
 
@@ -83,7 +87,7 @@ describe("views", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { wrapper } = await mountWithRouter(PasteView, { props: { id: "p1" } });
 
-    expect(wrapper.findComponent(PageSection).props("width")).toBe("narrow");
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
     expect(wrapper.findComponent(PasteViewer).props()).toMatchObject({ id: "p1", as: "h1" });
   });
 });
