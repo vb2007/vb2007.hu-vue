@@ -11,7 +11,7 @@ name: Release & Deploy
 # commit makes no new release and just redeploys.
 on:
   push:
-    branches: [main, dev-deploy]
+    branches: [main]
   workflow_dispatch:
 
 # Deploys queue instead of cancelling each other, so a half-finished
