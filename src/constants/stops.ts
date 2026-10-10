@@ -5,7 +5,7 @@ export interface Stop {
   label: string;
   to: string;
   status: StopStatus;
-  /** One-line description shown on the route map. */
+  /** One-line description shown in the home tools directory. */
   blurb: string;
 }
 
@@ -16,9 +16,9 @@ export interface Line {
 }
 
 /**
- * The site as a line diagram. Open stops are routes that exist today,
+ * The site's tools as a metro line. Open stops are routes that exist today,
  * planned stops are tools that have not been built yet.
- * Add a new tool by appending a stop here; the navbar and the route map follow.
+ * Add a new tool by appending a stop here; the navbar strip and the home tools directory follow.
  */
 export const TOOLS_LINE: Line = {
   id: "tools",

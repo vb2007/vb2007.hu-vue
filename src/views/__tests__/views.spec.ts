@@ -7,7 +7,7 @@ import ShortenView from "@/views/ShortenView.vue";
 import PastebinView from "@/views/PastebinView.vue";
 import PasteView from "@/views/PasteView.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
-import RouteMap from "@/components/features/home/RouteMap.vue";
+import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
@@ -26,16 +26,14 @@ vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
 }));
 
 describe("views", () => {
-  it("HomeView shows the hero and the route map", async () => {
+  it("HomeView shows the hero and every destination except home", async () => {
     const { wrapper } = await mountWithRouter(HomeView);
 
     expect(wrapper.findComponent(HomeHero).exists()).toBe(true);
-    expect(wrapper.find("#route-map-title").text()).toBe("Route map");
-    expect(wrapper.findComponent(RouteMap).props()).toMatchObject({
-      line: TOOLS_LINE,
-      hereId: "home",
-      initialId: "upload"
-    });
+    expect(wrapper.find("#tools-title").text()).toBe("Tools");
+    expect(wrapper.findComponent(ToolDirectory).props("stops")).toEqual(
+      TOOLS_LINE.stops.filter((stop) => stop.id !== "home")
+    );
   });
 
   it.each([
