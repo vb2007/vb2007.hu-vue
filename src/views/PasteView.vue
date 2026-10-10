@@ -6,7 +6,7 @@ defineProps<{ id: string }>();
 </script>
 
 <template>
-  <PageSection width="narrow">
+  <PageSection width="medium">
     <PasteViewer :id="id" as="h1" />
   </PageSection>
 </template>

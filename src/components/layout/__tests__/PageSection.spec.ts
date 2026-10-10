@@ -10,9 +10,9 @@ describe("PageSection", () => {
     expect(wrapper.html()).toContain("<p>Content</p>");
   });
 
-  it("can be narrow", () => {
-    const wrapper = mount(PageSection, { props: { width: "narrow" } });
+  it.each(["medium", "narrow"] as const)("can be %s", (width) => {
+    const wrapper = mount(PageSection, { props: { width } });
 
-    expect(wrapper.classes()).toContain("page--narrow");
+    expect(wrapper.classes()).toContain(`page--${width}`);
   });
 });

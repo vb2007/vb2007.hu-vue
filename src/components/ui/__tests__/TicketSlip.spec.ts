@@ -65,4 +65,16 @@ describe("TicketSlip", () => {
     expect(wrapper.find(".slip__caption").text()).toBe("Your paste link");
     expect(wrapper.findAll("button")[1].text()).toBe("Paste another");
   });
+
+  it("can show the link differently from what it copies", async () => {
+    const wrapper = mount(TicketSlip, { props: { value, display: "api.test/r/abc123" } });
+
+    expect(wrapper.find("a").text()).toBe("api.test/r/abc123");
+    expect(wrapper.find("a").attributes("href")).toBe(value);
+
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(value);
+  });
 });

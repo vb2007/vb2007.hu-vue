@@ -12,17 +12,33 @@ const onCreated = () => list.value!.refresh();
 </script>
 
 <template>
-  <PageSection width="narrow">
-    <div class="stack">
-      <PasteComposer as="h1" @created="onCreated" />
+  <!-- Logged in it's a workspace (write on the left, your pastes on the right); otherwise just the gate. -->
+  <PageSection :width="isLoggedIn ? 'wide' : 'narrow'">
+    <div class="workspace" :class="{ 'workspace--split': isLoggedIn }">
+      <div class="workspace__compose">
+        <PasteComposer as="h1" @created="onCreated" />
+      </div>
       <PasteList v-if="isLoggedIn" ref="list" />
     </div>
   </PageSection>
 </template>
 
 <style scoped>
-.stack {
+.workspace {
   display: grid;
   gap: var(--sp-6);
+}
+
+@media (min-width: 62rem) {
+  .workspace--split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
+
+  /* Keep the composer in reach while scrolling a long list. */
+  .workspace--split .workspace__compose {
+    position: sticky;
+    top: calc(var(--nav-h) + var(--sp-5));
+  }
 }
 </style>

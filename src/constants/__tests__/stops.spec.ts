@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TOOLS_LINE } from "@/constants/stops";
 import { createTestRouter } from "@/__tests__/helpers/mount";
 
-// Guards for the line diagram that the navbar and the route map are generated from.
+// Guards for the line that the navbar strip and the home tools directory are generated from.
 describe("TOOLS_LINE", () => {
   const { stops } = TOOLS_LINE;
 

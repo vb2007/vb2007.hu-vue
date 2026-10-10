@@ -1,11 +1,17 @@
 import { expect, test } from "./fixtures";
 
-test("home page renders the hero, the shortener gate and the route map", async ({ page }) => {
+test("home page renders the hero, the shortener gate and the tools directory", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { level: 1, name: "Welcome home" })).toBeVisible();
   await expect(page.getByText("only logged-in users can shorten links")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Route map" })).toBeVisible();
+  const tools = page.getByRole("region", { name: "Tools" });
+  await expect(tools.getByRole("heading", { name: "Tools" })).toBeVisible();
+  await expect(tools.getByText("Planned", { exact: true })).toHaveCount(2);
+
+  // Each row carries its own description and is itself the way in.
+  await tools.getByRole("link", { name: /^Paste Share text and code snippets/ }).click();
+  await expect(page).toHaveURL("/pastebin");
 });
 
 test("footer links lead to each page", async ({ page }) => {

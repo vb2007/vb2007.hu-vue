@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
-import { pasteLink, pastePreview } from "@/scripts/pastebin/paste";
+import { pasteLink, pastePreview, pasteSize } from "@/scripts/pastebin/paste";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { useClipboard } from "@/composables/useClipboard";
 import { usePastes } from "@/composables/usePastes";
@@ -92,9 +92,10 @@ defineExpose({ refresh: () => goToPage(1) });
         <RouterLink :to="`/pastebin/${paste._id}`" class="paste__preview">
           {{ pastePreview(paste.content) }}
         </RouterLink>
-        <time class="paste__date" :datetime="paste.addedOn">
-          {{ formatDateTime(paste.addedOn) }}
-        </time>
+        <p class="paste__meta">
+          <time :datetime="paste.addedOn">{{ formatDateTime(paste.addedOn) }}</time> ·
+          {{ pasteSize(paste.content) }}
+        </p>
         <div class="paste__actions">
           <BaseButton size="sm" variant="secondary" @click="copyLink(paste._id)">
             {{
@@ -174,11 +175,15 @@ defineExpose({ refresh: () => goToPage(1) });
   border-top: var(--edge) solid var(--c-hairline);
 }
 
+/* The board decides the row layout, so it works in the split workspace and on phones alike. */
+.pastes {
+  container-type: inline-size;
+}
+
 .paste {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--sp-2) var(--sp-4);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-4);
   padding: var(--sp-4) 0;
   border-bottom: var(--edge) solid var(--c-hairline);
 }
@@ -194,10 +199,9 @@ defineExpose({ refresh: () => goToPage(1) });
   text-decoration-color: var(--c-line);
 }
 
-.paste__date {
+.paste__meta {
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -205,7 +209,22 @@ defineExpose({ refresh: () => goToPage(1) });
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
-  grid-column: 1 / -1;
+  margin-top: var(--sp-2);
+}
+
+/* Wide enough: preview and details on the left, actions to the right of both. */
+@container (min-width: 30rem) {
+  .paste {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .paste__actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    flex-wrap: nowrap;
+    margin-top: 0;
+  }
 }
 
 .pager__label {

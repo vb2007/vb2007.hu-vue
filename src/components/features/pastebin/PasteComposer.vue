@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
-import { PASTE_MAX_LENGTH, pasteLink, type Paste } from "@/scripts/pastebin/paste";
+import { PASTE_MAX_LENGTH, displayLink, pasteLink, type Paste } from "@/scripts/pastebin/paste";
 import { useNewPaste } from "@/composables/useNewPaste";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseTextarea from "@/components/ui/BaseTextarea.vue";
@@ -50,6 +50,7 @@ watch(createdPaste, (paste) => {
     <TicketSlip
       v-if="createdPaste"
       :value="pasteLink(createdPaste._id)"
+      :display="displayLink(pasteLink(createdPaste._id))"
       caption="Your paste link"
       again-label="Paste another"
       @again="reset"

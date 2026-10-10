@@ -1,5 +1,5 @@
 <script setup lang="ts">
-withDefaults(defineProps<{ width?: "wide" | "narrow" }>(), { width: "wide" });
+withDefaults(defineProps<{ width?: "wide" | "medium" | "narrow" }>(), { width: "wide" });
 </script>
 
 <template>
@@ -17,6 +17,10 @@ withDefaults(defineProps<{ width?: "wide" | "narrow" }>(), { width: "wide" });
 
 .page--wide {
   max-width: var(--page-max);
+}
+
+.page--medium {
+  max-width: 60rem;
 }
 
 .page--narrow {

@@ -54,6 +54,7 @@ describe("PasteComposer", () => {
     const slip = wrapper.findComponent(TicketSlip);
     expect(slip.props()).toMatchObject({
       value: `${window.location.origin}/pastebin/p1`,
+      display: `${window.location.host}/pastebin/p1`,
       caption: "Your paste link",
       againLabel: "Paste another"
     });
