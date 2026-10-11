@@ -97,7 +97,7 @@ export class MockApi {
             status: 200,
             body: {
               originalUrl: link.target,
-              addedBy: { _id: "u1", username: link.addedBy, email: `${link.addedBy}@example.com` },
+              addedBy: { _id: "u1", username: link.addedBy, createdAt: "2026-07-31T17:16:07.516Z" },
               addedOn: link.addedOn
             }
           }
