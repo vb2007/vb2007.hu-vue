@@ -23,7 +23,7 @@ One personal, self-hosted home that holds both working tools and the owner's inf
 ## Operating Context
 - Vue 3 + Vite + TypeScript SPA (vue-router), consuming a separate backend API (`VITE_API_BASE_URL`, default `https://api.vb2007.hu`).
 - Accounts exist: register and log in. Authentication is a `VB-AUTH` cookie. The URL shortener and creating pastes require a logged-in user (the shortener says this "will change in the future"); reading a paste by its link is public.
-- Current routes: Home, Shorten, Pastebin (`/pastebin`, plus `/pastebin/:id` for a single paste), short link redirects (`/r/:code`), Login, Register. Light and dark themes exist.
+- Current routes: Home, Shorten, Pastebin (`/pastebin`, plus `/pastebin/:id` for a single paste), short link redirects (`/r/:code`, plus `/r/:code/preview` to see where a link leads and who shared it before opening it), Login, Register. Light and dark themes exist.
 - Navigation follows the route map in `src/constants/stops.ts`; Upload and Contact are shown as planned stops.
 
 ## Capabilities and Constraints
