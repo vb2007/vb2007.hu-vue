@@ -30,6 +30,12 @@ export const routes: RouteRecordRaw[] = [
     props: true
   },
   {
+    path: "/r/:code/preview",
+    name: "redirect-preview",
+    component: () => import("../views/RedirectView.vue"),
+    props: (route) => ({ code: route.params.code, preview: true })
+  },
+  {
     path: "/login",
     name: "login",
     component: () => import("../views/LoginView.vue")

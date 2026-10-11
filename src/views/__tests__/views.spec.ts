@@ -100,4 +100,13 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("narrow");
     expect(wrapper.findComponent(ShortLinkResolver).props("code")).toBe("abc123");
   });
+
+  it("RedirectView passes the preview flag on", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(404, { error: "Not found." }));
+    const { wrapper } = await mountWithRouter(RedirectView, {
+      props: { code: "abc123", preview: true }
+    });
+
+    expect(wrapper.findComponent(ShortLinkResolver).props("preview")).toBe(true);
+  });
 });

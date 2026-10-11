@@ -2,22 +2,54 @@ import { ref } from "vue";
 import { UrlShortening } from "@/constants/api";
 import { isSafeRedirect } from "@/scripts/utility/text";
 
-export type ShortLinkState = "resolving" | "redirecting" | "not-found" | "unsafe" | "error";
+export type ShortLinkState =
+  | "resolving"
+  | "redirecting"
+  | "previewing"
+  | "not-found"
+  | "unsafe"
+  | "error";
+
+/** Who shared a short link and when; the lookup leaves these out on older APIs. */
+export type ShortLinkDetails = {
+  addedBy?: string;
+  addedOn?: string;
+};
+
+type LookupResponse = {
+  originalUrl?: string;
+  addedBy?: { username?: string } | null;
+  addedOn?: string;
+  error?: string;
+};
 
 /**
- * Resolves a short code through the API, then sends the browser on to its target.
+ * Resolves a short code through the API, then sends the browser on to its target,
+ * or, when previewing, stops and shows where it leads.
  * `navigate` is only swapped out by tests; jsdom can't follow a real navigation.
  */
 export const useShortLink = (navigate = (url: string) => window.location.replace(url)) => {
   const state = ref<ShortLinkState>("resolving");
   const target = ref("");
+  const details = ref<ShortLinkDetails>({});
   const errorMessage = ref("");
 
-  const resolve = async (code: string) => {
+  const resolve = async (code: string, preview = false) => {
     const apiRedirect = UrlShortening.redirect + encodeURIComponent(code);
     state.value = "resolving";
     target.value = "";
+    details.value = {};
     errorMessage.value = "";
+
+    const go = (url: string) => {
+      target.value = url;
+      if (preview) {
+        state.value = "previewing";
+      } else {
+        state.value = "redirecting";
+        navigate(url);
+      }
+    };
 
     try {
       const response = await fetch(
@@ -25,7 +57,7 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
         { method: "GET" }
       );
 
-      let data: { originalUrl?: string; error?: string } | undefined;
+      let data: LookupResponse | undefined;
       try {
         data = await response.json();
       } catch {
@@ -33,20 +65,20 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
       }
 
       if (response.ok && data?.originalUrl) {
+        details.value = {
+          addedBy: data.addedBy?.username || undefined,
+          addedOn: data.addedOn || undefined
+        };
         if (!isSafeRedirect(data.originalUrl)) {
           state.value = "unsafe";
           return;
         }
-        target.value = data.originalUrl;
-        state.value = "redirecting";
-        navigate(data.originalUrl);
+        go(data.originalUrl);
       } else if (data?.error) {
         state.value = "not-found";
         errorMessage.value = data.error;
       } else {
-        target.value = apiRedirect;
-        state.value = "redirecting";
-        navigate(apiRedirect);
+        go(apiRedirect);
       }
     } catch (error) {
       state.value = "error";
@@ -55,5 +87,5 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
     }
   };
 
-  return { state, target, errorMessage, resolve };
+  return { state, target, details, errorMessage, resolve };
 };

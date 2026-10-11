@@ -26,14 +26,83 @@ describe("useShortLink", () => {
     expect(navigate).toHaveBeenCalledWith("https://example.com/long");
   });
 
-  it("refuses targets that would run code on this site", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { originalUrl: "javascript:alert(1)" }));
+  it("keeps who shared the link and when, but nothing else about them", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        originalUrl: "https://github.com",
+        addedBy: { _id: "u1", username: "test", email: "test@example.com" },
+        addedOn: "2026-08-04T15:45:29.680Z"
+      })
+    );
     const link = useShortLink(navigate);
 
-    await link.resolve("evil");
+    await link.resolve("abc123");
+
+    expect(link.details.value).toEqual({ addedBy: "test", addedOn: "2026-08-04T15:45:29.680Z" });
+  });
+
+  it("copes with a lookup that has no sharer details", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { originalUrl: "https://github.com", addedBy: null })
+    );
+    const link = useShortLink(navigate);
+
+    await link.resolve("abc123");
+
+    expect(link.details.value).toEqual({ addedBy: undefined, addedOn: undefined });
+  });
+
+  it("stops at the target when previewing", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { originalUrl: "https://github.com", addedBy: { username: "test" } })
+    );
+    const link = useShortLink(navigate);
+
+    await link.resolve("abc123", true);
+
+    expect(link.state.value).toBe("previewing");
+    expect(link.target.value).toBe("https://github.com");
+    expect(link.details.value.addedBy).toBe("test");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("previews the API's redirect while the lookup endpoint doesn't exist", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404));
+    const link = useShortLink(navigate);
+
+    await link.resolve("abc123", true);
+
+    expect(link.state.value).toBe("previewing");
+    expect(link.target.value).toBe("https://api.test/r/abc123");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("forgets the previous link's details when resolving another", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(200, { originalUrl: "https://github.com", addedBy: { username: "test" } })
+      )
+      .mockResolvedValueOnce(jsonResponse(404, { error: "Not found." }));
+    const link = useShortLink(navigate);
+
+    await link.resolve("one");
+    await link.resolve("two");
+
+    expect(link.details.value).toEqual({});
+  });
+
+  it("refuses targets that would run code on this site", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { originalUrl: "javascript:alert(1)", addedBy: { username: "mallory" } })
+    );
+    const link = useShortLink(navigate);
+
+    await link.resolve("evil", true);
 
     expect(link.state.value).toBe("unsafe");
     expect(navigate).not.toHaveBeenCalled();
+    expect(link.target.value).toBe("");
+    expect(link.details.value.addedBy).toBe("mallory");
   });
 
   it("shows the API's error for an unknown code", async () => {

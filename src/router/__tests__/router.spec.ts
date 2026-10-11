@@ -19,6 +19,14 @@ describe("router", () => {
     expect(resolved.matched[0].props.default).toBe(true);
   });
 
+  it("opens a short link's preview with the code and the preview flag", () => {
+    const resolved = router.resolve("/r/abc123/preview");
+    const props = resolved.matched[0].props.default as (route: typeof resolved) => object;
+
+    expect(resolved.name).toBe("redirect-preview");
+    expect(props(resolved)).toEqual({ code: "abc123", preview: true });
+  });
+
   it("resolves a short link and hands its code to the view as a prop", () => {
     const resolved = router.resolve({ name: "redirect", params: { code: "abc123" } });
 
