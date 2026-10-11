@@ -6,6 +6,7 @@ withDefaults(
     variant?: "primary" | "secondary" | "ghost";
     size?: "md" | "sm";
     to?: string;
+    href?: string;
     type?: "button" | "submit";
     loading?: boolean;
     disabled?: boolean;
@@ -18,8 +19,8 @@ withDefaults(
 
 <template>
   <component
-    :is="to ? RouterLink : 'button'"
-    v-bind="to ? { to } : { type, disabled: disabled || loading }"
+    :is="to ? RouterLink : href ? 'a' : 'button'"
+    v-bind="to ? { to } : href ? { href } : { type, disabled: disabled || loading }"
     class="btn"
     :class="[
       `btn--${variant}`,

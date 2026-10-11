@@ -52,4 +52,15 @@ describe("BaseButton", () => {
     expect(wrapper.attributes("type")).toBeUndefined();
     expect(wrapper.classes()).toContain("btn");
   });
+
+  it("renders a plain link for an address off the site", () => {
+    const wrapper = mount(BaseButton, {
+      props: { href: "https://example.com" },
+      slots: { default: "Continue" }
+    });
+
+    expect(wrapper.element.tagName).toBe("A");
+    expect(wrapper.attributes("href")).toBe("https://example.com");
+    expect(wrapper.attributes("type")).toBeUndefined();
+  });
 });
