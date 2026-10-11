@@ -21,8 +21,8 @@ export interface MockPaste {
 export class MockApi {
   private user: { email: string; username: string } | null = null;
   private shortCode = "e2e123";
-  /** Short code -> target URL, filled by shortening and by `hasShortLink`. */
-  readonly shortLinks = new Map<string, string>();
+  /** Short code -> link, filled by shortening and by `hasShortLink`. */
+  readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
   /** In-memory paste store, oldest first. */
   readonly pastes: MockPaste[] = [];
   private nextPasteId = 1;
@@ -50,8 +50,8 @@ export class MockApi {
     this.shortCode = code;
   }
 
-  hasShortLink(code: string, target: string) {
-    this.shortLinks.set(code, target);
+  hasShortLink(code: string, target: string, addedBy = "e2e") {
+    this.shortLinks.set(code, { target, addedBy, addedOn: "2026-10-10T12:00:00.000Z" });
   }
 
   async handle(route: Route, appOrigin: string) {
@@ -90,16 +90,24 @@ export class MockApi {
   ): { status: number; body?: unknown; location?: string } | undefined {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
-      const target = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
-      return target
-        ? { status: 200, body: { originalUrl: target } }
+      const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
+      // Shaped like the real API, which also populates the sharer's account.
+      return link
+        ? {
+            status: 200,
+            body: {
+              originalUrl: link.target,
+              addedBy: { _id: "u1", username: link.addedBy, email: `${link.addedBy}@example.com` },
+              addedOn: link.addedOn
+            }
+          }
         : { status: 404, body: { error: "The shortened URL cannot be found." } };
     }
     const redirectRoute = endpoint.match(/^GET \/r\/([^/]+)$/);
     if (redirectRoute) {
-      const target = this.shortLinks.get(decodeURIComponent(redirectRoute[1]));
-      return target
-        ? { status: 302, location: target }
+      const link = this.shortLinks.get(decodeURIComponent(redirectRoute[1]));
+      return link
+        ? { status: 302, location: link.target }
         : { status: 404, body: { error: "The shortened URL cannot be found." } };
     }
     const pasteRoute = endpoint.match(/^(GET|DELETE) \/paste\/([^/]+)$/);
@@ -123,7 +131,11 @@ export class MockApi {
       case "POST /auth/register":
         return { status: 201 };
       case "POST /shortenUrl/create":
-        this.shortLinks.set(this.shortCode, (body as { url?: string } | null)?.url ?? "");
+        this.hasShortLink(
+          this.shortCode,
+          (body as { url?: string } | null)?.url ?? "",
+          this.user?.username
+        );
         return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };

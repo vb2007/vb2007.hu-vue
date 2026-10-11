@@ -25,6 +25,24 @@ test("a new short link lives on the site and leads to its target", async ({ page
   await expect(page.getByRole("heading", { name: "Landed" })).toBeVisible();
 });
 
+test("a preview shows where a link leads and who shared it, without going there", async ({
+  page,
+  api
+}) => {
+  api.hasShortLink("gh1", TARGET, "test");
+
+  await page.goto("/r/gh1/preview");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Short link" })).toBeVisible();
+  await expect(page.getByText("target.e2e.invalid", { exact: true })).toBeVisible();
+  await expect(page.getByText("test", { exact: true })).toBeVisible();
+  await expect(page.getByText("example.com")).toHaveCount(0);
+  await expect(page).toHaveURL("/r/gh1/preview");
+
+  await page.getByRole("link", { name: "Continue to target.e2e.invalid" }).click();
+  await expect(page).toHaveURL(TARGET);
+});
+
 test("an unknown short link explains itself", async ({ page }) => {
   await page.goto("/r/missing");
 
