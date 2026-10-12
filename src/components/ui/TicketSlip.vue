@@ -3,7 +3,16 @@ import { useClipboard } from "@/composables/useClipboard";
 import AppIcon from "./AppIcon.vue";
 import BaseButton from "./BaseButton.vue";
 
-const props = defineProps<{ value: string }>();
+const props = withDefaults(
+  defineProps<{
+    value: string;
+    /** Shown instead of `value`, e.g. without the protocol; copying always uses `value`. */
+    display?: string;
+    caption?: string;
+    againLabel?: string;
+  }>(),
+  { caption: "Your short link", againLabel: "Shorten another" }
+);
 const emit = defineEmits<{ again: [] }>();
 
 const { copied, failed, copy } = useClipboard();
@@ -11,14 +20,14 @@ const { copied, failed, copy } = useClipboard();
 
 <template>
   <div class="slip">
-    <p class="slip__caption">Your short link</p>
-    <a class="slip__link" :href="value" target="_blank" rel="noopener">{{ value }}</a>
+    <p class="slip__caption">{{ caption }}</p>
+    <a class="slip__link" :href="value" target="_blank" rel="noopener">{{ display ?? value }}</a>
     <div class="slip__actions">
       <BaseButton size="sm" @click="copy(props.value)">
         <AppIcon :name="copied ? 'check' : 'copy'" :size="18" />
         {{ copied ? "Copied" : failed ? "Copy failed" : "Copy link" }}
       </BaseButton>
-      <BaseButton size="sm" variant="ghost" @click="emit('again')">Shorten another</BaseButton>
+      <BaseButton size="sm" variant="ghost" @click="emit('again')">{{ againLabel }}</BaseButton>
     </div>
     <p class="visually-hidden" role="status">{{ copied ? "Link copied to clipboard" : "" }}</p>
   </div>
@@ -75,7 +84,7 @@ const { copied, failed, copy } = useClipboard();
   font-size: clamp(0.9rem, 0.8rem + 0.9vw, 1.0625rem);
   font-weight: 500;
   color: var(--c-ink);
-  word-break: break-all;
+  overflow-wrap: anywhere;
   text-decoration-color: var(--c-line);
 }
 

@@ -54,3 +54,18 @@ export const validateUrl = (originalUrl: string) => {
     return false;
   }
 };
+
+/** A link as people read it: no protocol, which every browser fills in anyway. */
+export const displayLink = (link: string) => link.replace(/^https?:\/\//, "");
+
+/** Schemes that would run code or load content on this site if it navigated to them. */
+const unsafeSchemes = ["javascript:", "data:", "vbscript:", "blob:"];
+
+/** Whether the site may send the browser to `url`, e.g. a short link's target. */
+export const isSafeRedirect = (url: string) => {
+  try {
+    return !unsafeSchemes.includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+};

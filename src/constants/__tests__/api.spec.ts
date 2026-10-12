@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UrlShortening, UserManagement } from "@/constants/api";
+import { Pastebin, UrlShortening, UserManagement } from "@/constants/api";
 
 describe("API endpoints", () => {
   it("builds the user management endpoints from VITE_API_BASE_URL", () => {
@@ -14,5 +14,12 @@ describe("API endpoints", () => {
   it("builds the URL shortening endpoints from VITE_API_BASE_URL", () => {
     expect(UrlShortening.redirect).toBe("https://api.test/r/");
     expect(UrlShortening.shortenUrl).toBe("https://api.test/shortenUrl/create");
+    expect(UrlShortening.lookup).toBe("https://api.test/shortenUrl/:shortenedUrl");
+  });
+
+  it("builds the pastebin endpoints from VITE_API_BASE_URL", () => {
+    expect(Pastebin.paste).toBe("https://api.test/paste");
+    expect(Pastebin.pasteWithId).toBe("https://api.test/paste/:id");
+    expect(Pastebin.pastesByUsername).toBe("https://api.test/pastes/:username");
   });
 });

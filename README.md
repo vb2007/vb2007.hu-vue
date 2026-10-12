@@ -57,6 +57,8 @@ npm run lint:check   # report only, as CI runs it
 
 The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
 
+Besides the SPA, `docker/nginx.conf` answers `/.well-known/matrix/server` and `/.well-known/matrix/client` (Matrix delegation to `matrix.vb2007.hu`, so `@user:vb2007.hu` federates) and `/robots.txt` (empty `200` for bots, `403` for everyone else). These routes must stay above the SPA fallback (`location /`).
+
 ### Running the stack by hand (Debian)
 
 The server is normally deployed automatically (see [Releases & deployment](#releases--deployment)); this is the manual route, e.g. for a second machine or local testing.
@@ -136,7 +138,7 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
   - `src/__tests__/setup.ts` stubs `matchMedia` and the clipboard, and resets the shared auth state after each test.
   - `src/__tests__/helpers/` has `mockFetch()`/`jsonResponse()` for API calls and `mountWithRouter()` for components that use router links.
 - **E2E tests** live in `e2e/` and run against the production build in desktop and mobile Chromium.
-  - The `api` fixture in `e2e/fixtures.ts` answers every API request. Set up state with `api.loggedInAs(...)` or `api.shortenReturns(...)` before navigating.
+  - The `api` fixture in `e2e/fixtures.ts` answers every API request. Set up state with `api.loggedInAs(...)`, `api.shortenReturns(...)`, `api.hasShortLink(...)` or `api.hasPaste(...)` before navigating. Short links shortened in a test resolve through the mocked lookup endpoint and API redirect. Pastes live in an in-memory store (`api.pastes`) that the create, list, view and delete endpoints share.
   - A request to an endpoint the fixture doesn't know fails the test, so add a case to `MockApi.respond` when the app starts calling a new endpoint.
 
 ## CI
@@ -152,3 +154,9 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 | E2E tests | Playwright against the built app, with the API mocked |
 
 Each stage uploads a JUnit file. `Aggregate reports` turns them into HTML, ODS, Markdown and JSON reports, using the scripts in `.github/scripts/`. `Publish summary` then posts the results as the job summary, as a sticky PR comment and as check-run annotations. The run's artifacts also include the browsable coverage report, and e2e traces when e2e fails.
+
+## Opening the dev → main PR
+
+`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, with the issues each one resolves (`.github/scripts/dev-to-main-body.mjs` reads them from the `Resolves: #<issue>` lines). Merging that PR closes those issues. It does nothing if there's nothing new, and fails if a `dev` → `main` PR is already open.
+
+The workflow only shows up in the Actions tab once it is on `main`. A PR opened with the default `GITHUB_TOKEN` doesn't trigger PR Tests; to get the checks, add a `PR_TOKEN` secret (a PAT with pull-requests write), which the workflow prefers. The repo setting "Allow GitHub Actions to create and approve pull requests" must be on either way.

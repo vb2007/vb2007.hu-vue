@@ -22,13 +22,13 @@ One personal, self-hosted home that holds both working tools and the owner's inf
 
 ## Operating Context
 - Vue 3 + Vite + TypeScript SPA (vue-router), consuming a separate backend API (`VITE_API_BASE_URL`, default `https://api.vb2007.hu`).
-- Accounts exist: register and log in. Authentication is a `VB-AUTH` cookie. The URL shortener currently requires a logged-in user, and the site says this "will change in the future".
-- Current routes: Home, Shorten, Login, Register. Light and dark themes exist.
-- Navigation has commented-out placeholders for Pastebin, Upload, and Contact.
+- Accounts exist: register and log in. Authentication is a `VB-AUTH` cookie. The URL shortener and creating pastes require a logged-in user (the shortener says this "will change in the future"); reading a paste by its link is public.
+- Current routes: Home, Shorten, Pastebin (`/pastebin`, plus `/pastebin/:id` for a single paste), short link redirects (`/r/:code`, plus `/r/:code/preview` to see where a link leads and who shared it before opening it), Login, Register. Light and dark themes exist.
+- Navigation follows the route map in `src/constants/stops.ts`; Upload and Contact are shown as planned stops.
 
 ## Capabilities and Constraints
-- Shipped: URL shortening (logged-in only), register, login, logout, theme switch.
-- Planned tools: pastebin, file upload and sharing, contact, other general features. Pastebin, upload, and contact are not built.
+- Shipped: URL shortening (logged-in only; links live on the site as `vb2007.hu/r/:code`), pastebin (create, list, view, delete; creating and listing are logged-in only), register, login, logout, theme switch.
+- Planned tools: file upload and sharing, contact, other general features. Upload and contact are not built.
 - Planned hosted-service pages (status and info only, one page per service): Vaultwarden, Matrix, Kiwix archives, public API, and past projects. None exist yet. Which services and what status data (live checks versus static text) are undecided.
 - Languages: English now, Hungarian planned alongside it. The UI needs to accommodate localization.
 - The Home page is currently a placeholder ("Welcome home / Meet a feature-rich site with tools for your various needs!").
@@ -38,7 +38,7 @@ One personal, self-hosted home that holds both working tools and the owner's inf
 - Existing identity is minimal: a favicon and a text wordmark. No logo system is established. `src/assets/logo.svg` is the default Vue template logo, not a brand asset.
 
 ## Evidence on Hand
-- A working URL shortener flow against a real API.
+- Working URL shortener and pastebin flows against a real API.
 - No testimonials, usage numbers, customer lists, or press. Do not fabricate any.
 - No documentation content for the hosted services yet. Service descriptions and setup guides must come from the owner.
 

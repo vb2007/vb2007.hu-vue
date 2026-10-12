@@ -13,6 +13,29 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("../views/ShortenView.vue")
   },
   {
+    path: "/pastebin",
+    name: "pastebin",
+    component: () => import("../views/PastebinView.vue")
+  },
+  {
+    path: "/pastebin/:id",
+    name: "paste",
+    component: () => import("../views/PasteView.vue"),
+    props: true
+  },
+  {
+    path: "/r/:code",
+    name: "redirect",
+    component: () => import("../views/RedirectView.vue"),
+    props: true
+  },
+  {
+    path: "/r/:code/preview",
+    name: "redirect-preview",
+    component: () => import("../views/RedirectView.vue"),
+    props: (route) => ({ code: route.params.code, preview: true })
+  },
+  {
     path: "/login",
     name: "login",
     component: () => import("../views/LoginView.vue")
