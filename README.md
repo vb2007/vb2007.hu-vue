@@ -57,6 +57,8 @@ npm run lint:check   # report only, as CI runs it
 
 The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
 
+Besides the SPA, `docker/nginx.conf` answers `/.well-known/matrix/server` and `/.well-known/matrix/client` (Matrix delegation to `matrix.vb2007.hu`, so `@user:vb2007.hu` federates) and `/robots.txt` (empty `200` for bots, `403` for everyone else). These routes must stay above the SPA fallback (`location /`).
+
 ### Running the stack by hand (Debian)
 
 The server is normally deployed automatically (see [Releases & deployment](#releases--deployment)); this is the manual route, e.g. for a second machine or local testing.
