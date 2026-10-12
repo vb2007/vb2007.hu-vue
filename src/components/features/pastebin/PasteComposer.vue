@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
-import { PASTE_MAX_LENGTH, displayLink, pasteLink, type Paste } from "@/scripts/pastebin/paste";
+import { PASTE_MAX_LENGTH, pasteLink, type Paste } from "@/scripts/pastebin/paste";
+import { displayLink } from "@/scripts/utility/text";
 import { useNewPaste } from "@/composables/useNewPaste";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseTextarea from "@/components/ui/BaseTextarea.vue";

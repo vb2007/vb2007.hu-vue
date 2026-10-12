@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { jsonResponse } from "@/__tests__/helpers/fetch";
 import {
   PASTE_MAX_LENGTH,
-  displayLink,
   errorFrom,
   pasteLink,
   pastePreview,
@@ -19,16 +18,6 @@ describe("pasteLink", () => {
 describe("pastePreview", () => {
   it("uses the first non-empty line", () => {
     expect(pastePreview("\n\n  first line\nsecond line")).toBe("first line");
-  });
-});
-
-describe("displayLink", () => {
-  it.each([
-    ["https://vb2007.hu/pastebin/abc", "vb2007.hu/pastebin/abc"],
-    ["http://localhost:4173/pastebin/abc", "localhost:4173/pastebin/abc"],
-    ["vb2007.hu/x", "vb2007.hu/x"]
-  ])("shows %s as %s", (link, shown) => {
-    expect(displayLink(link)).toBe(shown);
   });
 });
 

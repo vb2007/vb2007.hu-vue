@@ -14,6 +14,7 @@ describe("API endpoints", () => {
   it("builds the URL shortening endpoints from VITE_API_BASE_URL", () => {
     expect(UrlShortening.redirect).toBe("https://api.test/r/");
     expect(UrlShortening.shortenUrl).toBe("https://api.test/shortenUrl/create");
+    expect(UrlShortening.lookup).toBe("https://api.test/shortenUrl/:shortenedUrl");
   });
 
   it("builds the pastebin endpoints from VITE_API_BASE_URL", () => {

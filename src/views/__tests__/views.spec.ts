@@ -6,6 +6,7 @@ import RegisterView from "@/views/RegisterView.vue";
 import ShortenView from "@/views/ShortenView.vue";
 import PastebinView from "@/views/PastebinView.vue";
 import PasteView from "@/views/PasteView.vue";
+import RedirectView from "@/views/RedirectView.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
@@ -14,6 +15,7 @@ import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
 import PasteComposer from "@/components/features/pastebin/PasteComposer.vue";
 import PasteList from "@/components/features/pastebin/PasteList.vue";
 import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
+import ShortLinkResolver from "@/components/features/redirect/ShortLinkResolver.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn } from "@/scripts/authentication/authState";
@@ -89,5 +91,22 @@ describe("views", () => {
 
     expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
     expect(wrapper.findComponent(PasteViewer).props()).toMatchObject({ id: "p1", as: "h1" });
+  });
+
+  it("RedirectView resolves the code from the route", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(404, { error: "Not found." }));
+    const { wrapper } = await mountWithRouter(RedirectView, { props: { code: "abc123" } });
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("narrow");
+    expect(wrapper.findComponent(ShortLinkResolver).props("code")).toBe("abc123");
+  });
+
+  it("RedirectView passes the preview flag on", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(404, { error: "Not found." }));
+    const { wrapper } = await mountWithRouter(RedirectView, {
+      props: { code: "abc123", preview: true }
+    });
+
+    expect(wrapper.findComponent(ShortLinkResolver).props("preview")).toBe(true);
   });
 });

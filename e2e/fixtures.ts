@@ -5,7 +5,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * here and answered by pathname, so it works whatever API host the app was built against.
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
- * `api.hasPaste(...)`) before navigating. For a one-off response, register `page.route(...)` in the test itself:
+ * `api.hasShortLink(...)`, `api.hasPaste(...)`) before navigating. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
@@ -21,6 +21,8 @@ export interface MockPaste {
 export class MockApi {
   private user: { email: string; username: string } | null = null;
   private shortCode = "e2e123";
+  /** Short code -> link, filled by shortening and by `hasShortLink`. */
+  readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
   /** In-memory paste store, oldest first. */
   readonly pastes: MockPaste[] = [];
   private nextPasteId = 1;
@@ -48,6 +50,10 @@ export class MockApi {
     this.shortCode = code;
   }
 
+  hasShortLink(code: string, target: string, addedBy = "e2e") {
+    this.shortLinks.set(code, { target, addedBy, addedOn: "2026-10-10T12:00:00.000Z" });
+  }
+
   async handle(route: Route, appOrigin: string) {
     const request = route.request();
     // The app calls the API cross-origin with credentials, so every answer needs CORS headers.
@@ -71,6 +77,9 @@ export class MockApi {
       this.unhandled.push(`${request.method()} ${request.url()}`);
       return route.abort();
     }
+    if (response.location) {
+      return route.fulfill({ status: response.status, headers: { location: response.location } });
+    }
     return route.fulfill({ status: response.status, headers, json: response.body ?? {} });
   }
 
@@ -78,7 +87,29 @@ export class MockApi {
     endpoint: string,
     body: { email?: string; paste?: string } | null,
     query: URLSearchParams
-  ): { status: number; body?: unknown } | undefined {
+  ): { status: number; body?: unknown; location?: string } | undefined {
+    const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
+    if (lookupRoute) {
+      const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
+      // Shaped like the real API, which also populates the sharer's account.
+      return link
+        ? {
+            status: 200,
+            body: {
+              originalUrl: link.target,
+              addedBy: { _id: "u1", username: link.addedBy, createdAt: "2026-07-31T17:16:07.516Z" },
+              addedOn: link.addedOn
+            }
+          }
+        : { status: 404, body: { error: "The shortened URL cannot be found." } };
+    }
+    const redirectRoute = endpoint.match(/^GET \/r\/([^/]+)$/);
+    if (redirectRoute) {
+      const link = this.shortLinks.get(decodeURIComponent(redirectRoute[1]));
+      return link
+        ? { status: 302, location: link.target }
+        : { status: 404, body: { error: "The shortened URL cannot be found." } };
+    }
     const pasteRoute = endpoint.match(/^(GET|DELETE) \/paste\/([^/]+)$/);
     if (pasteRoute) {
       return this.respondPaste(pasteRoute[1], decodeURIComponent(pasteRoute[2]));
@@ -100,6 +131,11 @@ export class MockApi {
       case "POST /auth/register":
         return { status: 201 };
       case "POST /shortenUrl/create":
+        this.hasShortLink(
+          this.shortCode,
+          (body as { url?: string } | null)?.url ?? "",
+          this.user?.username
+        );
         return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
