@@ -8,6 +8,7 @@ colors:
   panel-sunk: "oklch(0.955 0.03 134)"
   ink: "oklch(0.24 0.045 152)"
   ink-soft: "oklch(0.38 0.05 152)"
+  hairline: "oklch(0.24 0.045 152 / 0.2)"
   line: "oklch(0.6 0.16 148)"
   action: "oklch(0.45 0.115 152)"
   action-deep: "oklch(0.33 0.09 152)"
@@ -104,6 +105,39 @@ components:
     textColor: "{colors.ink}"
     rounded: "{rounded.md}"
     padding: "1.5rem"
+  ticket-slip-compact:
+    backgroundColor: "{colors.field}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.md}"
+    padding: "0.5rem 0.5rem 0.5rem 1rem"
+  segment-key:
+    backgroundColor: "{colors.panel-sunk}"
+    textColor: "{colors.ink-soft}"
+    rounded: "{rounded.sm}"
+    padding: "0 0.75rem"
+    height: "2.625rem"
+  segment-key-chosen:
+    backgroundColor: "{colors.action}"
+    textColor: "{colors.on-action}"
+  select:
+    backgroundColor: "{colors.panel-sunk}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.sm}"
+    padding: "0 2.5rem 0 1rem"
+    height: "2.875rem"
+  drop-target:
+    backgroundColor: "{colors.panel-sunk}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.md}"
+    padding: "2rem 1.5rem"
+  badge-private:
+    backgroundColor: "{colors.panel-sunk}"
+    textColor: "{colors.ink-soft}"
+    padding: "0.125rem 0.5rem"
+  badge-public:
+    backgroundColor: "{colors.ok-wash}"
+    textColor: "{colors.action}"
+    padding: "0.125rem 0.5rem"
 ---
 
 # Design System: vb2007.hu
@@ -143,6 +177,7 @@ A restrained-plus palette: a light green field dominates, white-green panels sit
 - **Sunk Enamel** (`panel-sunk`): input fill, disabled buttons, info messages.
 - **Board Ink** (`ink`): body text, panel edges (the 2px `edge`), the footer band in light theme.
 - **Soft Ink** (`ink-soft`): hints, placeholders, planned-stop labels and dashes.
+- **Hairline** (`hairline`, ink at 20%): row dividers inside boards, the empty rail of progress tracks and meters, the edge of disabled buttons.
 - **Terminal Band** (`deep` / `on-deep`): footer, deep green in both themes, with the line recoloured bright green on it.
 - **Fault Red** (`danger`, `danger-wash`) and **Confirm Wash** (`ok-wash`): error and success message tints only.
 
@@ -152,6 +187,7 @@ Dark-theme counterparts live in `src/styles/tokens.css` and the sidecar; frontma
 **The One Line Rule.** There is one route colour. It is a stroke (lines, rings, focus), not a fill for large areas; large fills belong to the field or panel.
 **The Green Neutral Rule.** Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.
 **The Hatch Means Planned Rule.** The amber diagonal hatch and dashed strokes mean "not built yet" or "work in progress", and nothing else.
+**The Route Measure Rule.** Anything that measures (upload progress, storage, a share of a total) is a stretch of line: a hairline rail, a route-green run along it, stop rings at the ends. Fault Red marks a failed run or a full terminus; Soft Ink a cancelled one.
 
 ## Typography
 
@@ -174,7 +210,7 @@ Dark-theme counterparts live in `src/styles/tokens.css` and the sidecar; frontma
 
 ## Layout
 
-Single column, centred, max width 78rem (`--page-max`) with a fluid gutter `clamp(1rem, 4vw, 2.5rem)`. Narrow form pages cap at 34rem; reading pages such as a single paste cap at 60rem (`medium`). Page sections start 3rem from the navbar. Spacing is a 4px-based rem scale (0.25 to 4.5rem, steps 1-8); gaps inside panels are 1.5rem (2rem from 40rem up). The home hero is one column, then two columns (1.05fr / 1fr, headline left, Shorten board right) from 62rem. The logged-in Pastebin is a wide two-column workspace from 62rem (composer left and sticky, list right); logged out it is a single narrow board. The navbar sticks at 4.25rem and collapses into a drawer below 75rem, where the horizontal strip turns vertical. The home tools directory puts each row on one line from 46rem. Footer sits 4.5rem below content.
+Single column, centred, max width 78rem (`--page-max`) with a fluid gutter `clamp(1rem, 4vw, 2.5rem)`. Narrow form pages cap at 34rem; reading pages such as a single paste cap at 60rem (`medium`). Page sections start 3rem from the navbar. Spacing is a 4px-based rem scale (0.25 to 4.5rem, steps 1-8); gaps inside panels are 1.5rem (2rem from 40rem up). The home hero is one column, then two columns (1.05fr / 1fr, headline left, Shorten board right) from 62rem. The logged-in Pastebin is a wide two-column workspace from 62rem (composer left and sticky, list right); logged out it is a single narrow board. The logged-in Upload page follows the same workspace from 62rem (columns 1fr / 1.35fr, 2rem gap): the Upload board with the Storage board under it on the left, sticky below the navbar, and the "Your uploads" board on the right; below 62rem everything is one column, and logged out it is a narrow gate board. Rows inside the uploads board lay out by container query on the board (one line from 36rem of board width), not by viewport. The navbar sticks at 4.25rem and collapses into a drawer below 75rem, where the horizontal strip turns vertical. The home tools directory puts each row on one line from 46rem. Footer sits 4.5rem below content.
 
 ## Elevation & Depth
 
@@ -191,7 +227,7 @@ Depth is material, not atmospheric. Panels get a hard 0.4rem underside in `field
 
 ## Shapes
 
-Softly squared signage: 0.5rem on controls, 0.875rem on tickets, 1.25rem on boards, circles for stops. Every panel and field has a 2px solid ink edge (`--edge`). Planned things use dashed strokes. The ticket slip has semicircular perforation notches. Boards clip to their radius and end their header in a diagonal kerb hatch.
+Softly squared signage: 0.5rem on controls and thumbnails, 0.875rem on tickets, drop targets and inline detail panels, 1.25rem on boards, circles for stops, full pills only for small status chips and badges. Every panel and field has a 2px solid ink edge (`--edge`). Planned things use dashed strokes. The ticket slip has semicircular perforation notches. Boards clip to their radius and end their header in a diagonal kerb hatch.
 
 ## Components
 
@@ -205,8 +241,35 @@ Softly squared signage: 0.5rem on controls, 0.875rem on tickets, 1.25rem on boar
 ### Inputs / Fields
 Sunk-enamel fill, 2px ink border, 0.5rem radius, 2.875rem tall; Barlow 600 label above at 0.875rem, hint and error in 0.875rem. Hover and focus lift the fill to enamel; focus turns the border Signal Forest and adds the 4px line halo. Invalid state turns the border red with a bold red message. A mono variant is used for URL fields.
 
+### Segmented Control
+Joined keys for a one-of-few choice (a radio group). One sunk-enamel strip with a 2px ink edge and a 0.1875rem hard ink underside; keys are separated by 2px ink rules, labels in condensed uppercase 700 (1.125rem, 1.0625rem small) in Soft Ink, with an optional icon. Hover lifts a key to enamel and ink. The chosen key is Signal Forest with enamel text, like the current stop. Focus is the standard route-green outline. Legend above in Barlow 600 at 0.875rem.
+
+### Select
+A sunk field like the text input: sunk-enamel fill, 2px ink border, 0.5rem radius, 2.875rem tall (2.375rem small), native appearance removed and a chevron glyph on the right. Hover and focus behave like inputs (enamel fill; focus adds Signal Forest border and the 4px line halo).
+
+### Drop Target
+A sunk-enamel panel (0.875rem radius, 2px ink edge, centred content) holding a stop: a 3.5rem route-green ring (5px) on enamel with the upload glyph in Signal Forest, a condensed uppercase title, a secondary "Choose files" key and a soft-ink hint. On drag-over the panel lifts to enamel with a Signal Forest border and the 4px line halo, and the ring fills Signal Forest, scales 1.12 and rises 0.25rem.
+
+### Route Track (upload progress)
+Each file's journey as a stretch of line: a departure ring, a 4px hairline rail, an arrival ring (0.875rem, 3px route green). The route-green run is full width and slides in by `transform` only. While uploading, a Signal Forest head rides the end of the run; waiting, finished and stopped tracks have no head. Done fills both rings Signal Forest; failed turns the run and arrival ring Fault Red; cancelled turns run and rings Soft Ink. A rejected file gets no track, only its red message.
+
+### Upload Ticket
+A finished upload in the queue gets a compact ticket slip: Meadow Field fill, 2px dashed ink border, 0.875rem radius, the one-line Upload Link and a primary "Copy link" key. It prints in with the same 720ms clip-path reveal as the full ticket.
+
+### Upload Link
+A link on one line in the code face (500, 0.875rem). Shown without the protocol. The host and folders shrink first with an ellipsis (never below 4ch); the file part never shrinks, and a file name over 12 characters is shortened in the middle to its first and last four, as `6712…a3f1.png`. The full URL is the tooltip.
+
+### Storage Gauge
+The quota as a stretch of line: a filled Signal Forest departure ring, a 5px hairline rail, a route-green run true to scale (at least 0.25rem once anything is used), a "here" ring (Signal Forest, 4px) at the run's end, and a larger terminus ring at the quota that turns Fault Red when full. The used figure sits above in condensed 700 with tabular numbers; percentage and space left sit below in soft ink. The run travels in and the here ring arrives over 640ms.
+
+### Per-type Split
+Under the gauge, one row per file type on hairline dividers: Signal Forest category icon, name, file count and size, then a 3px hairline rail with a route-green run for that type's share, ending in a small stop ring. Empty types go Soft Ink and show no run.
+
+### Upload Row
+A row on a hairline divider: a 3.25rem thumbnail (image, or the category icon in Signal Forest on sunk enamel, 0.5rem radius, 2px edge), a name button with a chevron and the date below, a visibility badge, then Copy link (secondary) and Open (ghost). The badge is a 2px pill in condensed uppercase with a lock or globe icon: Private on sunk enamel in Soft Ink, Public on Confirm Wash in Signal Forest. The name button opens the row's own details panel in place (Own Details Rule): a sunk-enamel panel, 0.875rem radius, with a preview (image, video, audio, or a large icon), a facts list, and one action line (Rename, Make public/private, Delete) with Delete pushed to the far end. Delete arms first, turning solid red as "Confirm delete".
+
 ### Station Board (signature)
-White enamel panel, 1.25rem radius, 2px edge, enamel-thickness shadow. Header is a Signal Forest bar with title in condensed uppercase and the amber kerb hatch along its bottom. Body padding 1.5rem, 2rem from 40rem. Hosts tool UI (Shorten, Pastebin) and auth forms.
+White enamel panel, 1.25rem radius, 2px edge, enamel-thickness shadow. Header is a Signal Forest bar with title in condensed uppercase and the amber kerb hatch along its bottom. Body padding 1.5rem, 2rem from 40rem. Hosts tool UI (Shorten, Pastebin, Upload) and auth forms.
 
 ### Route Strip and Stop Marker (signature, navigation)
 The navbar is a horizontal strip of stops joined by connectors. Open stops: ring in route green, solid 5px connector, link text. Planned stops: dashed soft-ink ring and connector, soft-ink non-link label. Current page: filled Signal Forest marker scaled 1.2 with a pulsing outer ring, bold label. Hover scales marker 1.25 and washes the stop. Below 75rem the strip turns vertical in a drawer that wipes open via clip-path.
@@ -234,6 +297,7 @@ Deep green band with a route line arriving from the left and ending in a terminu
 - **Do** write colour as tokens only; each is a single `light-dark()` declaration.
 - **Do** keep focus visible: 3px route-green outline with 3px offset on everything focusable.
 - **Do** honour reduced motion; animations here are decorative.
+- **Do** draw progress and meters as route lines with stop rings (The Route Measure Rule).
 
 ### Don't:
 - **Don't** build a dark-terminal homelab dashboard or a rounded-card SaaS page; both are rejected directions.
@@ -241,3 +305,4 @@ Deep green band with a route line arriving from the left and ending in a terminu
 - **Don't** use blur, glow or glass for elevation; depth is a hard offset in a solid colour.
 - **Don't** use route green as text colour on the field; text is ink or Signal Forest.
 - **Don't** use the amber hatch for anything but planned/in-progress.
+- **Don't** draw progress or meters as filled capsule bars; they are route lines with stop rings.
