@@ -24,6 +24,11 @@ export const routes: RouteRecordRaw[] = [
     props: true
   },
   {
+    path: "/upload",
+    name: "upload",
+    component: () => import("../views/UploadView.vue")
+  },
+  {
     path: "/r/:code",
     name: "redirect",
     component: () => import("../views/RedirectView.vue"),

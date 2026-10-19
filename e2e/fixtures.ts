@@ -5,7 +5,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * here and answered by pathname, so it works whatever API host the app was built against.
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
- * `api.hasShortLink(...)`, `api.hasPaste(...)`) before navigating. For a one-off response, register `page.route(...)` in the test itself:
+ * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`) before navigating.
+ * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
@@ -18,6 +19,56 @@ export interface MockPaste {
   addedOn: string;
 }
 
+export interface MockUpload {
+  id: string;
+  originalFileName: string;
+  extension: string;
+  mimeType: string;
+  fileSize: number;
+  visibility: "public" | "private";
+  url: string;
+  uploadedOn: string;
+  updatedOn: string;
+}
+
+type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
+
+/** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
+const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCategory }[] = [
+  { mimeType: "image/png", extension: ".png", category: "image" },
+  { mimeType: "image/jpeg", extension: ".jpg", category: "image" },
+  { mimeType: "video/mp4", extension: ".mp4", category: "video" },
+  { mimeType: "audio/mpeg", extension: ".mp3", category: "audio" },
+  { mimeType: "application/pdf", extension: ".pdf", category: "document" },
+  { mimeType: "text/plain", extension: ".txt", category: "document" },
+  { mimeType: "application/zip", extension: ".zip", category: "archive" }
+];
+const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
+const MB = 1024 * 1024;
+
+/** 1×1 PNG served for every cdn file, so thumbnails and previews load. */
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk2Lb3PwAEtwJBEP5yGQAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+/** The `visibility` field and the file part of a multipart upload body. */
+const parseMultipart = (body: Buffer, contentType: string) => {
+  const boundary = contentType.match(/boundary=(.+)$/)![1];
+  const parts = body.toString("latin1").split(`--${boundary}`);
+  const field = (name: string) =>
+    parts.find((part) => part.includes(`name="${name}"`))?.split("\r\n\r\n")[1];
+  const filePart = parts.find((part) => part.includes('name="file"')) ?? "";
+  const [headers, ...content] = filePart.split("\r\n\r\n");
+  return {
+    visibility: field("visibility")?.replace(/\r\n$/, ""),
+    fileName: headers.match(/filename="([^"]*)"/)?.[1] ?? "",
+    mimeType: headers.match(/Content-Type: (\S+)/i)?.[1] ?? "",
+    // The part ends with CRLF before the next boundary.
+    size: Math.max(0, content.join("\r\n\r\n").length - 2)
+  };
+};
+
 export class MockApi {
   private user: { email: string; username: string } | null = null;
   private shortCode = "e2e123";
@@ -26,6 +77,11 @@ export class MockApi {
   /** In-memory paste store, oldest first. */
   readonly pastes: MockPaste[] = [];
   private nextPasteId = 1;
+  /** In-memory upload store, oldest first. */
+  readonly uploads: MockUpload[] = [];
+  private nextUploadId = 1;
+  private quotaBytes = 10 * 1024 * MB;
+  private cdnOrigin = "https://cdn.e2e.invalid";
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -46,6 +102,35 @@ export class MockApi {
     return paste;
   }
 
+  /** Stores an upload as if the logged-in user had sent it, and returns it. */
+  hasUpload(
+    originalFileName: string,
+    { fileSize = 2048, visibility = "private" as MockUpload["visibility"] } = {}
+  ) {
+    const extension = originalFileName.slice(originalFileName.lastIndexOf(".")).toLowerCase();
+    const type = ALLOWED_TYPES.find((allowed) => allowed.extension === extension)!;
+    const id = `${this.nextUploadId++}`.padStart(24, "0");
+    // Each upload is a minute newer than the last, so sorting by date is deterministic.
+    const uploadedOn = new Date(Date.UTC(2026, 9, 10, 12, this.uploads.length)).toISOString();
+    const upload: MockUpload = {
+      id,
+      originalFileName,
+      extension,
+      mimeType: type.mimeType,
+      fileSize,
+      visibility,
+      url: `${this.cdnOrigin}/useruploads/${"a".repeat(24)}/${id}${extension}`,
+      uploadedOn,
+      updatedOn: uploadedOn
+    };
+    this.uploads.push(upload);
+    return upload;
+  }
+
+  quotaIs(bytes: number) {
+    this.quotaBytes = bytes;
+  }
+
   shortenReturns(code: string) {
     this.shortCode = code;
   }
@@ -61,13 +146,23 @@ export class MockApi {
       "Access-Control-Allow-Origin": appOrigin,
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS"
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS"
     };
     if (request.method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers });
     }
 
     const url = new URL(request.url());
+    if (url.origin === this.cdnOrigin && url.pathname.startsWith("/useruploads/")) {
+      return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL });
+    }
+
+    const contentType = (await request.headerValue("content-type")) ?? "";
+    if (contentType.startsWith("multipart/form-data")) {
+      const response = this.receiveUpload(parseMultipart(request.postDataBuffer()!, contentType));
+      return route.fulfill({ status: response.status, headers, json: response.body });
+    }
+
     const response = this.respond(
       `${request.method()} ${url.pathname}`,
       request.postDataJSON(),
@@ -85,7 +180,12 @@ export class MockApi {
 
   private respond(
     endpoint: string,
-    body: { email?: string; paste?: string } | null,
+    body: {
+      email?: string;
+      paste?: string;
+      originalFileName?: string;
+      visibility?: MockUpload["visibility"];
+    } | null,
     query: URLSearchParams
   ): { status: number; body?: unknown; location?: string } | undefined {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
@@ -119,7 +219,16 @@ export class MockApi {
       return this.listPastes(decodeURIComponent(listRoute[1]), query);
     }
 
+    const uploadRoute = endpoint.match(/^(PATCH|DELETE) \/upload\/([^/]+)$/);
+    if (uploadRoute) {
+      return this.editUpload(uploadRoute[1], decodeURIComponent(uploadRoute[2]), body);
+    }
+
     switch (endpoint) {
+      case "GET /uploads":
+        return this.listUploads(query);
+      case "GET /uploads/usage":
+        return this.usage();
       case "GET /user":
         return this.user ? { status: 200, body: this.user } : { status: 401 };
       case "POST /auth/login":
@@ -165,6 +274,98 @@ export class MockApi {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     const [deleted] = this.pastes.splice(index, 1);
     return { status: 200, body: { message: "Paste deleted successfully.", paste: deleted } };
+  }
+
+  private usedBytes() {
+    return this.uploads.reduce((sum, upload) => sum + upload.fileSize, 0);
+  }
+
+  private usage() {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const categoryOf = (upload: MockUpload) =>
+      ALLOWED_TYPES.find((type) => type.mimeType === upload.mimeType)!.category;
+    return {
+      status: 200,
+      body: {
+        usedBytes: this.usedBytes(),
+        quotaBytes: this.quotaBytes,
+        count: this.uploads.length,
+        maxFileSizeBytes: 100 * MB,
+        allowedTypes: ALLOWED_TYPES,
+        byCategory: CATEGORIES.map((category) => {
+          const inCategory = this.uploads.filter((upload) => categoryOf(upload) === category);
+          return {
+            category,
+            bytes: inCategory.reduce((sum, upload) => sum + upload.fileSize, 0),
+            count: inCategory.length
+          };
+        })
+      }
+    };
+  }
+
+  private receiveUpload(part: ReturnType<typeof parseMultipart>) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
+    if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
+      return { status: 415, body: { error: "This file type isn't supported." } };
+    }
+    if (this.usedBytes() + part.size > this.quotaBytes) {
+      return { status: 413, body: { error: "This upload would go over your storage quota." } };
+    }
+    const upload = this.hasUpload(part.fileName, {
+      fileSize: part.size,
+      visibility: part.visibility === "public" ? "public" : "private"
+    });
+    return { status: 201, body: { message: "File uploaded successfully.", upload } };
+  }
+
+  private editUpload(
+    method: string,
+    id: string,
+    body: { originalFileName?: string; visibility?: MockUpload["visibility"] } | null
+  ) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const index = this.uploads.findIndex((upload) => upload.id === id);
+    if (index === -1) return { status: 404, body: { error: "There is no such upload." } };
+    if (method === "DELETE") {
+      this.uploads.splice(index, 1);
+      return { status: 200, body: { message: "Upload deleted successfully.", upload: { id } } };
+    }
+    const upload = this.uploads[index];
+    Object.assign(upload, body, { updatedOn: "2026-10-11T08:30:00.000Z" });
+    return { status: 200, body: { message: "Upload updated successfully.", upload } };
+  }
+
+  private listUploads(query: URLSearchParams) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const limit = Number(query.get("limit") ?? 20);
+    const page = Number(query.get("page") ?? 1);
+    const sortBy = (query.get("sortBy") ?? "uploadedOn") as keyof MockUpload;
+    const sortOrder = query.get("sortOrder") ?? "desc";
+    const visibility = query.get("visibility");
+    const q = query.get("q")?.toLowerCase();
+    const matching = this.uploads
+      .filter((upload) => !visibility || upload.visibility === visibility)
+      .filter((upload) => !q || upload.originalFileName.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const order = String(a[sortBy]).localeCompare(String(b[sortBy]), "en", { numeric: true });
+        return sortOrder === "asc" ? order : -order;
+      });
+    return {
+      status: 200,
+      body: {
+        uploads: matching.slice((page - 1) * limit, page * limit),
+        pagination: {
+          limit,
+          page,
+          total: matching.length,
+          pages: Math.ceil(matching.length / limit),
+          sortBy,
+          sortOrder
+        }
+      }
+    };
   }
 
   private listPastes(username: string, query: URLSearchParams) {
