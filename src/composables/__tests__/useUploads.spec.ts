@@ -66,6 +66,32 @@ describe("useUploads", () => {
     expect(lastUrl(fetchMock)).toContain("&visibility=public&q=holiday+2");
   });
 
+  it("doesn't reload for a search the list already shows", async () => {
+    fetchMock.mockResolvedValue(listing([]));
+    vi.useFakeTimers();
+    const { api } = mountComposable(() => useUploads());
+    await api.load();
+
+    // Only spaces: the same search as before.
+    api.query.value = "  ";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // A search, then cleared together with a filter change that already reloads without it.
+    api.query.value = "x";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    api.query.value = "";
+    await api.setVisibilityFilter("");
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(lastUrl(fetchMock)).not.toContain("q=");
+  });
+
   it("stops a pending search when unmounted", async () => {
     vi.useFakeTimers();
     const { api, wrapper } = mountComposable(() => useUploads());

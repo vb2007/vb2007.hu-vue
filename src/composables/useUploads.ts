@@ -25,6 +25,9 @@ export const useUploads = (limit = UPLOADS_PER_PAGE) => {
   /** The last failed edit, shown on its row. */
   const rowError = ref({ id: "", message: "" });
 
+  /** The search the list was last loaded with. */
+  let loadedSearch = "";
+
   const load = async () => {
     const params = new URLSearchParams({
       limit: String(limit),
@@ -35,6 +38,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE) => {
     if (visibilityFilter.value) params.set("visibility", visibilityFilter.value);
     const search = query.value.trim();
     if (search) params.set("q", search);
+    loadedSearch = search;
 
     try {
       isLoading.value = true;
@@ -77,11 +81,14 @@ export const useUploads = (limit = UPLOADS_PER_PAGE) => {
     return goToPage(1);
   };
 
-  // Typing in the search box reloads once the user pauses.
+  // Typing in the search box reloads once the user pauses, unless the list already shows that
+  // search (e.g. only spaces changed, or clearing the filters loaded it already).
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   watch(query, () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => goToPage(1), SEARCH_DELAY_MS);
+    searchTimer = setTimeout(() => {
+      if (query.value.trim() !== loadedSearch) goToPage(1);
+    }, SEARCH_DELAY_MS);
   });
   onBeforeUnmount(() => clearTimeout(searchTimer));
 

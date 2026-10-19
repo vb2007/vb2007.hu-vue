@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick } from "vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
@@ -19,6 +19,9 @@ const buttonNamed = (wrapper: VueWrapper, name: string) =>
 
 const lastUrl = (fetchMock: ReturnType<typeof mockFetch>) =>
   String(fetchMock.mock.calls.at(-1)![0]);
+
+// A list left mounted could still fire a pending search into the next test's fetch mock.
+enableAutoUnmount(afterEach);
 
 describe("UploadList", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
@@ -93,8 +96,15 @@ describe("UploadList", () => {
     expect(lastUrl(fetchMock)).toContain("q=nothing");
     expect(wrapper.find(".empty").text()).toContain("No uploads match.");
 
+    const before = fetchMock.mock.calls.length;
+    vi.useFakeTimers();
     await buttonNamed(wrapper, "Show all uploads").trigger("click");
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    vi.useRealTimers();
     await flushPromises();
+    // One reload for clearing both, not a second one for the emptied search box.
+    expect(fetchMock.mock.calls.length - before).toBe(1);
     expect(lastUrl(fetchMock)).not.toContain("visibility=");
     expect(wrapper.find<HTMLInputElement>("input[type=search]").element.value).toBe("");
     expect(wrapper.find<HTMLInputElement>("input[value=all]").element.checked).toBe(true);
