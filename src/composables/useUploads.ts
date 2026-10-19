@@ -1,0 +1,185 @@
+import { onBeforeUnmount, ref, watch } from "vue";
+import { UserUploads } from "@/constants/api";
+import { errorFrom, type Pagination } from "@/scripts/pastebin/paste";
+import type { SortOrder, Upload, UploadSortBy, UploadVisibility } from "@/scripts/uploads/upload";
+
+export const UPLOADS_PER_PAGE = 10;
+export const SEARCH_DELAY_MS = 300;
+
+export type UploadAction = "rename" | "visibility" | "delete";
+
+/** The logged-in user's uploads, a page at a time, with search, filter, sort and edits. */
+export const useUploads = (limit = UPLOADS_PER_PAGE) => {
+  const uploads = ref<Upload[]>([]);
+  const pagination = ref<Pagination | null>(null);
+  const page = ref(1);
+  const sortBy = ref<UploadSortBy>("uploadedOn");
+  const sortOrder = ref<SortOrder>("desc");
+  const visibilityFilter = ref<UploadVisibility | "">("");
+  const query = ref("");
+  const isLoading = ref(false);
+  const errorMessage = ref("");
+  /** The row an edit is running on, and which edit. */
+  const busyId = ref("");
+  const busyAction = ref<UploadAction | "">("");
+  /** The last failed edit, shown on its row. */
+  const rowError = ref({ id: "", message: "" });
+
+  const load = async () => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      page: String(page.value),
+      sortBy: sortBy.value,
+      sortOrder: sortOrder.value
+    });
+    if (visibilityFilter.value) params.set("visibility", visibilityFilter.value);
+    const search = query.value.trim();
+    if (search) params.set("q", search);
+
+    try {
+      isLoading.value = true;
+      errorMessage.value = "";
+
+      const response = await fetch(`${UserUploads.uploads}?${params}`, {
+        method: "GET",
+        credentials: "include"
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        uploads.value = data.uploads;
+        pagination.value = data.pagination;
+      } else {
+        errorMessage.value = await errorFrom(response, "Failed to load your uploads");
+        console.error("Failed to load uploads: ", response.status);
+      }
+    } catch (error) {
+      errorMessage.value = "Error connecting to server";
+      console.error("Error loading uploads: ", error);
+    } finally {
+      isLoading.value = false;
+    }
+  };
+
+  const goToPage = (target: number) => {
+    page.value = target;
+    return load();
+  };
+
+  const setSort = (by: UploadSortBy, order: SortOrder) => {
+    sortBy.value = by;
+    sortOrder.value = order;
+    return goToPage(1);
+  };
+
+  const setVisibilityFilter = (visibility: UploadVisibility | "") => {
+    visibilityFilter.value = visibility;
+    return goToPage(1);
+  };
+
+  // Typing in the search box reloads once the user pauses.
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  watch(query, () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => goToPage(1), SEARCH_DELAY_MS);
+  });
+  onBeforeUnmount(() => clearTimeout(searchTimer));
+
+  /** Runs one edit on a row, keeping `busyId`/`rowError` in step. Returns whether it worked. */
+  const edit = async (
+    id: string,
+    action: UploadAction,
+    init: RequestInit,
+    onDone: (response: Response) => Promise<void>
+  ) => {
+    const failure = {
+      rename: "Failed to rename upload",
+      visibility: "Failed to change visibility",
+      delete: "Failed to delete upload"
+    }[action];
+    try {
+      busyId.value = id;
+      busyAction.value = action;
+      rowError.value = { id: "", message: "" };
+
+      const response = await fetch(
+        UserUploads.uploadWithId.replace(":id", encodeURIComponent(id)),
+        {
+          ...init,
+          credentials: "include"
+        }
+      );
+
+      if (response.ok) {
+        await onDone(response);
+        return true;
+      }
+      rowError.value = { id, message: await errorFrom(response, failure) };
+      console.error(`${failure}: `, response.status);
+    } catch (error) {
+      rowError.value = { id, message: "Error connecting to server" };
+      console.error(`${failure}: `, error);
+    } finally {
+      busyId.value = "";
+      busyAction.value = "";
+    }
+    return false;
+  };
+
+  const patch = (id: string, action: UploadAction, changes: Partial<Upload>) =>
+    edit(
+      id,
+      action,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes)
+      },
+      async (response) => {
+        const { upload } = (await response.json()) as { upload: Upload };
+        // A filtered list may no longer include it, so ask again; otherwise swap it in place.
+        if (visibilityFilter.value && upload.visibility !== visibilityFilter.value) {
+          await load();
+        } else {
+          uploads.value = uploads.value.map((item) => (item.id === id ? upload : item));
+        }
+      }
+    );
+
+  const rename = (id: string, originalFileName: string) =>
+    patch(id, "rename", { originalFileName: originalFileName.trim() });
+
+  const setVisibility = (id: string, visibility: UploadVisibility) =>
+    patch(id, "visibility", { visibility });
+
+  const remove = (id: string) =>
+    edit(id, "delete", { method: "DELETE" }, async () => {
+      // Deleting the last upload on a page would leave it empty, so step back one.
+      if (uploads.value.length === 1 && page.value > 1) {
+        page.value -= 1;
+      }
+      await load();
+    });
+
+  return {
+    uploads,
+    pagination,
+    page,
+    sortBy,
+    sortOrder,
+    visibilityFilter,
+    query,
+    isLoading,
+    errorMessage,
+    busyId,
+    busyAction,
+    rowError,
+    load,
+    goToPage,
+    setSort,
+    setVisibilityFilter,
+    rename,
+    setVisibility,
+    remove
+  };
+};
