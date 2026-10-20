@@ -2,6 +2,7 @@ import { UserManagement } from "@/constants/api";
 import {
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -27,6 +28,7 @@ const fetchUserDetails = async () => {
     const data = await response.json();
     userEmail.value = data.email;
     username.value = data.username ?? "";
+    isSuperuser.value = data.isSuperuser === true;
     isLoggedIn.value = true;
     return true;
   } catch (error) {
@@ -102,5 +104,6 @@ export const logout = async () => {
 
   userEmail.value = "";
   username.value = "";
+  isSuperuser.value = false;
   isLoggedIn.value = false;
 };

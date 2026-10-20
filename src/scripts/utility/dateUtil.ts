@@ -8,3 +8,8 @@ export const formatDateTime = (iso: string, locale?: string): string => {
     new Date(iso)
   );
 };
+
+/** A readable date without the time, e.g. when an account was created. `locale` defaults to the browser's. */
+export const formatDate = (iso: string, locale?: string): string => {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
+};

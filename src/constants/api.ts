@@ -36,3 +36,9 @@ export class UserUploads {
   static upload: string = `${API_BASE_URL}/upload`;
   static uploadWithId: string = `${API_BASE_URL}/upload/:id`;
 }
+
+/** The superuser's admin endpoints (vb2007/vb2007.hu-api#120, #121). */
+export class Admin {
+  static users: string = `${API_BASE_URL}/admin/users`;
+  static uploadQuota: string = `${API_BASE_URL}/admin/users/:id/upload-quota`;
+}
