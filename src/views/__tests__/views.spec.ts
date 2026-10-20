@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { flushPromises } from "@vue/test-utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
 import HomeView from "@/views/HomeView.vue";
 import LoginView from "@/views/LoginView.vue";
 import RegisterView from "@/views/RegisterView.vue";
@@ -7,6 +7,7 @@ import ShortenView from "@/views/ShortenView.vue";
 import PastebinView from "@/views/PastebinView.vue";
 import PasteView from "@/views/PasteView.vue";
 import RedirectView from "@/views/RedirectView.vue";
+import UploadView from "@/views/UploadView.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
@@ -16,6 +17,9 @@ import PasteComposer from "@/components/features/pastebin/PasteComposer.vue";
 import PasteList from "@/components/features/pastebin/PasteList.vue";
 import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
 import ShortLinkResolver from "@/components/features/redirect/ShortLinkResolver.vue";
+import UploadComposer from "@/components/features/uploads/UploadComposer.vue";
+import UploadList from "@/components/features/uploads/UploadList.vue";
+import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn } from "@/scripts/authentication/authState";
@@ -26,6 +30,10 @@ vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
   restoreSession: vi.fn(() => Promise.resolve())
 }));
+
+// The upload page loads storage on login, so a view left over from an earlier test would read
+// that test's mock responses.
+enableAutoUnmount(afterEach);
 
 describe("views", () => {
   it("HomeView shows the hero and every destination except home", async () => {
@@ -42,7 +50,8 @@ describe("views", () => {
     ["LoginView", LoginView, LoginForm],
     ["RegisterView", RegisterView, RegisterForm],
     ["ShortenView", ShortenView, ShortenPanel],
-    ["PastebinView", PastebinView, PasteComposer]
+    ["PastebinView", PastebinView, PasteComposer],
+    ["UploadView", UploadView, UploadComposer]
   ])("%s wraps its feature in a narrow section", async (_name, view, feature) => {
     const { wrapper } = await mountWithRouter(view);
 
@@ -82,6 +91,61 @@ describe("views", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain("page=1");
+  });
+
+  it("UploadView shows the composer as the page heading and nothing else when logged out", async () => {
+    const fetchMock = mockFetch();
+    const { wrapper } = await mountWithRouter(UploadView);
+
+    expect(wrapper.findComponent(UploadComposer).props("as")).toBe("h1");
+    expect(wrapper.findComponent(UploadList).exists()).toBe(false);
+    expect(wrapper.findComponent(UsageMeter).exists()).toBe(false);
+    expect(wrapper.find(".workspace").classes()).not.toContain("workspace--split");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("UploadView loads storage once logged in and refreshes after uploads and deletes", async () => {
+    const usage = {
+      usedBytes: 10,
+      quotaBytes: 100,
+      count: 1,
+      maxFileSizeBytes: 50,
+      allowedTypes: [],
+      byCategory: []
+    };
+    const fetchMock = mockFetch();
+    fetchMock.mockImplementation((url) =>
+      Promise.resolve(
+        String(url).endsWith("/uploads/usage")
+          ? jsonResponse(200, usage)
+          : jsonResponse(200, { uploads: [], pagination: null })
+      )
+    );
+    const { wrapper } = await mountWithRouter(UploadView);
+    isLoggedIn.value = true;
+    await flushPromises();
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.find(".workspace").classes()).toContain("workspace--split");
+    expect(wrapper.findComponent(UsageMeter).props("usage")).toEqual(usage);
+    expect(wrapper.findComponent(UploadComposer).props("usage")).toEqual(usage);
+    // Views mounted by earlier tests are still alive and load on login, so count from here.
+    fetchMock.mockClear();
+
+    wrapper.findComponent(UploadComposer).vm.$emit("uploaded", { id: "u1" });
+    await flushPromises();
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toContain("https://api.test/uploads/usage");
+    expect(
+      urls.some((url) => url.startsWith("https://api.test/uploads?") && url.includes("page=1"))
+    ).toBe(true);
+
+    fetchMock.mockClear();
+    wrapper.findComponent(UploadList).vm.$emit("changed");
+    await flushPromises();
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.test/uploads/usage"
+    ]);
   });
 
   it("PasteView shows the paste from the route as the page heading", async () => {

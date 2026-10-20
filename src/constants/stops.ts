@@ -49,7 +49,7 @@ export const TOOLS_LINE: Line = {
       id: "upload",
       label: "Upload",
       to: "/upload",
-      status: "planned",
+      status: "open",
       blurb: "Upload and share files."
     },
     {

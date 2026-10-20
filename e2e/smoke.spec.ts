@@ -7,7 +7,7 @@ test("home page renders the hero, the shortener gate and the tools directory", a
   await expect(page.getByText("only logged-in users can shorten links")).toBeVisible();
   const tools = page.getByRole("region", { name: "Tools" });
   await expect(tools.getByRole("heading", { name: "Tools" })).toBeVisible();
-  await expect(tools.getByText("Planned", { exact: true })).toHaveCount(2);
+  await expect(tools.getByText("Planned", { exact: true })).toHaveCount(1);
 
   // Each row carries its own description and is itself the way in.
   await tools.getByRole("link", { name: /^Paste Share text and code snippets/ }).click();

@@ -6,6 +6,7 @@ describe("router", () => {
     ["home", "/"],
     ["shorten", "/shorten"],
     ["pastebin", "/pastebin"],
+    ["upload", "/upload"],
     ["login", "/login"],
     ["register", "/register"]
   ])("resolves the %s route to %s", (name, path) => {
