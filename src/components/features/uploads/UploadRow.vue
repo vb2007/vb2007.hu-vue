@@ -20,6 +20,8 @@ import UploadLink from "./UploadLink.vue";
 
 const props = defineProps<{
   upload: Upload;
+  /** Set when the admin looks at someone else's uploads. */
+  ownerName?: string;
   /** The edit running on this row, if any. */
   busy: UploadAction | "";
   error: string;
@@ -31,6 +33,9 @@ const props = defineProps<{
 const detailsId = useId();
 const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
+const privateAudience = computed(() =>
+  props.ownerName ? `Only ${props.ownerName} and the admin` : "Only you, while you're logged in"
+);
 
 /** Thumbnails that fail to load (e.g. a private file after logging out) fall back to the icon. */
 const thumbFailed = ref(false);
@@ -38,6 +43,14 @@ const thumbFailed = ref(false);
 const expanded = ref(false);
 
 const { copied, failed, copy } = useClipboard();
+/** Announced after copying; a private link warns who can open it. */
+const copyStatus = computed(() => {
+  if (!copied.value) return "";
+  if (!isPrivate.value) return "Link copied to clipboard";
+  return props.ownerName
+    ? `Link copied. Only ${props.ownerName} and the admin can open it while it's private.`
+    : "Link copied. Only you can open it while it's private.";
+});
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"
 );
@@ -182,7 +195,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <div class="facts__row">
           <dt>Who can open it</dt>
           <dd>
-            {{ isPrivate ? "Only you, while you're logged in" : "Anyone with the link" }}
+            {{ isPrivate ? privateAudience : "Anyone with the link" }}
           </dd>
         </div>
         <div class="facts__row facts__row--link">
@@ -243,15 +256,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       </div>
     </div>
 
-    <p class="visually-hidden" role="status">
-      {{
-        copied
-          ? isPrivate
-            ? "Link copied. Only you can open it while it's private."
-            : "Link copied to clipboard"
-          : ""
-      }}
-    </p>
+    <p class="visually-hidden" role="status">{{ copyStatus }}</p>
   </li>
 </template>
 

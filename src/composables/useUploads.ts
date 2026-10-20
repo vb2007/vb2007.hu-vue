@@ -8,10 +8,21 @@ export const SEARCH_DELAY_MS = 300;
 
 export type UploadAction = "rename" | "visibility" | "delete";
 
-/** The logged-in user's uploads, a page at a time, with search, filter, sort and edits. */
-export const useUploads = (limit = UPLOADS_PER_PAGE) => {
+/** Whose uploads an admin listing shows (vb2007/vb2007.hu-api#122). */
+export interface UploadOwner {
+  id: string;
+  username: string;
+}
+
+/**
+ * A page of uploads at a time, with search, filter, sort and edits. By default the logged-in
+ * user's own; `listUrl` points it at another listing, e.g. one user's uploads for the admin.
+ */
+export const useUploads = (limit = UPLOADS_PER_PAGE, listUrl = UserUploads.uploads) => {
   const uploads = ref<Upload[]>([]);
   const pagination = ref<Pagination | null>(null);
+  /** Set when the listing says whose uploads they are; the user's own listing doesn't. */
+  const owner = ref<UploadOwner | null>(null);
   const page = ref(1);
   const sortBy = ref<UploadSortBy>("uploadedOn");
   const sortOrder = ref<SortOrder>("desc");
@@ -44,7 +55,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE) => {
       isLoading.value = true;
       errorMessage.value = "";
 
-      const response = await fetch(`${UserUploads.uploads}?${params}`, {
+      const response = await fetch(`${listUrl}?${params}`, {
         method: "GET",
         credentials: "include"
       });
@@ -53,6 +64,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE) => {
         const data = await response.json();
         uploads.value = data.uploads;
         pagination.value = data.pagination;
+        owner.value = data.user ?? null;
       } else {
         errorMessage.value = await errorFrom(response, "Failed to load your uploads");
         console.error("Failed to load uploads: ", response.status);
@@ -171,6 +183,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE) => {
   return {
     uploads,
     pagination,
+    owner,
     page,
     sortBy,
     sortOrder,

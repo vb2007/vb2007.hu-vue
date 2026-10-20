@@ -125,6 +125,18 @@ describe("UploadRow", () => {
     expect(pub.find("[role=status]").text()).toBe("Link copied to clipboard");
   });
 
+  it("names the owner and the admin on someone else's private upload", async () => {
+    const wrapper = mountRow(anUpload("u1"), { ownerName: "anna" });
+    await wrapper.find(".row__name").trigger("click");
+    expect(wrapper.find(".facts").text()).toContain("Only anna and the admin");
+
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=status]").text()).toBe(
+      "Link copied. Only anna and the admin can open it while it's private."
+    );
+  });
+
   it("says when copying failed", async () => {
     navigator.clipboard.writeText = vi.fn(() => Promise.reject(new Error("denied")));
     vi.spyOn(console, "error").mockImplementation(() => {});

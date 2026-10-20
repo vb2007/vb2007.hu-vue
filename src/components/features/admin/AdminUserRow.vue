@@ -124,32 +124,37 @@ const useDefault = async () => {
     <StatusMessage v-if="error" tone="error">{{ error }}</StatusMessage>
 
     <div v-if="expanded" :id="detailsId" class="details">
-      <dl class="facts">
-        <div class="facts__row">
-          <dt>E-mail</dt>
-          <dd>{{ user.email }}</dd>
-        </div>
-        <div class="facts__row">
-          <dt>Used</dt>
-          <dd>
-            {{ formatBytes(usage.usedBytes) }}
-            <span class="facts__soft">({{ usage.usedBytes.toLocaleString() }} bytes)</span>
-          </dd>
-        </div>
-        <div class="facts__row">
-          <dt>Quota</dt>
-          <dd>
-            {{ formatBytes(usage.quotaBytes) }}
-            <span class="facts__soft">{{
-              usage.hasCustomQuota ? "(custom)" : "(the default)"
-            }}</span>
-          </dd>
-        </div>
-        <div v-if="usage.usedBytes > usage.quotaBytes" class="facts__row facts__row--over">
-          <dt>Over by</dt>
-          <dd>{{ formatBytes(usage.usedBytes - usage.quotaBytes) }}</dd>
-        </div>
-      </dl>
+      <div class="about">
+        <dl class="facts">
+          <div class="facts__row">
+            <dt>E-mail</dt>
+            <dd>{{ user.email }}</dd>
+          </div>
+          <div class="facts__row">
+            <dt>Used</dt>
+            <dd>
+              {{ formatBytes(usage.usedBytes) }}
+              <span class="facts__soft">({{ usage.usedBytes.toLocaleString() }} bytes)</span>
+            </dd>
+          </div>
+          <div class="facts__row">
+            <dt>Quota</dt>
+            <dd>
+              {{ formatBytes(usage.quotaBytes) }}
+              <span class="facts__soft">{{
+                usage.hasCustomQuota ? "(custom)" : "(the default)"
+              }}</span>
+            </dd>
+          </div>
+          <div v-if="usage.usedBytes > usage.quotaBytes" class="facts__row facts__row--over">
+            <dt>Over by</dt>
+            <dd>{{ formatBytes(usage.usedBytes - usage.quotaBytes) }}</dd>
+          </div>
+        </dl>
+        <BaseButton size="sm" variant="secondary" :to="`/admin/users/${user.id}/uploads`">
+          Browse uploads
+        </BaseButton>
+      </div>
 
       <form class="quota" novalidate @submit.prevent="save">
         <div class="quota__fields">
@@ -393,7 +398,14 @@ const useDefault = async () => {
   animation: open var(--dur-base) var(--ease-out);
 }
 
+.about {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-4);
+}
+
 .facts {
+  justify-self: stretch;
   display: grid;
   gap: var(--sp-2);
   margin: 0;

@@ -52,6 +52,59 @@ describe("UploadList", () => {
     expect(wrapper.find(".pager").exists()).toBe(false);
   });
 
+  it("shows another user's uploads under their name for the admin", async () => {
+    let respond!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
+    const wrapper = mount(UploadList, {
+      props: { listUrl: "https://api.test/admin/users/u9/uploads", as: "h1" }
+    });
+    await flushPromises();
+    expect(lastUrl(fetchMock)).toMatch(/^https:\/\/api\.test\/admin\/users\/u9\/uploads\?/);
+    expect(wrapper.find("h1").text()).toBe("Uploads");
+
+    respond(
+      jsonResponse(200, {
+        user: { id: "u9", username: "anna" },
+        uploads: [anUpload("a")],
+        pagination: {
+          limit: 10,
+          page: 1,
+          total: 1,
+          pages: 1,
+          sortBy: "uploadedOn",
+          sortOrder: "desc"
+        }
+      })
+    );
+    await flushPromises();
+
+    expect(wrapper.find("h1").text()).toBe("anna's uploads");
+    expect(wrapper.findComponent(UploadRow).props("ownerName")).toBe("anna");
+  });
+
+  it("says plainly when another user has no uploads", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        user: { id: "u9", username: "anna" },
+        uploads: [],
+        pagination: {
+          limit: 10,
+          page: 1,
+          total: 0,
+          pages: 0,
+          sortBy: "uploadedOn",
+          sortOrder: "desc"
+        }
+      })
+    );
+    const wrapper = mount(UploadList, {
+      props: { listUrl: "https://api.test/admin/users/u9/uploads" }
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".empty").text()).toBe("No uploads.");
+  });
+
   it("teaches what to do when there are no uploads yet", async () => {
     fetchMock.mockResolvedValueOnce(listing([]));
     const wrapper = mount(UploadList);

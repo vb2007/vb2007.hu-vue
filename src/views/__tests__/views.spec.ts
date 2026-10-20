@@ -9,6 +9,7 @@ import PasteView from "@/views/PasteView.vue";
 import RedirectView from "@/views/RedirectView.vue";
 import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
+import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
@@ -185,6 +186,35 @@ describe("views", () => {
 
     expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
     expect(wrapper.findComponent(AdminUserList).props("as")).toBe("h1");
+  });
+
+  it("AdminUserUploadsView gates everyone but the superuser", async () => {
+    isSessionChecked.value = true;
+    const { wrapper } = await mountWithRouter(AdminUserUploadsView, { props: { id: "u9" } });
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("narrow");
+    expect(wrapper.find("h1").text()).toBe("Admin");
+    expect(wrapper.findComponent(UploadList).exists()).toBe(false);
+  });
+
+  it("AdminUserUploadsView lists the user's uploads with a way back", async () => {
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(200, { uploads: [], pagination: null }));
+    isSessionChecked.value = true;
+    isLoggedIn.value = true;
+    isSuperuser.value = true;
+    const { wrapper } = await mountWithRouter(AdminUserUploadsView, { props: { id: "u 9" } });
+    await flushPromises();
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All users");
+    expect(wrapper.findComponent(UploadList).props()).toMatchObject({
+      listUrl: "https://api.test/admin/users/u%209/uploads",
+      as: "h1"
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(
+      /^https:\/\/api\.test\/admin\/users\/u%209\/uploads\?/
+    );
   });
 
   it("PasteView shows the paste from the route as the page heading", async () => {

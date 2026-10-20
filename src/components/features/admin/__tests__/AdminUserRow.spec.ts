@@ -3,13 +3,15 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
 import { QUOTA_UNITS, type AdminUser } from "@/scripts/admin/adminUser";
 import { anAdminUser } from "@/__tests__/helpers/admin";
+import { createTestRouter } from "@/__tests__/helpers/mount";
 
 const { GB } = QUOTA_UNITS;
 
 const mountRow = (user: AdminUser, props: { saving?: boolean; error?: string } = {}) => {
   const setQuota = vi.fn<(id: string, quotaBytes: number | null) => Promise<boolean>>();
   const wrapper = mount(AdminUserRow, {
-    props: { user, saving: false, error: "", setQuota, ...props }
+    props: { user, saving: false, error: "", setQuota, ...props },
+    global: { plugins: [createTestRouter()] }
   });
   return { wrapper, setQuota };
 };
@@ -82,6 +84,7 @@ describe("AdminUserRow", () => {
     expect(wrapper.find("input").attributes("inputmode")).toBe("decimal");
     expect((wrapper.find("select").element as HTMLSelectElement).value).toBe("GB");
     expect(buttonNamed(wrapper, "Use default").attributes("disabled")).toBeDefined();
+    expect(wrapper.find('a[href="/admin/users/a/uploads"]').text()).toBe("Browse uploads");
 
     await open(wrapper);
     expect(wrapper.find(".details").exists()).toBe(false);

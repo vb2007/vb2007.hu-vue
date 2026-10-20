@@ -6,7 +6,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
- * `api.hasUser(...)`) before navigating; `api.loggedInAs(..., { superuser: true })` opens the admin page.
+ * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
+ * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -91,6 +92,8 @@ export class MockApi {
   private nextPasteId = 1;
   /** In-memory upload store, oldest first. */
   readonly uploads: MockUpload[] = [];
+  /** Upload id -> the username it belongs to. */
+  private readonly uploadOwners = new Map<string, string>();
   private nextUploadId = 1;
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
@@ -143,10 +146,14 @@ export class MockApi {
     return paste;
   }
 
-  /** Stores an upload as if the logged-in user had sent it, and returns it. */
+  /** Stores an upload as if the logged-in user (or `owner`) had sent it, and returns it. */
   hasUpload(
     originalFileName: string,
-    { fileSize = 2048, visibility = "private" as MockUpload["visibility"] } = {}
+    {
+      fileSize = 2048,
+      visibility = "private" as MockUpload["visibility"],
+      owner = this.user?.username ?? "e2e"
+    } = {}
   ) {
     const extension = originalFileName.slice(originalFileName.lastIndexOf(".")).toLowerCase();
     const type = ALLOWED_TYPES.find((allowed) => allowed.extension === extension)!;
@@ -165,6 +172,7 @@ export class MockApi {
       updatedOn: uploadedOn
     };
     this.uploads.push(upload);
+    this.uploadOwners.set(id, owner);
     return upload;
   }
 
@@ -266,6 +274,10 @@ export class MockApi {
       return this.editUpload(uploadRoute[1], decodeURIComponent(uploadRoute[2]), body);
     }
 
+    const userUploadsRoute = endpoint.match(/^GET \/admin\/users\/([^/]+)\/uploads$/);
+    if (userUploadsRoute) {
+      return this.listUserUploads(decodeURIComponent(userUploadsRoute[1]), query);
+    }
     const quotaRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/upload-quota$/);
     if (quotaRoute) {
       return this.setQuota(decodeURIComponent(quotaRoute[1]), body?.quotaBytes);
@@ -275,7 +287,7 @@ export class MockApi {
       case "GET /admin/users":
         return this.listUsers(query);
       case "GET /uploads":
-        return this.listUploads(query);
+        return this.listUploads(query, this.user?.username);
       case "GET /uploads/usage":
         return this.usage();
       case "GET /user":
@@ -390,7 +402,21 @@ export class MockApi {
     return { status: 200, body: { message: "Upload updated successfully.", upload } };
   }
 
-  private listUploads(query: URLSearchParams) {
+  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
+  private listUserUploads(id: string, query: URLSearchParams) {
+    if (!this.user?.isSuperuser) {
+      return { status: 403, body: { error: "You do not have permission to perform this action." } };
+    }
+    const user = this.users.find((item) => item.id === id);
+    if (!user) return { status: 404, body: { error: "There is no such user." } };
+    const listing = this.listUploads(query, user.username);
+    return {
+      ...listing,
+      body: { ...listing.body, user: { id: user.id, username: user.username } }
+    };
+  }
+
+  private listUploads(query: URLSearchParams, owner: string | undefined) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
@@ -399,6 +425,7 @@ export class MockApi {
     const visibility = query.get("visibility");
     const q = query.get("q")?.toLowerCase();
     const matching = this.uploads
+      .filter((upload) => this.uploadOwners.get(upload.id) === owner)
       .filter((upload) => !visibility || upload.visibility === visibility)
       .filter((upload) => !q || upload.originalFileName.toLowerCase().includes(q))
       .sort((a, b) => {

@@ -52,3 +52,35 @@ test("the superuser finds a user and changes their quota", async ({ page, api, i
   await expect(page.getByText("Custom quota")).toHaveCount(0);
   expect(api.users[1].uploads.hasCustomQuota).toBe(false);
 });
+
+test("the superuser browses a user's uploads and moderates them", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna", { usedBytes: 3 * GB, count: 2 });
+  api.hasUpload("flyer.pdf", { visibility: "public", owner: "anna" });
+  api.hasUpload("spam.zip", { visibility: "public", owner: "anna" });
+  api.hasUpload("mine.txt", { owner: "vb2007" });
+
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "anna" }).click();
+  await page.getByRole("link", { name: "Browse uploads" }).click();
+
+  await expect(page).toHaveURL(/\/admin\/users\/b+1\/uploads$/);
+  await expect(page.getByRole("heading", { level: 1, name: "anna's uploads" })).toBeVisible();
+  await expect(page.getByText("2 uploads")).toBeVisible();
+  await expect(page.getByRole("button", { name: "mine.txt" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "flyer.pdf" }).click();
+  await page.getByRole("button", { name: "Make private" }).click();
+  await expect(page.getByText("Only anna and the admin")).toBeVisible();
+  expect(api.uploads[0].visibility).toBe("private");
+
+  await page.getByRole("button", { name: "flyer.pdf" }).click();
+  await page.getByRole("button", { name: "spam.zip" }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page.getByText("1 upload", { exact: true })).toBeVisible();
+  expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["flyer.pdf", "mine.txt"]);
+
+  await page.getByRole("link", { name: "All users" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Upload quotas" })).toBeVisible();
+});

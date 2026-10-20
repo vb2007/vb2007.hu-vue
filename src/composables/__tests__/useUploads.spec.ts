@@ -40,6 +40,34 @@ describe("useUploads", () => {
     expect(api.isLoading.value).toBe(false);
   });
 
+  it("reads another listing, and who its uploads belong to, when given one", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        user: { id: "u9", username: "anna" },
+        uploads: [anUpload("a")],
+        pagination: {
+          limit: 10,
+          page: 1,
+          total: 1,
+          pages: 1,
+          sortBy: "uploadedOn",
+          sortOrder: "desc"
+        }
+      })
+    );
+    const { api } = mountComposable(() =>
+      useUploads(10, "https://api.test/admin/users/u9/uploads")
+    );
+    expect(api.owner.value).toBeNull();
+
+    await api.load();
+
+    expect(lastUrl(fetchMock)).toBe(
+      "https://api.test/admin/users/u9/uploads?limit=10&page=1&sortBy=uploadedOn&sortOrder=desc"
+    );
+    expect(api.owner.value).toEqual({ id: "u9", username: "anna" });
+  });
+
   it("sends the filter, the trimmed search and the sort, and goes back to page 1", async () => {
     fetchMock.mockResolvedValue(listing([]));
     const { api } = mountComposable(() => useUploads(5));
