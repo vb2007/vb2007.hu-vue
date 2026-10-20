@@ -29,6 +29,11 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("../views/UploadView.vue")
   },
   {
+    path: "/admin",
+    name: "admin",
+    component: () => import("../views/AdminView.vue")
+  },
+  {
     path: "/r/:code",
     name: "redirect",
     component: () => import("../views/RedirectView.vue"),

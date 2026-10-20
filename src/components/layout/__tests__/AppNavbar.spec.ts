@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import AppNavbar from "@/components/layout/AppNavbar.vue";
 import RouteStrip from "@/components/ui/RouteStrip.vue";
-import { isLoggedIn, isSessionChecked, userEmail } from "@/scripts/authentication/authState";
+import {
+  isLoggedIn,
+  isSessionChecked,
+  isSuperuser,
+  userEmail
+} from "@/scripts/authentication/authState";
 import { logout, restoreSession } from "@/scripts/authentication/user";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -56,6 +61,18 @@ describe("AppNavbar", () => {
 
     expect(logout).toHaveBeenCalledOnce();
     expect(isOpen(wrapper)).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("links the admin page for the superuser only", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountNavbar();
+    expect(wrapper.find('.bar__account a[href="/admin"]').exists()).toBe(false);
+
+    isSuperuser.value = true;
+    await flushPromises();
+    expect(wrapper.find('.bar__account a[href="/admin"]').text()).toBe("Admin");
+    expect(wrapper.find(".bar__admin").exists()).toBe(true);
     wrapper.unmount();
   });
 

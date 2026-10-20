@@ -8,6 +8,8 @@ import PastebinView from "@/views/PastebinView.vue";
 import PasteView from "@/views/PasteView.vue";
 import RedirectView from "@/views/RedirectView.vue";
 import UploadView from "@/views/UploadView.vue";
+import AdminView from "@/views/AdminView.vue";
+import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
@@ -22,7 +24,7 @@ import UploadList from "@/components/features/uploads/UploadList.vue";
 import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import { TOOLS_LINE } from "@/constants/stops";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, isSessionChecked, isSuperuser } from "@/scripts/authentication/authState";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -146,6 +148,43 @@ describe("views", () => {
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "https://api.test/uploads/usage"
     ]);
+  });
+
+  it("AdminView shows nothing until the session is known", async () => {
+    const { wrapper } = await mountWithRouter(AdminView);
+
+    expect(wrapper.find("h1").exists()).toBe(false);
+  });
+
+  it("AdminView asks a visitor to log in", async () => {
+    isSessionChecked.value = true;
+    const { wrapper } = await mountWithRouter(AdminView);
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("narrow");
+    expect(wrapper.find("h1").text()).toBe("Admin");
+    expect(wrapper.find(".status").text()).toBe("Log in with the admin account to open this page.");
+    expect(wrapper.find('a[href="/login"]').exists()).toBe(true);
+    expect(wrapper.findComponent(AdminUserList).exists()).toBe(false);
+  });
+
+  it("AdminView turns away a logged-in user who isn't the admin", async () => {
+    isSessionChecked.value = true;
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(AdminView);
+
+    expect(wrapper.find(".status").text()).toBe("This page is only for the site's admin.");
+    expect(wrapper.find('a[href="/"]').text()).toBe("Back to home");
+  });
+
+  it("AdminView shows the superuser the quotas board as the page heading", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    isSessionChecked.value = true;
+    isLoggedIn.value = true;
+    isSuperuser.value = true;
+    const { wrapper } = await mountWithRouter(AdminView);
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.findComponent(AdminUserList).props("as")).toBe("h1");
   });
 
   it("PasteView shows the paste from the route as the page heading", async () => {

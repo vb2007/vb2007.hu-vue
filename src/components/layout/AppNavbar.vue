@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
-import { isLoggedIn, isSessionChecked, userEmail } from "@/scripts/authentication/authState";
+import {
+  isLoggedIn,
+  isSessionChecked,
+  isSuperuser,
+  userEmail
+} from "@/scripts/authentication/authState";
 import { logout, restoreSession } from "@/scripts/authentication/user";
 import { TOOLS_LINE } from "@/constants/stops";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -70,6 +75,9 @@ watch(() => route.fullPath, closeMenu);
 
         <div class="bar__account">
           <template v-if="isLoggedIn">
+            <BaseButton v-if="isSuperuser" class="bar__admin" size="sm" variant="ghost" to="/admin">
+              Admin
+            </BaseButton>
             <span v-if="userEmail" class="bar__user" :title="userEmail">{{ userEmail }}</span>
             <BaseButton size="sm" variant="secondary" @click="handleLogout">Log out</BaseButton>
           </template>
@@ -157,6 +165,11 @@ watch(() => route.fullPath, closeMenu);
   display: flex;
   align-items: center;
   gap: var(--sp-3);
+}
+
+/* On the admin page no stop is current, so the Admin key carries "you are here". */
+.bar__admin[aria-current="page"] {
+  background: var(--c-field-deep);
 }
 
 .bar__user {
