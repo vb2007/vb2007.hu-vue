@@ -7,10 +7,10 @@ name: Open Dev to Main PR
 # merged, because main is the default branch.
 #
 # A PR opened with the default GITHUB_TOKEN doesn't trigger other workflows, so
-# PR Tests wouldn't run on it. Add a PR_TOKEN secret (a PAT with pull-requests
-# write) to get the checks; without it the workflow falls back to GITHUB_TOKEN.
-# Either way the repo setting "Allow GitHub Actions to create and approve pull
-# requests" must be on.
+# PR Tests wouldn't run on it. Add a PR_TOKEN secret (a fine-grained PAT for
+# this repo with Pull requests: read/write and Contents: read) to get the
+# checks. Without it the workflow falls back to GITHUB_TOKEN, and the repo
+# setting "Allow GitHub Actions to create and approve pull requests" must be on.
 on:
   workflow_dispatch:
 
@@ -56,11 +56,22 @@ jobs:
 
       - name: Open the PR
         if: steps.body.outputs.count != '0'
+        env:
+          HAS_PR_TOKEN: ${{ secrets.PR_TOKEN != '' }}
         run: |
-          gh pr create --base main --head dev \
+          if [ "$HAS_PR_TOKEN" != "true" ]; then
+            echo "::warning::PR_TOKEN is not set, so GITHUB_TOKEN opens the PR and PR Tests won't run on it."
+          fi
+          status=0
+          output=$(gh pr create --base main --head dev \
             --title "Merge dev To main" \
             --body-file "${{ steps.body.outputs.body_file }}" \
-            --assignee "$ASSIGNEE"
+            --assignee "$ASSIGNEE" 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -ne 0 ] && grep -q "not permitted to create or approve pull requests" <<< "$output"; then
+            echo '::error::GitHub Actions is not allowed to open PRs here. Add a PR_TOKEN secret (a fine-grained PAT for this repo with Pull requests: read/write and Contents: read), or turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests". Only PR_TOKEN makes PR Tests run.'
+          fi
+          exit "$status"
 
       - name: Nothing to merge
         if: steps.body.outputs.count == '0'
