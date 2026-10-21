@@ -10,11 +10,20 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import UploadRow from "./UploadRow.vue";
 
+const props = withDefaults(
+  defineProps<{
+    /** Another listing than the user's own, e.g. one user's uploads for the admin. */
+    listUrl?: string;
+    as?: "h1" | "h2";
+  }>(),
+  { listUrl: undefined, as: "h2" }
+);
 const emit = defineEmits<{ changed: [] }>();
 
 const {
   uploads,
   pagination,
+  owner,
   page,
   sortBy,
   sortOrder,
@@ -32,7 +41,14 @@ const {
   rename,
   setVisibility,
   remove
-} = useUploads();
+} = useUploads(undefined, props.listUrl);
+
+/** Someone else's uploads read differently from your own. */
+const isOthers = computed(() => Boolean(props.listUrl));
+const title = computed(() => {
+  if (!isOthers.value) return "Your uploads";
+  return owner.value ? `${owner.value.username}'s uploads` : "Uploads";
+});
 
 type SortKey = `${UploadSortBy}:${SortOrder}`;
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -82,7 +98,7 @@ defineExpose({ refresh: () => goToPage(1) });
 </script>
 
 <template>
-  <StationBoard title="Your uploads">
+  <StationBoard :title="title" :as="as">
     <div class="filters">
       <BaseInput v-model="query" class="filters__search" type="search" label="Search by name" />
       <SegmentedControl v-model="filter" legend="Show" :options="FILTER_OPTIONS" size="sm" />
@@ -104,6 +120,7 @@ defineExpose({ refresh: () => goToPage(1) });
           >Show all uploads</BaseButton
         >
       </template>
+      <p v-else-if="isOthers" class="note">No uploads.</p>
       <p v-else class="note">
         No uploads yet. Drop a file on the Upload board, or choose one, and it shows up here.
       </p>
@@ -114,6 +131,7 @@ defineExpose({ refresh: () => goToPage(1) });
         v-for="upload in uploads"
         :key="upload.id"
         :upload="upload"
+        :owner-name="owner?.username"
         :busy="busyId === upload.id ? busyAction : ''"
         :error="rowError.id === upload.id ? rowError.message : ''"
         :rename="rename"

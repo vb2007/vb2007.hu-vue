@@ -34,6 +34,22 @@ describe("restoreSession", () => {
     expect(isSessionChecked.value).toBe(true);
   });
 
+  it("knows the superuser, and only takes a real true for it", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { email: "me@example.com", username: "me", isSuperuser: true })
+    );
+    const { restoreSession, isSuperuser } = await load();
+    await restoreSession();
+    expect(isSuperuser.value).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { email: "me@example.com", isSuperuser: "yes" })
+    );
+    const fresh = await load();
+    await fresh.restoreSession();
+    expect(fresh.isSuperuser.value).toBe(false);
+  });
+
   it("leaves the username empty when the API doesn't send one", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     const { restoreSession, isLoggedIn, username } = await load();
@@ -144,8 +160,9 @@ describe("login", () => {
 describe("logout", () => {
   it("asks the API to clear the cookie and resets the local state", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200));
-    const { logout, isLoggedIn, userEmail, username } = await load();
+    const { logout, isLoggedIn, isSuperuser, userEmail, username } = await load();
     isLoggedIn.value = true;
+    isSuperuser.value = true;
     userEmail.value = "me@example.com";
     username.value = "me";
 
@@ -159,6 +176,7 @@ describe("logout", () => {
     expect(isLoggedIn.value).toBe(false);
     expect(userEmail.value).toBe("");
     expect(username.value).toBe("");
+    expect(isSuperuser.value).toBe(false);
   });
 
   it("still logs out locally when the API is unreachable", async () => {

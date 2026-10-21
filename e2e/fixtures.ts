@@ -5,7 +5,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * here and answered by pathname, so it works whatever API host the app was built against.
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
- * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`) before navigating.
+ * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
+ * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
+ * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -31,6 +33,16 @@ export interface MockUpload {
   updatedOn: string;
 }
 
+/** A user as the admin list returns them (vb2007/vb2007.hu-api#120). */
+export interface MockAdminUser {
+  id: string;
+  username: string;
+  email: string;
+  createdAt: string;
+  isSuperuser: boolean;
+  uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
+}
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -45,6 +57,7 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
 ];
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
 const MB = 1024 * 1024;
+const DEFAULT_QUOTA = 10 * 1024 * MB;
 
 /** 1×1 PNG served for every cdn file, so thumbnails and previews load. */
 const PIXEL = Buffer.from(
@@ -70,7 +83,7 @@ const parseMultipart = (body: Buffer, contentType: string) => {
 };
 
 export class MockApi {
-  private user: { email: string; username: string } | null = null;
+  private user: { email: string; username: string; isSuperuser: boolean } | null = null;
   private shortCode = "e2e123";
   /** Short code -> link, filled by shortening and by `hasShortLink`. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -79,8 +92,12 @@ export class MockApi {
   private nextPasteId = 1;
   /** In-memory upload store, oldest first. */
   readonly uploads: MockUpload[] = [];
+  /** Upload id -> the username it belongs to. */
+  private readonly uploadOwners = new Map<string, string>();
   private nextUploadId = 1;
-  private quotaBytes = 10 * 1024 * MB;
+  private quotaBytes = DEFAULT_QUOTA;
+  /** Accounts the admin page lists, oldest first. */
+  readonly users: MockAdminUser[] = [];
   private cdnOrigin = "https://cdn.e2e.invalid";
   readonly unhandled: string[] = [];
 
@@ -88,8 +105,35 @@ export class MockApi {
     this.user = null;
   }
 
-  loggedInAs(email = "e2e@example.com", username = "e2e") {
-    this.user = { email, username };
+  loggedInAs(email = "e2e@example.com", username = "e2e", { superuser = false } = {}) {
+    this.user = { email, username, isSuperuser: superuser };
+  }
+
+  /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
+  hasUser(
+    username: string,
+    {
+      usedBytes = 0,
+      count = 0,
+      quotaBytes
+    }: { usedBytes?: number; count?: number; quotaBytes?: number } = {}
+  ) {
+    const user: MockAdminUser = {
+      id: `${this.users.length + 1}`.padStart(24, "b"),
+      username,
+      email: `${username}@example.com`,
+      // Each account is a day newer than the last, so sorting by date is deterministic.
+      createdAt: new Date(Date.UTC(2026, 0, 1 + this.users.length)).toISOString(),
+      isSuperuser: false,
+      uploads: {
+        usedBytes,
+        count,
+        quotaBytes: quotaBytes ?? DEFAULT_QUOTA,
+        hasCustomQuota: quotaBytes !== undefined
+      }
+    };
+    this.users.push(user);
+    return user;
   }
 
   /** Stores a paste as if `username` had created it, and returns it. */
@@ -102,10 +146,14 @@ export class MockApi {
     return paste;
   }
 
-  /** Stores an upload as if the logged-in user had sent it, and returns it. */
+  /** Stores an upload as if the logged-in user (or `owner`) had sent it, and returns it. */
   hasUpload(
     originalFileName: string,
-    { fileSize = 2048, visibility = "private" as MockUpload["visibility"] } = {}
+    {
+      fileSize = 2048,
+      visibility = "private" as MockUpload["visibility"],
+      owner = this.user?.username ?? "e2e"
+    } = {}
   ) {
     const extension = originalFileName.slice(originalFileName.lastIndexOf(".")).toLowerCase();
     const type = ALLOWED_TYPES.find((allowed) => allowed.extension === extension)!;
@@ -124,6 +172,7 @@ export class MockApi {
       updatedOn: uploadedOn
     };
     this.uploads.push(upload);
+    this.uploadOwners.set(id, owner);
     return upload;
   }
 
@@ -185,6 +234,7 @@ export class MockApi {
       paste?: string;
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
+      quotaBytes?: number | null;
     } | null,
     query: URLSearchParams
   ): { status: number; body?: unknown; location?: string } | undefined {
@@ -224,15 +274,30 @@ export class MockApi {
       return this.editUpload(uploadRoute[1], decodeURIComponent(uploadRoute[2]), body);
     }
 
+    const userUploadsRoute = endpoint.match(/^GET \/admin\/users\/([^/]+)\/uploads$/);
+    if (userUploadsRoute) {
+      return this.listUserUploads(decodeURIComponent(userUploadsRoute[1]), query);
+    }
+    const quotaRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/upload-quota$/);
+    if (quotaRoute) {
+      return this.setQuota(decodeURIComponent(quotaRoute[1]), body?.quotaBytes);
+    }
+
     switch (endpoint) {
+      case "GET /admin/users":
+        return this.listUsers(query);
       case "GET /uploads":
-        return this.listUploads(query);
+        return this.listUploads(query, this.user?.username);
       case "GET /uploads/usage":
         return this.usage();
       case "GET /user":
         return this.user ? { status: 200, body: this.user } : { status: 401 };
       case "POST /auth/login":
-        this.user = { email: body?.email ?? "e2e@example.com", username: "e2e" };
+        this.user = {
+          email: body?.email ?? "e2e@example.com",
+          username: "e2e",
+          isSuperuser: false
+        };
         return { status: 200 };
       case "POST /auth/logout":
         this.user = null;
@@ -337,7 +402,21 @@ export class MockApi {
     return { status: 200, body: { message: "Upload updated successfully.", upload } };
   }
 
-  private listUploads(query: URLSearchParams) {
+  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
+  private listUserUploads(id: string, query: URLSearchParams) {
+    if (!this.user?.isSuperuser) {
+      return { status: 403, body: { error: "You do not have permission to perform this action." } };
+    }
+    const user = this.users.find((item) => item.id === id);
+    if (!user) return { status: 404, body: { error: "There is no such user." } };
+    const listing = this.listUploads(query, user.username);
+    return {
+      ...listing,
+      body: { ...listing.body, user: { id: user.id, username: user.username } }
+    };
+  }
+
+  private listUploads(query: URLSearchParams, owner: string | undefined) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
@@ -346,6 +425,7 @@ export class MockApi {
     const visibility = query.get("visibility");
     const q = query.get("q")?.toLowerCase();
     const matching = this.uploads
+      .filter((upload) => this.uploadOwners.get(upload.id) === owner)
       .filter((upload) => !visibility || upload.visibility === visibility)
       .filter((upload) => !q || upload.originalFileName.toLowerCase().includes(q))
       .sort((a, b) => {
@@ -366,6 +446,53 @@ export class MockApi {
         }
       }
     };
+  }
+
+  private listUsers(query: URLSearchParams) {
+    if (!this.user?.isSuperuser) {
+      return { status: 403, body: { error: "You do not have permission to perform this action." } };
+    }
+    const limit = Number(query.get("limit") ?? 20);
+    const page = Number(query.get("page") ?? 1);
+    const sortBy = query.get("sortBy") ?? "usedBytes";
+    const sortOrder = query.get("sortOrder") ?? "desc";
+    const q = query.get("q")?.toLowerCase();
+    const value = (user: MockAdminUser) =>
+      sortBy === "usedBytes" ? String(user.uploads.usedBytes) : String(user[sortBy as "username"]);
+    const matching = this.users
+      .filter((user) => !q || user.username.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const order = value(a).localeCompare(value(b), "en", { numeric: true });
+        return sortOrder === "asc" ? order : -order;
+      });
+    return {
+      status: 200,
+      body: {
+        users: matching.slice((page - 1) * limit, page * limit),
+        pagination: {
+          limit,
+          page,
+          total: matching.length,
+          pages: Math.ceil(matching.length / limit),
+          sortBy,
+          sortOrder
+        }
+      }
+    };
+  }
+
+  private setQuota(id: string, quotaBytes: number | null | undefined) {
+    if (!this.user?.isSuperuser) {
+      return { status: 403, body: { error: "You do not have permission to perform this action." } };
+    }
+    const user = this.users.find((item) => item.id === id);
+    if (!user) return { status: 404, body: { error: "There is no such user." } };
+    if (quotaBytes !== null && !Number.isInteger(quotaBytes)) {
+      return { status: 400, body: { error: "The quota must be a whole number of bytes or null." } };
+    }
+    user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
+    user.uploads.hasCustomQuota = quotaBytes !== null;
+    return { status: 200, body: { message: "Upload quota updated.", user } };
   }
 
   private listPastes(username: string, query: URLSearchParams) {

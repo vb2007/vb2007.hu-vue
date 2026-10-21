@@ -113,6 +113,12 @@
       "description": "Pill on an upload row: Private on sunk enamel in soft ink, Public on Confirm Wash in Signal Forest.",
       "html": "<span class=\"ds-badge ds-badge--private\">Private</span> <span class=\"ds-badge ds-badge--public\">Public</span>",
       "css": ".ds-badge{display:inline-flex;align-items:center;gap:0.25rem;padding:0.125rem 0.5rem;border:2px solid currentColor;border-radius:999px;font-family:var(--font-board);font-size:0.9375rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}.ds-badge--private{background:var(--c-panel-sunk);color:var(--c-ink-soft)}.ds-badge--public{background:var(--c-ok-wash);color:var(--c-action)}"
+    },
+    {
+      "name": "Quota Meter", "kind": "meter",
+      "description": "Compact used-of-quota line on an admin account row: figure above, 3px hairline rail, route-green run ending in a small ring, soft-ink terminus ring at the quota; Fault Red at or over the quota.",
+      "html": "<div class=\"ds-quota\" style=\"--share:0.2\"><p class=\"ds-quota__figure\"><b>2 GB</b> of 10 GB</p><span class=\"ds-quota__line\"><span class=\"ds-quota__run\"></span><span class=\"ds-quota__stop\"></span></span></div>",
+      "css": ".ds-quota{display:grid;gap:0.5rem;min-width:12rem}.ds-quota__figure{margin:0;font-size:var(--fs-sm);font-weight:600;color:var(--c-ink-soft)}.ds-quota__figure b{color:var(--c-ink)}.ds-quota__line{position:relative;display:block;height:3px;margin:0 0.4375rem;background:var(--c-hairline)}.ds-quota__run{position:absolute;inset:0 auto 0 0;width:calc(var(--share)*100%);background:var(--c-line)}.ds-quota__run::after,.ds-quota__stop{content:\"\";position:absolute;top:50%;right:0;width:0.625rem;height:0.625rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel);transform:translate(50%,-50%)}.ds-quota__stop{width:0.875rem;height:0.875rem;border-color:var(--c-ink-soft)}"
     }
   ],
   "narrative": {

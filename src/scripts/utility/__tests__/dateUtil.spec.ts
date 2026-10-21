@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatDateTime, getCurrentYear } from "@/scripts/utility/dateUtil";
+import { formatDate, formatDateTime, getCurrentYear } from "@/scripts/utility/dateUtil";
 
 describe("getCurrentYear", () => {
   it("returns the current calendar year", () => {
@@ -16,5 +16,11 @@ describe("formatDateTime", () => {
     const formatted = formatDateTime("2026-10-10T12:00:00.000Z", "en-GB");
 
     expect(formatted).toMatch(/^10 Oct 2026, \d{2}:\d{2}$/);
+  });
+});
+
+describe("formatDate", () => {
+  it("formats a timestamp as a medium date without the time", () => {
+    expect(formatDate("2026-10-10T12:00:00.000Z", "en-GB")).toBe("10 Oct 2026");
   });
 });
