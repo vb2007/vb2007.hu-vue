@@ -9,8 +9,9 @@ name: Open Dev to Main PR
 # version (.github/scripts/version-bump-warning.mjs).
 #
 # Every push to dev (and a manual run while the PR is open) rewrites the open
-# PR's description, so PRs merged after it was opened show up too. A push
-# never opens the PR.
+# PR's description, so PRs merged after it was opened show up too, and syncs
+# the version warning: it goes away once the version is bumped. A push never
+# opens the PR.
 #
 # A PR opened with the default GITHUB_TOKEN doesn't trigger other workflows, so
 # PR Tests wouldn't run on it. Add a PR_TOKEN secret (a fine-grained PAT for
@@ -99,19 +100,35 @@ jobs:
           fi
           exit "$status"
 
-      - name: Warn if the version wasn't bumped
-        if: steps.open.outputs.url != ''
+      # One marked comment, so later runs find it: posted while package.json's
+      # version is unbumped, updated when the release it names changes, and
+      # deleted once the version is bumped on dev (often a direct push).
+      - name: Sync the version warning
+        if: steps.open.outputs.url != '' || steps.existing.outputs.url != ''
         env:
-          PR_URL: ${{ steps.open.outputs.url }}
+          PR_URL: ${{ steps.open.outputs.url || steps.existing.outputs.url }}
+          MARKER: "<!-- dev-to-main-version-warning -->"
         run: |
+          comments="repos/$GITHUB_REPOSITORY/issues/${PR_URL##*/}/comments"
+          ids=$(gh api --paginate "$comments" --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id")
           warning=$(node .github/scripts/version-bump-warning.mjs)
           if [ -z "$warning" ]; then
+            for id in $ids; do
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" --silent
+              echo "::notice::package.json was bumped, so the version warning on $PR_URL was removed."
+            done
             exit 0
           fi
           echo "::warning::$warning"
-          if ! gh pr comment "$PR_URL" --body "$warning"; then
-            echo "::error::The PR was opened, but commenting the version warning on $PR_URL failed."
-            exit 1
+          body=$(printf '%s\n%s' "$MARKER" "$warning")
+          id=$(head -n 1 <<< "$ids")
+          if [ -z "$id" ]; then
+            if ! gh api "$comments" -f body="$body" --silent; then
+              echo "::error::Commenting the version warning on $PR_URL failed."
+              exit 1
+            fi
+          elif [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)" != "$body" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" --silent
           fi
 
       - name: Nothing to merge
