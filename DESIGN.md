@@ -20,6 +20,11 @@ colors:
   danger: "oklch(0.5 0.18 27)"
   danger-wash: "oklch(0.95 0.035 27)"
   ok-wash: "oklch(0.94 0.06 140)"
+  syn-string: "oklch(0.48 0.13 38)"
+  syn-number: "oklch(0.47 0.13 255)"
+  syn-title: "oklch(0.46 0.15 330)"
+  syn-type: "oklch(0.47 0.09 205)"
+  syn-attr: "oklch(0.49 0.1 75)"
 typography:
   display:
     fontFamily: "Barlow Condensed, Barlow, system-ui, sans-serif"
@@ -170,6 +175,16 @@ A restrained-plus palette: a light green field dominates, white-green panels sit
 ### Secondary
 - **Works Amber** (`works-amber` with `on-works` ink): paired amber and dark-amber diagonal hatch, used only for the kerb stripe under board headers and planned-stop signalling.
 
+### Syntax
+Code in a paste is coloured like the lines on a metro map: each kind of token rides its own line colour, restrained like signage ink. Every syntax colour keeps at least 5:1 on Enamel White and Sunk Enamel in both themes (`--c-syn-*` in `src/styles/tokens.css`).
+- **Keywords** take Signal Forest at weight 650; **comments** take Soft Ink in italic.
+- **String Clay** (`syn-string`): strings, regexes, links.
+- **Number Blue** (`syn-number`): numbers and literals.
+- **Title Plum** (`syn-title`, weight 600): function, class and section names.
+- **Type Teal** (`syn-type`): types, built-ins, `this`/`self`.
+- **Attribute Ochre** (`syn-attr`): attributes, properties, meta (decorators, preprocessor). A dark text ochre, never the amber hatch.
+- Diffs: added lines in Signal Forest on Confirm Wash, removed lines in Fault Red on its wash.
+
 ### Neutral
 - **Meadow Field** (`field`): page background and ticket-slip fill. Dominant surface.
 - **Deep Meadow** (`field-deep`): hover wash on ghost buttons and strip stops, and the enamel-thickness underside of panels.
@@ -188,6 +203,7 @@ Dark-theme counterparts live in `src/styles/tokens.css` and the sidecar; frontma
 **The Green Neutral Rule.** Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.
 **The Hatch Means Planned Rule.** The amber diagonal hatch and dashed strokes mean "not built yet" or "work in progress", and nothing else.
 **The Route Measure Rule.** Anything that measures (upload progress, storage, a share of a total) is a stretch of line: a hairline rail, a route-green run along it, stop rings at the ends. Fault Red marks a failed run or a full terminus; Soft Ink a cancelled one.
+**The Line Colours Rule.** Syntax colours are metro line colours, one per kind of token, kept at 5:1 or more on enamel and sunk enamel in both themes. They colour code only, never UI.
 
 ## Typography
 
@@ -210,7 +226,7 @@ Dark-theme counterparts live in `src/styles/tokens.css` and the sidecar; frontma
 
 ## Layout
 
-Single column, centred, max width 78rem (`--page-max`) with a fluid gutter `clamp(1rem, 4vw, 2.5rem)`. Narrow form pages cap at 34rem; reading pages such as a single paste cap at 60rem (`medium`). Page sections start 3rem from the navbar. Spacing is a 4px-based rem scale (0.25 to 4.5rem, steps 1-8); gaps inside panels are 1.5rem (2rem from 40rem up). The home hero is one column, then two columns (1.05fr / 1fr, headline left, Shorten board right) from 62rem. The logged-in Pastebin is a wide two-column workspace from 62rem (composer left and sticky, list right); logged out it is a single narrow board. The logged-in Upload page follows the same workspace from 62rem (columns 1fr / 1.35fr, 2rem gap): the Upload board with the Storage board under it on the left, sticky below the navbar, and the "Your uploads" board on the right; below 62rem everything is one column, and logged out it is a narrow gate board. Rows inside the uploads board lay out by container query on the board (one line from 36rem of board width), not by viewport. The superuser's Admin page is one wide board ("Upload quotas") holding the account list; visitors and other users get a narrow gate board instead. An account's uploads open from its row ("Browse uploads") on a medium-width page: a ghost "All users" key above the same uploads board used on the Upload page, titled with the account's name ("anna's uploads"), with the same rows and details; who can open a private file reads "Only <name> and the admin". Its rows also lay out by container query: name and tags over the meter until 40rem of board width, then name, tags and meter on one line. On the admin page no route stop is current, so the navbar's Admin key (ghost, superuser only) takes the Deep Meadow wash as "you are here". The navbar sticks at 4.25rem and collapses into a drawer below 75rem, where the horizontal strip turns vertical. The home tools directory puts each row on one line from 46rem. Footer sits 4.5rem below content.
+Single column, centred, max width 78rem (`--page-max`) with a fluid gutter `clamp(1rem, 4vw, 2.5rem)`. Narrow form pages cap at 34rem; reading pages such as a single paste cap at 60rem (`medium`); there the meta line sits left with the view controls (language select for the owner, Rendered / Source for Markdown, Line numbers) right, wrapping under it when narrow. Page sections start 3rem from the navbar. Spacing is a 4px-based rem scale (0.25 to 4.5rem, steps 1-8); gaps inside panels are 1.5rem (2rem from 40rem up). The home hero is one column, then two columns (1.05fr / 1fr, headline left, Shorten board right) from 62rem. The logged-in Pastebin is a wide two-column workspace from 62rem (composer left and sticky, list right); logged out it is a single narrow board. The logged-in Upload page follows the same workspace from 62rem (columns 1fr / 1.35fr, 2rem gap): the Upload board with the Storage board under it on the left, sticky below the navbar, and the "Your uploads" board on the right; below 62rem everything is one column, and logged out it is a narrow gate board. Rows inside the uploads board lay out by container query on the board (one line from 36rem of board width), not by viewport. The superuser's Admin page is one wide board ("Upload quotas") holding the account list; visitors and other users get a narrow gate board instead. An account's uploads open from its row ("Browse uploads") on a medium-width page: a ghost "All users" key above the same uploads board used on the Upload page, titled with the account's name ("anna's uploads"), with the same rows and details; who can open a private file reads "Only <name> and the admin". Its rows also lay out by container query: name and tags over the meter until 40rem of board width, then name, tags and meter on one line. On the admin page no route stop is current, so the navbar's Admin key (ghost, superuser only) takes the Deep Meadow wash as "you are here". The navbar sticks at 4.25rem and collapses into a drawer below 75rem, where the horizontal strip turns vertical. The home tools directory puts each row on one line from 46rem. Footer sits 4.5rem below content.
 
 ## Elevation & Depth
 
@@ -284,6 +300,15 @@ The home page's list of destinations, one enamel board with a row per stop from 
 
 ### Ticket Slip
 Result of a shortened link or a new paste: Meadow Field fill, 2px dashed ink border, perforation notches, mono link (shown without the protocol for pastes, copied in full), actions row below. It "prints" in with a 720ms clip-path reveal.
+
+### Code Sheet (paste content)
+A paste's text on Sunk Enamel inside a 2px ink edge, 0.5rem radius, at most 70vh tall with its own scroll. Code face at 0.95rem / 1.6, highlighted in the syntax colours. Multi-line pastes get a line-number gutter (Soft Ink, right-aligned, sticky on horizontal scroll, hairline rule) and stop wrapping; single lines wrap. The gutter is `aria-hidden`, so copying and screen readers get the text alone.
+
+### Markdown Page
+A Markdown paste renders as a page of its own: Enamel White inside a 2px ink edge, 0.5rem radius, 1.5rem padding (1.5rem / 2rem from 40rem), text capped at 70ch. The author's headings use Barlow Condensed 700 in their own case, never forced uppercase (it's their text, not signage): h1 1.75rem, h2 1.25rem, the rest 1.0625rem. Links are Signal Forest 600 with a 2px route-green underline. Bullets are stops (small route-green rings); ordered numbers are condensed Soft Ink. A quote is a stretch of line leaving a stop: a 3px route-green line under a ring, text in Soft Ink. A rule is a 3px route-green line. Inline code is a small Sunk Enamel chip with a hairline edge; fenced code sits on Sunk Enamel with a 2px hairline edge, highlighted. Tables scroll on their own, rows on hairlines under a condensed header on an ink rule. Images fit the width with the 2px ink edge. Raw HTML in a paste stays text; links open in a new tab with `nofollow noopener noreferrer`, images load lazily without a referrer. Route lines here, like the meters' rails, end in round caps (`999px`).
+
+### Paste Language
+The composer has a Language select under the text: its first option reads "Auto" (empty) or "Auto: Python", following the detection as the user pastes or types; any other pick sticks until the paste is created. On the paste page the language is named in the meta line in ink ("Added … · Python · 13 lines · 394 characters"), and the list rows carry it too. A Markdown paste gets a small Rendered / Source segmented control, and Line numbers only shows for source. The paste's owner (or the admin) gets a small Language select in the toolbar that saves on change, shows the pick while saving, falls back with a red Status Message if it fails, and announces "Language changed to …".
 
 ### Status Message
 Tinted 2px-bordered strip with icon: success (Confirm Wash, forest text), error (Fault Red wash and text), info (sunk enamel, soft ink). Arrives with a short 280ms drop-in.
