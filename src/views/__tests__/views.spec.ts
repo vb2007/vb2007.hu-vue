@@ -9,8 +9,10 @@ import PasteView from "@/views/PasteView.vue";
 import RedirectView from "@/views/RedirectView.vue";
 import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
+import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
+import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
@@ -52,6 +54,7 @@ describe("views", () => {
   it.each([
     ["LoginView", LoginView, LoginForm],
     ["RegisterView", RegisterView, RegisterForm],
+    ["AccountView", AccountView, AccountPanel],
     ["ShortenView", ShortenView, ShortenPanel],
     ["PastebinView", PastebinView, PasteComposer],
     ["UploadView", UploadView, UploadComposer]

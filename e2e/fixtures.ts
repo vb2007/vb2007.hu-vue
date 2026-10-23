@@ -7,7 +7,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
- * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page.
+ * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -85,7 +85,12 @@ const parseMultipart = (body: Buffer, contentType: string) => {
 };
 
 export class MockApi {
-  private user: { email: string; username: string; isSuperuser: boolean } | null = null;
+  private user: {
+    email: string;
+    username: string;
+    isSuperuser: boolean;
+    githubId?: string;
+  } | null = null;
   private shortCode = "e2e123";
   /** Short code -> link, filled by shortening and by `hasShortLink`. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -107,8 +112,13 @@ export class MockApi {
     this.user = null;
   }
 
-  loggedInAs(email = "e2e@example.com", username = "e2e", { superuser = false } = {}) {
+  loggedInAs(
+    email = "e2e@example.com",
+    username = "e2e",
+    { superuser = false, githubLinked = false } = {}
+  ) {
     this.user = { email, username, isSuperuser: superuser };
+    if (githubLinked) this.user.githubId = "583231";
   }
 
   /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
