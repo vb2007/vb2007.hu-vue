@@ -1,5 +1,6 @@
 import { UserManagement } from "@/constants/api";
 import {
+  githubLinked,
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
@@ -29,6 +30,7 @@ const fetchUserDetails = async () => {
     userEmail.value = data.email;
     username.value = data.username ?? "";
     isSuperuser.value = data.isSuperuser === true;
+    githubLinked.value = Boolean(data.githubId);
     isLoggedIn.value = true;
     return true;
   } catch (error) {
@@ -105,5 +107,6 @@ export const logout = async () => {
   userEmail.value = "";
   username.value = "";
   isSuperuser.value = false;
+  githubLinked.value = false;
   isLoggedIn.value = false;
 };

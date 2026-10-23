@@ -78,7 +78,9 @@ watch(() => route.fullPath, closeMenu);
             <BaseButton v-if="isSuperuser" class="bar__admin" size="sm" variant="ghost" to="/admin">
               Admin
             </BaseButton>
-            <span v-if="userEmail" class="bar__user" :title="userEmail">{{ userEmail }}</span>
+            <RouterLink v-if="userEmail" to="/account" class="bar__user" :title="userEmail">
+              {{ userEmail }}
+            </RouterLink>
             <BaseButton size="sm" variant="secondary" @click="handleLogout">Log out</BaseButton>
           </template>
           <template v-else-if="isSessionChecked">
@@ -172,14 +174,32 @@ watch(() => route.fullPath, closeMenu);
   background: var(--c-field-deep);
 }
 
+/* The e-mail opens the account page; like the Admin key, it carries "you are here" there. */
 .bar__user {
-  max-width: 8rem;
+  display: inline-block;
+  max-width: 10rem;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-sm);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--c-hairline);
+  text-underline-offset: 0.2em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--c-ink-soft);
+}
+
+.bar__user:hover {
+  color: var(--c-ink);
+  text-decoration-color: var(--c-line);
+}
+
+.bar__user[aria-current="page"] {
+  background: var(--c-field-deep);
+  color: var(--c-ink);
 }
 
 @media (max-width: 75rem) {
@@ -227,8 +247,13 @@ watch(() => route.fullPath, closeMenu);
   }
 
   .bar__user {
+    display: flex;
+    align-items: center;
     flex-basis: 100%;
     max-width: none;
+    min-height: 2.75rem;
+    padding: 0 var(--sp-2);
+    margin: 0 calc(-1 * var(--sp-2));
   }
 }
 </style>
