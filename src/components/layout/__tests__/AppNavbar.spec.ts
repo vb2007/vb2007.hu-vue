@@ -48,11 +48,12 @@ describe("AppNavbar", () => {
     wrapper.unmount();
   });
 
-  it("shows the user's email and logs out", async () => {
+  it("shows the user's email as the way to their account, and logs out", async () => {
     isLoggedIn.value = true;
     userEmail.value = "me@example.com";
     const { wrapper } = await mountNavbar();
     expect(wrapper.find(".bar__user").text()).toBe("me@example.com");
+    expect(wrapper.find(".bar__user").attributes("href")).toBe("/account");
     expect(wrapper.find(".bar__user").attributes("title")).toBe("me@example.com");
 
     await toggle(wrapper).trigger("click");
