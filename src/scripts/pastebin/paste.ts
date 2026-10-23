@@ -1,3 +1,6 @@
+import { detectLanguage } from "./detect";
+import { isKnownLanguage } from "./languages";
+
 /** Limits the API's paste model enforces; it answers a bare 500 when they're broken, so check them first. */
 export const PASTE_MIN_LENGTH = 2;
 export const PASTE_MAX_LENGTH = 10000;
@@ -10,6 +13,8 @@ export interface Paste {
   /** Only the listing populates the author; a single paste carries just the user ID. */
   addedBy: string | { _id: string; username: string };
   addedOn: string;
+  /** A PASTE_LANGUAGES id (vb2007/vb2007.hu-api#123); pastes from before it have none. */
+  language?: string;
 }
 
 export interface Pagination {
@@ -26,6 +31,10 @@ export const pasteLink = (id: string) => `${window.location.origin}/pastebin/${i
 
 /** The first non-empty line, for one-line previews. */
 export const pastePreview = (content: string) => content.trim().split("\n")[0];
+
+/** The language to show a paste in: the stored one, or a fresh guess for older pastes and unknown ids. */
+export const pasteLanguage = (paste: Paste) =>
+  isKnownLanguage(paste.language) ? paste.language : detectLanguage(paste.content);
 
 /** Line and character counts, so similar pastes can be told apart, e.g. "3 lines · 120 characters". */
 export const pasteSize = (content: string) => {
