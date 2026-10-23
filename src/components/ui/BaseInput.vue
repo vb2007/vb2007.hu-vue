@@ -10,6 +10,7 @@ const props = defineProps<{
   error?: string;
   required?: boolean;
   mono?: boolean;
+  inputmode?: "text" | "decimal" | "numeric";
 }>();
 
 const model = defineModel<string>({ default: "" });
@@ -34,6 +35,7 @@ const describedBy = computed(() => {
       :type="type ?? 'text'"
       :placeholder="placeholder"
       :autocomplete="autocomplete"
+      :inputmode="inputmode"
       :required="required"
       :aria-invalid="error ? true : undefined"
       :aria-describedby="describedBy"

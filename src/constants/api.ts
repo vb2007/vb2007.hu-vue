@@ -28,3 +28,18 @@ export class Pastebin {
   static pasteWithId: string = `${API_BASE_URL}/paste/:id`;
   static pastesByUsername: string = `${API_BASE_URL}/pastes/:username`;
 }
+
+/** The logged-in user's file uploads (vb2007/vb2007.hu-api#81 to #87). */
+export class UserUploads {
+  static uploads: string = `${API_BASE_URL}/uploads`;
+  static usage: string = `${API_BASE_URL}/uploads/usage`;
+  static upload: string = `${API_BASE_URL}/upload`;
+  static uploadWithId: string = `${API_BASE_URL}/upload/:id`;
+}
+
+/** The superuser's admin endpoints (vb2007/vb2007.hu-api#120 to #122). */
+export class Admin {
+  static users: string = `${API_BASE_URL}/admin/users`;
+  static uploadQuota: string = `${API_BASE_URL}/admin/users/:id/upload-quota`;
+  static userUploads: string = `${API_BASE_URL}/admin/users/:id/uploads`;
+}

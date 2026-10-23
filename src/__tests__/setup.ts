@@ -2,6 +2,7 @@ import { afterEach, vi } from "vitest";
 import {
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -38,6 +39,7 @@ afterEach(() => {
   userEmail.value = "";
   username.value = "";
   isSessionChecked.value = false;
+  isSuperuser.value = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();

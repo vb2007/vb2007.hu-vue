@@ -24,6 +24,22 @@ export const routes: RouteRecordRaw[] = [
     props: true
   },
   {
+    path: "/upload",
+    name: "upload",
+    component: () => import("../views/UploadView.vue")
+  },
+  {
+    path: "/admin",
+    name: "admin",
+    component: () => import("../views/AdminView.vue")
+  },
+  {
+    path: "/admin/users/:id/uploads",
+    name: "admin-user-uploads",
+    component: () => import("../views/AdminUserUploadsView.vue"),
+    props: true
+  },
+  {
     path: "/r/:code",
     name: "redirect",
     component: () => import("../views/RedirectView.vue"),

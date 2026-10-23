@@ -7,12 +7,12 @@
 web
 
 ## Users
-Primary users are the owner (VB2007) and the people they share the site with: friends, acquaintances, and anyone using the tools openly. The site is the owner's own tools hub, built for their own needs and shared publicly. Visitors arrive to get a small job done (shorten a link, later paste text or share a file) or to find out what the owner hosts and how to use it.
+Primary users are the owner (VB2007) and the people they share the site with: friends, acquaintances, and anyone using the tools openly. The site is the owner's own tools hub, built for their own needs and shared publicly. Visitors arrive to get a small job done (shorten a link, paste text or share a file) or to find out what the owner hosts and how to use it.
 
 ## Product Purpose
 vb2007.hu is a free multi-tool site and the owner's personal website. It has two roles:
 
-1. **Own tools:** general-purpose utilities behind a single account system. URL shortening exists today. Pastebin, file upload and sharing, and other general features are planned.
+1. **Own tools:** general-purpose utilities behind a single account system. URL shortening, a pastebin and file upload and sharing exist today. Other general features are planned.
 2. **Directory of hosted services:** a collector for services the owner self-hosts, such as Vaultwarden, a Matrix instance, Kiwix archives, and a public API, plus past full-stack and other projects. These get separate pages on the site. Those pages are display and status information only: what the service offers, how to set it up, how to connect. The services themselves run elsewhere.
 
 Success is a visitor completing a tool task quickly, or understanding what a hosted service offers and how to start using it.
@@ -22,13 +22,13 @@ One personal, self-hosted home that holds both working tools and the owner's inf
 
 ## Operating Context
 - Vue 3 + Vite + TypeScript SPA (vue-router), consuming a separate backend API (`VITE_API_BASE_URL`, default `https://api.vb2007.hu`).
-- Accounts exist: register and log in. Authentication is a `VB-AUTH` cookie. The URL shortener and creating pastes require a logged-in user (the shortener says this "will change in the future"); reading a paste by its link is public.
-- Current routes: Home, Shorten, Pastebin (`/pastebin`, plus `/pastebin/:id` for a single paste), short link redirects (`/r/:code`, plus `/r/:code/preview` to see where a link leads and who shared it before opening it), Login, Register. Light and dark themes exist.
-- Navigation follows the route map in `src/constants/stops.ts`; Upload and Contact are shown as planned stops.
+- Accounts exist: register and log in. Authentication is a `VB-AUTH` cookie. The URL shortener, creating pastes and uploading files require a logged-in user (the shortener says this "will change in the future"); reading a paste by its link is public.
+- Current routes: Home, Shorten, Pastebin (`/pastebin`, plus `/pastebin/:id` for a single paste), Upload (`/upload`), Admin (`/admin`, only for the site's superuser: every account's upload usage and quota, plus `/admin/users/:id/uploads` to browse and moderate one account's uploads), short link redirects (`/r/:code`, plus `/r/:code/preview` to see where a link leads and who shared it before opening it), Login, Register. Light and dark themes exist.
+- Navigation follows the route map in `src/constants/stops.ts`; Contact is shown as a planned stop.
 
 ## Capabilities and Constraints
-- Shipped: URL shortening (logged-in only; links live on the site as `vb2007.hu/r/:code`), pastebin (create, list, view, delete; creating and listing are logged-in only), register, login, logout, theme switch.
-- Planned tools: file upload and sharing, contact, other general features. Upload and contact are not built.
+- Shipped: URL shortening (logged-in only; links live on the site as `vb2007.hu/r/:code`), pastebin (create, list, view, delete; creating and listing are logged-in only), file uploads (upload, list, search, rename, switch public/private, delete, storage meter; logged-in only; files live at `cdn.vb2007.hu/useruploads/<userId>/<uploadId>.<ext>`, public ones open for anyone with the link, private ones only for the logged-in owner; 10 GB per user for now), register, login, logout, theme switch. The site's one superuser (set on the API) can see each account's upload usage and set or reset its quota on `/admin`, and open, rename, make private or delete any account's uploads from there; nobody else sees that page or its link.
+- Planned tools: contact, other general features. Contact is not built.
 - Planned hosted-service pages (status and info only, one page per service): Vaultwarden, Matrix, Kiwix archives, public API, and past projects. None exist yet. Which services and what status data (live checks versus static text) are undecided.
 - Languages: English now, Hungarian planned alongside it. The UI needs to accommodate localization.
 - The Home page is currently a placeholder ("Welcome home / Meet a feature-rich site with tools for your various needs!").

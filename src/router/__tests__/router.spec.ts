@@ -6,6 +6,8 @@ describe("router", () => {
     ["home", "/"],
     ["shorten", "/shorten"],
     ["pastebin", "/pastebin"],
+    ["upload", "/upload"],
+    ["admin", "/admin"],
     ["login", "/login"],
     ["register", "/register"]
   ])("resolves the %s route to %s", (name, path) => {
@@ -25,6 +27,13 @@ describe("router", () => {
 
     expect(resolved.name).toBe("redirect-preview");
     expect(props(resolved)).toEqual({ code: "abc123", preview: true });
+  });
+
+  it("opens one user's uploads for the admin with the user's ID as a prop", () => {
+    const resolved = router.resolve({ name: "admin-user-uploads", params: { id: "u9" } });
+
+    expect(resolved.path).toBe("/admin/users/u9/uploads");
+    expect(resolved.matched[0].props.default).toBe(true);
   });
 
   it("resolves a short link and hands its code to the view as a prop", () => {

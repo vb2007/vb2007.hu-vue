@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-01T00:00:00Z",
+  "generatedAt": "2026-10-19T00:00:00Z",
   "title": "Design System: vb2007.hu",
   "extensions": {
     "colorMeta": {
@@ -10,6 +10,7 @@
       "panel-sunk": {"role": "neutral", "displayName": "Sunk Enamel", "canonical": "oklch(0.955 0.03 134)", "dark": "oklch(0.245 0.04 152)"},
       "ink": {"role": "neutral", "displayName": "Board Ink", "canonical": "oklch(0.24 0.045 152)", "dark": "oklch(0.95 0.035 138)"},
       "ink-soft": {"role": "neutral", "displayName": "Soft Ink", "canonical": "oklch(0.38 0.05 152)", "dark": "oklch(0.8 0.045 140)"},
+      "hairline": {"role": "neutral", "displayName": "Hairline", "canonical": "oklch(0.24 0.045 152 / 0.2)", "dark": "oklch(0.95 0.035 138 / 0.18)"},
       "line": {"role": "primary", "displayName": "Route Green", "canonical": "oklch(0.6 0.16 148)", "dark": "oklch(0.78 0.17 145)"},
       "action": {"role": "primary", "displayName": "Signal Forest", "canonical": "oklch(0.45 0.115 152)", "dark": "oklch(0.84 0.16 142)"},
       "action-deep": {"role": "primary", "displayName": "Deep Forest", "canonical": "oklch(0.33 0.09 152)", "dark": "oklch(0.62 0.14 145)"},
@@ -36,13 +37,14 @@
       {"name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "All state and arrival motion."},
       {"name": "dur-quick", "value": "140ms", "purpose": "Hover and press."},
       {"name": "dur-base", "value": "280ms", "purpose": "Theme, drawer, message arrival."},
-      {"name": "dur-slow", "value": "640ms", "purpose": "Hero tool arrival."}
+      {"name": "dur-slow", "value": "640ms", "purpose": "Hero tool arrival, storage gauge travel."}
     ],
     "breakpoints": [
       {"name": "board-pad", "value": "40rem"},
       {"name": "route-map", "value": "52rem"},
       {"name": "hero-two-col", "value": "62rem"},
-      {"name": "navbar-drawer", "value": "75rem (max-width)"}
+      {"name": "navbar-drawer", "value": "75rem (max-width)"},
+      {"name": "board-row", "value": "36rem (container)", "purpose": "Upload rows and their details go one line inside the uploads board."}
     ]
   },
   "components": [
@@ -87,6 +89,36 @@
       "description": "Tinted bordered feedback strip.",
       "html": "<div class=\"ds-status\">Link created.</div>",
       "css": ".ds-status{padding:0.75rem 1rem;border:2px solid currentColor;border-radius:0.5rem;background:var(--c-ok-wash);color:var(--c-action);font-weight:500}"
+    },
+    {
+      "name": "Segmented Control", "kind": "custom", "refersTo": "segment-key",
+      "description": "Joined keys for a one-of-few choice; the chosen key is Signal Forest.",
+      "html": "<div class=\"ds-seg\"><label><input type=\"radio\" name=\"ds-v\" checked><span>Private</span></label><label><input type=\"radio\" name=\"ds-v\"><span>Public</span></label></div>",
+      "css": ".ds-seg{display:flex;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);box-shadow:0 0.1875rem 0 var(--c-edge)}.ds-seg label{position:relative;display:flex;flex:1 1 auto}.ds-seg label+label{border-left:2px solid var(--c-edge)}.ds-seg input{position:absolute;opacity:0;width:1px;height:1px}.ds-seg span{display:inline-flex;flex:1;align-items:center;justify-content:center;min-height:2.625rem;padding:0 0.75rem;font-family:var(--font-board);font-size:1.125rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--c-ink-soft);cursor:pointer;transition:background-color 140ms ease,color 140ms ease}.ds-seg label:hover span{background:var(--c-panel);color:var(--c-ink)}.ds-seg input:checked+span{background:var(--c-action);color:var(--c-on-action)}.ds-seg input:focus-visible+span{outline:3px solid var(--c-line);outline-offset:3px}"
+    },
+    {
+      "name": "Route Track", "kind": "custom",
+      "description": "Upload progress as a stretch of line: rings, hairline rail, route-green run slid in by transform, Signal Forest head while moving.",
+      "html": "<div class=\"ds-track\" style=\"--progress:0.6\"><span class=\"ds-stop\"></span><span class=\"ds-rail\"><span class=\"ds-run\"><span class=\"ds-head\"></span></span></span><span class=\"ds-stop\"></span></div>",
+      "css": ".ds-track{display:flex;align-items:center;width:100%}.ds-stop{flex:none;width:0.875rem;height:0.875rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel)}.ds-rail{position:relative;flex:1;height:4px;margin:0 -1px;background:var(--c-hairline);clip-path:inset(-1rem -0.5rem -1rem 0)}.ds-run{position:absolute;inset:0;background:var(--c-line);transform:translateX(calc((var(--progress) - 1) * 100%));transition:transform 280ms cubic-bezier(0.16,1,0.3,1)}.ds-head{position:absolute;top:50%;right:0;width:0.75rem;height:0.75rem;border-radius:50%;background:var(--c-action);transform:translate(50%,-50%)}"
+    },
+    {
+      "name": "Storage Gauge", "kind": "custom",
+      "description": "Quota as a line: filled departure ring, run true to scale, here ring, terminus ring that turns danger when full.",
+      "html": "<div class=\"ds-gauge\" style=\"--at:35%\"><span class=\"ds-g-from\"></span><span class=\"ds-g-rail\"><span class=\"ds-g-run\"></span><span class=\"ds-g-here\"></span></span><span class=\"ds-g-to\"></span></div>",
+      "css": ".ds-gauge{display:flex;align-items:center}.ds-g-from,.ds-g-to{flex:none;border-radius:50%;border:3px solid var(--c-line);background:var(--c-panel)}.ds-g-from{width:1rem;height:1rem;border-color:var(--c-action);background:var(--c-action)}.ds-g-to{width:1.375rem;height:1.375rem;border-width:4px}.ds-g-rail{position:relative;flex:1;height:5px;margin:0 -1px;background:var(--c-hairline)}.ds-g-run{position:absolute;inset:0 auto 0 0;width:var(--at);background:var(--c-line)}.ds-g-here{position:absolute;top:50%;left:var(--at);width:1.125rem;height:1.125rem;border:4px solid var(--c-action);border-radius:50%;background:var(--c-panel);transform:translate(-50%,-50%)}"
+    },
+    {
+      "name": "Visibility Badge", "kind": "chip", "refersTo": "badge-public",
+      "description": "Pill on an upload row: Private on sunk enamel in soft ink, Public on Confirm Wash in Signal Forest.",
+      "html": "<span class=\"ds-badge ds-badge--private\">Private</span> <span class=\"ds-badge ds-badge--public\">Public</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:0.25rem;padding:0.125rem 0.5rem;border:2px solid currentColor;border-radius:999px;font-family:var(--font-board);font-size:0.9375rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}.ds-badge--private{background:var(--c-panel-sunk);color:var(--c-ink-soft)}.ds-badge--public{background:var(--c-ok-wash);color:var(--c-action)}"
+    },
+    {
+      "name": "Quota Meter", "kind": "meter",
+      "description": "Compact used-of-quota line on an admin account row: figure above, 3px hairline rail, route-green run ending in a small ring, soft-ink terminus ring at the quota; Fault Red at or over the quota.",
+      "html": "<div class=\"ds-quota\" style=\"--share:0.2\"><p class=\"ds-quota__figure\"><b>2 GB</b> of 10 GB</p><span class=\"ds-quota__line\"><span class=\"ds-quota__run\"></span><span class=\"ds-quota__stop\"></span></span></div>",
+      "css": ".ds-quota{display:grid;gap:0.5rem;min-width:12rem}.ds-quota__figure{margin:0;font-size:var(--fs-sm);font-weight:600;color:var(--c-ink-soft)}.ds-quota__figure b{color:var(--c-ink)}.ds-quota__line{position:relative;display:block;height:3px;margin:0 0.4375rem;background:var(--c-hairline)}.ds-quota__run{position:absolute;inset:0 auto 0 0;width:calc(var(--share)*100%);background:var(--c-line)}.ds-quota__run::after,.ds-quota__stop{content:\"\";position:absolute;top:50%;right:0;width:0.625rem;height:0.625rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel);transform:translate(50%,-50%)}.ds-quota__stop{width:0.875rem;height:0.875rem;border-color:var(--c-ink-soft)}"
     }
   ],
   "narrative": {
@@ -97,10 +129,12 @@
       {"name": "The One Line Rule", "body": "There is one route colour. It is a stroke (lines, rings, focus), not a fill for large areas.", "section": "colors"},
       {"name": "The Green Neutral Rule", "body": "Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.", "section": "colors"},
       {"name": "The Hatch Means Planned Rule", "body": "The amber diagonal hatch and dashed strokes mean not built yet or work in progress, and nothing else.", "section": "colors"},
+      {"name": "The Route Measure Rule", "body": "Anything that measures (upload progress, storage, a share of a total) is a stretch of line: a hairline rail, a route-green run along it, stop rings at the ends. Fault Red marks a failed run or a full terminus; Soft Ink a cancelled one.", "section": "colors"},
       {"name": "The Board Voice Rule", "body": "Condensed uppercase is for headings, buttons and route labels. Running text and form labels stay in Barlow sentence case.", "section": "typography"},
-      {"name": "The Thickness Rule", "body": "Raised means a hard offset in a solid colour. A blurred shadow alone never signals elevation.", "section": "elevation"}
+      {"name": "The Thickness Rule", "body": "Raised means a hard offset in a solid colour. A blurred shadow alone never signals elevation.", "section": "elevation"},
+      {"name": "The Own Details Rule", "body": "A destination's description and way in live in its own row. Never show details in a shared panel driven by hover: pointing at one thing must not change another.", "section": "components"}
     ],
-    "dos": ["Do put content on enamel panels over the green field, with a 2px ink edge and the hard thickness shadow.", "Do mark tools that do not exist yet with dashed strokes, soft-ink labels and the amber hatch.", "Do use condensed uppercase for headings, buttons and route labels.", "Do write colour as tokens only; each is a single light-dark() declaration.", "Do keep focus visible: 3px route-green outline with 3px offset.", "Do honour reduced motion."],
-    "donts": ["Don't build a dark-terminal homelab dashboard or a rounded-card SaaS page.", "Don't use gray or pure white/black.", "Don't use blur, glow or glass for elevation.", "Don't use route green as text colour on the field.", "Don't use the amber hatch for anything but planned/in-progress."]
+    "dos": ["Do put content on enamel panels over the green field, with a 2px ink edge and the hard thickness shadow.", "Do mark tools that do not exist yet with dashed strokes, soft-ink labels and the amber hatch.", "Do use condensed uppercase for headings, buttons and route labels.", "Do write colour as tokens only; each is a single light-dark() declaration.", "Do keep focus visible: 3px route-green outline with 3px offset.", "Do honour reduced motion.", "Do draw progress and meters as route lines with stop rings (The Route Measure Rule)."],
+    "donts": ["Don't build a dark-terminal homelab dashboard or a rounded-card SaaS page.", "Don't use gray or pure white/black.", "Don't use blur, glow or glass for elevation.", "Don't use route green as text colour on the field.", "Don't use the amber hatch for anything but planned/in-progress.", "Don't draw progress or meters as filled capsule bars; they are route lines with stop rings."]
   }
 }
