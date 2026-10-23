@@ -19,6 +19,8 @@ export interface MockPaste {
   content: string;
   addedBy: string;
   addedOn: string;
+  /** A highlight.js id (vb2007/vb2007.hu-api#123); left out for pastes from before it. */
+  language?: string;
 }
 
 export interface MockUpload {
@@ -136,12 +138,13 @@ export class MockApi {
     return user;
   }
 
-  /** Stores a paste as if `username` had created it, and returns it. */
-  hasPaste(content: string, username = "e2e") {
+  /** Stores a paste as if `username` had created it, in `language` if given, and returns it. */
+  hasPaste(content: string, username = "e2e", language?: string) {
     const id = `${this.nextPasteId++}`.padStart(24, "0");
     // Each paste is a minute newer than the last, so sorting by date is deterministic.
     const addedOn = new Date(Date.UTC(2026, 9, 10, 12, this.pastes.length)).toISOString();
-    const paste = { _id: id, content, addedBy: username, addedOn };
+    const paste: MockPaste = { _id: id, content, addedBy: username, addedOn };
+    if (language) paste.language = language;
     this.pastes.push(paste);
     return paste;
   }
@@ -232,6 +235,7 @@ export class MockApi {
     body: {
       email?: string;
       paste?: string;
+      language?: string;
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
       quotaBytes?: number | null;
@@ -260,9 +264,9 @@ export class MockApi {
         ? { status: 302, location: link.target }
         : { status: 404, body: { error: "The shortened URL cannot be found." } };
     }
-    const pasteRoute = endpoint.match(/^(GET|DELETE) \/paste\/([^/]+)$/);
+    const pasteRoute = endpoint.match(/^(GET|PATCH|DELETE) \/paste\/([^/]+)$/);
     if (pasteRoute) {
-      return this.respondPaste(pasteRoute[1], decodeURIComponent(pasteRoute[2]));
+      return this.respondPaste(pasteRoute[1], decodeURIComponent(pasteRoute[2]), body?.language);
     }
     const listRoute = endpoint.match(/^GET \/pastes\/([^/]+)$/);
     if (listRoute) {
@@ -317,7 +321,7 @@ export class MockApi {
           status: 201,
           body: {
             message: "Paste created successfully.",
-            paste: this.hasPaste(body?.paste ?? "", this.user.username)
+            paste: this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
           }
         };
       default:
@@ -325,7 +329,7 @@ export class MockApi {
     }
   }
 
-  private respondPaste(method: string, id: string) {
+  private respondPaste(method: string, id: string, language?: string) {
     if (!/^[0-9a-f]{24}$/.test(id)) {
       return { status: 400, body: { error: "Invalid ID format." } };
     }
@@ -333,10 +337,25 @@ export class MockApi {
     if (index === -1) {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
     }
+    const paste = this.pastes[index];
     if (method === "GET") {
-      return { status: 200, body: { paste: this.pastes[index] } };
+      // Populated like the real API does since vb2007/vb2007.hu-api#124.
+      return {
+        status: 200,
+        body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
+      };
     }
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (method === "PATCH") {
+      if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
+        return { status: 403, body: { error: "You are not authorized." } };
+      }
+      if (!/^[a-z0-9+#-]{1,32}$/.test(language ?? "")) {
+        return { status: 400, body: { error: "That isn't a valid language." } };
+      }
+      paste.language = language;
+      return { status: 200, body: { message: "Paste updated successfully.", paste } };
+    }
     const [deleted] = this.pastes.splice(index, 1);
     return { status: 200, body: { message: "Paste deleted successfully.", paste: deleted } };
   }
