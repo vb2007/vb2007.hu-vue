@@ -51,6 +51,14 @@ describe("RegisterForm", () => {
     registerStatus.value = "";
   });
 
+  it("offers registering with GitHub under the form", async () => {
+    const wrapper = await mountForm();
+
+    expect(wrapper.find('a[href="https://api.test/auth/github"]').text()).toBe(
+      "Register with GitHub"
+    );
+  });
+
   it("clears an old status and checks the session on mount", async () => {
     registerStatus.value = "invalid-email";
 

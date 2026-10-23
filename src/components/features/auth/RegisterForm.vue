@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { register, registerStatus, validateRegisterData } from "@/scripts/authentication/register";
 import { restoreSession } from "@/scripts/authentication/user";
+import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseCheckbox from "@/components/ui/BaseCheckbox.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -84,30 +85,33 @@ watch(isLoggedIn, (newVal) => {
       <BaseButton to="/shorten">Go to Shorten</BaseButton>
     </div>
 
-    <form v-else class="form" novalidate @submit.prevent="handleSubmit">
-      <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
-      <BaseInput v-model="username" label="Username" autocomplete="username" required />
-      <BaseInput
-        v-model="password"
-        label="Password"
-        type="password"
-        autocomplete="new-password"
-        required
-      />
-      <BaseInput
-        v-model="confirmPassword"
-        label="Confirm password"
-        type="password"
-        autocomplete="new-password"
-        required
-      />
-      <BaseCheckbox v-model="autologin" label="Log me in automatically after registration" />
-      <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
-      <BaseButton type="submit" block :loading="isLoading" :error="isButtonError">
-        {{ isLoading ? "Registering" : "Register" }}
-      </BaseButton>
+    <template v-else>
+      <form class="form" novalidate @submit.prevent="handleSubmit">
+        <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
+        <BaseInput v-model="username" label="Username" autocomplete="username" required />
+        <BaseInput
+          v-model="password"
+          label="Password"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
+        <BaseInput
+          v-model="confirmPassword"
+          label="Confirm password"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
+        <BaseCheckbox v-model="autologin" label="Log me in automatically after registration" />
+        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <BaseButton type="submit" block :loading="isLoading" :error="isButtonError">
+          {{ isLoading ? "Registering" : "Register" }}
+        </BaseButton>
+      </form>
+      <GithubLogin label="Register with GitHub" />
       <p class="alt">Already registered? <RouterLink to="/login">Log in</RouterLink></p>
-    </form>
+    </template>
   </StationBoard>
 </template>
 

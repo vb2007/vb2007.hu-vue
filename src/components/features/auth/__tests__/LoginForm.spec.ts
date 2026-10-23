@@ -81,6 +81,43 @@ describe("LoginForm", () => {
     expect(wrapper.find('a[href="/shorten"]').exists()).toBe(true);
   });
 
+  it("offers GitHub login under the form", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find('a[href="https://api.test/auth/github"]').text()).toBe(
+      "Log in with GitHub"
+    );
+  });
+
+  it("explains a failed GitHub login from the URL", async () => {
+    const { wrapper, router } = await mountWithRouter(
+      LoginForm,
+      {},
+      "/login?oauthError=emailExists"
+    );
+    await flushPromises();
+
+    expect(wrapper.find("form").find('[role="alert"]').text()).toContain(
+      "An account already uses your GitHub e-mail address."
+    );
+    expect(router.currentRoute.value.fullPath).toBe("/login");
+  });
+
+  it("shows a failed GitHub link to a logged-in user, with the way back to their account", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(
+      LoginForm,
+      {},
+      "/login?oauthError=githubAlreadyLinked"
+    );
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "That GitHub account is already linked to another account here."
+    );
+    expect(wrapper.text()).not.toContain("Login successful!");
+    expect(wrapper.find('a[href="/account"]').text()).toBe("Go to your account");
+  });
+
   it("clears the last status after logging out", async () => {
     isLoggedIn.value = true;
     loginStatus.value = "success";

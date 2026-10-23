@@ -52,6 +52,11 @@ export const routes: RouteRecordRaw[] = [
     props: (route) => ({ code: route.params.code, preview: true })
   },
   {
+    path: "/account",
+    name: "account",
+    component: () => import("../views/AccountView.vue")
+  },
+  {
     path: "/login",
     name: "login",
     component: () => import("../views/LoginView.vue")
