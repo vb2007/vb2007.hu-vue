@@ -10,6 +10,8 @@ export interface Paste {
   /** Only the listing populates the author; a single paste carries just the user ID. */
   addedBy: string | { _id: string; username: string };
   addedOn: string;
+  /** A PASTE_LANGUAGES id (vb2007/vb2007.hu-api#123); pastes from before it have none. */
+  language?: string;
 }
 
 export interface Pagination {

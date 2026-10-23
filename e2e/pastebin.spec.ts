@@ -73,3 +73,81 @@ test("a missing or malformed paste link explains itself", async ({ page }) => {
   await page.goto("/pastebin/not-an-id");
   await expect(page.getByRole("alert")).toHaveText("That isn't a valid paste link.");
 });
+
+test("pasting code picks its language, and the paste page highlights it", async ({ page, api }) => {
+  api.loggedInAs();
+  await page.goto("/pastebin");
+
+  const language = page.getByLabel("Language");
+  await expect(language.locator("option").first()).toHaveText("Auto");
+  await page.getByLabel("Text").fill("def greet(name):\n    print(f'Hello, {name}')");
+  await expect(language.locator("option").first()).toHaveText("Auto: Python");
+  await page.getByRole("button", { name: "Create paste" }).click();
+
+  await expect(page.getByLabel("Text")).toHaveValue("");
+  expect(api.pastes[0].language).toBe("python");
+  await expect(language).toHaveValue("auto");
+  await expect(page.locator(".paste__meta")).toContainText("Python");
+
+  await page.getByRole("link", { name: "def greet(name):" }).click();
+  const content = page.getByLabel("Paste content");
+  await expect(content.locator(".hljs-keyword").first()).toHaveText("def");
+  await expect(content).toHaveText("def greet(name):\n    print(f'Hello, {name}')");
+});
+
+test("the composer sends a language the user picked over the detected one", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  await page.goto("/pastebin");
+
+  await page.getByLabel("Text").fill("SELECT name FROM users;");
+  await expect(page.getByLabel("Language").locator("option").first()).toHaveText("Auto: SQL");
+  await page.getByLabel("Language").selectOption("plaintext");
+  await page.getByRole("button", { name: "Create paste" }).click();
+
+  await expect(page.getByLabel("Text")).toHaveValue("");
+  expect(api.pastes[0].language).toBe("plaintext");
+});
+
+test("a Markdown paste renders, with its source a click away", async ({ page, api }) => {
+  const paste = api.hasPaste(
+    "# Notes\n\nSee [the docs](https://example.com) and <script>alert(1)</script>",
+    "e2e",
+    "markdown"
+  );
+  await page.goto(`/pastebin/${paste._id}`);
+
+  const content = page.getByLabel("Paste content");
+  await expect(content.getByRole("heading", { name: "Notes" })).toBeVisible();
+  await expect(content.getByRole("link", { name: "the docs" })).toHaveAttribute(
+    "rel",
+    "nofollow noopener noreferrer"
+  );
+  await expect(content).toContainText("<script>alert(1)</script>");
+
+  await page.getByText("Source", { exact: true }).click();
+  await expect(content).toHaveText(
+    "# Notes\n\nSee [the docs](https://example.com) and <script>alert(1)</script>"
+  );
+  await expect(page.getByRole("button", { name: /^Line numbers/ })).toBeVisible();
+});
+
+test("the owner changes a paste's language; others can't", async ({ page, api }) => {
+  const own = api.hasPaste("just some words", "e2e", "plaintext");
+  const theirs = api.hasPaste("someone else's words", "other", "plaintext");
+  api.loggedInAs();
+
+  await page.goto(`/pastebin/${own._id}`);
+  await page.getByLabel("Language").selectOption("markdown");
+  await expect(page.locator(".note__language")).toHaveText("Markdown");
+  await expect(page.getByRole("status").filter({ hasText: "Language changed" })).toHaveText(
+    "Language changed to Markdown"
+  );
+  expect(api.pastes[0].language).toBe("markdown");
+
+  await page.goto(`/pastebin/${theirs._id}`);
+  await expect(page.getByLabel("Paste content")).toHaveText("someone else's words");
+  await expect(page.getByLabel("Language")).toHaveCount(0);
+});

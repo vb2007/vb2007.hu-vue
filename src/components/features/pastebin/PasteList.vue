@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
+import { pasteLanguage } from "@/scripts/pastebin/detect";
+import { languageLabel } from "@/scripts/pastebin/languages";
 import { pasteLink, pastePreview, pasteSize } from "@/scripts/pastebin/paste";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { useClipboard } from "@/composables/useClipboard";
@@ -94,7 +96,7 @@ defineExpose({ refresh: () => goToPage(1) });
         </RouterLink>
         <p class="paste__meta">
           <time :datetime="paste.addedOn">{{ formatDateTime(paste.addedOn) }}</time> ·
-          {{ pasteSize(paste.content) }}
+          {{ languageLabel(pasteLanguage(paste)) }} · {{ pasteSize(paste.content) }}
         </p>
         <div class="paste__actions">
           <BaseButton size="sm" variant="secondary" @click="copyLink(paste._id)">
