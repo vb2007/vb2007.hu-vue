@@ -1,8 +1,8 @@
 import { hljs } from "./highlight";
 import { MARKDOWN, PASTE_LANGUAGES, PLAINTEXT } from "./languages";
 
-/** Below this, highlight.js is guessing (prose scores 0 to 5, real code 8 and up). */
-const MIN_RELEVANCE = 6;
+/** Below this it's a guess: prose scores 0 to 5, code 8 and up, or 6 with a single fingerprint. */
+const MIN_SCORE = 6;
 /** highlight.js tries every grammar in turn, so only look at the start of long pastes. */
 const SAMPLE_LENGTH = 4000;
 
@@ -63,18 +63,54 @@ const fromShebang = (firstLine: string) => {
   return SHEBANGS.find(([pattern]) => pattern.test(firstLine))?.[1];
 };
 
-/** highlight.js mixes up a few look-alikes; these settle them by what only one of the pair has. */
-const LOOK_ALIKES: [detected: string, actual: string, isActual: (text: string) => boolean][] = [
-  // C has no `::`, classes, namespaces or extension-less standard headers.
-  [
-    "cpp",
-    "c",
-    (text) =>
-      !/::|\b(class|namespace|template|public:|private:|new|delete)\b|#include\s*<\w+>/.test(text)
+/**
+ * Telltale lines per language. highlight.js alone scores short snippets as low as prose, so each
+ * fingerprint a paste matches adds FINGERPRINT_BONUS to that language's score.
+ */
+const FINGERPRINTS: Record<string, RegExp[]> = {
+  bash: [/^\s*(sudo|apt(-get)?|echo|export|cd|mkdir|chmod|chown|grep|curl|wget|systemctl) /m],
+  c: [/#include\s*<\w+\.h>/, /\b(printf|malloc|free)\(/],
+  cpp: [/\bstd::/, /#include\s*<\w+>/],
+  csharp: [/^\s*using System\b/m, /\bConsole\.Write(Line)?\(/],
+  css: [
+    /^\s*[\w.#:[\]="-]+(\s*[,>+~ ]\s*[\w.#:[\]="-]+)*\s*\{\s*$/m,
+    /^\s*[\w-]+:\s*[^;{}]+;\s*$/m
   ],
-  // Python opens blocks with a colon; Ruby never ends a def or class line with one.
-  ["ruby", "python", (text) => /^\s*(def|class|if|for|while|with)\b[^\n]*:\s*$/m.test(text)]
-];
+  diff: [/^(---|\+\+\+) \S/m, /^@@ -\d+(,\d+)? \+\d+/m],
+  dockerfile: [/^FROM \S+( AS \w+)?\s*$/im, /^(RUN|COPY|WORKDIR|ENTRYPOINT|CMD|EXPOSE) /m],
+  go: [/^package \w+\s*$/m, /\bfunc (\(\w+ \*?\w+\) )?\w+\(/, /\w+ := /],
+  ini: [/^\[[\w.-]+\]\s*$/m],
+  java: [/\bSystem\.out\.print/, /\bpublic static void main\(/],
+  javascript: [/\bconsole\.\w+\(/, /\bdocument\.\w+/, /\(.*\)\s*=>/],
+  kotlin: [/\bfun \w+\(/, /\bval \w+\s*[:=]/],
+  lua: [/^\s*local \w+/m, /\bthen\s*$/m],
+  nginx: [
+    /^\s*(server|location|upstream)\b[^;]*\{\s*$/m,
+    /^\s*(listen|server_name|proxy_pass|try_files)\s+[^;]+;/m
+  ],
+  php: [/<\?php/],
+  powershell: [/\b(Get|Set|New|Remove|Write|Invoke)-[A-Z]\w+/],
+  python: [
+    /^\s*(def|class) \w+(\(.*\))?(\s*->\s*[^:]+)?:\s*$/m,
+    /^\s*(if|elif|for|while|with|try|except)\b[^\n]*:\s*$/m,
+    /^\s*print\(/m
+  ],
+  ruby: [/^\s*puts\b/m, /^\s*require ['"]/m, /\bdo \|\w+(, \w+)*\|/],
+  rust: [/\bfn \w+\s*[(<]/, /\bprintln!\(/, /\blet mut\b/],
+  sql: [/^\s*(SELECT|INSERT INTO|UPDATE|DELETE FROM|CREATE TABLE|ALTER TABLE|DROP TABLE)\b/im],
+  swift: [/\bguard let\b/, /\bfunc \w+\(.*\)\s*(->|\{|async|throws)/],
+  typescript: [/\binterface \w+/, /:\s*(string|number|boolean|void)\b/],
+  xml: [/^\s*<(\?xml|!doctype|html\b|\w+[^>]*>)/im],
+  yaml: [/^[\w-]+:\s*\n\s+[\w-]+:/m, /^\s*- [\w-]+:/m]
+};
+const FINGERPRINT_BONUS = 5;
+
+/** highlight.js's relevance for a language (0 when the paste breaks its grammar), plus fingerprints. */
+const scoreAs = (text: string, sample: string, language: string) => {
+  const result = hljs.highlight(sample, { language, ignoreIllegals: false });
+  const fingerprints = (FINGERPRINTS[language] ?? []).filter((pattern) => pattern.test(text));
+  return (result.illegal ? 0 : result.relevance) + fingerprints.length * FINGERPRINT_BONUS;
+};
 
 /** The likely language of a paste, as one of PASTE_LANGUAGES' ids. */
 export const detectLanguage = (content: string): string => {
@@ -88,13 +124,17 @@ export const detectLanguage = (content: string): string => {
   const markdown = markdownSignals(text);
   if (markdown.strong || markdown.kinds >= 3) return MARKDOWN;
 
-  const code = hljs.highlightAuto(text.slice(0, SAMPLE_LENGTH), CODE_LANGUAGES);
-  if (code.relevance < MIN_RELEVANCE || !code.language) {
+  // Ties go to the language listed first, e.g. JavaScript over TypeScript and C over C++.
+  const sample = text.slice(0, SAMPLE_LENGTH);
+  let best = { language: PLAINTEXT, score: 0 };
+  for (const language of CODE_LANGUAGES) {
+    const score = scoreAs(text, sample, language);
+    if (score > best.score) best = { language, score };
+  }
+
+  if (best.score < MIN_SCORE) {
     // Two kinds of Markdown syntax in something that isn't code, e.g. headings and lists.
     return markdown.kinds >= 2 ? MARKDOWN : PLAINTEXT;
   }
-  const lookAlike = LOOK_ALIKES.find(
-    ([detected, , isActual]) => detected === code.language && isActual(text)
-  );
-  return lookAlike?.[1] ?? code.language;
+  return best.language;
 };

@@ -484,6 +484,34 @@ class Point:
 def build(**kwargs):
     return Point(**kwargs)`
   ],
+  // Short snippets, where highlight.js alone can't tell code from prose.
+  ["a one-line Python print", "python", "print('hello')"],
+  ["a Python loop", "python", "for i in range(10):\n    print(i)"],
+  ["a two-line JavaScript snippet", "javascript", "const x = 1;\nconsole.log(x);"],
+  ["a one-line SQL query", "sql", "SELECT * FROM users;"],
+  ["a one-line Rust main", "rust", 'fn main() { println!("hi"); }'],
+  ["a Go assignment", "go", "x := 5\nfmt.Println(x)"],
+  ["a single shell command", "bash", "sudo systemctl restart nginx"],
+  ["a CSS rule", "css", "body {\n  margin: 0;\n}"],
+  // Prose that looks a little like code.
+  [
+    "a sentence with a semicolon",
+    "plaintext",
+    "Note: this is a test; ignore it. if you can, reply by friday"
+  ],
+  [
+    "a sentence about code",
+    "plaintext",
+    "The function returns null if the user is not found, otherwise the user object."
+  ],
+  [
+    "a letter",
+    "plaintext",
+    "Dear team,\nplease find the notes attached. Let me know if anything is missing.\nThanks, Anna"
+  ],
+  ["a list with a colon heading", "plaintext", "Shopping list:\nmilk\nbread\neggs"],
+  ["key: value notes", "plaintext", "Server IP: 10.0.0.5\nUser: admin\nPort: 22"],
+  ["an error message", "plaintext", "error: something failed at line 3 (exit code 1)"],
   ["a short note", "plaintext", "remember to renew the domain"],
   [
     "a paragraph of prose",
