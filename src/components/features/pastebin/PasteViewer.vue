@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { isSuperuser, username } from "@/scripts/authentication/authState";
+import { pasteLanguage } from "@/scripts/pastebin/detect";
 import { MARKDOWN, PASTE_LANGUAGES, languageLabel } from "@/scripts/pastebin/languages";
-import { pasteLanguage, pasteLink, pasteSize } from "@/scripts/pastebin/paste";
+import { pasteLink, pasteSize } from "@/scripts/pastebin/paste";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { useClipboard } from "@/composables/useClipboard";
 import { usePaste } from "@/composables/usePaste";

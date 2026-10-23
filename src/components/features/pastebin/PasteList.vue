@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
+import { pasteLanguage } from "@/scripts/pastebin/detect";
 import { languageLabel } from "@/scripts/pastebin/languages";
-import { pasteLanguage, pasteLink, pastePreview, pasteSize } from "@/scripts/pastebin/paste";
+import { pasteLink, pastePreview, pasteSize } from "@/scripts/pastebin/paste";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { useClipboard } from "@/composables/useClipboard";
 import { usePastes } from "@/composables/usePastes";

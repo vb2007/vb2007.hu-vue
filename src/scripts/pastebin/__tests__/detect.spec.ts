@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectLanguage } from "@/scripts/pastebin/detect";
+import { detectLanguage, pasteLanguage } from "@/scripts/pastebin/detect";
 import { DETECT_SAMPLES } from "./detectSamples";
 
 describe("detectLanguage", () => {
@@ -38,5 +38,17 @@ describe("detectLanguage", () => {
   it("only looks at the start of a long paste", () => {
     const python = DETECT_SAMPLES.find(([, language]) => language === "python")![2];
     expect(detectLanguage(`${python}\n${"x = 1\n".repeat(2000)}`)).toBe("python");
+  });
+});
+
+describe("pasteLanguage", () => {
+  const paste = { _id: "p1", addedBy: "u1", addedOn: "2026-10-10T12:00:00.000Z" };
+
+  it("uses the stored language", () => {
+    expect(pasteLanguage({ ...paste, content: "just words", language: "python" })).toBe("python");
+  });
+
+  it.each([undefined, "brainfuck"])("detects one when the stored language is %j", (language) => {
+    expect(pasteLanguage({ ...paste, content: '{ "a": 1 }', language })).toBe("json");
   });
 });

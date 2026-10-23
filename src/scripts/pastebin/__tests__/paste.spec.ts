@@ -3,7 +3,6 @@ import { jsonResponse } from "@/__tests__/helpers/fetch";
 import {
   PASTE_MAX_LENGTH,
   errorFrom,
-  pasteLanguage,
   pasteLink,
   pastePreview,
   pasteSize,
@@ -59,17 +58,5 @@ describe("errorFrom", () => {
 
   it("falls back to the status code when the body is not JSON and there is no status text", async () => {
     expect(await errorFrom(jsonResponse(500), "Failed")).toBe("Failed: 500");
-  });
-});
-
-describe("pasteLanguage", () => {
-  const paste = { _id: "p1", addedBy: "u1", addedOn: "2026-10-10T12:00:00.000Z" };
-
-  it("uses the stored language", () => {
-    expect(pasteLanguage({ ...paste, content: "just words", language: "python" })).toBe("python");
-  });
-
-  it.each([undefined, "brainfuck"])("detects one when the stored language is %j", (language) => {
-    expect(pasteLanguage({ ...paste, content: '{ "a": 1 }', language })).toBe("json");
   });
 });

@@ -1,5 +1,6 @@
 import { hljs } from "./highlight";
-import { MARKDOWN, PASTE_LANGUAGES, PLAINTEXT } from "./languages";
+import { MARKDOWN, PASTE_LANGUAGES, PLAINTEXT, isKnownLanguage } from "./languages";
+import type { Paste } from "./paste";
 
 /** Below this it's a guess: prose scores 0 to 5, code 8 and up, or 6 with a single fingerprint. */
 const MIN_SCORE = 6;
@@ -138,3 +139,7 @@ export const detectLanguage = (content: string): string => {
   }
   return best.language;
 };
+
+/** The language to show a paste in: the stored one, or a fresh guess for older pastes and unknown ids. */
+export const pasteLanguage = (paste: Paste) =>
+  isKnownLanguage(paste.language) ? paste.language : detectLanguage(paste.content);
