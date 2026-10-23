@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-radius",
+        "value": "999px",
+        "createdAt": "2026-10-23T14:53:13.809Z",
+        "reason": "Round caps on route lines, matching the meter rails"
+      }
+    ]
+  }
+}
