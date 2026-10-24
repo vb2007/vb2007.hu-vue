@@ -10,6 +10,8 @@ export const useGithubUnlink = () => {
 
   /** Returns whether it worked. */
   const unlink = async () => {
+    let unlinked = false;
+
     try {
       isUnlinking.value = true;
       unlinkError.value = "";
@@ -19,22 +21,22 @@ export const useGithubUnlink = () => {
         credentials: "include"
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        githubLinked.value = false;
+        githubLogin.value = "";
+        unlinked = true;
+      } else {
         unlinkError.value = await errorFrom(response, "Failed to unlink GitHub");
         console.error("Failed to unlink GitHub: ", response.status);
-        return false;
       }
-
-      githubLinked.value = false;
-      githubLogin.value = "";
-      return true;
     } catch (error) {
       unlinkError.value = "Error connecting to server";
       console.error("Error unlinking GitHub: ", error);
-      return false;
     } finally {
       isUnlinking.value = false;
     }
+
+    return unlinked;
   };
 
   return { isUnlinking, unlinkError, unlink };
