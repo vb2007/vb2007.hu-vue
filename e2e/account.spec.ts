@@ -59,11 +59,63 @@ test("the navbar e-mail opens the account, which offers to link GitHub", async (
   );
 });
 
-test("a linked GitHub account shows as linked", async ({ page, api }) => {
+test("a linked GitHub account shows its login and unlinks on the second click", async ({
+  page,
+  api
+}) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true });
   await page.goto("/account");
 
   await expect(page.getByText("Linked", { exact: true })).toBeVisible();
-  await expect(page.getByText("You can log in with GitHub.")).toBeVisible();
+  await expect(page.getByText("@octocat")).toBeVisible();
   await expect(page.getByRole("link", { name: "Link GitHub" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Unlink GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm unlink" }).click();
+
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub is unlinked. You can link it again any time."
+  );
+  await expect(page.getByText("Not linked")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Link GitHub" })).toBeVisible();
+
+  // The API forgot the link too, so it stays unlinked after a reload.
+  await page.reload();
+  await expect(page.getByText("Not linked")).toBeVisible();
+});
+
+test("an account made with GitHub can't unlink it", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, hasPassword: false });
+  await page.goto("/account");
+
+  await expect(
+    page.getByText(
+      "This account has no password, so GitHub is how you log in. It can't be unlinked."
+    )
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unlink GitHub" })).toHaveCount(0);
+});
+
+test("coming back from linking GitHub confirms it once", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true });
+  await page.goto("/account?github=linked");
+
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub is linked. You can log in with it from now on."
+  );
+  await expect(page).toHaveURL("/account");
+
+  await page.reload();
+  await expect(page.getByText("@octocat")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("a failed GitHub link is explained on the account page", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account?oauthError=githubAlreadyLinked");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "That GitHub account is already linked to another account here."
+  );
+  await expect(page).toHaveURL("/account");
 });

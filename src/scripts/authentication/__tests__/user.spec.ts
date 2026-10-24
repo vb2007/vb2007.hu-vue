@@ -64,6 +64,28 @@ describe("restoreSession", () => {
     expect(fresh.githubLinked.value).toBe(false);
   });
 
+  it("keeps the GitHub login and whether the account has a password", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        email: "me@example.com",
+        githubId: "583231",
+        githubLogin: "octocat",
+        hasPassword: false
+      })
+    );
+    const { restoreSession, githubLogin, hasPassword } = await load();
+    await restoreSession();
+    expect(githubLogin.value).toBe("octocat");
+    expect(hasPassword.value).toBe(false);
+
+    // Accounts linked before the API stored the login, and an API that doesn't send hasPassword.
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const fresh = await load();
+    await fresh.restoreSession();
+    expect(fresh.githubLogin.value).toBe("");
+    expect(fresh.hasPassword.value).toBe(true);
+  });
+
   it("leaves the username empty when the API doesn't send one", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     const { restoreSession, isLoggedIn, username } = await load();
@@ -174,10 +196,21 @@ describe("login", () => {
 describe("logout", () => {
   it("asks the API to clear the cookie and resets the local state", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200));
-    const { logout, isLoggedIn, isSuperuser, githubLinked, userEmail, username } = await load();
+    const {
+      logout,
+      isLoggedIn,
+      isSuperuser,
+      githubLinked,
+      githubLogin,
+      hasPassword,
+      userEmail,
+      username
+    } = await load();
     isLoggedIn.value = true;
     isSuperuser.value = true;
     githubLinked.value = true;
+    githubLogin.value = "octocat";
+    hasPassword.value = false;
     userEmail.value = "me@example.com";
     username.value = "me";
 
@@ -193,6 +226,8 @@ describe("logout", () => {
     expect(username.value).toBe("");
     expect(isSuperuser.value).toBe(false);
     expect(githubLinked.value).toBe(false);
+    expect(githubLogin.value).toBe("");
+    expect(hasPassword.value).toBe(true);
   });
 
   it("still logs out locally when the API is unreachable", async () => {
