@@ -97,12 +97,12 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           >
             Link GitHub
           </BaseButton>
-          <!-- Armed, it turns solid red; the ghost variant's hover fill would wash that out. -->
+          <!-- Secondary at rest so its edge lines up with the note; armed, it turns solid red. -->
           <BaseButton
             v-else-if="hasPassword"
             class="login__action"
             size="sm"
-            :variant="confirming ? 'primary' : 'ghost'"
+            :variant="confirming ? 'primary' : 'secondary'"
             :error="confirming"
             :loading="isUnlinking"
             @click="onUnlink"
@@ -216,7 +216,9 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   color: var(--c-ink-soft);
 }
 
+/* Moves to the next line whole rather than breaking at a hyphen; only a login wider than the line breaks. */
 .login__handle {
+  display: inline-block;
   color: var(--c-ink);
   font-weight: 600;
   overflow-wrap: anywhere;
