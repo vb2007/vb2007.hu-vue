@@ -3,7 +3,7 @@ import { onMounted, ref, watch, computed } from "vue";
 import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
-import { useOauthError } from "@/composables/useOauthError";
+import { useOauthResult } from "@/composables/useOauthResult";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -13,7 +13,7 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 const email = ref("");
 const password = ref("");
 const isLoading = ref(false);
-const oauthError = useOauthError();
+const { error: oauthError } = useOauthResult();
 
 const handleSubmit = async () => {
   isLoading.value = true;

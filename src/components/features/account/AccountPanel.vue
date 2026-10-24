@@ -1,26 +1,66 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
+import { computed, onBeforeUnmount, ref } from "vue";
 import {
   githubLinked,
+  githubLogin,
+  hasPassword,
   isLoggedIn,
   isSessionChecked,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
 import { UserManagement } from "@/constants/api";
-import { useOauthError } from "@/composables/useOauthError";
+import { unlinkGithub } from "@/scripts/authentication/github";
+import { useOauthResult } from "@/composables/useOauthResult";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
-const oauthError = useOauthError();
+const { error: oauthError, linked } = useOauthResult();
+
+/** The outcome of the last link or unlink, shown above the linked accounts. */
+const notice = ref<{ tone: "success" | "error"; text: string } | null>(
+  oauthError.value
+    ? { tone: "error", text: oauthError.value }
+    : linked.value
+      ? { tone: "success", text: "GitHub is linked. You can log in with it from now on." }
+      : null
+);
+
+const githubNote = computed(() => {
+  if (!githubLinked.value) return "Link it to log in with GitHub instead of typing your password.";
+  return hasPassword.value
+    ? "You can log in with GitHub or your password."
+    : "This account has no password, so GitHub is how you log in. It can't be unlinked.";
+});
+
+const unlinking = ref(false);
+
+/** Unlinking takes two clicks; the armed state wears off if the user moves on. */
+const confirming = ref(false);
+let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+const onUnlink = async () => {
+  clearTimeout(confirmTimer);
+  if (!confirming.value) {
+    confirming.value = true;
+    confirmTimer = setTimeout(() => (confirming.value = false), 4000);
+    return;
+  }
+  confirming.value = false;
+  unlinking.value = true;
+  const error = await unlinkGithub();
+  unlinking.value = false;
+  notice.value = error
+    ? { tone: "error", text: error }
+    : { tone: "success", text: "GitHub is unlinked. You can link it again any time." };
+};
+onBeforeUnmount(() => clearTimeout(confirmTimer));
 </script>
 
 <template>
   <StationBoard v-if="isLoggedIn" title="Your account" as="h1">
-    <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
-
     <dl class="facts">
       <div class="fact">
         <dt>Username</dt>
@@ -34,6 +74,7 @@ const oauthError = useOauthError();
 
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>
+      <StatusMessage v-if="notice" :tone="notice.tone">{{ notice.text }}</StatusMessage>
       <div class="login">
         <span class="login__mark"><AppIcon name="github" :size="26" /></span>
         <div class="login__main">
@@ -44,13 +85,8 @@ const oauthError = useOauthError();
               {{ githubLinked ? "Linked" : "Not linked" }}
             </span>
           </div>
-          <p class="login__note">
-            {{
-              githubLinked
-                ? "You can log in with GitHub."
-                : "Link it to log in with GitHub instead of typing your password."
-            }}
-          </p>
+          <p v-if="githubLinked && githubLogin" class="login__handle">@{{ githubLogin }}</p>
+          <p class="login__note">{{ githubNote }}</p>
           <BaseButton
             v-if="!githubLinked"
             class="login__action"
@@ -58,6 +94,18 @@ const oauthError = useOauthError();
             :href="UserManagement.Authentication.githubLink"
           >
             Link GitHub
+          </BaseButton>
+          <!-- Armed, it turns into a solid red key, like deleting an upload. -->
+          <BaseButton
+            v-else-if="hasPassword"
+            class="login__action"
+            size="sm"
+            :variant="confirming ? 'primary' : 'secondary'"
+            :error="confirming"
+            :loading="unlinking"
+            @click="onUnlink"
+          >
+            {{ unlinking ? "Unlinking" : confirming ? "Confirm unlink" : "Unlink GitHub" }}
           </BaseButton>
         </div>
       </div>
@@ -159,6 +207,11 @@ const oauthError = useOauthError();
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
+}
+
+.login__handle {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .login__note {
