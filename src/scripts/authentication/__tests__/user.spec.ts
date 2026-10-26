@@ -64,26 +64,27 @@ describe("restoreSession", () => {
     expect(fresh.githubLinked.value).toBe(false);
   });
 
-  it("keeps the GitHub login and whether the account has a password", async () => {
+  it("knows the GitHub login, and only takes a real true for hasPassword", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
         email: "me@example.com",
         githubId: "583231",
         githubLogin: "octocat",
-        hasPassword: false
+        hasPassword: true
       })
     );
     const { restoreSession, githubLogin, hasPassword } = await load();
     await restoreSession();
     expect(githubLogin.value).toBe("octocat");
-    expect(hasPassword.value).toBe(false);
+    expect(hasPassword.value).toBe(true);
 
-    // Accounts linked before the API stored the login, and an API that doesn't send hasPassword.
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { email: "me@example.com", githubId: "583231", hasPassword: "yes" })
+    );
     const fresh = await load();
     await fresh.restoreSession();
     expect(fresh.githubLogin.value).toBe("");
-    expect(fresh.hasPassword.value).toBe(true);
+    expect(fresh.hasPassword.value).toBe(false);
   });
 
   it("leaves the username empty when the API doesn't send one", async () => {
@@ -210,7 +211,7 @@ describe("logout", () => {
     isSuperuser.value = true;
     githubLinked.value = true;
     githubLogin.value = "octocat";
-    hasPassword.value = false;
+    hasPassword.value = true;
     userEmail.value = "me@example.com";
     username.value = "me";
 
@@ -227,7 +228,7 @@ describe("logout", () => {
     expect(isSuperuser.value).toBe(false);
     expect(githubLinked.value).toBe(false);
     expect(githubLogin.value).toBe("");
-    expect(hasPassword.value).toBe(true);
+    expect(hasPassword.value).toBe(false);
   });
 
   it("still logs out locally when the API is unreachable", async () => {

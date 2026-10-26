@@ -45,7 +45,7 @@ afterEach(() => {
   isSuperuser.value = false;
   githubLinked.value = false;
   githubLogin.value = "";
-  hasPassword.value = true;
+  hasPassword.value = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();

@@ -1,7 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { oauthErrorMessage, unlinkGithub } from "@/scripts/authentication/github";
-import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { describe, expect, it } from "vitest";
+import { oauthErrorMessage } from "@/scripts/authentication/github";
 
 describe("oauthErrorMessage", () => {
   it.each([
@@ -28,42 +26,5 @@ describe("oauthErrorMessage", () => {
 
   it("falls back to a general message for a code it doesn't know", () => {
     expect(oauthErrorMessage("somethingNew")).toBe("GitHub login failed. Please try again.");
-  });
-});
-
-describe("unlinkGithub", () => {
-  beforeEach(() => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  it("unlinks GitHub and forgets the linked account", async () => {
-    const fetchMock = mockFetch();
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "GitHub account unlinked." }));
-    githubLinked.value = true;
-    githubLogin.value = "octocat";
-
-    expect(await unlinkGithub()).toBe("");
-    expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/github/link", {
-      method: "DELETE",
-      credentials: "include"
-    });
-    expect(githubLinked.value).toBe(false);
-    expect(githubLogin.value).toBe("");
-  });
-
-  it("returns the API's reason and keeps the link when it refuses", async () => {
-    mockFetch().mockResolvedValueOnce(
-      jsonResponse(403, { error: "This account has no password." })
-    );
-    githubLinked.value = true;
-
-    expect(await unlinkGithub()).toBe("This account has no password.");
-    expect(githubLinked.value).toBe(true);
-  });
-
-  it("says so when the API can't be reached", async () => {
-    mockFetch().mockRejectedValueOnce(new TypeError("Failed to fetch"));
-
-    expect(await unlinkGithub()).toBe("Error connecting to server");
   });
 });

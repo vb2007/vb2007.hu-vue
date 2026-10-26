@@ -7,7 +7,7 @@ export class UserManagement {
     static logout: string = `${API_BASE_URL}/auth/logout`;
     /** GitHub login (vb2007/vb2007.hu-api#128): browser navigations, not fetch calls. */
     static github: string = `${API_BASE_URL}/auth/github`;
-    /** Navigated to for linking; `DELETE` unlinks it (vb2007/vb2007.hu-api#134). */
+    /** Also `DELETE` (a fetch call) to unlink GitHub (vb2007/vb2007.hu-api#134). */
     static githubLink: string = `${API_BASE_URL}/auth/github/link`;
   };
 

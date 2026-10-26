@@ -34,7 +34,7 @@ const fetchUserDetails = async () => {
     isSuperuser.value = data.isSuperuser === true;
     githubLinked.value = Boolean(data.githubId);
     githubLogin.value = data.githubLogin ?? "";
-    hasPassword.value = data.hasPassword !== false;
+    hasPassword.value = data.hasPassword === true;
     isLoggedIn.value = true;
     return true;
   } catch (error) {
@@ -113,6 +113,6 @@ export const logout = async () => {
   isSuperuser.value = false;
   githubLinked.value = false;
   githubLogin.value = "";
-  hasPassword.value = true;
+  hasPassword.value = false;
   isLoggedIn.value = false;
 };

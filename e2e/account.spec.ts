@@ -67,14 +67,14 @@ test("a linked GitHub account shows its login and unlinks on the second click", 
   await page.goto("/account");
 
   await expect(page.getByText("Linked", { exact: true })).toBeVisible();
-  await expect(page.getByText("@octocat")).toBeVisible();
+  await expect(page.getByText("You can log in with GitHub as @e2e-octocat.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Link GitHub" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Unlink GitHub" }).click();
   await page.getByRole("button", { name: "Confirm unlink" }).click();
 
   await expect(page.getByRole("status")).toHaveText(
-    "GitHub is unlinked. You can link it again any time."
+    "GitHub is unlinked. Log in with your password from now on."
   );
   await expect(page.getByText("Not linked")).toBeVisible();
   await expect(page.getByRole("link", { name: "Link GitHub" })).toBeVisible();
@@ -85,18 +85,16 @@ test("a linked GitHub account shows its login and unlinks on the second click", 
 });
 
 test("an account made with GitHub can't unlink it", async ({ page, api }) => {
-  api.loggedInAs("me@example.com", "me", { githubLinked: true, hasPassword: false });
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
   await page.goto("/account");
 
   await expect(
-    page.getByText(
-      "This account has no password, so GitHub is how you log in. It can't be unlinked."
-    )
+    page.getByText("This account has no password, so GitHub stays linked")
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Unlink GitHub" })).toHaveCount(0);
 });
 
-test("coming back from linking GitHub confirms it once", async ({ page, api }) => {
+test("a GitHub account the API just linked is confirmed once", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true });
   await page.goto("/account?github=linked");
 
@@ -106,8 +104,7 @@ test("coming back from linking GitHub confirms it once", async ({ page, api }) =
   await expect(page).toHaveURL("/account");
 
   await page.reload();
-  await expect(page.getByText("@octocat")).toBeVisible();
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.getByText("GitHub is linked.")).toHaveCount(0);
 });
 
 test("a failed GitHub link is explained on the account page", async ({ page, api }) => {

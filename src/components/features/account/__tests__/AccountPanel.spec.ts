@@ -10,8 +10,8 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { mountWithRouter } from "@/__tests__/helpers/mount";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 const logIn = () => {
   isSessionChecked.value = true;
@@ -51,101 +51,105 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
-  it("shows a linked GitHub account by its login, without the link key", async () => {
+  const linkGithub = (login = "octocat", password = true) => {
     logIn();
     githubLinked.value = true;
-    githubLogin.value = "octocat";
+    githubLogin.value = login;
+    hasPassword.value = password;
+  };
+
+  const unlinkKey = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+    wrapper.find("button.login__action");
+
+  it("shows the linked GitHub login with an unlink key instead of the link key", async () => {
+    linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     expect(wrapper.find(".badge").text()).toBe("Linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--on");
+    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub as @octocat.");
     expect(wrapper.find(".login__handle").text()).toBe("@octocat");
-    expect(wrapper.find(".login__note").text()).toBe(
-      "You can log in with GitHub or your password."
-    );
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').exists()).toBe(false);
-    expect(wrapper.find(".login__action").text()).toBe("Unlink GitHub");
+    expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
   });
 
-  it("leaves out the login when the API hasn't stored it yet", async () => {
-    logIn();
-    githubLinked.value = true;
+  it("leaves the login out when the API doesn't know it yet", async () => {
+    linkGithub("");
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find(".login__handle").exists()).toBe(false);
+    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub.");
   });
 
   it("keeps GitHub linked on an account without a password", async () => {
-    logIn();
-    githubLinked.value = true;
-    hasPassword.value = false;
+    linkGithub("octocat", false);
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find(".login__note").text()).toBe(
-      "This account has no password, so GitHub is how you log in. It can't be unlinked."
+    // Two sentences from two template branches; the browser collapses the doubled space between them.
+    expect(wrapper.find(".login__note").text().replace(/\s+/g, " ")).toBe(
+      "You can log in with GitHub as @octocat. This account has no password, so GitHub stays linked: it's how you log in."
     );
-    expect(wrapper.find(".login__action").exists()).toBe(false);
+    expect(unlinkKey(wrapper).exists()).toBe(false);
   });
 
-  it("unlinks GitHub on the second click", async () => {
+  it("unlinks GitHub on the second click and says so", async () => {
     const fetchMock = mockFetch();
     let answer!: (response: Response) => void;
-    fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
-    logIn();
-    githubLinked.value = true;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    await wrapper.find(".login__action").trigger("click");
-    expect(wrapper.find(".login__action").text()).toBe("Confirm unlink");
+    await unlinkKey(wrapper).trigger("click");
+    expect(unlinkKey(wrapper).text()).toBe("Confirm unlink");
+    expect(unlinkKey(wrapper).classes()).toContain("btn--error");
     expect(fetchMock).not.toHaveBeenCalled();
 
-    await wrapper.find(".login__action").trigger("click");
-    expect(wrapper.find(".login__action").text()).toBe("Unlinking");
+    await unlinkKey(wrapper).trigger("click");
+    expect(unlinkKey(wrapper).text()).toBe("Unlinking");
     answer(jsonResponse(200, { message: "Unlinked." }));
     await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/github/link", {
+      method: "DELETE",
+      credentials: "include"
+    });
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "GitHub is unlinked. You can link it again any time."
+      "GitHub is unlinked. Log in with your password from now on."
     );
     expect(wrapper.find(".badge").text()).toBe("Not linked");
-    expect(wrapper.find(".login__action").text()).toBe("Link GitHub");
+    expect(wrapper.find('a[href="https://api.test/auth/github/link"]').exists()).toBe(true);
   });
 
   it("disarms the unlink key after a while", async () => {
     vi.useFakeTimers();
-    logIn();
-    githubLinked.value = true;
+    linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    await wrapper.find(".login__action").trigger("click");
-    vi.advanceTimersByTime(4000);
-    await flushPromises();
+    await unlinkKey(wrapper).trigger("click");
+    await vi.advanceTimersByTimeAsync(4000);
 
-    expect(wrapper.find(".login__action").text()).toBe("Unlink GitHub");
+    expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
     wrapper.unmount();
   });
 
-  it("explains a refused unlink", async () => {
+  it("shows why unlinking failed and keeps GitHub linked", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mockFetch().mockResolvedValueOnce(
       jsonResponse(403, { error: "This account has no password." })
     );
-    logIn();
-    githubLinked.value = true;
+    linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    await wrapper.find(".login__action").trigger("click");
-    await wrapper.find(".login__action").trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe("This account has no password.");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(wrapper.find(".badge").text()).toBe("Linked");
   });
 
-  it("confirms a finished GitHub link", async () => {
-    logIn();
-    githubLinked.value = true;
+  it("confirms a GitHub account the API just linked, once", async () => {
+    linkGithub();
     const { wrapper, router } = await mountWithRouter(AccountPanel, {}, "/account?github=linked");
     await flushPromises();
 

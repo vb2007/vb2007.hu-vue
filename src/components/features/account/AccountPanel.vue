@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
-import { computed, onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, ref } from "vue";
 import {
   githubLinked,
   githubLogin,
@@ -11,34 +11,24 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { UserManagement } from "@/constants/api";
-import { unlinkGithub } from "@/scripts/authentication/github";
-import { useOauthResult } from "@/composables/useOauthResult";
+import { useGithubUnlink } from "@/composables/useGithubUnlink";
+import { useOauthError } from "@/composables/useOauthError";
+import { useQueryNotice } from "@/composables/useQueryNotice";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
-const { error: oauthError, linked } = useOauthResult();
-
-/** The outcome of the last link or unlink, shown above the linked accounts. */
-const notice = ref<{ tone: "success" | "error"; text: string } | null>(
-  oauthError.value
-    ? { tone: "error", text: oauthError.value }
-    : linked.value
-      ? { tone: "success", text: "GitHub is linked. You can log in with it from now on." }
-      : null
+const oauthError = useOauthError();
+// The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132).
+const notice = ref(
+  useQueryNotice("github") === "linked"
+    ? "GitHub is linked. You can log in with it from now on."
+    : ""
 );
+const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 
-const githubNote = computed(() => {
-  if (!githubLinked.value) return "Link it to log in with GitHub instead of typing your password.";
-  return hasPassword.value
-    ? "You can log in with GitHub or your password."
-    : "This account has no password, so GitHub is how you log in. It can't be unlinked.";
-});
-
-const unlinking = ref(false);
-
-/** Unlinking takes two clicks; the armed state wears off if the user moves on. */
+/** Unlinking takes two clicks, like deleting an upload; the armed state wears off. */
 const confirming = ref(false);
 let confirmTimer: ReturnType<typeof setTimeout> | undefined;
 const onUnlink = async () => {
@@ -49,18 +39,20 @@ const onUnlink = async () => {
     return;
   }
   confirming.value = false;
-  unlinking.value = true;
-  const error = await unlinkGithub();
-  unlinking.value = false;
-  notice.value = error
-    ? { tone: "error", text: error }
-    : { tone: "success", text: "GitHub is unlinked. You can link it again any time." };
+  notice.value = "";
+  if (await unlink()) {
+    notice.value = "GitHub is unlinked. Log in with your password from now on.";
+  }
 };
 onBeforeUnmount(() => clearTimeout(confirmTimer));
 </script>
 
 <template>
   <StationBoard v-if="isLoggedIn" title="Your account" as="h1">
+    <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
+    <StatusMessage v-if="unlinkError" tone="error">{{ unlinkError }}</StatusMessage>
+    <StatusMessage v-if="notice" tone="success">{{ notice }}</StatusMessage>
+
     <dl class="facts">
       <div class="fact">
         <dt>Username</dt>
@@ -74,7 +66,6 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
 
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>
-      <StatusMessage v-if="notice" :tone="notice.tone">{{ notice.text }}</StatusMessage>
       <div class="login">
         <span class="login__mark"><AppIcon name="github" :size="26" /></span>
         <div class="login__main">
@@ -85,8 +76,19 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
               {{ githubLinked ? "Linked" : "Not linked" }}
             </span>
           </div>
-          <p v-if="githubLinked && githubLogin" class="login__handle">@{{ githubLogin }}</p>
-          <p class="login__note">{{ githubNote }}</p>
+          <p class="login__note">
+            <template v-if="githubLinked">
+              You can log in with GitHub<template v-if="githubLogin">
+                as <strong class="login__handle">@{{ githubLogin }}</strong></template
+              >.
+              <template v-if="!hasPassword">
+                This account has no password, so GitHub stays linked: it's how you log in.
+              </template>
+            </template>
+            <template v-else
+              >Link it to log in with GitHub instead of typing your password.</template
+            >
+          </p>
           <BaseButton
             v-if="!githubLinked"
             class="login__action"
@@ -95,17 +97,17 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           >
             Link GitHub
           </BaseButton>
-          <!-- Armed, it turns into a solid red key, like deleting an upload. -->
+          <!-- Secondary at rest so its edge lines up with the note; armed, it turns solid red. -->
           <BaseButton
             v-else-if="hasPassword"
             class="login__action"
             size="sm"
             :variant="confirming ? 'primary' : 'secondary'"
             :error="confirming"
-            :loading="unlinking"
+            :loading="isUnlinking"
             @click="onUnlink"
           >
-            {{ unlinking ? "Unlinking" : confirming ? "Confirm unlink" : "Unlink GitHub" }}
+            {{ isUnlinking ? "Unlinking" : confirming ? "Confirm unlink" : "Unlink GitHub" }}
           </BaseButton>
         </div>
       </div>
@@ -209,14 +211,17 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   text-transform: uppercase;
 }
 
-.login__handle {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
 .login__note {
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
+}
+
+/* Moves to the next line whole rather than breaking at a hyphen; only a login wider than the line breaks. */
+.login__handle {
+  display: inline-block;
+  color: var(--c-ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .login__action {

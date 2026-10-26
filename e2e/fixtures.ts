@@ -7,7 +7,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
- * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as `octocat`, and `{ hasPassword: false }` makes it an account made with GitHub.
+ * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -117,10 +117,13 @@ export class MockApi {
   loggedInAs(
     email = "e2e@example.com",
     username = "e2e",
-    { superuser = false, githubLinked = false, hasPassword = true } = {}
+    { superuser = false, githubLinked = false, password = true } = {}
   ) {
-    this.user = { email, username, isSuperuser: superuser, hasPassword };
-    if (githubLinked) Object.assign(this.user, { githubId: "583231", githubLogin: "octocat" });
+    this.user = { email, username, isSuperuser: superuser, hasPassword: password };
+    if (githubLinked) {
+      this.user.githubId = "583231";
+      this.user.githubLogin = "e2e-octocat";
+    }
   }
 
   /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
@@ -319,21 +322,18 @@ export class MockApi {
       case "POST /auth/logout":
         this.user = null;
         return { status: 200 };
-      case "POST /auth/register":
-        return { status: 201 };
       case "DELETE /auth/github/link":
-        if (!this.user?.githubId) {
-          return { status: 404, body: { error: "No GitHub account is linked to this account." } };
-        }
+        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+        if (!this.user.githubId)
+          return { status: 404, body: { error: "No GitHub account is linked." } };
         if (!this.user.hasPassword) {
-          return {
-            status: 403,
-            body: { error: "This account has no password: set one before unlinking GitHub." }
-          };
+          return { status: 403, body: { error: "This account has no password." } };
         }
         delete this.user.githubId;
         delete this.user.githubLogin;
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
+      case "POST /auth/register":
+        return { status: 201 };
       case "POST /shortenUrl/create":
         this.hasShortLink(
           this.shortCode,

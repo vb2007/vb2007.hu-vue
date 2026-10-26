@@ -8,9 +8,9 @@ export const username = ref("");
 export const isSuperuser = ref(false);
 /** Whether GitHub is linked, so the user can also log in with it (vb2007/vb2007.hu-api#128). */
 export const githubLinked = ref(false);
-/** The linked GitHub username, shown as `@login`; empty until the API has stored it (vb2007/vb2007.hu-api#133). */
+/** The linked GitHub account's login, shown as `@login` (vb2007/vb2007.hu-api#133). */
 export const githubLogin = ref("");
-/** False for accounts made with GitHub: they can't log in with a password or unlink GitHub. */
-export const hasPassword = ref(true);
+/** False for an account made with GitHub, which can't unlink it (vb2007/vb2007.hu-api#133). */
+export const hasPassword = ref(false);
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */
 export const isSessionChecked = ref(false);
