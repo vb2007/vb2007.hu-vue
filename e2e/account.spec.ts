@@ -106,3 +106,13 @@ test("a GitHub account the API just linked is confirmed once", async ({ page, ap
   await page.reload();
   await expect(page.getByText("GitHub is linked.")).toHaveCount(0);
 });
+
+test("a failed GitHub link is explained on the account page", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account?oauthError=githubAlreadyLinked");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "That GitHub account is already linked to another account here."
+  );
+  await expect(page).toHaveURL("/account");
+});
