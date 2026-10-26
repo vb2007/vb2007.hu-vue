@@ -59,11 +59,50 @@ test("the navbar e-mail opens the account, which offers to link GitHub", async (
   );
 });
 
-test("a linked GitHub account shows as linked", async ({ page, api }) => {
+test("a linked GitHub account shows its login and unlinks on the second click", async ({
+  page,
+  api
+}) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true });
   await page.goto("/account");
 
   await expect(page.getByText("Linked", { exact: true })).toBeVisible();
-  await expect(page.getByText("You can log in with GitHub.")).toBeVisible();
+  await expect(page.getByText("You can log in with GitHub as @e2e-octocat.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Link GitHub" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Unlink GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm unlink" }).click();
+
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub is unlinked. Log in with your password from now on."
+  );
+  await expect(page.getByText("Not linked")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Link GitHub" })).toBeVisible();
+
+  // The API forgot the link too, so it stays unlinked after a reload.
+  await page.reload();
+  await expect(page.getByText("Not linked")).toBeVisible();
+});
+
+test("an account made with GitHub can't unlink it", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+
+  await expect(
+    page.getByText("This account has no password, so GitHub stays linked")
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unlink GitHub" })).toHaveCount(0);
+});
+
+test("a GitHub account the API just linked is confirmed once", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true });
+  await page.goto("/account?github=linked");
+
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub is linked. You can log in with it from now on."
+  );
+  await expect(page).toHaveURL("/account");
+
+  await page.reload();
+  await expect(page.getByText("GitHub is linked.")).toHaveCount(0);
 });

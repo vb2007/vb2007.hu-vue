@@ -1,6 +1,8 @@
 import { afterEach, vi } from "vitest";
 import {
   githubLinked,
+  githubLogin,
+  hasPassword,
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
@@ -42,6 +44,8 @@ afterEach(() => {
   isSessionChecked.value = false;
   isSuperuser.value = false;
   githubLinked.value = false;
+  githubLogin.value = "";
+  hasPassword.value = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
