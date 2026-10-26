@@ -4,10 +4,11 @@ These rules apply to every change, however small.
 
 ## Workflow
 
-1. **Every PR needs an issue first.** Create a minimal issue describing the work, using the matching template in `.github/ISSUE_TEMPLATE/` (`bug.yml`, `feature.yml` or `documentation.yml`). Fill in the template's fields as `###` headings, and apply its label and assignee.
+1. **Every PR needs an issue first**, however small the job. If none exists yet, create it before branching: a minimal issue describing the work, using the matching template in `.github/ISSUE_TEMPLATE/` (`bug.yml`, `feature.yml` or `documentation.yml`). Fill in the template's fields as `###` headings, and apply its label and assignee.
 2. **Branch from `dev`**, named `dev-<short-topic>` (e.g. `dev-nginx-legacy-routes`).
 3. **PRs only target `dev`.** Never open a PR to `main`: the owner merges `dev` into `main` afterwards, usually in batches.
-4. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several.
+4. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. It closes the issue once `dev` reaches `main`, but on a PR into `dev` it doesn't link the issue under the PR's "Development". Neither `gh` nor GitHub's API can link it (`gh issue develop` only links a branch, which doesn't show on the PR), so the owner links it by hand: when reporting a new PR, remind them which issue to link.
+5. **Assign and label every PR:** assignee `vb2007`, and the label of its issue's template (`feature`, `bug` or `documentation`), e.g. `gh pr create --base dev --assignee vb2007 --label feature`.
 
 ## Issue schema
 
