@@ -5,10 +5,13 @@ export class UserManagement {
     static register: string = `${API_BASE_URL}/auth/register`;
     static login: string = `${API_BASE_URL}/auth/login`;
     static logout: string = `${API_BASE_URL}/auth/logout`;
+    /** GitHub login (vb2007/vb2007.hu-api#128): browser navigations, not fetch calls. */
+    static github: string = `${API_BASE_URL}/auth/github`;
+    /** Also `DELETE` (a fetch call) to unlink GitHub (vb2007/vb2007.hu-api#134). */
+    static githubLink: string = `${API_BASE_URL}/auth/github/link`;
   };
 
   static Actions = class {
-    static users: string = `${API_BASE_URL}/users`;
     static user: string = `${API_BASE_URL}/user`;
     static userWithId: string = `${API_BASE_URL}/users/:id`;
   };

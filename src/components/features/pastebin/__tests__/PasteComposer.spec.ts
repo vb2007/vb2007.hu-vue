@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import PasteComposer from "@/components/features/pastebin/PasteComposer.vue";
 import TicketSlip from "@/components/ui/TicketSlip.vue";
@@ -75,5 +75,30 @@ describe("PasteComposer", () => {
 
     expect(wrapper.find(".field__error").text()).toBe("A paste needs at least 2 characters.");
     expect(wrapper.emitted("created")).toBeUndefined();
+  });
+
+  it("offers the detected language, and sends the user's pick instead when there is one", async () => {
+    vi.useFakeTimers();
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(201, { paste: created }));
+    const { wrapper } = await mountWithRouter(PasteComposer);
+    const select = wrapper.find("select");
+    const autoOption = () => select.findAll("option")[0];
+
+    expect(autoOption().text()).toBe("Auto");
+    expect(select.element.value).toBe("auto");
+
+    await wrapper.find("textarea").setValue("SELECT name FROM users;");
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+    expect(autoOption().text()).toBe("Auto: SQL");
+
+    await select.setValue("markdown");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string).language).toBe("markdown");
+    expect(select.element.value).toBe("auto");
   });
 });

@@ -7,7 +7,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
- * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page.
+ * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -19,6 +19,8 @@ export interface MockPaste {
   content: string;
   addedBy: string;
   addedOn: string;
+  /** A highlight.js id (vb2007/vb2007.hu-api#123); left out for pastes from before it. */
+  language?: string;
 }
 
 export interface MockUpload {
@@ -83,7 +85,14 @@ const parseMultipart = (body: Buffer, contentType: string) => {
 };
 
 export class MockApi {
-  private user: { email: string; username: string; isSuperuser: boolean } | null = null;
+  private user: {
+    email: string;
+    username: string;
+    isSuperuser: boolean;
+    hasPassword: boolean;
+    githubId?: string;
+    githubLogin?: string;
+  } | null = null;
   private shortCode = "e2e123";
   /** Short code -> link, filled by shortening and by `hasShortLink`. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -105,8 +114,16 @@ export class MockApi {
     this.user = null;
   }
 
-  loggedInAs(email = "e2e@example.com", username = "e2e", { superuser = false } = {}) {
-    this.user = { email, username, isSuperuser: superuser };
+  loggedInAs(
+    email = "e2e@example.com",
+    username = "e2e",
+    { superuser = false, githubLinked = false, password = true } = {}
+  ) {
+    this.user = { email, username, isSuperuser: superuser, hasPassword: password };
+    if (githubLinked) {
+      this.user.githubId = "583231";
+      this.user.githubLogin = "e2e-octocat";
+    }
   }
 
   /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
@@ -136,12 +153,13 @@ export class MockApi {
     return user;
   }
 
-  /** Stores a paste as if `username` had created it, and returns it. */
-  hasPaste(content: string, username = "e2e") {
+  /** Stores a paste as if `username` had created it, in `language` if given, and returns it. */
+  hasPaste(content: string, username = "e2e", language?: string) {
     const id = `${this.nextPasteId++}`.padStart(24, "0");
     // Each paste is a minute newer than the last, so sorting by date is deterministic.
     const addedOn = new Date(Date.UTC(2026, 9, 10, 12, this.pastes.length)).toISOString();
-    const paste = { _id: id, content, addedBy: username, addedOn };
+    const paste: MockPaste = { _id: id, content, addedBy: username, addedOn };
+    if (language) paste.language = language;
     this.pastes.push(paste);
     return paste;
   }
@@ -232,6 +250,7 @@ export class MockApi {
     body: {
       email?: string;
       paste?: string;
+      language?: string;
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
       quotaBytes?: number | null;
@@ -260,9 +279,9 @@ export class MockApi {
         ? { status: 302, location: link.target }
         : { status: 404, body: { error: "The shortened URL cannot be found." } };
     }
-    const pasteRoute = endpoint.match(/^(GET|DELETE) \/paste\/([^/]+)$/);
+    const pasteRoute = endpoint.match(/^(GET|PATCH|DELETE) \/paste\/([^/]+)$/);
     if (pasteRoute) {
-      return this.respondPaste(pasteRoute[1], decodeURIComponent(pasteRoute[2]));
+      return this.respondPaste(pasteRoute[1], decodeURIComponent(pasteRoute[2]), body?.language);
     }
     const listRoute = endpoint.match(/^GET \/pastes\/([^/]+)$/);
     if (listRoute) {
@@ -296,12 +315,23 @@ export class MockApi {
         this.user = {
           email: body?.email ?? "e2e@example.com",
           username: "e2e",
-          isSuperuser: false
+          isSuperuser: false,
+          hasPassword: true
         };
         return { status: 200 };
       case "POST /auth/logout":
         this.user = null;
         return { status: 200 };
+      case "DELETE /auth/github/link":
+        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+        if (!this.user.githubId)
+          return { status: 404, body: { error: "No GitHub account is linked." } };
+        if (!this.user.hasPassword) {
+          return { status: 403, body: { error: "This account has no password." } };
+        }
+        delete this.user.githubId;
+        delete this.user.githubLogin;
+        return { status: 200, body: { message: "GitHub account unlinked successfully." } };
       case "POST /auth/register":
         return { status: 201 };
       case "POST /shortenUrl/create":
@@ -317,7 +347,7 @@ export class MockApi {
           status: 201,
           body: {
             message: "Paste created successfully.",
-            paste: this.hasPaste(body?.paste ?? "", this.user.username)
+            paste: this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
           }
         };
       default:
@@ -325,7 +355,7 @@ export class MockApi {
     }
   }
 
-  private respondPaste(method: string, id: string) {
+  private respondPaste(method: string, id: string, language?: string) {
     if (!/^[0-9a-f]{24}$/.test(id)) {
       return { status: 400, body: { error: "Invalid ID format." } };
     }
@@ -333,10 +363,25 @@ export class MockApi {
     if (index === -1) {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
     }
+    const paste = this.pastes[index];
     if (method === "GET") {
-      return { status: 200, body: { paste: this.pastes[index] } };
+      // Populated like the real API does since vb2007/vb2007.hu-api#124.
+      return {
+        status: 200,
+        body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
+      };
     }
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (method === "PATCH") {
+      if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
+        return { status: 403, body: { error: "You are not authorized." } };
+      }
+      if (!/^[a-z0-9+#-]{1,32}$/.test(language ?? "")) {
+        return { status: 400, body: { error: "That isn't a valid language." } };
+      }
+      paste.language = language;
+      return { status: 200, body: { message: "Paste updated successfully.", paste } };
+    }
     const [deleted] = this.pastes.splice(index, 1);
     return { status: 200, body: { message: "Paste deleted successfully.", paste: deleted } };
   }

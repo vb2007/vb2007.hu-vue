@@ -64,4 +64,65 @@ describe("usePaste", () => {
     expect(single.errorMessage.value).toBe("Error connecting to server");
     expect(single.isLoading.value).toBe(false);
   });
+
+  describe("setLanguage", () => {
+    const owned = { ...paste, addedBy: { _id: "u1", username: "anna" }, language: "plaintext" };
+
+    const loaded = async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned }));
+      const single = usePaste();
+      await single.load("p1");
+      return single;
+    };
+
+    it("does nothing before a paste is loaded", async () => {
+      const single = usePaste();
+
+      await single.setLanguage("python");
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("saves the language and keeps the rest of the paste", async () => {
+      const single = await loaded();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { paste: { ...paste, language: "python" } })
+      );
+
+      const pending = single.setLanguage("python");
+      expect(single.isSaving.value).toBe(true);
+      await pending;
+
+      expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/paste/p1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: "python" }),
+        credentials: "include"
+      });
+      expect(single.paste.value).toEqual({ ...owned, language: "python" });
+      expect(single.saveError.value).toBe("");
+      expect(single.isSaving.value).toBe(false);
+    });
+
+    it("shows the API's error and keeps the old language", async () => {
+      const single = await loaded();
+      fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not authorized." }));
+
+      await single.setLanguage("python");
+
+      expect(single.saveError.value).toBe("You are not authorized.");
+      expect(single.paste.value?.language).toBe("plaintext");
+      expect(single.isSaving.value).toBe(false);
+    });
+
+    it("reports an unreachable server", async () => {
+      const single = await loaded();
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await single.setLanguage("python");
+
+      expect(single.saveError.value).toBe("Error connecting to server");
+      expect(single.isSaving.value).toBe(false);
+    });
+  });
 });

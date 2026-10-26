@@ -6,7 +6,8 @@ describe("API endpoints", () => {
     expect(UserManagement.Authentication.register).toBe("https://api.test/auth/register");
     expect(UserManagement.Authentication.login).toBe("https://api.test/auth/login");
     expect(UserManagement.Authentication.logout).toBe("https://api.test/auth/logout");
-    expect(UserManagement.Actions.users).toBe("https://api.test/users");
+    expect(UserManagement.Authentication.github).toBe("https://api.test/auth/github");
+    expect(UserManagement.Authentication.githubLink).toBe("https://api.test/auth/github/link");
     expect(UserManagement.Actions.user).toBe("https://api.test/user");
     expect(UserManagement.Actions.userWithId).toBe("https://api.test/users/:id");
   });

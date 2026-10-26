@@ -50,6 +50,43 @@ describe("restoreSession", () => {
     expect(fresh.isSuperuser.value).toBe(false);
   });
 
+  it("knows whether GitHub is linked from the user's githubId", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { email: "me@example.com", username: "me", githubId: "583231" })
+    );
+    const { restoreSession, githubLinked } = await load();
+    await restoreSession();
+    expect(githubLinked.value).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com", username: "me" }));
+    const fresh = await load();
+    await fresh.restoreSession();
+    expect(fresh.githubLinked.value).toBe(false);
+  });
+
+  it("knows the GitHub login, and only takes a real true for hasPassword", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        email: "me@example.com",
+        githubId: "583231",
+        githubLogin: "octocat",
+        hasPassword: true
+      })
+    );
+    const { restoreSession, githubLogin, hasPassword } = await load();
+    await restoreSession();
+    expect(githubLogin.value).toBe("octocat");
+    expect(hasPassword.value).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { email: "me@example.com", githubId: "583231", hasPassword: "yes" })
+    );
+    const fresh = await load();
+    await fresh.restoreSession();
+    expect(fresh.githubLogin.value).toBe("");
+    expect(fresh.hasPassword.value).toBe(false);
+  });
+
   it("leaves the username empty when the API doesn't send one", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     const { restoreSession, isLoggedIn, username } = await load();
@@ -160,9 +197,21 @@ describe("login", () => {
 describe("logout", () => {
   it("asks the API to clear the cookie and resets the local state", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200));
-    const { logout, isLoggedIn, isSuperuser, userEmail, username } = await load();
+    const {
+      logout,
+      isLoggedIn,
+      isSuperuser,
+      githubLinked,
+      githubLogin,
+      hasPassword,
+      userEmail,
+      username
+    } = await load();
     isLoggedIn.value = true;
     isSuperuser.value = true;
+    githubLinked.value = true;
+    githubLogin.value = "octocat";
+    hasPassword.value = true;
     userEmail.value = "me@example.com";
     username.value = "me";
 
@@ -177,6 +226,9 @@ describe("logout", () => {
     expect(userEmail.value).toBe("");
     expect(username.value).toBe("");
     expect(isSuperuser.value).toBe(false);
+    expect(githubLinked.value).toBe(false);
+    expect(githubLogin.value).toBe("");
+    expect(hasPassword.value).toBe(false);
   });
 
   it("still logs out locally when the API is unreachable", async () => {

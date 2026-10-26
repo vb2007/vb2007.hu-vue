@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { computed, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
+import { PASTE_LANGUAGES, languageLabel } from "@/scripts/pastebin/languages";
 import { PASTE_MAX_LENGTH, pasteLink, type Paste } from "@/scripts/pastebin/paste";
 import { displayLink } from "@/scripts/utility/text";
-import { useNewPaste } from "@/composables/useNewPaste";
+import { AUTO_LANGUAGE, useNewPaste } from "@/composables/useNewPaste";
 import BaseButton from "@/components/ui/BaseButton.vue";
+import BaseSelect from "@/components/ui/BaseSelect.vue";
 import BaseTextarea from "@/components/ui/BaseTextarea.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -13,7 +15,17 @@ import TicketSlip from "@/components/ui/TicketSlip.vue";
 withDefaults(defineProps<{ as?: "h1" | "h2" }>(), { as: "h2" });
 const emit = defineEmits<{ created: [paste: Paste] }>();
 
-const { content, createdPaste, isLoading, errorMessage, create, reset } = useNewPaste();
+const { content, language, detected, createdPaste, isLoading, errorMessage, create, reset } =
+  useNewPaste();
+
+/** "Auto: Python" follows the detection; any other pick sticks until the paste is created. */
+const languageOptions = computed(() => [
+  {
+    value: AUTO_LANGUAGE,
+    label: content.value.trim() ? `Auto: ${languageLabel(detected.value)}` : "Auto"
+  },
+  ...PASTE_LANGUAGES.map(({ id, label }) => ({ value: id, label }))
+]);
 
 watch(createdPaste, (paste) => {
   if (paste) emit("created", paste);
@@ -33,6 +45,7 @@ watch(createdPaste, (paste) => {
         :max-count="PASTE_MAX_LENGTH"
         :error="errorMessage"
       />
+      <BaseSelect v-model="language" label="Language" :options="languageOptions" />
       <BaseButton type="submit" block :loading="isLoading">
         {{ isLoading ? "Creating" : "Create paste" }}
       </BaseButton>

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-19T00:00:00Z",
+  "generatedAt": "2026-10-23T00:00:00Z",
   "title": "Design System: vb2007.hu",
   "extensions": {
     "colorMeta": {
@@ -17,7 +17,12 @@
       "on-action": {"role": "neutral", "displayName": "Enamel On Action", "canonical": "oklch(0.99 0.01 130)", "dark": "oklch(0.2 0.04 152)"},
       "deep": {"role": "neutral", "displayName": "Terminal Band", "canonical": "oklch(0.24 0.045 152)", "dark": "oklch(0.36 0.06 152)"},
       "works-amber": {"role": "secondary", "displayName": "Works Amber", "canonical": "oklch(0.84 0.15 88)", "dark": "oklch(0.82 0.14 88)"},
-      "danger": {"role": "tertiary", "displayName": "Fault Red", "canonical": "oklch(0.5 0.18 27)", "dark": "oklch(0.8 0.13 27)"}
+      "danger": {"role": "tertiary", "displayName": "Fault Red", "canonical": "oklch(0.5 0.18 27)", "dark": "oklch(0.8 0.13 27)"},
+      "syn-string": {"role": "tertiary", "displayName": "String Clay", "canonical": "oklch(0.48 0.13 38)", "dark": "oklch(0.8 0.1 45)"},
+      "syn-number": {"role": "tertiary", "displayName": "Number Blue", "canonical": "oklch(0.47 0.13 255)", "dark": "oklch(0.8 0.1 245)"},
+      "syn-title": {"role": "tertiary", "displayName": "Title Plum", "canonical": "oklch(0.46 0.15 330)", "dark": "oklch(0.8 0.11 335)"},
+      "syn-type": {"role": "tertiary", "displayName": "Type Teal", "canonical": "oklch(0.47 0.09 205)", "dark": "oklch(0.8 0.08 200)"},
+      "syn-attr": {"role": "tertiary", "displayName": "Attribute Ochre", "canonical": "oklch(0.49 0.1 75)", "dark": "oklch(0.83 0.1 80)"}
     },
     "typographyMeta": {
       "display": {"displayName": "Display", "purpose": "Home hero title only."},
@@ -119,6 +124,18 @@
       "description": "Compact used-of-quota line on an admin account row: figure above, 3px hairline rail, route-green run ending in a small ring, soft-ink terminus ring at the quota; Fault Red at or over the quota.",
       "html": "<div class=\"ds-quota\" style=\"--share:0.2\"><p class=\"ds-quota__figure\"><b>2 GB</b> of 10 GB</p><span class=\"ds-quota__line\"><span class=\"ds-quota__run\"></span><span class=\"ds-quota__stop\"></span></span></div>",
       "css": ".ds-quota{display:grid;gap:0.5rem;min-width:12rem}.ds-quota__figure{margin:0;font-size:var(--fs-sm);font-weight:600;color:var(--c-ink-soft)}.ds-quota__figure b{color:var(--c-ink)}.ds-quota__line{position:relative;display:block;height:3px;margin:0 0.4375rem;background:var(--c-hairline)}.ds-quota__run{position:absolute;inset:0 auto 0 0;width:calc(var(--share)*100%);background:var(--c-line)}.ds-quota__run::after,.ds-quota__stop{content:\"\";position:absolute;top:50%;right:0;width:0.625rem;height:0.625rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel);transform:translate(50%,-50%)}.ds-quota__stop{width:0.875rem;height:0.875rem;border-color:var(--c-ink-soft)}"
+    },
+    {
+      "name": "Code Sheet", "kind": "code", "refersTo": "code-sheet",
+      "description": "A paste on sunk enamel, highlighted in metro-line syntax colours.",
+      "html": "<pre class=\"ds-sheet\"><code><span class=\"k\">def</span> <span class=\"t\">greet</span>(name):\n    <span class=\"c\"># say hi</span>\n    print(<span class=\"s\">\"Hello\"</span>, <span class=\"n\">1</span>)</code></pre>",
+      "css": ".ds-sheet{margin:0;padding:1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink);font-family:var(--font-code);font-size:0.95rem;line-height:1.6}.ds-sheet code{font:inherit}.ds-sheet .k{color:var(--c-syn-keyword);font-weight:650}.ds-sheet .t{color:var(--c-syn-title);font-weight:600}.ds-sheet .s{color:var(--c-syn-string)}.ds-sheet .n{color:var(--c-syn-number)}.ds-sheet .c{color:var(--c-syn-comment);font-style:italic}"
+    },
+    {
+      "name": "Markdown Page", "kind": "prose", "refersTo": "markdown-page",
+      "description": "Rendered Markdown on enamel: author-case condensed headings, stop-ring bullets, quotes as a line leaving a stop.",
+      "html": "<article class=\"ds-prose\"><h2>Notes</h2><ul><li>Back up the volume</li></ul><blockquote>Give it a minute.</blockquote></article>",
+      "css": ".ds-prose{padding:1.5rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink)}.ds-prose h2{margin:0 0 0.75rem;font-family:var(--font-board);font-size:1.25rem;font-weight:700;text-transform:none}.ds-prose ul{margin:0 0 1rem;padding-left:1.5rem;list-style:none}.ds-prose li{position:relative}.ds-prose li::before{content:'';position:absolute;left:-1.35rem;top:0.5em;width:0.6rem;height:0.6rem;border:2px solid var(--c-line);border-radius:50%}.ds-prose blockquote{position:relative;margin:0;padding-left:1.5rem;color:var(--c-ink-soft)}.ds-prose blockquote::before{content:'';position:absolute;left:0.3rem;top:0.7rem;bottom:0.2rem;width:3px;border-radius:999px;background:var(--c-line)}.ds-prose blockquote::after{content:'';position:absolute;left:0;top:0.15rem;width:0.55rem;height:0.55rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel)}"
     }
   ],
   "narrative": {
@@ -130,6 +147,7 @@
       {"name": "The Green Neutral Rule", "body": "Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.", "section": "colors"},
       {"name": "The Hatch Means Planned Rule", "body": "The amber diagonal hatch and dashed strokes mean not built yet or work in progress, and nothing else.", "section": "colors"},
       {"name": "The Route Measure Rule", "body": "Anything that measures (upload progress, storage, a share of a total) is a stretch of line: a hairline rail, a route-green run along it, stop rings at the ends. Fault Red marks a failed run or a full terminus; Soft Ink a cancelled one.", "section": "colors"},
+      {"name": "The Line Colours Rule", "body": "Syntax colours are metro line colours, one per kind of token, kept at 5:1 or more on enamel and sunk enamel in both themes. They colour code only, never UI.", "section": "colors"},
       {"name": "The Board Voice Rule", "body": "Condensed uppercase is for headings, buttons and route labels. Running text and form labels stay in Barlow sentence case.", "section": "typography"},
       {"name": "The Thickness Rule", "body": "Raised means a hard offset in a solid colour. A blurred shadow alone never signals elevation.", "section": "elevation"},
       {"name": "The Own Details Rule", "body": "A destination's description and way in live in its own row. Never show details in a shared panel driven by hover: pointing at one thing must not change another.", "section": "components"}

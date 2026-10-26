@@ -1,6 +1,7 @@
+import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
-import { useNewPaste } from "@/composables/useNewPaste";
+import { AUTO_LANGUAGE, useNewPaste } from "@/composables/useNewPaste";
 
 const created = {
   _id: "p1",
@@ -41,7 +42,7 @@ describe("useNewPaste", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/paste", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paste: "hello world" }),
+      body: JSON.stringify({ paste: "hello world", language: "plaintext" }),
       credentials: "include"
     });
     expect(newPaste.createdPaste.value).toEqual(created);
@@ -82,5 +83,61 @@ describe("useNewPaste", () => {
 
     expect(newPaste.createdPaste.value).toBeNull();
     expect(newPaste.errorMessage.value).toBe("");
+  });
+
+  describe("language", () => {
+    const python =
+      "import os\n\ndef main():\n    print(os.getcwd())\n\nif __name__ == '__main__':\n    main()";
+
+    it("detects the language once typing pauses", async () => {
+      vi.useFakeTimers();
+      const newPaste = useNewPaste();
+      expect(newPaste.language.value).toBe(AUTO_LANGUAGE);
+
+      newPaste.content.value = "def";
+      await nextTick();
+      newPaste.content.value = python;
+      await nextTick();
+      vi.advanceTimersByTime(249);
+      expect(newPaste.detected.value).toBe("plaintext");
+
+      vi.advanceTimersByTime(1);
+      expect(newPaste.detected.value).toBe("python");
+      expect(newPaste.resolvedLanguage.value).toBe("python");
+    });
+
+    it("follows the user's pick over the detection", () => {
+      const newPaste = useNewPaste();
+      newPaste.detected.value = "python";
+      newPaste.language.value = "ruby";
+
+      expect(newPaste.resolvedLanguage.value).toBe("ruby");
+    });
+
+    it("detects right away when sent before the detection caught up, then goes back to auto", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(201, { paste: created }));
+      const newPaste = useNewPaste();
+      newPaste.content.value = python;
+
+      await newPaste.create();
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+        paste: python,
+        language: "python"
+      });
+      expect(newPaste.language.value).toBe(AUTO_LANGUAGE);
+    });
+
+    it("sends the picked language and resets it after creating", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(201, { paste: created }));
+      const newPaste = useNewPaste();
+      newPaste.content.value = python;
+      newPaste.language.value = "markdown";
+
+      await newPaste.create();
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string).language).toBe("markdown");
+      expect(newPaste.language.value).toBe(AUTO_LANGUAGE);
+    });
   });
 });

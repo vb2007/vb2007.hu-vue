@@ -3,6 +3,8 @@ import { onMounted, ref, watch, computed } from "vue";
 import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
+import { useOauthError } from "@/composables/useOauthError";
+import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -11,6 +13,7 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 const email = ref("");
 const password = ref("");
 const isLoading = ref(false);
+const oauthError = useOauthError();
 
 const handleSubmit = async () => {
   isLoading.value = true;
@@ -42,21 +45,31 @@ watch(isLoggedIn, (newVal) => {
 
 <template>
   <StationBoard title="Log in" as="h1">
-    <form v-if="!isLoggedIn" class="form" @submit.prevent="handleSubmit">
-      <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
-      <BaseInput
-        v-model="password"
-        label="Password"
-        type="password"
-        autocomplete="current-password"
-        required
-      />
-      <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
-      <BaseButton type="submit" block :loading="isLoading">
-        {{ isLoading ? "Logging in" : "Log in" }}
-      </BaseButton>
+    <template v-if="!isLoggedIn">
+      <form class="form" @submit.prevent="handleSubmit">
+        <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
+        <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
+        <BaseInput
+          v-model="password"
+          label="Password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <BaseButton type="submit" block :loading="isLoading">
+          {{ isLoading ? "Logging in" : "Log in" }}
+        </BaseButton>
+      </form>
+      <GithubLogin label="Log in with GitHub" />
       <p class="alt">No account yet? <RouterLink to="/register">Register</RouterLink></p>
-    </form>
+    </template>
+
+    <!-- Linking GitHub to a logged-in account also reports its errors here (vb2007/vb2007.hu-api#132). -->
+    <div v-else-if="oauthError" class="done">
+      <StatusMessage tone="error">{{ oauthError }}</StatusMessage>
+      <BaseButton to="/account">Go to your account</BaseButton>
+    </div>
 
     <div v-else class="done">
       <StatusMessage tone="success">Login successful!</StatusMessage>
