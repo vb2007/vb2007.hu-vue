@@ -18,6 +18,7 @@ import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import ChangePassword from "./ChangePassword.vue";
 
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132).
@@ -63,6 +64,25 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <dd>{{ userEmail }}</dd>
       </div>
     </dl>
+
+    <section class="logins" aria-labelledby="login-details-title">
+      <h2 id="login-details-title" class="logins__title">Log-in details</h2>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="lock" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">Password</h3>
+          </div>
+          <p class="login__note">
+            <template v-if="hasPassword"
+              >Changing it logs out your other devices; you stay logged in here.</template
+            >
+            <template v-else>This account has no password: you log in with GitHub.</template>
+          </p>
+          <ChangePassword v-if="hasPassword" />
+        </div>
+      </div>
+    </section>
 
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>

@@ -51,6 +51,31 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
+  it("offers to change the password in the log-in details", async () => {
+    logIn();
+    hasPassword.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    const details = wrapper.find('[aria-labelledby="login-details-title"]');
+    expect(details.find("h2").text()).toBe("Log-in details");
+    expect(details.find("h3").text()).toBe("Password");
+    expect(details.find(".login__note").text()).toBe(
+      "Changing it logs out your other devices; you stay logged in here."
+    );
+    expect(details.find("button").text()).toBe("Change password");
+  });
+
+  it("has no password to change on an account made with GitHub", async () => {
+    logIn();
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    const details = wrapper.find('[aria-labelledby="login-details-title"]');
+    expect(details.find(".login__note").text()).toBe(
+      "This account has no password: you log in with GitHub."
+    );
+    expect(details.find("button").exists()).toBe(false);
+  });
+
   const linkGithub = (login = "octocat", password = true) => {
     logIn();
     githubLinked.value = true;
@@ -61,13 +86,16 @@ describe("AccountPanel", () => {
   const unlinkKey = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
     wrapper.find("button.login__action");
 
+  const githubNote = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+    wrapper.find('[aria-labelledby="logins-title"] .login__note');
+
   it("shows the linked GitHub login with an unlink key instead of the link key", async () => {
     linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     expect(wrapper.find(".badge").text()).toBe("Linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--on");
-    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub as @octocat.");
+    expect(githubNote(wrapper).text()).toBe("You can log in with GitHub as @octocat.");
     expect(wrapper.find(".login__handle").text()).toBe("@octocat");
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').exists()).toBe(false);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
@@ -77,7 +105,7 @@ describe("AccountPanel", () => {
     linkGithub("");
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub.");
+    expect(githubNote(wrapper).text()).toBe("You can log in with GitHub.");
   });
 
   it("keeps GitHub linked on an account without a password", async () => {
@@ -85,7 +113,7 @@ describe("AccountPanel", () => {
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     // Two sentences from two template branches; the browser collapses the doubled space between them.
-    expect(wrapper.find(".login__note").text().replace(/\s+/g, " ")).toBe(
+    expect(githubNote(wrapper).text().replace(/\s+/g, " ")).toBe(
       "You can log in with GitHub as @octocat. This account has no password, so GitHub stays linked: it's how you log in."
     );
     expect(unlinkKey(wrapper).exists()).toBe(false);
