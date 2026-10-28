@@ -8,6 +8,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * Linking GitHub (`GET /auth/github/link`) skips GitHub: it links @e2e-octocat and comes straight back to `/account?github=linked`, which also confirms the user for setting a password.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -108,6 +109,9 @@ export class MockApi {
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
   private cdnOrigin = "https://cdn.e2e.invalid";
+  private appOrigin = "";
+  /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
+  private githubConfirmed = false;
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -207,6 +211,7 @@ export class MockApi {
   }
 
   async handle(route: Route, appOrigin: string) {
+    this.appOrigin = appOrigin;
     const request = route.request();
     // The app calls the API cross-origin with credentials, so every answer needs CORS headers.
     const headers = {
@@ -254,6 +259,7 @@ export class MockApi {
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
       quotaBytes?: number | null;
+      password?: string;
     } | null,
     query: URLSearchParams
   ): { status: number; body?: unknown; location?: string } | undefined {
@@ -322,6 +328,16 @@ export class MockApi {
       case "POST /auth/logout":
         this.user = null;
         return { status: 200 };
+      case "GET /auth/github/link":
+        if (!this.user) {
+          return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
+        }
+        this.user.githubId = "583231";
+        this.user.githubLogin = "e2e-octocat";
+        this.githubConfirmed = true;
+        return { status: 302, location: `${this.appOrigin}/account?github=linked` };
+      case "POST /user/password":
+        return this.setPassword(body?.password ?? "");
       case "DELETE /auth/github/link":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         if (!this.user.githubId)
@@ -353,6 +369,33 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  private setPassword(password: string) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const length = [...password].length;
+    if (length < 8 || length > 128) {
+      const problem = length < 8 ? "too short" : "too long";
+      return {
+        status: 400,
+        body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
+      };
+    }
+    if (this.user.hasPassword) {
+      return { status: 409, body: { error: "This account already has a password." } };
+    }
+    if (!this.githubConfirmed) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "Confirm it's you first: log in with GitHub again (or relink it), then set the password within 10 minutes."
+        }
+      };
+    }
+    this.user.hasPassword = true;
+    this.githubConfirmed = false;
+    return { status: 200, body: { message: "Password set successfully." } };
   }
 
   private respondPaste(method: string, id: string, language?: string) {
