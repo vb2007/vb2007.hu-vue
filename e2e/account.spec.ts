@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_PASSWORD, test } from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them.
@@ -115,4 +115,66 @@ test("a failed GitHub link is explained on the account page", async ({ page, api
     "That GitHub account is already linked to another account here."
   );
   await expect(page).toHaveURL("/account");
+});
+
+test("an account is deleted with its password and the visitor lands home logged out", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+
+  await expect(
+    page.getByText("Deleting your account also deletes your pastes, short links and uploads.")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete account" }).click();
+  const password = page.getByLabel("Password");
+  await expect(password).toBeFocused();
+  const confirm = page.getByRole("button", { name: "Delete account" });
+  await expect(confirm).toBeDisabled();
+
+  await password.fill("wrong-password");
+  await confirm.click();
+  await expect(page.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(page).toHaveURL("/account");
+
+  await password.fill(MOCK_PASSWORD);
+  await confirm.click();
+
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+
+  await page.goto("/account");
+  await expect(page.getByText("Log in to see your account.")).toBeVisible();
+});
+
+test("an account made with GitHub is deleted by typing its username", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page.getByText("Type “me” to confirm.")).toBeVisible();
+  const confirm = page.getByRole("button", { name: "Delete account" });
+
+  await page.getByLabel("Username").fill("m");
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Username").fill("me");
+  await confirm.click();
+
+  await expect(page).toHaveURL("/");
+});
+
+test("deleting the account can be cancelled, and says when to try again", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.limitsPasswordChecks();
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Password")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete account" })).toBeFocused();
 });
