@@ -14,6 +14,7 @@ import { UserManagement } from "@/constants/api";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
+import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -112,6 +113,8 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         </div>
       </div>
     </section>
+
+    <DeleteAccount />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">

@@ -48,6 +48,7 @@ describe("AccountPanel", () => {
     expect(wrapper.find(".badge").text()).toBe("Not linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--off");
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').text()).toBe("Link GitHub");
+    expect(wrapper.find("#delete-title").text()).toBe("Delete account");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
