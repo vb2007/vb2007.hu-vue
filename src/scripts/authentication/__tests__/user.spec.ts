@@ -128,6 +128,24 @@ describe("restoreSession", () => {
   });
 });
 
+describe("refreshUser", () => {
+  it("asks the API again after the session was restored", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com", githubId: "583231" }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "me@example.com", githubId: "583231", hasPassword: true })
+      );
+    const { restoreSession, refreshUser, hasPassword } = await load();
+    await restoreSession();
+    expect(hasPassword.value).toBe(false);
+
+    expect(await refreshUser()).toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(hasPassword.value).toBe(true);
+  });
+});
+
 describe("login", () => {
   it("logs in once the session cookie is confirmed", async () => {
     fetchMock

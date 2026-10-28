@@ -53,6 +53,9 @@ export const restoreSession = () => {
   return sessionRestore;
 };
 
+/** Looks the user up again after the account changed, e.g. once a password is set. */
+export const refreshUser = () => fetchUserDetails();
+
 export const login = async (email: string, password: string) => {
   try {
     const response = await fetch(UserManagement.Authentication.login, {
