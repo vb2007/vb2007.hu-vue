@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
+import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import {
   githubLinked,
   githubLogin,
@@ -157,6 +158,35 @@ describe("AccountPanel", () => {
       "GitHub is linked. You can log in with it from now on."
     );
     expect(router.currentRoute.value.fullPath).toBe("/account");
+  });
+
+  it("offers to set a password only to an account without one", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(AccountPanel);
+    expect(wrapper.findComponent(SetPasswordForm).exists()).toBe(true);
+
+    hasPassword.value = true;
+    await flushPromises();
+    expect(wrapper.findComponent(SetPasswordForm).exists()).toBe(false);
+  });
+
+  it("says the password is set, and offers to unlink GitHub instead of the form", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(AccountPanel, {}, "/account?github=linked");
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "GitHub confirmed it's you. Set your password within 10 minutes."
+    );
+
+    hasPassword.value = true;
+    wrapper.findComponent(SetPasswordForm).vm.$emit("set");
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Your password is set. You can log in with it from now on."
+    );
+    expect(wrapper.findComponent(SetPasswordForm).exists()).toBe(false);
+    expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
   });
 
   it("explains a failed GitHub link, logged in or not", async () => {
