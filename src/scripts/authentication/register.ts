@@ -4,14 +4,15 @@ import { login } from "@/scripts/authentication/user";
 
 export const registerStatus = ref("");
 
+export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 export const validateRegisterData = (
   username: string,
   email: string,
   password: string,
   confirmPassword: string
 ) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  if (!isValidEmail(email)) {
     return "invalid-email";
   }
 

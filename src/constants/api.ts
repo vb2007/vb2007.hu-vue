@@ -13,6 +13,8 @@ export class UserManagement {
 
   static Actions = class {
     static user: string = `${API_BASE_URL}/user`;
+    /** `PATCH` with the new address and the current password (vb2007/vb2007.hu-api#162). */
+    static userEmail: string = `${API_BASE_URL}/user/email`;
     static userWithId: string = `${API_BASE_URL}/users/:id`;
   };
 }
