@@ -8,6 +8,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * An account with a password accepts `E2E_PASSWORD` as its current one; `hasUser(...)` addresses count as taken.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -44,6 +45,8 @@ export interface MockAdminUser {
   isSuperuser: boolean;
   uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
 }
+
+export const E2E_PASSWORD = "e2e-password";
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
@@ -249,6 +252,7 @@ export class MockApi {
     endpoint: string,
     body: {
       email?: string;
+      password?: string;
       paste?: string;
       language?: string;
       originalFileName?: string;
@@ -332,6 +336,8 @@ export class MockApi {
         delete this.user.githubId;
         delete this.user.githubLogin;
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
+      case "PATCH /user/email":
+        return this.changeEmail(body?.email, body?.password);
       case "POST /auth/register":
         return { status: 201 };
       case "POST /shortenUrl/create":
@@ -353,6 +359,44 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  /** Checks in the API's order (vb2007/vb2007.hu-api#162), short of the superuser-reserved address. */
+  private changeEmail(email?: string, password?: string) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!email || !password) {
+      return {
+        status: 400,
+        body: { error: "You must provide an E-mail address and a password." }
+      };
+    }
+    const normalized = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalized)) {
+      return {
+        status: 400,
+        body: { error: "The e-mail address is invalid: must match name@provider.com format." }
+      };
+    }
+    if (this.user.isSuperuser) {
+      return {
+        status: 403,
+        body: { error: "The superuser's e-mail address can't be changed here." }
+      };
+    }
+    if (!this.user.hasPassword) {
+      return { status: 409, body: { error: "This account has no password." } };
+    }
+    if (password !== E2E_PASSWORD) {
+      return { status: 403, body: { error: "The provided password is incorrect." } };
+    }
+    if (this.users.some((user) => user.email === normalized)) {
+      return {
+        status: 409,
+        body: { error: "An account with this E-mail address already exists." }
+      };
+    }
+    this.user.email = normalized;
+    return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
   private respondPaste(method: string, id: string, language?: string) {
