@@ -140,6 +140,7 @@ describe("ChangePassword", () => {
       "new-password"
     ]);
     expect(buttons().map((button) => button.text())).toEqual(["Save password", "Cancel"]);
+    expect(document.activeElement).toBe(buttons()[0].element);
   });
 
   it("reports an unreachable server", async () => {

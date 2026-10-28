@@ -18,6 +18,7 @@ const newError = ref("");
 const confirmError = ref("");
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
+const saveKey = useTemplateRef("saveKey");
 
 const fields = () => form.value!.querySelectorAll("input");
 
@@ -50,7 +51,10 @@ const save = async () => {
   const firstInvalid = [currentError, newError, confirmError].findIndex((error) => error.value);
   if (firstInvalid !== -1) return fields()[firstInvalid].focus();
 
-  if (await change(currentPassword.value, newPassword.value)) await close();
+  if (await change(currentPassword.value, newPassword.value)) return close();
+
+  await nextTick();
+  saveKey.value!.$el.focus();
 };
 </script>
 
@@ -99,7 +103,7 @@ const save = async () => {
     />
     <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
     <div class="change__actions">
-      <BaseButton type="submit" size="sm" :loading="isChanging">
+      <BaseButton ref="saveKey" type="submit" size="sm" :loading="isChanging">
         {{ isChanging ? "Saving" : "Save password" }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
