@@ -11,6 +11,8 @@ const OAUTH_ERRORS: Record<string, string> = {
   emailExists:
     "An account already uses your GitHub e-mail address. Log in with your password, then link GitHub on your account page.",
   githubAlreadyLinked: "That GitHub account is already linked to another account here.",
+  githubOtherLinked:
+    "That isn't the GitHub account linked here. Switch to the linked one on GitHub and try again, or unlink it first to link a different one.",
   notLoggedIn: "Your session ended before GitHub could be linked. Log in, then link GitHub again.",
   notConfigured: "GitHub login isn't available right now."
 };

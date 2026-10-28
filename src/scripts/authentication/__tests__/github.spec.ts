@@ -16,6 +16,10 @@ describe("oauthErrorMessage", () => {
     ],
     ["githubAlreadyLinked", "That GitHub account is already linked to another account here."],
     [
+      "githubOtherLinked",
+      "That isn't the GitHub account linked here. Switch to the linked one on GitHub and try again, or unlink it first to link a different one."
+    ],
+    [
       "notLoggedIn",
       "Your session ended before GitHub could be linked. Log in, then link GitHub again."
     ],
