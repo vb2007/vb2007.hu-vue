@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
-import { register, registerStatus, validateRegisterData } from "@/scripts/authentication/register";
+import {
+  passwordLengthError,
+  register,
+  registerStatus,
+  validateRegisterData
+} from "@/scripts/authentication/register";
 import { login } from "@/scripts/authentication/user";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -12,26 +17,42 @@ afterEach(() => {
   registerStatus.value = "";
 });
 
+const TOO_SHORT = "The password's too short: it must be between 8 and 128 characters.";
+const TOO_LONG = "The password's too long: it must be between 8 and 128 characters.";
+
+describe("passwordLengthError", () => {
+  it.each([
+    ["7 characters", "p".repeat(7), TOO_SHORT],
+    ["129 characters", "p".repeat(129), TOO_LONG],
+    ["8 characters", "p".repeat(8), undefined],
+    ["128 characters", "p".repeat(128), undefined],
+    ["128 emoji, counted as one character each", "🔑".repeat(128), undefined],
+    ["4 emoji, counted as one character each", "🔑".repeat(4), TOO_SHORT]
+  ])("checks %s", (_case, password, expected) => {
+    expect(passwordLengthError(password)).toBe(expected);
+  });
+});
+
 describe("validateRegisterData", () => {
   it("accepts valid data", () => {
-    expect(validateRegisterData("vb", "me@example.com", "secret", "secret")).toBeUndefined();
+    expect(validateRegisterData("vb", "me@example.com", "secret12", "secret12")).toBeUndefined();
   });
 
   it.each([
-    ["an invalid email", ["vb", "not-an-email", "secret", "secret"], "invalid-email"],
-    ["a too short username", ["v", "me@example.com", "secret", "secret"], "invalid-username"],
+    ["an invalid email", ["vb", "not-an-email", "secret12", "secret12"], "invalid-email"],
+    ["a too short username", ["v", "me@example.com", "secret12", "secret12"], "invalid-username"],
     [
       "a too long username",
-      ["v".repeat(17), "me@example.com", "secret", "secret"],
+      ["v".repeat(17), "me@example.com", "secret12", "secret12"],
       "invalid-username"
     ],
-    ["a too short password", ["vb", "me@example.com", "12345", "12345"], "invalid-password"],
+    ["a too short password", ["vb", "me@example.com", "1234567", "1234567"], TOO_SHORT],
+    ["a too long password", ["vb", "me@example.com", "p".repeat(129), "p".repeat(129)], TOO_LONG],
     [
-      "a too long password",
-      ["vb", "me@example.com", "p".repeat(31), "p".repeat(31)],
-      "invalid-password"
-    ],
-    ["mismatched passwords", ["vb", "me@example.com", "secret", "secret2"], "unmatched-passwords"]
+      "mismatched passwords",
+      ["vb", "me@example.com", "secret12", "secret123"],
+      "unmatched-passwords"
+    ]
   ] as const)("rejects %s", (_case, [username, email, password, confirm], expected) => {
     expect(validateRegisterData(username, email, password, confirm)).toBe(expected);
   });

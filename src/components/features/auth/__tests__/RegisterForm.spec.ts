@@ -26,7 +26,7 @@ const fill = async (
   {
     email = "me@example.com",
     username = "vb",
-    password = "secret",
+    password = "secret12",
     confirm = password
   }: { email?: string; username?: string; password?: string; confirm?: string } = {}
 ) => {
@@ -83,7 +83,7 @@ describe("RegisterForm", () => {
   it.each([
     [{ email: "nope" }, "Please enter a valid email address."],
     [{ username: "v" }, "Your username's length must be between 2 and 16 characters."],
-    [{ password: "123" }, "Your password's length must be between 6 and 30 characters."],
+    [{ password: "1234567" }, "The password's too short: it must be between 8 and 128 characters."],
     [{ confirm: "different" }, "The two passwords don't match."]
   ])("rejects invalid input %o before calling the API", async (input, message) => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
@@ -109,7 +109,7 @@ describe("RegisterForm", () => {
 
     await wrapper.find("form").trigger("submit");
 
-    expect(register).toHaveBeenCalledWith("vb", "me@example.com", "secret", true);
+    expect(register).toHaveBeenCalledWith("vb", "me@example.com", "secret12", true);
     expect(submitButton(wrapper).text()).toBe("Registering");
 
     registerStatus.value = "success";
@@ -127,7 +127,7 @@ describe("RegisterForm", () => {
 
     await wrapper.find("form").trigger("submit");
 
-    expect(register).toHaveBeenCalledWith("vb", "me@example.com", "secret", false);
+    expect(register).toHaveBeenCalledWith("vb", "me@example.com", "secret12", false);
   });
 
   it("shows the API's message when registering fails", async () => {
