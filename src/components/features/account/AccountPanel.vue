@@ -7,6 +7,7 @@ import {
   hasPassword,
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -14,6 +15,7 @@ import { UserManagement } from "@/constants/api";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
+import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -63,6 +65,22 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <dd>{{ userEmail }}</dd>
       </div>
     </dl>
+
+    <section class="logins" aria-labelledby="details-title">
+      <h2 id="details-title" class="logins__title">Log-in details</h2>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="mail" :size="26" /></span>
+        <div class="login__main">
+          <h3 class="login__name">E-mail</h3>
+          <p class="login__note">
+            <template v-if="isSuperuser">It's set in the API's configuration.</template>
+            <template v-else-if="!hasPassword">Set a password first to change it.</template>
+            <template v-else>You log in with it. Changing it takes your current password.</template>
+          </p>
+          <ChangeEmail v-if="hasPassword && !isSuperuser" />
+        </div>
+      </div>
+    </section>
 
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>
