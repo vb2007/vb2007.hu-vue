@@ -7,6 +7,7 @@ import {
   hasPassword,
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -61,13 +62,16 @@ describe("AccountPanel", () => {
   const unlinkKey = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
     wrapper.find("button.login__action");
 
+  const githubNote = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+    wrapper.find('[aria-labelledby="logins-title"] .login__note');
+
   it("shows the linked GitHub login with an unlink key instead of the link key", async () => {
     linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     expect(wrapper.find(".badge").text()).toBe("Linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--on");
-    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub as @octocat.");
+    expect(githubNote(wrapper).text()).toBe("You can log in with GitHub as @octocat.");
     expect(wrapper.find(".login__handle").text()).toBe("@octocat");
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').exists()).toBe(false);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
@@ -77,7 +81,7 @@ describe("AccountPanel", () => {
     linkGithub("");
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub.");
+    expect(githubNote(wrapper).text()).toBe("You can log in with GitHub.");
   });
 
   it("keeps GitHub linked on an account without a password", async () => {
@@ -85,7 +89,7 @@ describe("AccountPanel", () => {
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     // Two sentences from two template branches; the browser collapses the doubled space between them.
-    expect(wrapper.find(".login__note").text().replace(/\s+/g, " ")).toBe(
+    expect(githubNote(wrapper).text().replace(/\s+/g, " ")).toBe(
       "You can log in with GitHub as @octocat. This account has no password, so GitHub stays linked: it's how you log in."
     );
     expect(unlinkKey(wrapper).exists()).toBe(false);
@@ -174,5 +178,34 @@ describe("AccountPanel", () => {
     isLoggedIn.value = false;
     await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  });
+
+  const emailRow = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+    wrapper.findAll(".login").find((row) => row.find("h3").text() === "E-mail")!;
+
+  it("offers to change the e-mail address of an account with a password", async () => {
+    logIn();
+    hasPassword.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(wrapper.find("#details-title").text()).toBe("Log-in details");
+    expect(emailRow(wrapper).find(".login__mark path").attributes("d")).toMatch(/^M3\.5 5\.5h17/);
+    expect(emailRow(wrapper).find(".login__note").text()).toBe(
+      "You log in with it. Changing it takes your current password."
+    );
+    expect(emailRow(wrapper).find("button").text()).toBe("Change e-mail");
+  });
+
+  it.each([
+    ["an account without a password", false, false, "Set a password first to change it."],
+    ["the superuser", true, true, "It's set in the API's configuration."]
+  ])("explains why %s can't change its e-mail", async (_who, password, superuser, note) => {
+    logIn();
+    hasPassword.value = password;
+    isSuperuser.value = superuser;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(emailRow(wrapper).find(".login__note").text()).toBe(note);
+    expect(emailRow(wrapper).find("button").exists()).toBe(false);
   });
 });
