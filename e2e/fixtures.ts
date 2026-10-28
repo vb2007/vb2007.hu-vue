@@ -7,7 +7,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
- * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account. A password account's password is `api.password`.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -107,6 +107,8 @@ export class MockApi {
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
+  /** What `PATCH /user/password` checks the current password against, and changes. */
+  password = "e2e-password";
   private cdnOrigin = "https://cdn.e2e.invalid";
   readonly unhandled: string[] = [];
 
@@ -254,6 +256,8 @@ export class MockApi {
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
       quotaBytes?: number | null;
+      currentPassword?: string;
+      newPassword?: string;
     } | null,
     query: URLSearchParams
   ): { status: number; body?: unknown; location?: string } | undefined {
@@ -332,6 +336,8 @@ export class MockApi {
         delete this.user.githubId;
         delete this.user.githubLogin;
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
+      case "PATCH /user/password":
+        return this.changePassword(body?.currentPassword, body?.newPassword);
       case "POST /auth/register":
         return { status: 201 };
       case "POST /shortenUrl/create":
@@ -353,6 +359,36 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  private changePassword(currentPassword?: string, newPassword?: string) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!currentPassword || !newPassword) {
+      return {
+        status: 400,
+        body: { error: "You must provide the current password and a new password." }
+      };
+    }
+    const length = [...newPassword].length;
+    if (length < 8 || length > 128) {
+      return {
+        status: 400,
+        body: {
+          error: `The password's too ${length < 8 ? "short" : "long"}: it must be between 8 and 128 characters.`
+        }
+      };
+    }
+    if (!this.user.hasPassword) {
+      return {
+        status: 409,
+        body: { error: "This account has no password: set one first with POST /user/password." }
+      };
+    }
+    if (currentPassword !== this.password) {
+      return { status: 403, body: { error: "The provided password is incorrect." } };
+    }
+    this.password = newPassword;
+    return { status: 200, body: { message: "Password changed successfully." } };
   }
 
   private respondPaste(method: string, id: string, language?: string) {

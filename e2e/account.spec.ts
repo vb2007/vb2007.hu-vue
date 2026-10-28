@@ -116,3 +116,116 @@ test("a failed GitHub link is explained on the account page", async ({ page, api
   );
   await expect(page).toHaveURL("/account");
 });
+
+test("the password changes in place and the session carries on", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+
+  await details.getByRole("button", { name: "Change password" }).click();
+  await expect(details.getByLabel("Current password")).toBeFocused();
+  await details.getByLabel("Current password").fill("e2e-password");
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+  await details.getByRole("button", { name: "Save password" }).click();
+
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  await expect(details.getByRole("button", { name: "Change password" })).toBeFocused();
+  await expect(details.getByLabel("Current password")).toHaveCount(0);
+  expect(api.password).toBe("a-new-password");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+});
+
+test("a wrong current password is refused and the form keeps its values", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill("not-my-password");
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+  await details.getByRole("button", { name: "Save password" }).click();
+
+  await expect(details.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(details.getByLabel("Current password")).toHaveValue("not-my-password");
+  expect(api.password).toBe("e2e-password");
+
+  await page.keyboard.press("Escape");
+  await expect(details.getByRole("button", { name: "Change password" })).toBeFocused();
+  await expect(details.getByRole("alert")).toHaveCount(0);
+});
+
+test("the password form checks its fields before asking the API", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  const newPassword = details.getByLabel("New password", { exact: true });
+
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill("e2e-password");
+  await newPassword.fill("short");
+  await details.getByLabel("Confirm new password").fill("shorter");
+  await details.getByRole("button", { name: "Save password" }).click();
+
+  await expect(newPassword).toBeFocused();
+  await expect(newPassword).toHaveAccessibleDescription(
+    "8 to 128 characters. Use 8 to 128 characters."
+  );
+  await expect(details.getByText("The two passwords don't match.")).toBeVisible();
+  expect(api.password).toBe("e2e-password");
+
+  await newPassword.fill("a-new-password");
+  await expect(newPassword).toHaveAccessibleDescription("8 to 128 characters.");
+});
+
+test("an account without a password has none to change", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+
+  await expect(
+    details.getByText("This account has no password: you log in with GitHub.")
+  ).toBeVisible();
+  await expect(details.getByRole("button", { name: "Change password" })).toHaveCount(0);
+});
+
+for (const { status, error } of [
+  { status: 400, error: "You must provide the current password and a new password." },
+  { status: 409, error: "This account has no password: set one first with POST /user/password." },
+  { status: 0, error: "Error connecting to server" }
+]) {
+  test(`a password change that fails with ${status || "no connection"} says why`, async ({
+    page,
+    api,
+    baseURL
+  }) => {
+    api.loggedInAs("me@example.com", "me");
+    // Registered after the API mock, so it wins; the CORS preflight still goes to the mock.
+    await page.route("**/user/password", (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      if (!status) return route.abort();
+      return route.fulfill({
+        status,
+        headers: {
+          "Access-Control-Allow-Origin": new URL(baseURL!).origin,
+          "Access-Control-Allow-Credentials": "true"
+        },
+        json: { error }
+      });
+    });
+    await page.goto("/account");
+    const details = page.getByRole("region", { name: "Log-in details" });
+
+    await details.getByRole("button", { name: "Change password" }).click();
+    await details.getByLabel("Current password").fill("e2e-password");
+    await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+    await details.getByLabel("Confirm new password").fill("a-new-password");
+    await details.getByRole("button", { name: "Save password" }).click();
+
+    await expect(details.getByRole("alert")).toHaveText(error);
+    await expect(details.getByLabel("New password", { exact: true })).toHaveValue("a-new-password");
+  });
+}
