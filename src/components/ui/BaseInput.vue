@@ -6,6 +6,7 @@ const props = defineProps<{
   type?: string;
   placeholder?: string;
   autocomplete?: string;
+  autocapitalize?: string;
   hint?: string;
   error?: string;
   required?: boolean;
@@ -35,6 +36,7 @@ const describedBy = computed(() => {
       :type="type ?? 'text'"
       :placeholder="placeholder"
       :autocomplete="autocomplete"
+      :autocapitalize="autocapitalize"
       :inputmode="inputmode"
       :required="required"
       :aria-invalid="error ? true : undefined"
