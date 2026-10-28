@@ -10,9 +10,14 @@ export const validateRegisterData = (
   password: string,
   confirmPassword: string
 ) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+  if (!emailRegex.test(normalizedEmail)) {
     return "invalid-email";
+  }
+
+  if (normalizedEmail.length > 254) {
+    return "email-too-long";
   }
 
   if (username.length < 2 || username.length > 16) {
