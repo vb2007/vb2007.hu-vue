@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
-import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import {
   githubLinked,
   githubLogin,
@@ -163,11 +162,11 @@ describe("AccountPanel", () => {
   it("offers to set a password only to an account without one", async () => {
     linkGithub("octocat", false);
     const { wrapper } = await mountWithRouter(AccountPanel);
-    expect(wrapper.findComponent(SetPasswordForm).exists()).toBe(true);
+    expect(wrapper.find("#password-title").exists()).toBe(true);
 
     hasPassword.value = true;
     await flushPromises();
-    expect(wrapper.findComponent(SetPasswordForm).exists()).toBe(false);
+    expect(wrapper.find("#password-title").exists()).toBe(false);
   });
 
   it("says the password is set, and offers to unlink GitHub instead of the form", async () => {
@@ -178,14 +177,21 @@ describe("AccountPanel", () => {
       "GitHub confirmed it's you. Set your password within 10 minutes."
     );
 
-    hasPassword.value = true;
-    wrapper.findComponent(SetPasswordForm).vm.$emit("set");
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      );
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.find('[role="status"]').text()).toBe(
       "Your password is set. You can log in with it from now on."
     );
-    expect(wrapper.findComponent(SetPasswordForm).exists()).toBe(false);
+    expect(wrapper.find("#password-title").exists()).toBe(false);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
   });
 

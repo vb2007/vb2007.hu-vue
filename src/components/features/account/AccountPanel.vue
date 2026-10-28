@@ -123,7 +123,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       </div>
     </section>
 
-    <SetPasswordForm v-if="!hasPassword" @set="onPasswordSet" />
+    <SetPasswordForm @set="onPasswordSet" />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">

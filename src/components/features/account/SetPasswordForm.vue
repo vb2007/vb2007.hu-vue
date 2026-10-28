@@ -1,8 +1,11 @@
 <script setup lang="ts">
-/** Sets a first password on an account made with GitHub; the API may want GitHub to confirm it's them first. */
+/**
+ * Sets a first password on an account made with GitHub; the API may want GitHub to confirm it's
+ * them first. It hides itself once the account has a password but stays mounted to tell the panel.
+ */
 import { computed, ref } from "vue";
 import { UserManagement } from "@/constants/api";
-import { userEmail } from "@/scripts/authentication/authState";
+import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { useSetPassword } from "@/composables/useSetPassword";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -40,7 +43,7 @@ const onSubmit = async () => {
 </script>
 
 <template>
-  <section class="password" aria-labelledby="password-title">
+  <section v-if="!hasPassword" class="password" aria-labelledby="password-title">
     <h2 id="password-title" class="password__title">Password</h2>
     <p class="password__note">
       This account has no password yet: you log in with GitHub. Set one to also log in with your

@@ -61,6 +61,7 @@ describe("SetPasswordForm", () => {
     );
     expect(hasPassword.value).toBe(true);
     expect(wrapper.emitted("set")).toHaveLength(1);
+    expect(wrapper.find("section").exists()).toBe(false);
   });
 
   it.each([
