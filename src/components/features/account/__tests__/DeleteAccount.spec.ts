@@ -43,6 +43,8 @@ describe("DeleteAccount", () => {
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
     const { wrapper, router } = await mountPanel();
+    let loggedInOnArrival: boolean | undefined;
+    router.afterEach(() => (loggedInOnArrival = isLoggedIn.value));
 
     await open(wrapper);
     const input = wrapper.find("input");
@@ -64,8 +66,29 @@ describe("DeleteAccount", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
       password: "hunter22"
     });
-    expect(isLoggedIn.value).toBe(false);
     expect(router.currentRoute.value.fullPath).toBe("/");
+    expect(loggedInOnArrival).toBe(true);
+    expect(isLoggedIn.value).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("stays open on Escape while the delete is on its way", async () => {
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    const { wrapper } = await mountPanel();
+
+    await open(wrapper);
+    await wrapper.find("input").setValue("wrong");
+    await wrapper.find("form").trigger("submit");
+    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find("form").exists()).toBe(true);
+
+    answer(jsonResponse(403, { error: "The provided password is incorrect." }));
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe("The provided password is incorrect.");
+    expect(wrapper.find("input").element.value).toBe("wrong");
     wrapper.unmount();
   });
 
@@ -79,6 +102,8 @@ describe("DeleteAccount", () => {
     expect(wrapper.find("label").text()).toBe("Username");
     expect(wrapper.find(".field__hint").text()).toBe("Type “me” to confirm.");
     expect(input.attributes("autocapitalize")).toBe("off");
+    // The field's wrapper takes it, and the input inherits it.
+    expect(wrapper.find(".field").attributes("spellcheck")).toBe("false");
 
     await input.setValue("Me");
     expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();

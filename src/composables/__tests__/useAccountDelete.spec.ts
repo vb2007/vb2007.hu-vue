@@ -16,7 +16,7 @@ describe("useAccountDelete", () => {
 
   const sentBody = () => JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
 
-  it("deletes an account with its password and forgets the user", async () => {
+  it("deletes an account with its password", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "User deleted successfully." }));
     const account = useAccountDelete();
 
@@ -30,8 +30,6 @@ describe("useAccountDelete", () => {
       body: JSON.stringify({ password: "hunter22" }),
       credentials: "include"
     });
-    expect(isLoggedIn.value).toBe(false);
-    expect(username.value).toBe("");
     expect(account.deleteError.value).toBe("");
     expect(account.isDeleting.value).toBe(false);
   });

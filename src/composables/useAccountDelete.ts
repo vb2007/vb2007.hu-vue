@@ -1,7 +1,6 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword } from "@/scripts/authentication/authState";
-import { clearSession } from "@/scripts/authentication/user";
 import { errorFrom } from "@/scripts/pastebin/paste";
 
 /**
@@ -12,7 +11,7 @@ export const useAccountDelete = () => {
   const isDeleting = ref(false);
   const deleteError = ref("");
 
-  /** Returns whether it worked; the API has then ended the session. */
+  /** Returns whether it worked; the API has then ended the session, so the caller clears it. */
   const deleteAccount = async (confirmation: string) => {
     let deleted = false;
 
@@ -32,7 +31,6 @@ export const useAccountDelete = () => {
       });
 
       if (response.ok) {
-        clearSession();
         deleted = true;
       } else {
         deleteError.value = await errorFrom(response, "Failed to delete the account");

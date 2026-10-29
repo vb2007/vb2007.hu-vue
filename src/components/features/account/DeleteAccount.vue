@@ -3,6 +3,7 @@
 import { computed, nextTick, ref, useTemplateRef } from "vue";
 import { useRouter } from "vue-router";
 import { hasPassword, username } from "@/scripts/authentication/authState";
+import { clearSession } from "@/scripts/authentication/user";
 import { useAccountDelete } from "@/composables/useAccountDelete";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -28,6 +29,7 @@ const open = async () => {
 };
 
 const cancel = async () => {
+  if (isDeleting.value) return;
   confirming.value = false;
   confirmation.value = "";
   deleteError.value = "";
@@ -37,7 +39,9 @@ const cancel = async () => {
 
 const submit = async () => {
   if (!ready.value) return;
-  if (await deleteAccount(confirmation.value)) await router.push("/");
+  if (!(await deleteAccount(confirmation.value))) return;
+  await router.push("/");
+  clearSession();
 };
 </script>
 
@@ -72,10 +76,10 @@ const submit = async () => {
         :hint="`Type “${username}” to confirm.`"
         autocomplete="off"
         autocapitalize="off"
+        spellcheck="false"
         required
       />
       <StatusMessage v-if="deleteError" tone="error">{{ deleteError }}</StatusMessage>
-      <!-- Disabled until confirmed; then it turns solid red, like an armed Delete. -->
       <div class="confirm__actions">
         <BaseButton type="submit" size="sm" :error="ready" :disabled="!ready" :loading="isDeleting">
           {{ isDeleting ? "Deleting" : "Delete account" }}
