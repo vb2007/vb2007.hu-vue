@@ -175,6 +175,7 @@ describe("ChangePassword", () => {
     answer(jsonResponse(status, body));
     await flushPromises();
 
+    expect(document.activeElement).toBe(document.body);
     wrapper = mount(ChangePassword);
   });
 
