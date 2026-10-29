@@ -82,6 +82,10 @@ describe("RegisterForm", () => {
 
   it.each([
     [{ email: "nope" }, "Please enter a valid email address."],
+    [
+      { email: `${"a".repeat(243)}@example.com` },
+      "Your email address can't be longer than 254 characters."
+    ],
     [{ username: "v" }, "Your username's length must be between 2 and 16 characters."],
     [{ password: "123" }, "Your password's length must be between 6 and 30 characters."],
     [{ confirm: "different" }, "The two passwords don't match."]
