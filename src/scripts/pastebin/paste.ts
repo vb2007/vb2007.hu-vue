@@ -1,4 +1,4 @@
-/** Mirror the length limits the API enforces, so a paste is checked before it is sent. */
+/** The API's paste length limits, checked here before sending. */
 export const PASTE_MIN_LENGTH = 2;
 export const PASTE_MAX_LENGTH = 10000;
 
