@@ -15,6 +15,7 @@ import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
+import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -134,6 +135,8 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
     </section>
 
     <SetPasswordForm @set="onPasswordSet" />
+
+    <DeleteAccount />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
