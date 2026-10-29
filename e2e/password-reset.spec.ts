@@ -54,10 +54,21 @@ test("the code can be sent again once the countdown ends, and the address change
   await expect(resend).toHaveText("Send again in 1:00");
   await expect(resend).toBeDisabled();
 
+  // Back to the same address while the API wouldn't send another code: nothing is asked for.
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  await expect(resend).toBeDisabled();
+  expect(api.passwordResets).toEqual(["typo@example.com", "me@example.com"]);
+
   await page.clock.runFor(60_000);
   await expect(resend).toHaveText("Send again");
   await resend.click();
   await expect(resend).toHaveText("Send again in 1:00");
+  await expect(page.getByRole("status")).toHaveText(
+    "If an account uses this address, a new code was sent to it. The one before no longer works."
+  );
+  await expect(page.getByLabel("Code")).toBeFocused();
   expect(api.passwordResets).toEqual(["typo@example.com", "me@example.com", "me@example.com"]);
 
   // Over the API's mail limit: its error shows and the key waits again.
@@ -74,6 +85,44 @@ test("the code can be sent again once the countdown ends, and the address change
   await resend.click();
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
   await expect(resend).toHaveText("Send again in 1:00");
+});
+
+test("a code that already arrived is entered after a reload, without sending another", async ({
+  page,
+  api
+}) => {
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+
+  await page.reload();
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  await expect(page.getByRole("button", { name: "Send again" })).toBeEnabled();
+
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page).toHaveURL("/login");
+  expect(api.passwordResets).toEqual(["me@example.com"]);
+});
+
+test("a code only works for the address that asked for it", async ({ page, api }) => {
+  api.passwordResets.push("me@example.com");
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("someone@example.com");
+  await page.getByRole("button", { name: "Enter it" }).click();
+
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The code is wrong, expired or already used: check it or request a new one."
+  );
 });
 
 test("resetting the password logs out a user who was logged in", async ({

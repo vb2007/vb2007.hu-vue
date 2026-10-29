@@ -580,8 +580,13 @@ export class MockApi {
     return { status: 200, body: { message: "User deleted successfully." } };
   }
 
-  /** Like the API: the right code sets the password and ends every session of the account. */
-  private confirmPasswordReset(body: { code?: string; newPassword?: string } | null) {
+  /**
+   * Like the API: the right code for an address that asked for one sets the password and ends
+   * every session of the account.
+   */
+  private confirmPasswordReset(
+    body: { email?: string; code?: string; newPassword?: string } | null
+  ) {
     const length = [...(body?.newPassword ?? "")].length;
     if (length < 8 || length > 128) {
       const problem = length < 8 ? "too short" : "too long";
@@ -590,7 +595,11 @@ export class MockApi {
         body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
       };
     }
-    if (body?.code?.replace(/\s/g, "") !== this.passwordResetCode) {
+    const normalize = (email: string) => email.trim().toLowerCase();
+    const asked = this.passwordResets.some(
+      (email) => normalize(email) === normalize(body?.email ?? "")
+    );
+    if (!asked || body?.code?.replace(/\s/g, "") !== this.passwordResetCode) {
       return {
         status: 400,
         body: {

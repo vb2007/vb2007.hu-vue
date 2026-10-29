@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import {
   confirmPasswordReset,
   passwordResetNotice,
@@ -102,13 +102,25 @@ describe("confirmPasswordReset", () => {
     expect(clearSession).not.toHaveBeenCalled();
   });
 
-  it("logs out a user who was logged in, since the API ended every session", async () => {
+  it("logs out a user who was logged in as that account, since the API ended its sessions", async () => {
     isLoggedIn.value = true;
+    userEmail.value = "me@example.com";
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: RESET }));
+
+    await confirmPasswordReset(" Me@Example.com ", "123456", "new password");
+
+    expect(clearSession).toHaveBeenCalledOnce();
+    expect(passwordResetNotice.value).toBe(RESET);
+  });
+
+  it("keeps a user logged in as another account", async () => {
+    isLoggedIn.value = true;
+    userEmail.value = "someone@example.com";
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: RESET }));
 
     await confirmPasswordReset("me@example.com", "123456", "new password");
 
-    expect(clearSession).toHaveBeenCalledOnce();
+    expect(clearSession).not.toHaveBeenCalled();
     expect(passwordResetNotice.value).toBe(RESET);
   });
 
