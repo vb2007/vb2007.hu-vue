@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from "vue";
 import { useChangeEmail } from "@/composables/useChangeEmail";
+import { userEmail } from "@/scripts/authentication/authState";
 import { isValidEmail } from "@/scripts/authentication/register";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -44,12 +45,21 @@ const cancel = () => {
   if (!isChanging.value) return close();
 };
 
+const addressError = (address: string) => {
+  if (!isValidEmail(address)) return "Enter a valid e-mail address.";
+  if (address.toLowerCase() === userEmail.value.toLowerCase()) {
+    return "That's already your e-mail address.";
+  }
+  return "";
+};
+
 const save = async () => {
-  emailError.value = isValidEmail(email.value) ? "" : "Enter a valid e-mail address.";
+  const address = email.value.trim();
+  emailError.value = addressError(address);
   passwordError.value = password.value ? "" : "Enter your current password.";
   if (emailError.value) return focusField(emailField.value);
   if (passwordError.value) return focusField(passwordField.value);
-  if (await change(email.value, password.value)) return close();
+  if (await change(address, password.value)) return close();
   if (!form.value?.contains(document.activeElement)) focusField(emailField.value);
 };
 </script>

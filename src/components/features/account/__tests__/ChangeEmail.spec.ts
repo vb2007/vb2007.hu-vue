@@ -58,7 +58,8 @@ describe("ChangeEmail", () => {
 
   it.each([
     ["not-an-address", "secret-password", 0, "Enter a valid e-mail address."],
-    ["new@example.com", "", 1, "Enter your current password."]
+    ["new@example.com", "", 1, "Enter your current password."],
+    [" Old@Example.com ", "secret-password", 0, "That's already your e-mail address."]
   ])("checks %j / %j before sending", async (email, password, invalid, error) => {
     await openForm();
     await fill(email, password);
@@ -96,13 +97,13 @@ describe("ChangeEmail", () => {
     expect(wrapper.find(".field__error").exists()).toBe(false);
   });
 
-  it("saves, closes the form and confirms with the API's message", async () => {
+  it("saves the trimmed address, closes the form and confirms with the API's message", async () => {
     let answer!: (response: Response) => void;
     fetchMock
       .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
       .mockResolvedValueOnce(jsonResponse(200, { email: "new@example.com" }));
     await openForm();
-    await fill("new@example.com", "secret-password");
+    await fill("  new@example.com ", "secret-password");
 
     await wrapper.find("form").trigger("submit");
     expect(button("Saving").attributes("aria-busy")).toBe("true");
