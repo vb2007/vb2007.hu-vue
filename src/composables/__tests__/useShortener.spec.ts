@@ -56,13 +56,14 @@ describe("useShortener", () => {
   });
 
   it("falls back to the status when the API sends no error", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429));
+    fetchMock.mockResolvedValueOnce(jsonResponse(500));
     const shortener = useShortener();
     shortener.originalUrl.value = "https://example.com";
 
     await shortener.shorten();
 
-    expect(shortener.errorMessage.value).toBe("Failed to shorten URL: 429");
+    expect(shortener.errorMessage.value).toBe("Failed to shorten URL: 500");
+    expect(shortener.shortenedCode.value).toBe("");
     expect(shortener.isLoading.value).toBe(false);
   });
 
