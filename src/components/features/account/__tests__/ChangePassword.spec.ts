@@ -154,6 +154,23 @@ describe("ChangePassword", () => {
     expect(wrapper.find("form").exists()).toBe(true);
   });
 
+  it.each([
+    [200, { message: "Password changed successfully." }],
+    [403, { error: "The provided password is incorrect." }]
+  ])("doesn't throw when it's gone before a %i answer arrives", async (status, body) => {
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    await open();
+    await fill("old-password", "new-password");
+    await wrapper.find("form").trigger("submit");
+
+    wrapper.unmount();
+    answer(jsonResponse(status, body));
+    await flushPromises();
+
+    wrapper = mount(ChangePassword);
+  });
+
   it("cancels with Escape or the Cancel key, clearing everything", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(403, { error: "The provided password is incorrect." })

@@ -35,7 +35,7 @@ const close = async () => {
   currentError.value = newError.value = confirmError.value = "";
   changeError.value = "";
   await nextTick();
-  key.value!.$el.focus();
+  key.value?.$el.focus();
 };
 
 const cancel = () => {
@@ -54,7 +54,7 @@ const save = async () => {
   if (await change(currentPassword.value, newPassword.value)) return close();
 
   await nextTick();
-  saveKey.value!.$el.focus();
+  saveKey.value?.$el.focus();
 };
 </script>
 
