@@ -17,7 +17,7 @@ export const loginStatus = ref("");
  * The session lives in an HttpOnly cookie set by the API, so the page can't read it.
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
-const fetchUserDetails = async () => {
+export const fetchUserDetails = async () => {
   try {
     const response = await fetch(UserManagement.Actions.user, {
       method: "GET",
@@ -52,9 +52,6 @@ export const restoreSession = () => {
   });
   return sessionRestore;
 };
-
-/** Looks the user up again after the account changed, e.g. once a password is set. */
-export const refreshUser = () => fetchUserDetails();
 
 export const login = async (email: string, password: string) => {
   try {

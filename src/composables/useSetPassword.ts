@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword } from "@/scripts/authentication/authState";
-import { refreshUser } from "@/scripts/authentication/user";
+import { fetchUserDetails } from "@/scripts/authentication/user";
 import { errorFrom } from "@/scripts/pastebin/paste";
 
 /** How the API's 403 starts when GitHub has to confirm it's the user first (vb2007/vb2007.hu-api#183). */
@@ -14,7 +14,7 @@ export const useSetPassword = () => {
   /** The API wants a fresh GitHub login or relink before it takes the password. */
   const needsGithub = ref(false);
 
-  /** Returns whether it worked. */
+  /** Returns whether the account has a password now; a 409 means it had one already. */
   const setPassword = async (password: string) => {
     let set = false;
 
@@ -23,7 +23,7 @@ export const useSetPassword = () => {
       setError.value = "";
       needsGithub.value = false;
 
-      const response = await fetch(UserManagement.Actions.password, {
+      const response = await fetch(UserManagement.Actions.userPassword, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
@@ -32,12 +32,15 @@ export const useSetPassword = () => {
 
       if (response.ok) {
         hasPassword.value = true;
-        await refreshUser();
+        await fetchUserDetails();
         set = true;
       } else {
         setError.value = await errorFrom(response, "Failed to set the password");
         needsGithub.value = response.status === 403 && setError.value.startsWith(GITHUB_REAUTH);
         console.error("Failed to set the password: ", response.status);
+        if (response.status === 409) {
+          set = (await fetchUserDetails()) && hasPassword.value;
+        }
       }
     } catch (error) {
       setError.value = "Error connecting to server";

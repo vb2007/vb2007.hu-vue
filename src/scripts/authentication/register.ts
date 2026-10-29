@@ -4,6 +4,20 @@ import { login } from "@/scripts/authentication/user";
 
 export const registerStatus = ref("");
 
+export const passwordLengthError = (password: string) => {
+  const length = [...password].length;
+
+  if (length < 8) {
+    return "The password's too short: it must be between 8 and 128 characters.";
+  }
+
+  if (length > 128) {
+    return "The password's too long: it must be between 8 and 128 characters.";
+  }
+
+  return;
+};
+
 export const validateRegisterData = (
   username: string,
   email: string,

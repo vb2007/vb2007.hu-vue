@@ -9,7 +9,7 @@ describe("API endpoints", () => {
     expect(UserManagement.Authentication.github).toBe("https://api.test/auth/github");
     expect(UserManagement.Authentication.githubLink).toBe("https://api.test/auth/github/link");
     expect(UserManagement.Actions.user).toBe("https://api.test/user");
-    expect(UserManagement.Actions.password).toBe("https://api.test/user/password");
+    expect(UserManagement.Actions.userPassword).toBe("https://api.test/user/password");
     expect(UserManagement.Actions.userWithId).toBe("https://api.test/users/:id");
   });
 

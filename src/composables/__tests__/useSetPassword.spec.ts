@@ -67,7 +67,6 @@ describe("useSetPassword", () => {
   it.each([
     [400, "The password's too short: it must be between 8 and 128 characters."],
     [403, "You must be logged in to perform this action."],
-    [409, "This account already has a password."],
     [429, "Too many failed attempts: try again later."]
   ])("shows the API's %i error without asking for GitHub", async (status, error) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
@@ -78,6 +77,34 @@ describe("useSetPassword", () => {
     expect(password.setError.value).toBe(error);
     expect(password.needsGithub.value).toBe(false);
     expect(password.isSetting.value).toBe(false);
+  });
+
+  it("looks the user up on a 409, since the account has a password already", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
+      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com", hasPassword: true }));
+    const password = useSetPassword();
+
+    expect(await password.setPassword("correct horse")).toBe(true);
+
+    expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/user", {
+      method: "GET",
+      credentials: "include"
+    });
+    expect(hasPassword.value).toBe(true);
+    expect(password.setError.value).toBe("This account already has a password.");
+  });
+
+  it("keeps the 409 as an error when the lookup can't confirm the password", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
+      .mockResolvedValueOnce(jsonResponse(401));
+    const password = useSetPassword();
+
+    expect(await password.setPassword("correct horse")).toBe(false);
+
+    expect(hasPassword.value).toBe(false);
+    expect(password.setError.value).toBe("This account already has a password.");
   });
 
   it("forgets the GitHub confirmation request on the next try", async () => {

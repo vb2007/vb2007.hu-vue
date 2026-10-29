@@ -13,8 +13,8 @@ export class UserManagement {
 
   static Actions = class {
     static user: string = `${API_BASE_URL}/user`;
-    /** `POST` sets a password on an account made with GitHub (vb2007/vb2007.hu-api#155). */
-    static password: string = `${API_BASE_URL}/user/password`;
+    /** `PATCH` changes the password (vb2007/vb2007.hu-api#161). */
+    static userPassword: string = `${API_BASE_URL}/user/password`;
     static userWithId: string = `${API_BASE_URL}/users/:id`;
   };
 }
