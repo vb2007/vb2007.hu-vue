@@ -368,7 +368,9 @@ export class MockApi {
   }
 
   private deleteAccount(body: { password?: string; username?: string } | null) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
     if (this.passwordChecksLimited) {
       return { status: 429, body: { error: "Too many failed attempts: try again later." } };
     }
@@ -382,8 +384,19 @@ export class MockApi {
       if (body.password !== MOCK_PASSWORD) {
         return { status: 403, body: { error: "The provided password is incorrect." } };
       }
-    } else if (body?.username !== this.user.username) {
-      return { status: 403, body: { error: "The provided username doesn't match this account." } };
+    } else {
+      if (!body?.username) {
+        return {
+          status: 400,
+          body: { error: "This account has no password: provide your username to delete it." }
+        };
+      }
+      if (body.username !== this.user.username) {
+        return {
+          status: 403,
+          body: { error: "The provided username doesn't match this account." }
+        };
+      }
     }
     this.user = null;
     return { status: 200, body: { message: "User deleted successfully." } };

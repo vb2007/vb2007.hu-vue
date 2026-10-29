@@ -156,6 +156,7 @@ test("an account made with GitHub is deleted by typing its username", async ({ p
   await expect(page.getByText("Type “me” to confirm.")).toBeVisible();
   const confirm = page.getByRole("button", { name: "Delete account" });
 
+  await expect(page.getByLabel("Username")).toHaveJSProperty("spellcheck", false);
   await page.getByLabel("Username").fill("m");
   await expect(confirm).toBeDisabled();
   await page.getByLabel("Username").fill("me");
