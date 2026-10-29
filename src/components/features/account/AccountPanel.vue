@@ -64,9 +64,14 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   <StationBoard v-if="isLoggedIn" title="Your account" as="h1">
     <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
     <StatusMessage v-if="unlinkError" tone="error">{{ unlinkError }}</StatusMessage>
-    <StatusMessage v-if="shownNotice" ref="noticeMessage" tone="success" tabindex="-1">{{
-      shownNotice
-    }}</StatusMessage>
+    <StatusMessage
+      v-if="shownNotice"
+      ref="noticeMessage"
+      class="notice"
+      tone="success"
+      tabindex="-1"
+      >{{ shownNotice }}</StatusMessage
+    >
 
     <dl class="facts">
       <div class="fact">
@@ -144,6 +149,10 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
 </template>
 
 <style scoped>
+.notice {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
+}
+
 .facts {
   display: grid;
   margin: 0;

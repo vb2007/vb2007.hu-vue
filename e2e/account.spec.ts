@@ -168,6 +168,10 @@ test("an account made with GitHub confirms it with GitHub, then sets a password"
     "Your password is set. You can log in with it from now on."
   );
   await expect(page.getByRole("status")).toBeFocused();
+  // Focus scrolls the message into view, clear of the sticky navbar.
+  const navbarBottom = (await page.locator("header.bar").boundingBox())!;
+  const noticeTop = (await page.getByRole("status").boundingBox())!;
+  expect(noticeTop.y).toBeGreaterThanOrEqual(navbarBottom.y + navbarBottom.height);
   await expect(page.getByRole("heading", { name: "Password" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Unlink GitHub" })).toBeVisible();
 
