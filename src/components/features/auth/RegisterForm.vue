@@ -22,7 +22,6 @@ const isButtonError = ref(false);
 const MESSAGES: Record<string, string> = {
   "missing-fields": "Please fill out all required input fields.",
   "invalid-email": "Please enter a valid email address.",
-  "invalid-username": "Your username's length must be between 2 and 16 characters.",
   "unmatched-passwords": "The two passwords don't match.",
   error: "Registration failed. Please try again."
 };
