@@ -6,8 +6,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
- * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
+ * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * `DELETE /user` takes `MOCK_PASSWORD`, or the username for a GitHub-only account.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -59,6 +60,7 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
 ];
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
 const MB = 1024 * 1024;
+export const MOCK_PASSWORD = "e2e-password";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 
 /** 1×1 PNG served for every cdn file, so thumbnails and previews load. */
@@ -108,6 +110,7 @@ export class MockApi {
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
   private cdnOrigin = "https://cdn.e2e.invalid";
+  private passwordChecksLimited = false;
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -194,6 +197,11 @@ export class MockApi {
     return upload;
   }
 
+  /** Answers password checks with 429, like the API after too many failed attempts. */
+  limitsPasswordChecks() {
+    this.passwordChecksLimited = true;
+  }
+
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
   }
@@ -254,6 +262,8 @@ export class MockApi {
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
       quotaBytes?: number | null;
+      password?: string;
+      username?: string;
     } | null,
     query: URLSearchParams
   ): { status: number; body?: unknown; location?: string } | undefined {
@@ -319,6 +329,8 @@ export class MockApi {
           hasPassword: true
         };
         return { status: 200 };
+      case "DELETE /user":
+        return this.deleteAccount(body);
       case "POST /auth/logout":
         this.user = null;
         return { status: 200 };
@@ -353,6 +365,41 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  private deleteAccount(body: { password?: string; username?: string } | null) {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (this.passwordChecksLimited) {
+      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+    }
+    if (this.user.hasPassword) {
+      if (!body?.password) {
+        return {
+          status: 400,
+          body: { error: "You must provide your password to delete this account." }
+        };
+      }
+      if (body.password !== MOCK_PASSWORD) {
+        return { status: 403, body: { error: "The provided password is incorrect." } };
+      }
+    } else {
+      if (!body?.username) {
+        return {
+          status: 400,
+          body: { error: "This account has no password: provide your username to delete it." }
+        };
+      }
+      if (body.username !== this.user.username) {
+        return {
+          status: 403,
+          body: { error: "The provided username doesn't match this account." }
+        };
+      }
+    }
+    this.user = null;
+    return { status: 200, body: { message: "User deleted successfully." } };
   }
 
   private respondPaste(method: string, id: string, language?: string) {

@@ -12,8 +12,8 @@ export class UserManagement {
   };
 
   static Actions = class {
+    /** Also `DELETE` to delete the account (vb2007/vb2007.hu-api#164). */
     static user: string = `${API_BASE_URL}/user`;
-    static userWithId: string = `${API_BASE_URL}/users/:id`;
   };
 }
 
