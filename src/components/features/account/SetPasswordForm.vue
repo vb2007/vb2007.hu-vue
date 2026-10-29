@@ -3,7 +3,7 @@
  * Sets a first password on an account made with GitHub; the API may want GitHub to confirm it's
  * them first. It hides itself once the account has a password but stays mounted to tell the panel.
  */
-import { nextTick, ref, useTemplateRef, watch } from "vue";
+import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { passwordLengthError } from "@/scripts/authentication/register";
@@ -19,6 +19,7 @@ const password = ref("");
 const confirmPassword = ref("");
 const passwordError = ref("");
 const confirmError = ref("");
+const errorId = useId();
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
 const { isSetting, setError, needsGithub, setPassword } = useSetPassword();
 
@@ -79,13 +80,14 @@ const onSubmit = async () => {
         :error="confirmError"
         required
       />
-      <StatusMessage v-if="setError" :tone="needsGithub ? 'info' : 'error'">{{
+      <StatusMessage v-if="setError" :id="errorId" :tone="needsGithub ? 'info' : 'error'">{{
         setError
       }}</StatusMessage>
       <BaseButton
         v-if="needsGithub"
         ref="githubKey"
         class="password__key"
+        :aria-describedby="errorId"
         :href="UserManagement.Authentication.githubLink"
       >
         <AppIcon name="github" :size="20" />

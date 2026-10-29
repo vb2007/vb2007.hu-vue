@@ -142,6 +142,10 @@ describe("SetPasswordForm", () => {
     const confirm = wrapper.find('a[href="https://api.test/auth/github/link"]');
     expect(confirm.text()).toBe("Confirm with GitHub");
     expect(document.activeElement).toBe(confirm.element);
+    expect(confirm.attributes("aria-describedby")).toBe(
+      wrapper.find('[role="status"]').attributes("id")
+    );
+    expect(confirm.attributes("aria-describedby")).toBeTruthy();
     wrapper.unmount();
   });
 });
