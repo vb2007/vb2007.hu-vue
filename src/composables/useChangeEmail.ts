@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
+import { userEmail } from "@/scripts/authentication/authState";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 import { errorFrom } from "@/scripts/pastebin/paste";
 
@@ -28,7 +29,9 @@ export const useChangeEmail = () => {
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
         changeMessage.value = data.message ?? "E-mail address updated.";
-        await fetchUserDetails();
+        if (!(await fetchUserDetails())) {
+          userEmail.value = email.trim().toLowerCase();
+        }
         changed = true;
       } else {
         changeError.value = await errorFrom(response, "Failed to change e-mail");

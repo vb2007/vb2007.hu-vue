@@ -49,10 +49,23 @@ describe("useChangeEmail", () => {
     expect(email.changeMessage.value).toBe("E-mail address updated.");
   });
 
+  it("stores the new address itself when the refresh fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated successfully." }))
+      .mockResolvedValueOnce(jsonResponse(500));
+    const email = useChangeEmail();
+
+    expect(await email.change(" New@Example.com ", "secret-password")).toBe(true);
+
+    expect(userEmail.value).toBe("new@example.com");
+    expect(email.changeMessage.value).toBe("E-mail address updated successfully.");
+  });
+
   it.each([
     [400, "The e-mail address is invalid: must match name@provider.com format."],
     [403, "The provided password is incorrect."],
-    [409, "An account with this E-mail address already exists."]
+    [409, "An account with this E-mail address already exists."],
+    [429, "Too many failed attempts: try again later."]
   ])("shows the API's %i and keeps the address", async (status, error) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
     const email = useChangeEmail();
