@@ -178,7 +178,11 @@ for (const [status, email, password, error] of [
 test("accounts that can't change their e-mail say why", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
   await page.goto("/account");
-  await expect(page.getByText("Set a password first to change it.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "This account logs in with GitHub, so there's no password to confirm the change with."
+    )
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Change e-mail" })).toHaveCount(0);
 
   api.loggedInAs("admin@example.com", "admin", { superuser: true });

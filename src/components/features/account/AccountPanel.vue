@@ -74,7 +74,10 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           <h3 class="login__name">E-mail</h3>
           <p class="login__note">
             <template v-if="isSuperuser">It's set in the API's configuration.</template>
-            <template v-else-if="!hasPassword">Set a password first to change it.</template>
+            <template v-else-if="!hasPassword"
+              >This account logs in with GitHub, so there's no password to confirm the change
+              with.</template
+            >
             <template v-else>You log in with it. Changing it takes your current password.</template>
           </p>
           <ChangeEmail v-if="hasPassword && !isSuperuser" />

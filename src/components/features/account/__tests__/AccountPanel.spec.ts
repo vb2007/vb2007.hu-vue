@@ -197,7 +197,12 @@ describe("AccountPanel", () => {
   });
 
   it.each([
-    ["an account without a password", false, false, "Set a password first to change it."],
+    [
+      "an account without a password",
+      false,
+      false,
+      "This account logs in with GitHub, so there's no password to confirm the change with."
+    ],
     ["the superuser", true, true, "It's set in the API's configuration."]
   ])("explains why %s can't change its e-mail", async (_who, password, superuser, note) => {
     logIn();
