@@ -2,6 +2,7 @@
 import { onMounted, ref, watch, computed } from "vue";
 import { RouterLink } from "vue-router";
 import { isLoggedIn } from "@/scripts/authentication/authState";
+import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
 import { useOauthError } from "@/composables/useOauthError";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
@@ -14,6 +15,9 @@ const email = ref("");
 const password = ref("");
 const isLoading = ref(false);
 const oauthError = useOauthError();
+// Shown once: a reset sends the user here with the API's message.
+const resetNotice = passwordResetNotice.value;
+passwordResetNotice.value = "";
 
 const handleSubmit = async () => {
   isLoading.value = true;
@@ -48,14 +52,18 @@ watch(isLoggedIn, (newVal) => {
     <template v-if="!isLoggedIn">
       <form class="form" @submit.prevent="handleSubmit">
         <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
+        <StatusMessage v-if="resetNotice" tone="success">{{ resetNotice }}</StatusMessage>
         <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
-        <BaseInput
-          v-model="password"
-          label="Password"
-          type="password"
-          autocomplete="current-password"
-          required
-        />
+        <div class="password">
+          <BaseInput
+            v-model="password"
+            label="Password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+          <RouterLink class="forgot" to="/reset-password">Forgot password?</RouterLink>
+        </div>
         <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
         <BaseButton type="submit" block :loading="isLoading">
           {{ isLoading ? "Logging in" : "Log in" }}
@@ -83,6 +91,16 @@ watch(isLoggedIn, (newVal) => {
 .done {
   display: grid;
   gap: var(--sp-4);
+}
+
+.password {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.forgot {
+  justify-self: end;
+  font-size: var(--fs-sm);
 }
 
 .alt {
