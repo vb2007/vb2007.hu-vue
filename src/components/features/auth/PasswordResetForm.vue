@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { useCountdown } from "@/composables/useCountdown";
 import { confirmPasswordReset, requestPasswordReset } from "@/scripts/authentication/passwordReset";
-import { passwordLengthError } from "@/scripts/authentication/register";
+import { normalizeEmail, passwordLengthError } from "@/scripts/authentication/register";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -11,20 +11,33 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = 60;
+/** The API's own message reads the same for the first code; this one tells a resend apart. */
+const RESENT_MESSAGE =
+  "If an account uses this address, a new code was sent to it. The one before no longer works.";
 
 const router = useRouter();
 const email = ref("");
 const code = ref("");
 const newPassword = ref("");
-/** The address the code went to; set once it was sent, which moves the board to the code step. */
+/** The address on the code step; set, it moves the board there. */
 const sentTo = ref("");
+/** The last address a code was asked for, which the resend countdown belongs to. */
+const lastSentTo = ref("");
+/** The message for `lastSentTo`, shown again when the user comes back to it. */
+const lastMessage = ref("");
 const sentMessage = ref("");
 const failure = ref("");
 const isSending = ref(false);
 const isResetting = ref(false);
 const isButtonError = ref(false);
 const step = ref<HTMLFormElement>();
+const sentMessageId = useId();
 const resend = useCountdown();
+
+/** Only the address the countdown started for has to wait; any other can get a code now. */
+const isResendWaiting = computed(
+  () => resend.active.value && normalizeEmail(sentTo.value) === normalizeEmail(lastSentTo.value)
+);
 
 const flagError = () => {
   isButtonError.value = true;
@@ -33,7 +46,7 @@ const flagError = () => {
   }, 1000);
 };
 
-/** Puts the cursor in a step's first field, since the step's form replaces the one it was in. */
+/** Puts the cursor in the step's first field: the e-mail, or the code. */
 const focusFirstField = async () => {
   await nextTick();
   step.value?.querySelector<HTMLInputElement>("input:not([hidden])")?.focus();
@@ -42,38 +55,75 @@ const focusFirstField = async () => {
 const formatSeconds = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
-/** Sends a code to `email`, first from the e-mail step, then again from the code step. */
-const sendCode = async () => {
+const showCodeStep = async (message: string) => {
+  failure.value = "";
+  sentTo.value = email.value;
+  sentMessage.value = message;
+  await focusFirstField();
+};
+
+/** Asks the API for a code to `address`; returns its message, or null after showing its error. */
+const askForCode = async (address: string, onCodeStep: boolean) => {
   isSending.value = true;
   failure.value = "";
   try {
-    const answer = await requestPasswordReset(email.value);
+    const answer = await requestPasswordReset(address);
 
     if (answer.error) {
       failure.value = answer.error;
-      if (answer.retryAfter) resend.start(answer.retryAfter);
+      // Only the code step has a key to hold back; the e-mail step just shows the error.
+      if (onCodeStep && answer.retryAfter) {
+        lastSentTo.value = address;
+        resend.start(answer.retryAfter);
+      }
       flagError();
-      return;
+      return null;
     }
 
-    sentMessage.value = answer.message!;
+    lastSentTo.value = address;
+    lastMessage.value = answer.message!;
     resend.start(RESEND_SECONDS);
-    if (!sentTo.value) {
-      sentTo.value = email.value;
-      await focusFirstField();
-    }
+    return answer.message!;
   } finally {
     isSending.value = false;
   }
 };
 
+const handleSend = async () => {
+  // A code went to this address moments ago and the API wouldn't send another yet.
+  if (resend.active.value && normalizeEmail(email.value) === normalizeEmail(lastSentTo.value)) {
+    await showCodeStep(lastMessage.value);
+    return;
+  }
+
+  const message = await askForCode(email.value, false);
+  if (message !== null) {
+    await showCodeStep(message);
+  }
+};
+
+/** For a code that already arrived, e.g. after a reload: nothing is sent. */
+const enterCode = async () => {
+  if (step.value!.reportValidity()) {
+    await showCodeStep("");
+  }
+};
+
+const sendAgain = async () => {
+  if ((await askForCode(sentTo.value, true)) !== null) {
+    sentMessage.value = RESENT_MESSAGE;
+  }
+  // The key is disabled now, which drops focus; the code is what comes next anyway.
+  await focusFirstField();
+};
+
+/** Back to the e-mail step, keeping the address; the countdown keeps running for it. */
 const changeAddress = async () => {
   sentTo.value = "";
   sentMessage.value = "";
   code.value = "";
   newPassword.value = "";
   failure.value = "";
-  resend.stop();
   await focusFirstField();
 };
 
@@ -106,7 +156,7 @@ const handleReset = async () => {
 <template>
   <StationBoard title="Reset password" as="h1">
     <template v-if="!sentTo">
-      <form ref="step" class="form" @submit.prevent="sendCode">
+      <form ref="step" class="form" @submit.prevent="handleSend">
         <p>Enter your account's e-mail address to get a code for a new password.</p>
         <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
         <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
@@ -114,26 +164,44 @@ const handleReset = async () => {
           {{ isSending ? "Sending" : "Send code" }}
         </BaseButton>
       </form>
-      <p class="alt">Remembered it? <RouterLink to="/login">Log in</RouterLink></p>
+      <div class="alt">
+        <p>
+          Already have a code?
+          <button type="button" class="link" :disabled="isSending" @click="enterCode">
+            Enter it
+          </button>
+        </p>
+        <p>Remembered it? <RouterLink to="/login">Log in</RouterLink></p>
+      </div>
     </template>
 
     <template v-else>
       <form ref="step" class="form" @submit.prevent="handleReset">
         <!-- Tells password managers which login the new password belongs to. -->
         <input type="email" autocomplete="username" :value="sentTo" readonly hidden />
-        <StatusMessage tone="info">{{ sentMessage }}</StatusMessage>
+        <StatusMessage v-if="sentMessage" :id="sentMessageId" tone="info">
+          {{ sentMessage }}
+        </StatusMessage>
         <div class="sent-to">
           <p class="sent-to__fact">
             <span class="sent-to__label">E-mail</span>
             <span class="sent-to__address">{{ sentTo }}</span>
           </p>
-          <BaseButton class="sent-to__change" variant="ghost" size="sm" @click="changeAddress">
+          <BaseButton
+            class="sent-to__change"
+            variant="ghost"
+            size="sm"
+            :disabled="isSending"
+            @click="changeAddress"
+          >
             Change
           </BaseButton>
         </div>
         <BaseInput
           v-model="code"
           label="Code"
+          hint="The 6-digit code from the e-mail. It works for 30 minutes."
+          :describedby="sentMessage ? sentMessageId : undefined"
           autocomplete="one-time-code"
           inputmode="numeric"
           mono
@@ -159,13 +227,13 @@ const handleReset = async () => {
           variant="secondary"
           size="sm"
           :loading="isSending"
-          :disabled="resend.active.value"
-          @click="sendCode"
+          :disabled="isResendWaiting"
+          @click="sendAgain"
         >
           {{
             isSending
               ? "Sending"
-              : resend.active.value
+              : isResendWaiting
                 ? `Send again in ${formatSeconds(resend.remaining.value)}`
                 : "Send again"
           }}
@@ -184,6 +252,32 @@ const handleReset = async () => {
 .alt,
 .resend {
   font-size: var(--fs-sm);
+}
+
+.alt {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+/* A button that reads like the links beside it */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-action);
+  text-decoration: underline;
+  text-decoration-thickness: 0.09em;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+
+.link:hover:not(:disabled) {
+  text-decoration-thickness: 0.16em;
+}
+
+.link:disabled {
+  color: var(--c-ink-soft);
+  cursor: not-allowed;
 }
 
 .sent-to {

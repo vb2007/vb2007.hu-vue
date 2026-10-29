@@ -1,7 +1,8 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
 import { retryAfterFrom } from "@/composables/useCountdown";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { normalizeEmail } from "@/scripts/authentication/register";
 import { clearSession } from "@/scripts/authentication/user";
 
 /** The API's message after a reset, shown once on /login (see LoginForm). */
@@ -55,7 +56,8 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
 
 /**
  * Sets the new password with the code. The API ends every session of the account, so a user who
- * was logged in here is logged out too; only locally, as the API already ended the session.
+ * was logged in here as that account is logged out too; only locally, as the API already ended
+ * the session.
  */
 export const confirmPasswordReset = async (
   email: string,
@@ -75,7 +77,7 @@ export const confirmPasswordReset = async (
     }
 
     const message = String(data?.message ?? "");
-    if (isLoggedIn.value) {
+    if (isLoggedIn.value && normalizeEmail(email) === normalizeEmail(userEmail.value)) {
       clearSession();
     }
     passwordResetNotice.value = message;
