@@ -44,7 +44,7 @@ const cancel = () => {
 
 const save = async () => {
   currentError.value = currentPassword.value ? "" : "Enter your current password.";
-  newError.value = passwordLengthError(newPassword.value) ? "Use 8 to 128 characters." : "";
+  newError.value = passwordLengthError(newPassword.value) ?? "";
   confirmError.value =
     newPassword.value === confirmPassword.value ? "" : "The two passwords don't match.";
 

@@ -172,7 +172,7 @@ test("the password form checks its fields before asking the API", async ({ page,
 
   await expect(newPassword).toBeFocused();
   await expect(newPassword).toHaveAccessibleDescription(
-    "8 to 128 characters. Use 8 to 128 characters."
+    "8 to 128 characters. The password's too short: it must be between 8 and 128 characters."
   );
   await expect(details.getByText("The two passwords don't match.")).toBeVisible();
   expect(api.password).toBe("e2e-password");

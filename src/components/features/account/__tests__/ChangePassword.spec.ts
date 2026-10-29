@@ -3,6 +3,8 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import ChangePassword from "@/components/features/account/ChangePassword.vue";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
+const TOO_SHORT = "The password's too short: it must be between 8 and 128 characters.";
+
 describe("ChangePassword", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
   let wrapper: VueWrapper;
@@ -64,7 +66,7 @@ describe("ChangePassword", () => {
 
     await submit();
 
-    expect(errors()).toEqual(["Enter your current password.", "Use 8 to 128 characters."]);
+    expect(errors()).toEqual(["Enter your current password.", TOO_SHORT]);
     expect(document.activeElement).toBe(inputs()[0].element);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -75,7 +77,7 @@ describe("ChangePassword", () => {
 
     await submit();
 
-    expect(errors()).toEqual(["Use 8 to 128 characters.", "The two passwords don't match."]);
+    expect(errors()).toEqual([TOO_SHORT, "The two passwords don't match."]);
     expect(document.activeElement).toBe(inputs()[1].element);
     expect(fetchMock).not.toHaveBeenCalled();
   });
