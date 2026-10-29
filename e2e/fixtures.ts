@@ -127,6 +127,9 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
+  /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
+  readonly passwordResetCode = "123456";
+  readonly passwordResets: string[] = [];
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -304,6 +307,7 @@ export class MockApi {
       currentPassword?: string;
       newPassword?: string;
       username?: string;
+      code?: string;
     } | null,
     query: URLSearchParams
   ): MockResponse | undefined {
@@ -400,6 +404,19 @@ export class MockApi {
         return this.changePassword(body?.currentPassword, body?.newPassword);
       case "POST /auth/register":
         return { status: 201 };
+      case "POST /auth/password-reset":
+        if (!body?.email) {
+          return { status: 400, body: { error: "You must provide an E-mail address." } };
+        }
+        this.passwordResets.push(body.email);
+        return {
+          status: 200,
+          body: {
+            message: "If an account uses this address, a password reset code was sent to it."
+          }
+        };
+      case "POST /auth/password-reset/confirm":
+        return this.confirmPasswordReset(body);
       case "POST /shortenUrl/create":
         this.hasShortLink(
           this.shortCode,
@@ -561,6 +578,32 @@ export class MockApi {
     }
     this.user = null;
     return { status: 200, body: { message: "User deleted successfully." } };
+  }
+
+  /** Like the API: the right code sets the password and ends every session of the account. */
+  private confirmPasswordReset(body: { code?: string; newPassword?: string } | null) {
+    const length = [...(body?.newPassword ?? "")].length;
+    if (length < 8 || length > 128) {
+      const problem = length < 8 ? "too short" : "too long";
+      return {
+        status: 400,
+        body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
+      };
+    }
+    if (body?.code?.replace(/\s/g, "") !== this.passwordResetCode) {
+      return {
+        status: 400,
+        body: {
+          error: "The code is wrong, expired or already used: check it or request a new one."
+        }
+      };
+    }
+    this.password = body.newPassword!;
+    this.user = null;
+    return {
+      status: 200,
+      body: { message: "Password reset successfully: log in with the new password." }
+    };
   }
 
   private respondPaste(method: string, id: string, language?: string) {

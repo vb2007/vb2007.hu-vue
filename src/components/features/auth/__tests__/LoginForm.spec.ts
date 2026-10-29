@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
+import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -87,6 +88,25 @@ describe("LoginForm", () => {
     expect(wrapper.find('a[href="https://api.test/auth/github"]').text()).toBe(
       "Log in with GitHub"
     );
+  });
+
+  it("links to resetting a forgotten password", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find('a[href="/reset-password"]').text()).toBe("Forgot password?");
+  });
+
+  it("shows a password reset's message once", async () => {
+    passwordResetNotice.value = "Password reset successfully: log in with the new password.";
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find("form").find('[role="status"]').text()).toBe(
+      "Password reset successfully: log in with the new password."
+    );
+    expect(passwordResetNotice.value).toBe("");
+
+    const { wrapper: again } = await mountWithRouter(LoginForm);
+    expect(again.find('[role="status"]').exists()).toBe(false);
   });
 
   it("explains a failed GitHub login from the URL", async () => {
