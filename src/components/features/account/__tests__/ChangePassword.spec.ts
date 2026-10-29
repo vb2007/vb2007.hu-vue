@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import ChangePassword from "@/components/features/account/ChangePassword.vue";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { userEmail } from "@/scripts/authentication/authState";
 
 const TOO_SHORT = "The password's too short: it must be between 8 and 128 characters.";
 
@@ -12,13 +13,14 @@ describe("ChangePassword", () => {
   beforeEach(() => {
     fetchMock = mockFetch();
     vi.spyOn(console, "error").mockImplementation(() => {});
+    userEmail.value = "vb@example.com";
     wrapper = mount(ChangePassword, { attachTo: document.body });
   });
 
   afterEach(() => wrapper.unmount());
 
   const key = () => wrapper.find("button.change__key");
-  const inputs = () => wrapper.findAll("input");
+  const inputs = () => wrapper.findAll<HTMLInputElement>("input[type=password]");
   const errors = () => wrapper.findAll(".field__error").map((error) => error.text());
   const buttons = () => wrapper.findAll("form button");
 
@@ -57,6 +59,9 @@ describe("ChangePassword", () => {
     ]);
     expect(inputs().every((input) => input.attributes("type") === "password")).toBe(true);
     expect(wrapper.find(".field__hint").text()).toBe("8 to 128 characters.");
+    const account = wrapper.find<HTMLInputElement>('input[autocomplete="username"]');
+    expect(account.element.value).toBe("vb@example.com");
+    expect(account.element.hidden).toBe(true);
     expect(document.activeElement).toBe(inputs()[0].element);
   });
 

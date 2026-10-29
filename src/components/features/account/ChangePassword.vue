@@ -2,6 +2,7 @@
 /** The Password row's key, which opens a form in place to change it. */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { useChangePassword } from "@/composables/useChangePassword";
+import { userEmail } from "@/scripts/authentication/authState";
 import { passwordLengthError } from "@/scripts/authentication/register";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -20,7 +21,7 @@ const key = useTemplateRef("key");
 const form = useTemplateRef("form");
 const saveKey = useTemplateRef("saveKey");
 
-const fields = () => form.value!.querySelectorAll("input");
+const fields = () => form.value!.querySelectorAll<HTMLInputElement>("input[type=password]");
 
 const start = async () => {
   changed.value = "";
@@ -73,6 +74,7 @@ const save = async () => {
   </BaseButton>
 
   <form v-else ref="form" class="change" novalidate @submit.prevent="save" @keydown.esc="cancel">
+    <input type="email" autocomplete="username" :value="userEmail" readonly hidden />
     <BaseInput
       v-model="currentPassword"
       label="Current password"
