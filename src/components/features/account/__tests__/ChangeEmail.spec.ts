@@ -146,6 +146,46 @@ describe("ChangeEmail", () => {
     expect(userEmail.value).toBe("old@example.com");
   });
 
+  it("brings focus back into the form after a clicked save fails, so Escape still works", async () => {
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    await openForm();
+    await fill("taken@example.com", "secret-password");
+
+    await button("Save e-mail").trigger("click");
+    await wrapper.find("form").trigger("submit");
+    // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
+    (document.activeElement as HTMLElement).blur();
+    answer(jsonResponse(409, { error: "An account with this E-mail address already exists." }));
+    await flushPromises();
+
+    expect(document.activeElement).toBe(inputs()[0].element);
+    await inputs()[0].trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(document.activeElement).toBe(key().element);
+  });
+
+  it.each([
+    ["saved", jsonResponse(200, { message: "E-mail address updated successfully." })],
+    ["refused", jsonResponse(409, { error: "Taken." })]
+  ])("doesn't trip over focus when it's gone before the save is %s", async (_how, response) => {
+    let answer!: (response: Response) => void;
+    fetchMock
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce(jsonResponse(500));
+    await openForm();
+    await fill("new@example.com", "secret-password");
+    await wrapper.find("form").trigger("submit");
+
+    wrapper.unmount();
+    answer(response);
+    await flushPromises();
+
+    expect(document.activeElement).toBe(document.body);
+    wrapper = mount(ChangeEmail);
+  });
+
   it("says so when the server can't be reached", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await openForm();

@@ -15,11 +15,12 @@ const emailError = ref("");
 const passwordError = ref("");
 
 const key = useTemplateRef("key");
+const form = useTemplateRef("form");
 const emailField = useTemplateRef("emailField");
 const passwordField = useTemplateRef("passwordField");
 
 const focusField = (field: { $el: HTMLElement } | null) =>
-  field!.$el.querySelector("input")!.focus();
+  field?.$el.querySelector("input")!.focus();
 
 const start = async () => {
   open.value = true;
@@ -36,7 +37,7 @@ const close = async () => {
   passwordError.value = "";
   changeError.value = "";
   await nextTick();
-  key.value!.$el.focus();
+  key.value?.$el.focus();
 };
 
 const cancel = () => {
@@ -48,7 +49,8 @@ const save = async () => {
   passwordError.value = password.value ? "" : "Enter your current password.";
   if (emailError.value) return focusField(emailField.value);
   if (passwordError.value) return focusField(passwordField.value);
-  if (await change(email.value, password.value)) await close();
+  if (await change(email.value, password.value)) return close();
+  if (!form.value?.contains(document.activeElement)) focusField(emailField.value);
 };
 </script>
 
@@ -68,7 +70,7 @@ const save = async () => {
     Change e-mail
   </BaseButton>
 
-  <form v-else class="change" novalidate @submit.prevent="save" @keydown.esc="cancel">
+  <form v-else ref="form" class="change" novalidate @submit.prevent="save" @keydown.esc="cancel">
     <BaseInput
       ref="emailField"
       v-model="email"
