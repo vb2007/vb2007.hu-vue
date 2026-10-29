@@ -337,7 +337,7 @@ export class MockApi {
         this.githubConfirmed = true;
         return { status: 302, location: `${this.appOrigin}/account?github=linked` };
       case "POST /user/password":
-        return this.setPassword(body?.password ?? "");
+        return this.setPassword(body?.password);
       case "DELETE /auth/github/link":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         if (!this.user.githubId)
@@ -371,8 +371,11 @@ export class MockApi {
     }
   }
 
-  private setPassword(password: string) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+  private setPassword(password: string | undefined) {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (!password) return { status: 400, body: { error: "You must provide a password." } };
     const length = [...password].length;
     if (length < 8 || length > 128) {
       const problem = length < 8 ? "too short" : "too long";
