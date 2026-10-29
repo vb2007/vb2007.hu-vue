@@ -4,6 +4,16 @@ import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import { userEmail } from "@/scripts/authentication/authState";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
+/** `GET /user` after the change, shaped like the API's answer. */
+const refreshedUser = {
+  _id: "6702a1f0c3b4d5e6f7a8b9c0",
+  username: "vb",
+  email: "new@example.com",
+  createdAt: "2026-01-10T12:00:00.000Z",
+  hasPassword: true,
+  isSuperuser: false
+};
+
 describe("ChangeEmail", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
   let wrapper: VueWrapper;
@@ -101,7 +111,7 @@ describe("ChangeEmail", () => {
     let answer!: (response: Response) => void;
     fetchMock
       .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
-      .mockResolvedValueOnce(jsonResponse(200, { email: "new@example.com" }));
+      .mockResolvedValueOnce(jsonResponse(200, refreshedUser));
     await openForm();
     await fill("  new@example.com ", "secret-password");
 
@@ -127,10 +137,11 @@ describe("ChangeEmail", () => {
     expect(inputs().map((input) => (input.element as HTMLInputElement).value)).toEqual(["", ""]);
   });
 
-  it("shows the API's refusal and keeps what was typed", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(403, { error: "The provided password is incorrect." })
-    );
+  it.each([
+    [403, "The provided password is incorrect."],
+    [429, "Too many failed attempts: try again later."]
+  ])("shows the API's %i and keeps what was typed", async (status, error) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
     await openForm();
     await fill("new@example.com", "wrong-password");
     (inputs()[1].element as HTMLInputElement).focus();
@@ -138,7 +149,7 @@ describe("ChangeEmail", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe("The provided password is incorrect.");
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
     expect(inputs().map((input) => (input.element as HTMLInputElement).value)).toEqual([
       "new@example.com",
       "wrong-password"
