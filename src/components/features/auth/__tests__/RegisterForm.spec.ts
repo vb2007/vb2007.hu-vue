@@ -82,7 +82,7 @@ describe("RegisterForm", () => {
 
   it.each([
     [{ email: "nope" }, "Please enter a valid email address."],
-    [{ username: "v" }, "Your username's length must be between 2 and 16 characters."],
+    [{ username: " v " }, "The username's too short: it must be between 2 and 16 characters."],
     [{ password: "1234567" }, "The password's too short: it must be between 8 and 128 characters."],
     [{ confirm: "different" }, "The two passwords don't match."]
   ])("rejects invalid input %o before calling the API", async (input, message) => {
