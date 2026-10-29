@@ -9,6 +9,7 @@ describe("API endpoints", () => {
     expect(UserManagement.Authentication.github).toBe("https://api.test/auth/github");
     expect(UserManagement.Authentication.githubLink).toBe("https://api.test/auth/github/link");
     expect(UserManagement.Actions.user).toBe("https://api.test/user");
+    expect(UserManagement.Actions.userPassword).toBe("https://api.test/user/password");
   });
 
   it("builds the URL shortening endpoints from VITE_API_BASE_URL", () => {
