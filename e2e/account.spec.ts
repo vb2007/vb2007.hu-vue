@@ -116,7 +116,16 @@ test("a failed GitHub link is explained on the account page", async ({ page, api
 });
 
 test("the password changes in place and the session carries on", async ({ page, api }) => {
-  api.loggedInAs("me@example.com", "me");
+  // A real login, so the browser holds a VB-AUTH cookie that the change has to replace.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password").fill("e2e-password");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByText("Login successful!")).toBeVisible();
+  const sessionCookie = async () =>
+    (await page.context().cookies()).find((cookie) => cookie.name === "VB-AUTH")?.value;
+  expect(await sessionCookie()).toBe("e2e-session-1");
+
   await page.goto("/account");
   const details = page.getByRole("region", { name: "Log-in details" });
 
@@ -131,7 +140,9 @@ test("the password changes in place and the session carries on", async ({ page, 
   await expect(details.getByRole("button", { name: "Change password" })).toBeFocused();
   await expect(details.getByLabel("Current password")).toHaveCount(0);
   expect(api.password).toBe("a-new-password");
+  expect(await sessionCookie()).toBe("e2e-session-2");
 
+  // The mock now answers the old cookie as logged out, so this only passes on the new one.
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
 });
@@ -193,6 +204,7 @@ test("an account without a password has none to change", async ({ page, api }) =
 for (const { status, error } of [
   { status: 400, error: "You must provide the current password and a new password." },
   { status: 409, error: "This account has no password: set one first with POST /user/password." },
+  { status: 429, error: "Too many failed attempts: try again later." },
   { status: 0, error: "Error connecting to server" }
 ]) {
   test(`a password change that fails with ${status || "no connection"} says why`, async ({

@@ -8,6 +8,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account. A password account's password is `api.password`.
+ * Logging in and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
+ * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -44,6 +46,9 @@ export interface MockAdminUser {
   isSuperuser: boolean;
   uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
 }
+
+/** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
+type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
@@ -109,6 +114,9 @@ export class MockApi {
   readonly users: MockAdminUser[] = [];
   /** What `PATCH /user/password` checks the current password against, and changes. */
   password = "e2e-password";
+  /** The only `VB-AUTH` value still accepted; each new session replaces it. */
+  private session = "";
+  private sessionCount = 0;
   private cdnOrigin = "https://cdn.e2e.invalid";
   readonly unhandled: string[] = [];
 
@@ -232,11 +240,16 @@ export class MockApi {
       return route.fulfill({ status: response.status, headers, json: response.body });
     }
 
-    const response = this.respond(
-      `${request.method()} ${url.pathname}`,
-      request.postDataJSON(),
-      url.searchParams
-    );
+    const cookie = (await request.headerValue("cookie")) ?? "";
+    const sentSession = cookie.match(/(?:^|;\s*)VB-AUTH=([^;]+)/)?.[1];
+    const response =
+      sentSession && sentSession !== this.session
+        ? this.staleSession(`${request.method()} ${url.pathname}`)
+        : this.respond(
+            `${request.method()} ${url.pathname}`,
+            request.postDataJSON(),
+            url.searchParams
+          );
     if (!response) {
       this.unhandled.push(`${request.method()} ${request.url()}`);
       return route.abort();
@@ -244,7 +257,23 @@ export class MockApi {
     if (response.location) {
       return route.fulfill({ status: response.status, headers: { location: response.location } });
     }
+    if (response.newSession) {
+      this.session = `e2e-session-${++this.sessionCount}`;
+      const sessionCookie = `VB-AUTH=${this.session}; Path=/; HttpOnly; Secure; SameSite=None`;
+      return route.fulfill({
+        status: response.status,
+        headers: { ...headers, "Set-Cookie": sessionCookie },
+        json: response.body ?? {}
+      });
+    }
     return route.fulfill({ status: response.status, headers, json: response.body ?? {} });
+  }
+
+  /** What the API answers a session it has replaced: logged out. */
+  private staleSession(endpoint: string): MockResponse {
+    return endpoint === "GET /user"
+      ? { status: 401 }
+      : { status: 403, body: { error: "You are not logged in." } };
   }
 
   private respond(
@@ -260,7 +289,7 @@ export class MockApi {
       newPassword?: string;
     } | null,
     query: URLSearchParams
-  ): { status: number; body?: unknown; location?: string } | undefined {
+  ): MockResponse | undefined {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
@@ -322,7 +351,7 @@ export class MockApi {
           isSuperuser: false,
           hasPassword: true
         };
-        return { status: 200 };
+        return { status: 200, newSession: true };
       case "POST /auth/logout":
         this.user = null;
         return { status: 200 };
@@ -388,7 +417,7 @@ export class MockApi {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
     this.password = newPassword;
-    return { status: 200, body: { message: "Password changed successfully." } };
+    return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
   private respondPaste(method: string, id: string, language?: string) {
