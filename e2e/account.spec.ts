@@ -150,6 +150,11 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
   await expect(page.getByText("Enter your current password.")).toBeVisible();
   await expect(page.getByLabel("New e-mail")).toBeFocused();
 
+  await page.getByLabel("New e-mail").fill(" Me@Example.com ");
+  await page.getByLabel("Current password").fill(E2E_PASSWORD);
+  await page.getByRole("button", { name: "Save e-mail" }).click();
+  await expect(page.getByText("That's already your e-mail address.")).toBeVisible();
+
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
 });
@@ -172,6 +177,10 @@ for (const [status, email, password, error] of [
     await expect(page.getByRole("alert")).toContainText(error);
     await expect(page.getByLabel("New e-mail")).toHaveValue(email);
     await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("New e-mail")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
   });
 }
 
