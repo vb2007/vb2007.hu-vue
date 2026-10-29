@@ -20,22 +20,45 @@ describe("validateRegisterData", () => {
   it.each([
     ["a 254 character email", `${"a".repeat(242)}@example.com`],
     ["a subdomain email", "me@mail.example.co.uk"],
-    ["an email the API trims", "  Me@Example.com "]
+    ["an email the API trims", "  Me@Example.com "],
+    ["a 254 character email with padding the API trims", `  ${"a".repeat(242)}@example.com  `]
   ])("accepts %s", (_case, email) => {
-    expect(validateRegisterData("vb", email, "secret", "secret")).toBeUndefined();
+    expect(validateRegisterData("vb", email, "secret12", "secret12")).toBeUndefined();
   });
 
   it.each([
     ["an invalid email", ["vb", "not-an-email", "secret", "secret"], "invalid-email"],
-    ["an email without a dot in the domain", ["vb", "a@b", "secret", "secret"], "invalid-email"],
-    ["an email with an empty domain label", ["vb", "a@b..c", "secret", "secret"], "invalid-email"],
-    ["an email with a leading domain dot", ["vb", "a@.b.c", "secret", "secret"], "invalid-email"],
-    ["an email with a trailing domain dot", ["vb", "a@b.c.", "secret", "secret"], "invalid-email"],
+    [
+      "an email without a dot in the domain",
+      ["vb", "a@b", "secret12", "secret12"],
+      "invalid-email"
+    ],
+    [
+      "an email with an empty domain label",
+      ["vb", "a@b..c", "secret12", "secret12"],
+      "invalid-email"
+    ],
+    [
+      "an email with a leading domain dot",
+      ["vb", "a@.b.c", "secret12", "secret12"],
+      "invalid-email"
+    ],
+    [
+      "an email with a trailing domain dot",
+      ["vb", "a@b.c.", "secret12", "secret12"],
+      "invalid-email"
+    ],
     [
       "a 255 character email",
-      ["vb", `${"a".repeat(243)}@example.com`, "secret", "secret"],
+      ["vb", `${"a".repeat(243)}@example.com`, "secret12", "secret12"],
       "email-too-long"
     ],
+    [
+      "an email that only grows past 254 characters when lowercased",
+      ["vb", `İ${"a".repeat(241)}@example.com`, "secret12", "secret12"],
+      "email-too-long"
+    ],
+    ["a long malformed email", ["vb", "a".repeat(300), "secret12", "secret12"], "invalid-email"],
     ["a too short username", ["v", "me@example.com", "secret", "secret"], "invalid-username"],
     [
       "a too long username",
