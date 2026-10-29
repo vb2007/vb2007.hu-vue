@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from "vue";
 import {
   githubLinked,
   githubLogin,
@@ -31,9 +31,12 @@ const shownNotice = computed(() => {
     ? "GitHub is linked. You can log in with it from now on."
     : "GitHub confirmed it's you. Set your password within 10 minutes.";
 });
-const onPasswordSet = () => {
+const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
+const onPasswordSet = async () => {
   githubReturned.value = false;
   notice.value = "Your password is set. You can log in with it from now on.";
+  await nextTick();
+  noticeMessage.value?.$el.focus();
 };
 const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 
@@ -61,7 +64,9 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   <StationBoard v-if="isLoggedIn" title="Your account" as="h1">
     <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
     <StatusMessage v-if="unlinkError" tone="error">{{ unlinkError }}</StatusMessage>
-    <StatusMessage v-if="shownNotice" tone="success">{{ shownNotice }}</StatusMessage>
+    <StatusMessage v-if="shownNotice" ref="noticeMessage" tone="success" tabindex="-1">{{
+      shownNotice
+    }}</StatusMessage>
 
     <dl class="facts">
       <div class="fact">

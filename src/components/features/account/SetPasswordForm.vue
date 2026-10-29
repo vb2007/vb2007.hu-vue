@@ -3,9 +3,10 @@
  * Sets a first password on an account made with GitHub; the API may want GitHub to confirm it's
  * them first. It hides itself once the account has a password but stays mounted to tell the panel.
  */
-import { computed, ref } from "vue";
+import { nextTick, ref, useTemplateRef, watch } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
+import { passwordLengthError } from "@/scripts/authentication/register";
 import { useSetPassword } from "@/composables/useSetPassword";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -14,31 +15,31 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const emit = defineEmits<{ set: [] }>();
 
-const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_MAX_LENGTH = 128;
-
 const password = ref("");
 const confirmPassword = ref("");
-const checked = ref(false);
+const passwordError = ref("");
+const confirmError = ref("");
+const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
 const { isSetting, setError, needsGithub, setPassword } = useSetPassword();
 
-const passwordError = computed(() => {
-  const length = [...password.value].length;
-  if (!checked.value) return "";
-  if (length < PASSWORD_MIN_LENGTH)
-    return `Too short: use at least ${PASSWORD_MIN_LENGTH} characters.`;
-  if (length > PASSWORD_MAX_LENGTH)
-    return `Too long: use at most ${PASSWORD_MAX_LENGTH} characters.`;
-  return "";
+watch(password, () => {
+  passwordError.value = "";
+  confirmError.value = "";
 });
-const confirmError = computed(() =>
-  checked.value && confirmPassword.value !== password.value ? "The two passwords don't match." : ""
-);
+watch(confirmPassword, () => (confirmError.value = ""));
 
 const onSubmit = async () => {
-  checked.value = true;
+  passwordError.value = passwordLengthError(password.value) ?? "";
+  confirmError.value =
+    confirmPassword.value === password.value ? "" : "The two passwords don't match.";
   if (passwordError.value || confirmError.value) return;
-  if (await setPassword(password.value)) emit("set");
+
+  if (await setPassword(password.value)) {
+    emit("set");
+  } else if (needsGithub.value) {
+    await nextTick();
+    githubKey.value?.$el.focus();
+  }
 };
 </script>
 
@@ -66,7 +67,7 @@ const onSubmit = async () => {
         label="New password"
         type="password"
         autocomplete="new-password"
-        :hint="`${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters.`"
+        hint="8 to 128 characters."
         :error="passwordError"
         required
       />
@@ -78,9 +79,12 @@ const onSubmit = async () => {
         :error="confirmError"
         required
       />
-      <StatusMessage v-if="setError" tone="error">{{ setError }}</StatusMessage>
+      <StatusMessage v-if="setError" :tone="needsGithub ? 'info' : 'error'">{{
+        setError
+      }}</StatusMessage>
       <BaseButton
         v-if="needsGithub"
+        ref="githubKey"
         class="password__key"
         :href="UserManagement.Authentication.githubLink"
       >

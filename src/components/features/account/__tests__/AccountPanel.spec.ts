@@ -171,7 +171,11 @@ describe("AccountPanel", () => {
 
   it("says the password is set, and offers to unlink GitHub instead of the form", async () => {
     linkGithub("octocat", false);
-    const { wrapper } = await mountWithRouter(AccountPanel, {}, "/account?github=linked");
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
     await flushPromises();
     expect(wrapper.find('[role="status"]').text()).toBe(
       "GitHub confirmed it's you. Set your password within 10 minutes."
@@ -192,7 +196,9 @@ describe("AccountPanel", () => {
       "Your password is set. You can log in with it from now on."
     );
     expect(wrapper.find("#password-title").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
+    wrapper.unmount();
   });
 
   it("explains a failed GitHub link, logged in or not", async () => {

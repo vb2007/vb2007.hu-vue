@@ -65,8 +65,8 @@ describe("SetPasswordForm", () => {
   });
 
   it.each([
-    ["seven77", "Too short: use at least 8 characters."],
-    ["x".repeat(129), "Too long: use at most 128 characters."]
+    ["seven77", "The password's too short: it must be between 8 and 128 characters."],
+    ["x".repeat(129), "The password's too long: it must be between 8 and 128 characters."]
   ])("keeps %s to itself and explains the length", async (password, error) => {
     const wrapper = mount(SetPasswordForm);
     await fill(wrapper, password);
@@ -90,7 +90,7 @@ describe("SetPasswordForm", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it("wants the same password twice, and stops complaining once it is", async () => {
+  it("wants the same password twice, and only checks again on the next submit", async () => {
     const wrapper = mount(SetPasswordForm);
     await fill(wrapper, "correct horse", "correct hose");
 
@@ -98,8 +98,19 @@ describe("SetPasswordForm", () => {
     expect(wrapper.find(".field__error").text()).toBe("The two passwords don't match.");
     expect(fetchMock).not.toHaveBeenCalled();
 
-    await wrapper.findAll('input[type="password"]')[1].setValue("correct horse");
+    await wrapper.findAll('input[type="password"]')[1].setValue("correct");
     expect(wrapper.find(".field__error").exists()).toBe(false);
+  });
+
+  it("drops both field errors once the password itself changes", async () => {
+    const wrapper = mount(SetPasswordForm);
+    await fill(wrapper, "short", "shorter");
+
+    await wrapper.find("form").trigger("submit");
+    expect(wrapper.findAll(".field__error")).toHaveLength(2);
+
+    await wrapper.findAll('input[type="password"]')[0].setValue("shorter");
+    expect(wrapper.findAll(".field__error")).toHaveLength(0);
   });
 
   it("shows the API's error", async () => {
@@ -119,15 +130,18 @@ describe("SetPasswordForm", () => {
 
   it("sends the user to GitHub when the API wants it to confirm them first", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
-    const wrapper = mount(SetPasswordForm);
+    const wrapper = mount(SetPasswordForm, { attachTo: document.body });
     await fill(wrapper, "correct horse");
 
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe(REAUTH);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
     expect(wrapper.find('button[type="submit"]').exists()).toBe(false);
     const confirm = wrapper.find('a[href="https://api.test/auth/github/link"]');
     expect(confirm.text()).toBe("Confirm with GitHub");
+    expect(document.activeElement).toBe(confirm.element);
+    wrapper.unmount();
   });
 });
