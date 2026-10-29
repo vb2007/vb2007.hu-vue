@@ -88,9 +88,7 @@ test("an account made with GitHub can't unlink it", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
   await page.goto("/account");
 
-  await expect(
-    page.getByText("This account has no password, so GitHub stays linked")
-  ).toBeVisible();
+  await expect(page.getByText("It stays linked while it's your only way to log in.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Unlink GitHub" })).toHaveCount(0);
 });
 

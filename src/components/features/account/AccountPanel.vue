@@ -14,11 +14,11 @@ import { UserManagement } from "@/constants/api";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
+import ChangePassword from "@/components/features/account/ChangePassword.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
-import ChangePassword from "./ChangePassword.vue";
 
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132).
@@ -65,14 +65,12 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       </div>
     </dl>
 
-    <section class="logins" aria-labelledby="login-details-title">
-      <h2 id="login-details-title" class="logins__title">Log-in details</h2>
+    <section class="logins" aria-labelledby="details-title">
+      <h2 id="details-title" class="logins__title">Log-in details</h2>
       <div class="login">
         <span class="login__mark"><AppIcon name="lock" :size="26" /></span>
         <div class="login__main">
-          <div class="login__head">
-            <h3 class="login__name">Password</h3>
-          </div>
+          <h3 class="login__name">Password</h3>
           <p class="login__note">
             <template v-if="hasPassword"
               >Changing it logs out your other devices; you stay logged in here.</template
@@ -102,7 +100,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
                 as <strong class="login__handle">@{{ githubLogin }}</strong></template
               >.
               <template v-if="!hasPassword">
-                This account has no password, so GitHub stays linked: it's how you log in.
+                It stays linked while it's your only way to log in.
               </template>
             </template>
             <template v-else

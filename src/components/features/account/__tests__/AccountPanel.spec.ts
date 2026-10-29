@@ -56,7 +56,7 @@ describe("AccountPanel", () => {
     hasPassword.value = true;
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    const details = wrapper.find('[aria-labelledby="login-details-title"]');
+    const details = wrapper.find('[aria-labelledby="details-title"]');
     expect(details.find("h2").text()).toBe("Log-in details");
     expect(details.find("h3").text()).toBe("Password");
     expect(details.find(".login__note").text()).toBe(
@@ -69,7 +69,7 @@ describe("AccountPanel", () => {
     logIn();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    const details = wrapper.find('[aria-labelledby="login-details-title"]');
+    const details = wrapper.find('[aria-labelledby="details-title"]');
     expect(details.find(".login__note").text()).toBe(
       "This account has no password: you log in with GitHub."
     );
@@ -114,7 +114,7 @@ describe("AccountPanel", () => {
 
     // Two sentences from two template branches; the browser collapses the doubled space between them.
     expect(githubNote(wrapper).text().replace(/\s+/g, " ")).toBe(
-      "You can log in with GitHub as @octocat. This account has no password, so GitHub stays linked: it's how you log in."
+      "You can log in with GitHub as @octocat. It stays linked while it's your only way to log in."
     );
     expect(unlinkKey(wrapper).exists()).toBe(false);
   });
