@@ -36,6 +36,10 @@ const shownNotice = computed(() => {
     : "GitHub confirmed it's you. Set your password within 10 minutes.";
 });
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
+const clearNotice = () => {
+  githubReturned.value = false;
+  notice.value = "";
+};
 const onPasswordSet = async () => {
   githubReturned.value = false;
   notice.value = "Your password is set. You can log in with it from now on.";
@@ -55,8 +59,7 @@ const onUnlink = async () => {
     return;
   }
   confirming.value = false;
-  githubReturned.value = false;
-  notice.value = "";
+  clearNotice();
   if (await unlink()) {
     notice.value = "GitHub is unlinked. Log in with your password from now on.";
   }
@@ -100,7 +103,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
             >
             <template v-else>None yet. Set one in the Password section below.</template>
           </p>
-          <ChangePassword v-if="hasPassword" />
+          <ChangePassword v-if="hasPassword" @open="clearNotice" />
         </div>
       </div>
       <div class="login">
@@ -112,7 +115,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
             <template v-else-if="!hasPassword">Changing it needs a password.</template>
             <template v-else>You log in with it. Changing it takes your current password.</template>
           </p>
-          <ChangeEmail v-if="hasPassword && !isSuperuser" />
+          <ChangeEmail v-if="hasPassword && !isSuperuser" @open="clearNotice" />
         </div>
       </div>
     </section>

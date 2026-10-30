@@ -238,6 +238,56 @@ describe("AccountPanel", () => {
     wrapper.unmount();
   });
 
+  it.each([
+    ["password", passwordRow],
+    ["e-mail", emailRow]
+  ])("drops the top notice once the %s form opens", async (_name, row) => {
+    linkGithub();
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+
+    await row(wrapper).find("button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".notice").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows only the password change after setting the password", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }));
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "Password changed successfully."
+    ]);
+    wrapper.unmount();
+  });
+
   it("explains a failed GitHub link, logged in or not", async () => {
     logIn();
     const { wrapper } = await mountWithRouter(
