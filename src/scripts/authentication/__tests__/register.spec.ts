@@ -4,6 +4,7 @@ import {
   passwordLengthError,
   register,
   registerStatus,
+  usernameLengthError,
   validateRegisterData
 } from "@/scripts/authentication/register";
 import { login } from "@/scripts/authentication/user";
@@ -19,6 +20,21 @@ afterEach(() => {
 
 const TOO_SHORT = "The password's too short: it must be between 8 and 128 characters.";
 const TOO_LONG = "The password's too long: it must be between 8 and 128 characters.";
+const USERNAME_TOO_SHORT = "The username's too short: it must be between 2 and 16 characters.";
+const USERNAME_TOO_LONG = "The username's too long: it must be between 2 and 16 characters.";
+
+describe("usernameLengthError", () => {
+  it.each([
+    ["1 character", "v", USERNAME_TOO_SHORT],
+    ["1 character padded with spaces", " v ", USERNAME_TOO_SHORT],
+    ["17 characters", "v".repeat(17), USERNAME_TOO_LONG],
+    ["2 characters", "vb", undefined],
+    ["16 characters", "v".repeat(16), undefined],
+    ["16 characters padded with spaces", `  ${"v".repeat(16)}  `, undefined]
+  ])("checks %s", (_case, username, expected) => {
+    expect(usernameLengthError(username)).toBe(expected);
+  });
+});
 
 describe("passwordLengthError", () => {
   it.each([
@@ -80,11 +96,11 @@ describe("validateRegisterData", () => {
       "email-too-long"
     ],
     ["a long malformed email", ["vb", "a".repeat(300), "secret12", "secret12"], "invalid-email"],
-    ["a too short username", ["v", "me@example.com", "secret12", "secret12"], "invalid-username"],
+    ["a too short username", [" v ", "me@example.com", "secret12", "secret12"], USERNAME_TOO_SHORT],
     [
       "a too long username",
       ["v".repeat(17), "me@example.com", "secret12", "secret12"],
-      "invalid-username"
+      USERNAME_TOO_LONG
     ],
     ["a too short password", ["vb", "me@example.com", "1234567", "1234567"], TOO_SHORT],
     ["a too long password", ["vb", "me@example.com", "p".repeat(129), "p".repeat(129)], TOO_LONG],
