@@ -85,11 +85,13 @@ export const useChangeEmail = () => {
       } else if (response.status === 429) {
         // Only the one-code-a-minute cooldown sends retryAfter; the rate limiters send an error alone.
         const data = await response.json().catch(() => null);
-        changeError.value =
-          typeof data?.retryAfter === "number"
-            ? COOLDOWN_MESSAGE
-            : (data?.error ?? "Too many requests: try again later.");
+        const isCooldown = typeof data?.retryAfter === "number";
+        changeError.value = isCooldown
+          ? COOLDOWN_MESSAGE
+          : (data?.error ?? "Too many requests: try again later.");
         cooldown.start(retryAfterFrom(data), account());
+        // The code it waits for may have been asked for elsewhere, e.g. in another tab.
+        if (isCooldown) await fetchUserDetails();
       } else {
         changeError.value = await errorFrom(response, "Failed to change e-mail");
         console.error("Failed to change e-mail: ", response.status);
@@ -149,9 +151,13 @@ export const useChangeEmail = () => {
         }
 
         if (!pendingEmail.value) {
-          // Its code step is gone with it, so the message names the address it was about.
+          // Its code step is gone with it, so the message names the address it was about. A 400
+          // means the code expired, and the API's "check it" no longer fits without the field.
           endCooldown();
-          confirmError.value = `${address} wasn't confirmed. ${error}`;
+          confirmError.value =
+            response.status === 400
+              ? `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`
+              : `${address} wasn't confirmed. ${error}`;
         } else if (response.status === 400) {
           codeError.value = error;
         } else {
