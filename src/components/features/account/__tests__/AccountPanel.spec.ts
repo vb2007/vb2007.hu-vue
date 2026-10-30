@@ -48,6 +48,7 @@ describe("AccountPanel", () => {
     expect(wrapper.find(".badge").text()).toBe("Not linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--off");
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').text()).toBe("Link GitHub");
+    expect(wrapper.find("#delete-title").text()).toBe("Delete account");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
@@ -71,7 +72,7 @@ describe("AccountPanel", () => {
 
     const details = wrapper.find('[aria-labelledby="details-title"]');
     expect(details.find(".login__note").text()).toBe(
-      "This account has no password: you log in with GitHub."
+      "None yet. Set one in the Password section below."
     );
     expect(details.find("button").exists()).toBe(false);
   });
@@ -185,6 +186,48 @@ describe("AccountPanel", () => {
       "GitHub is linked. You can log in with it from now on."
     );
     expect(router.currentRoute.value.fullPath).toBe("/account");
+  });
+
+  it("offers to set a password only to an account without one", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(AccountPanel);
+    expect(wrapper.find("#password-title").exists()).toBe(true);
+
+    hasPassword.value = true;
+    await flushPromises();
+    expect(wrapper.find("#password-title").exists()).toBe(false);
+  });
+
+  it("says the password is set, and offers to unlink GitHub instead of the form", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "GitHub confirmed it's you. Set your password within 10 minutes."
+    );
+
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      );
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Your password is set. You can log in with it from now on."
+    );
+    expect(wrapper.find("#password-title").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
+    expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
+    wrapper.unmount();
   });
 
   it("explains a failed GitHub link, logged in or not", async () => {

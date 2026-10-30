@@ -1,7 +1,7 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_PASSWORD, test } from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
-// keys lead instead of following them.
+// keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
 
 test("login and register offer GitHub next to the password form", async ({ page }) => {
   await page.goto("/login");
@@ -119,7 +119,7 @@ test("the password changes in place and the session carries on", async ({ page, 
   // A real login, so the browser holds a VB-AUTH cookie that the change has to replace.
   await page.goto("/login");
   await page.getByLabel("E-mail").fill("me@example.com");
-  await page.getByLabel("Password").fill("e2e-password");
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   const sessionCookie = async () =>
@@ -131,7 +131,7 @@ test("the password changes in place and the session carries on", async ({ page, 
 
   await details.getByRole("button", { name: "Change password" }).click();
   await expect(details.getByLabel("Current password")).toBeFocused();
-  await details.getByLabel("Current password").fill("e2e-password");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
   await details.getByLabel("New password", { exact: true }).fill("a-new-password");
   await details.getByLabel("Confirm new password").fill("a-new-password");
   await details.getByRole("button", { name: "Save password" }).click();
@@ -160,7 +160,7 @@ test("a wrong current password is refused and the form keeps its values", async 
 
   await expect(details.getByRole("alert")).toHaveText("The provided password is incorrect.");
   await expect(details.getByLabel("Current password")).toHaveValue("not-my-password");
-  expect(api.password).toBe("e2e-password");
+  expect(api.password).toBe(MOCK_PASSWORD);
 
   await page.keyboard.press("Escape");
   await expect(details.getByRole("button", { name: "Change password" })).toBeFocused();
@@ -174,7 +174,7 @@ test("the password form checks its fields before asking the API", async ({ page,
   const newPassword = details.getByLabel("New password", { exact: true });
 
   await details.getByRole("button", { name: "Change password" }).click();
-  await details.getByLabel("Current password").fill("e2e-password");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
   await newPassword.fill("short");
   await details.getByLabel("Confirm new password").fill("shorter");
   await details.getByRole("button", { name: "Save password" }).click();
@@ -184,7 +184,7 @@ test("the password form checks its fields before asking the API", async ({ page,
     "8 to 128 characters. The password's too short: it must be between 8 and 128 characters."
   );
   await expect(details.getByText("The two passwords don't match.")).toBeVisible();
-  expect(api.password).toBe("e2e-password");
+  expect(api.password).toBe(MOCK_PASSWORD);
 
   await newPassword.fill("a-new-password");
   await expect(newPassword).toHaveAccessibleDescription("8 to 128 characters.");
@@ -195,16 +195,13 @@ test("an account without a password has none to change", async ({ page, api }) =
   await page.goto("/account");
   const details = page.getByRole("region", { name: "Log-in details" });
 
-  await expect(
-    details.getByText("This account has no password: you log in with GitHub.")
-  ).toBeVisible();
+  await expect(details.getByText("None yet. Set one in the Password section below.")).toBeVisible();
   await expect(details.getByRole("button", { name: "Change password" })).toHaveCount(0);
 });
 
 for (const { status, error } of [
   { status: 400, error: "You must provide the current password and a new password." },
   { status: 409, error: "This account has no password: set one first with POST /user/password." },
-  { status: 429, error: "Too many failed attempts: try again later." },
   { status: 0, error: "Error connecting to server" }
 ]) {
   test(`a password change that fails with ${status || "no connection"} says why`, async ({
@@ -230,7 +227,7 @@ for (const { status, error } of [
     const details = page.getByRole("region", { name: "Log-in details" });
 
     await details.getByRole("button", { name: "Change password" }).click();
-    await details.getByLabel("Current password").fill("e2e-password");
+    await details.getByLabel("Current password").fill(MOCK_PASSWORD);
     await details.getByLabel("New password", { exact: true }).fill("a-new-password");
     await details.getByLabel("Confirm new password").fill("a-new-password");
     await details.getByRole("button", { name: "Save password" }).click();
@@ -239,3 +236,154 @@ for (const { status, error } of [
     await expect(details.getByLabel("New password", { exact: true })).toHaveValue("a-new-password");
   });
 }
+
+test("a password change that's rate limited says when to try again", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.limitsPasswordChecks();
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+  await details.getByRole("button", { name: "Save password" }).click();
+
+  await expect(details.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  expect(api.password).toBe(MOCK_PASSWORD);
+});
+
+test("a GitHub account other than the linked one is explained", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account?oauthError=githubOtherLinked");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "That isn't the GitHub account linked here. Switch to it on GitHub and try again."
+  );
+  await expect(page).toHaveURL("/account");
+});
+
+test("an account made with GitHub confirms it with GitHub, then sets a password", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  const newPassword = page.getByLabel("New password");
+  const confirmPassword = page.getByLabel("Confirm password");
+
+  await newPassword.fill("short");
+  await confirmPassword.fill("short");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect(
+    page.getByText("The password's too short: it must be between 8 and 128 characters.")
+  ).toBeVisible();
+
+  await newPassword.fill("correct horse battery");
+  await confirmPassword.fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Confirm it's you first: log in with GitHub again (or relink it), then set the password within 10 minutes."
+  );
+  await expect(page.getByRole("button", { name: "Set password" })).toHaveCount(0);
+  const confirmWithGithub = page.getByRole("link", { name: "Confirm with GitHub" });
+  await expect(confirmWithGithub).toBeFocused();
+
+  await confirmWithGithub.click();
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Set your password within 10 minutes."
+  );
+  await expect(newPassword).toHaveValue("");
+
+  await newPassword.fill("correct horse battery");
+  await confirmPassword.fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+
+  await expect(page.getByRole("status")).toHaveText(
+    "Your password is set. You can log in with it from now on."
+  );
+  await expect(page.getByRole("status")).toBeFocused();
+  // Focus scrolls the message into view, clear of the sticky navbar.
+  const navbarBottom = (await page.locator("header.bar").boundingBox())!;
+  const noticeTop = (await page.getByRole("status").boundingBox())!;
+  expect(noticeTop.y).toBeGreaterThanOrEqual(navbarBottom.y + navbarBottom.height);
+  await expect(page.getByRole("region", { name: "Password", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Unlink GitHub" })).toBeVisible();
+
+  // The new password can be changed straight away, without a reload.
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill("correct horse battery");
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+  await details.getByRole("button", { name: "Save password" }).click();
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  expect(api.password).toBe("a-new-password");
+
+  await page.reload();
+  await expect(page.getByLabel("New password")).toHaveCount(0);
+});
+
+test("an account is deleted with its password and the visitor lands home logged out", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+
+  await expect(
+    page.getByText("Deleting your account also deletes your pastes, short links and uploads.")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete account" }).click();
+  const password = page.getByLabel("Password");
+  await expect(password).toBeFocused();
+  const confirm = page.getByRole("button", { name: "Delete account" });
+  await expect(confirm).toBeDisabled();
+
+  await password.fill("wrong-password");
+  await confirm.click();
+  await expect(page.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(page).toHaveURL("/account");
+
+  await password.fill(MOCK_PASSWORD);
+  await confirm.click();
+
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+
+  await page.goto("/account");
+  await expect(page.getByText("Log in to see your account.")).toBeVisible();
+});
+
+test("an account made with GitHub is deleted by typing its username", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page.getByText("Type “me” to confirm.")).toBeVisible();
+  const confirm = page.getByRole("button", { name: "Delete account" });
+
+  await expect(page.getByLabel("Username")).toHaveJSProperty("spellcheck", false);
+  await page.getByLabel("Username").fill("m");
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Username").fill("me");
+  await confirm.click();
+
+  await expect(page).toHaveURL("/");
+});
+
+test("deleting the account can be cancelled, and says when to try again", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.limitsPasswordChecks();
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Password")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete account" })).toBeFocused();
+});

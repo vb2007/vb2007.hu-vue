@@ -17,7 +17,7 @@ export const loginStatus = ref("");
  * The session lives in an HttpOnly cookie set by the API, so the page can't read it.
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
-const fetchUserDetails = async () => {
+export const fetchUserDetails = async () => {
   try {
     const response = await fetch(UserManagement.Actions.user, {
       method: "GET",
@@ -96,6 +96,17 @@ export const login = async (email: string, password: string) => {
   }
 };
 
+/** Forgets the logged-in user locally; the API ends the session itself. */
+export const clearSession = () => {
+  userEmail.value = "";
+  username.value = "";
+  isSuperuser.value = false;
+  githubLinked.value = false;
+  githubLogin.value = "";
+  hasPassword.value = false;
+  isLoggedIn.value = false;
+};
+
 export const logout = async () => {
   // The cookie is HttpOnly, so only the API can clear it.
   try {
@@ -108,11 +119,5 @@ export const logout = async () => {
     console.error("Error while trying to log out user:", error);
   }
 
-  userEmail.value = "";
-  username.value = "";
-  isSuperuser.value = false;
-  githubLinked.value = false;
-  githubLogin.value = "";
-  hasPassword.value = false;
-  isLoggedIn.value = false;
+  clearSession();
 };
