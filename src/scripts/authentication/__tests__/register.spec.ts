@@ -3,16 +3,11 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import {
   passwordLengthError,
   register,
+  registerFieldOf,
   registerStatus,
   usernameLengthError,
   validateRegisterData
 } from "@/scripts/authentication/register";
-import { login } from "@/scripts/authentication/user";
-
-vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
-  login: vi.fn()
-}));
 
 afterEach(() => {
   registerStatus.value = "";
@@ -46,6 +41,23 @@ describe("passwordLengthError", () => {
     ["4 emoji, counted as one character each", "🔑".repeat(4), TOO_SHORT]
   ])("checks %s", (_case, password, expected) => {
     expect(passwordLengthError(password)).toBe(expected);
+  });
+});
+
+describe("registerFieldOf", () => {
+  it.each([
+    ["invalid-email", "email"],
+    ["email-too-long", "email"],
+    ["unmatched-passwords", "confirmPassword"],
+    [USERNAME_TOO_SHORT, "username"],
+    [TOO_LONG, "password"],
+    ["This username is already taken.", "username"],
+    ["An account with this E-mail address already exists.", "email"],
+    ["This e-mail address's domain can't receive e-mail: check it for typos.", "email"],
+    ["error", undefined],
+    ["Registration failed.", undefined]
+  ])("puts %j under the %s field", (problem, field) => {
+    expect(registerFieldOf(problem)).toBe(field);
   });
 });
 
@@ -119,84 +131,80 @@ describe("register", () => {
 
   beforeEach(() => {
     fetchMock = mockFetch();
-    vi.mocked(login).mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("creates the account and logs in a second later when asked to", async () => {
-    vi.useFakeTimers();
-    fetchMock.mockResolvedValueOnce(jsonResponse(201));
+  it("asks the API to mail a code, which answers 202 before any account exists", async () => {
+    registerStatus.value = "Email already taken.";
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(202, { message: "A confirmation code was sent to me@example.com." })
+    );
 
-    await expect(register("vb", "me@example.com", "secret", true)).resolves.toBe(true);
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: true });
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "vb", email: "me@example.com", password: "secret" })
+      body: JSON.stringify({ username: "vb", email: "me@example.com", password: "password" })
     });
-    expect(registerStatus.value).toBe("success");
-    expect(login).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(login).toHaveBeenCalledWith("me@example.com", "secret");
+    expect(registerStatus.value).toBe("");
   });
 
-  it("logs a failed auto-login instead of throwing", async () => {
-    vi.useFakeTimers();
-    fetchMock.mockResolvedValueOnce(jsonResponse(201));
-    vi.mocked(login).mockRejectedValueOnce(new Error("boom"));
+  it.each([
+    [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one.", "email"],
+    [400, "This e-mail address's domain can't receive e-mail: check it for typos.", "email"],
+    [400, "The password's too short: it must be between 8 and 128 characters.", "password"],
+    [409, "An account with this E-mail address already exists.", "email"],
+    [409, "This username is already taken.", "username"],
+    // These name e-mails, but aren't the address's fault.
+    [429, "Too many e-mails requested: try again later.", undefined],
+    [503, "The e-mail couldn't be sent: please try again later.", undefined]
+  ])("shows the API's message for a %i response: %s", async (status, error, field) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
 
-    await register("vb", "me@example.com", "secret", true);
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(console.error).toHaveBeenCalledWith(
-      "Error while trying to auto-login:",
-      expect.any(Error)
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual(
+      field ? { sent: false, field } : { sent: false }
     );
+    expect(registerStatus.value).toBe(error);
   });
 
-  it("does not log in when autologin is off", async () => {
-    vi.useFakeTimers();
-    fetchMock.mockResolvedValueOnce(jsonResponse(201));
+  it("passes on the cooldown's retryAfter, since the code sent then still works", async () => {
+    const error = "A code was sent just now: wait 42 seconds before requesting another one.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 41.5 }));
 
-    await expect(register("vb", "me@example.com", "secret", false)).resolves.toBe(true);
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(login).not.toHaveBeenCalled();
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({
+      sent: false,
+      retryAfter: 42
+    });
+    expect(registerStatus.value).toBe(error);
   });
 
-  it.each([400, 403, 409])("shows the API's message for a %i response", async (status) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error: "Email already taken." }));
+  it("ignores a retryAfter on anything but a 429", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(503, { error: "The e-mail couldn't be sent.", retryAfter: 42 })
+    );
 
-    await expect(register("vb", "me@example.com", "secret", false)).resolves.toBe(false);
-    expect(registerStatus.value).toBe("Email already taken.");
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
   });
 
   it("falls back to a generic error when the body has no message", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(400, {}));
 
-    await expect(register("vb", "me@example.com", "secret", false)).resolves.toBe(false);
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
     expect(registerStatus.value).toBe("error");
   });
 
   it("falls back to a generic error when the body is not JSON", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(409));
-
-    await expect(register("vb", "me@example.com", "secret", false)).resolves.toBe(false);
-    expect(registerStatus.value).toBe("error");
-  });
-
-  it("treats an unexpected status as an error", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500));
 
-    await expect(register("vb", "me@example.com", "secret", false)).resolves.toBe(false);
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
     expect(registerStatus.value).toBe("error");
   });
 
   it("treats an unreachable API as an error", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
-    await expect(register("vb", "me@example.com", "secret", false)).resolves.toBe(false);
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
     expect(registerStatus.value).toBe("error");
   });
 });
