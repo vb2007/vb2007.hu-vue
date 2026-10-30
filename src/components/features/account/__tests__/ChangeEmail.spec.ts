@@ -54,8 +54,11 @@ describe("ChangeEmail", () => {
   });
 
   it("opens the form in place and focuses the new address", async () => {
+    expect(wrapper.emitted("start")).toBeUndefined();
+
     await openForm();
 
+    expect(wrapper.emitted("start")).toHaveLength(1);
     expect(wrapper.find("form").attributes("novalidate")).toBeDefined();
     expect(wrapper.findAll("label").map((label) => label.text())).toEqual([
       "New e-mail",
@@ -327,6 +330,8 @@ describe("ChangeEmail", () => {
 
       await enterCode(" 123 456 ");
 
+      expect(wrapper.emitted("start")).toHaveLength(1);
+
       expect(fetchMock).toHaveBeenNthCalledWith(1, "https://api.test/user/email/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -363,6 +368,7 @@ describe("ChangeEmail", () => {
       await enterCode(value);
 
       expect(fetchMock).not.toHaveBeenCalled();
+      expect(wrapper.emitted("start")).toBeUndefined();
       expect(wrapper.find(".field__error").text()).toBe("Enter the 6-digit code from the e-mail.");
       expect(codeInput().attributes("aria-invalid")).toBe("true");
       expect(document.activeElement).toBe(codeInput().element);
