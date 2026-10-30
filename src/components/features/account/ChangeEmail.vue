@@ -7,7 +7,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
-const emit = defineEmits<{ open: [] }>();
+const emit = defineEmits<{ start: [] }>();
 
 const {
   isChanging,
@@ -49,7 +49,7 @@ const start = async () => {
   confirmError.value = "";
   email.value = pendingEmail.value;
   open.value = true;
-  emit("open");
+  emit("start");
   await nextTick();
   focusField(pendingEmail.value ? passwordField.value : emailField.value);
 };
@@ -104,6 +104,7 @@ const confirmCode = async () => {
   const digits = code.value.replace(/\s/g, "");
   codeError.value = /^\d{6}$/.test(digits) ? "" : "Enter the 6-digit code from the e-mail.";
   if (codeError.value) return focusField(codeField.value);
+  emit("start");
   if (await confirm(digits)) code.value = "";
   await nextTick();
   // Confirmed, dropped or expired: the code step is gone, and its key is left.

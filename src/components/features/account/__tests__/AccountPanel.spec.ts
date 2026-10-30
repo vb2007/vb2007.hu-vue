@@ -306,6 +306,33 @@ describe("AccountPanel", () => {
     wrapper.unmount();
   });
 
+  it("drops the top notice once a waiting e-mail change is confirmed", async () => {
+    linkGithub();
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "new@example.com", hasPassword: true, pendingEmail: null })
+      );
+
+    await emailRow(wrapper).find("input").setValue("123456");
+    await emailRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".notice").exists()).toBe(false);
+    expect(emailRow(wrapper).find('[role="status"]').text()).toBe(
+      "E-mail address updated successfully."
+    );
+    wrapper.unmount();
+  });
+
   it("shows only the password change after setting the password", async () => {
     linkGithub("octocat", false);
     const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });

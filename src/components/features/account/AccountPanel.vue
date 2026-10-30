@@ -107,7 +107,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
             >
             <template v-else>None yet. Set one in the Password section below.</template>
           </p>
-          <ChangePassword v-if="hasPassword" @open="clearNotice" />
+          <ChangePassword v-if="hasPassword" @start="clearNotice" />
         </div>
       </div>
       <div class="login">
@@ -127,7 +127,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
             <template v-else-if="!hasPassword">Changing it needs a password.</template>
             <template v-else>You log in with it. Changing it takes your current password.</template>
           </p>
-          <ChangeEmail v-if="hasPassword && !isSuperuser" @open="clearNotice" />
+          <ChangeEmail v-if="hasPassword && !isSuperuser" @start="clearNotice" />
         </div>
       </div>
     </section>

@@ -8,7 +8,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
-const emit = defineEmits<{ open: [] }>();
+const emit = defineEmits<{ start: [] }>();
 
 const { isChanging, changeError, changed, change } = useChangePassword();
 
@@ -28,7 +28,7 @@ const fields = () => form.value!.querySelectorAll<HTMLInputElement>("input[type=
 const start = async () => {
   changed.value = "";
   open.value = true;
-  emit("open");
+  emit("start");
   await nextTick();
   fields()[0].focus();
 };

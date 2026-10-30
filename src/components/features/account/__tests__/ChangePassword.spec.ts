@@ -43,11 +43,11 @@ describe("ChangePassword", () => {
   it("opens the form in place of its key and focuses the first field", async () => {
     expect(key().text()).toBe("Change password");
     expect(wrapper.find("form").exists()).toBe(false);
-    expect(wrapper.emitted("open")).toBeUndefined();
+    expect(wrapper.emitted("start")).toBeUndefined();
 
     await open();
 
-    expect(wrapper.emitted("open")).toHaveLength(1);
+    expect(wrapper.emitted("start")).toHaveLength(1);
 
     expect(key().exists()).toBe(false);
     expect(wrapper.findAll("label").map((label) => label.text())).toEqual([
