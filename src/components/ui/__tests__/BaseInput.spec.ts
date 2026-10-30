@@ -58,6 +58,16 @@ describe("BaseInput", () => {
     expect(wrapper.classes()).toContain("field--invalid");
   });
 
+  it("adds outside descriptions before its own hint", () => {
+    const wrapper = mount(BaseInput, {
+      props: { label: "Code", hint: "6 digits", describedby: "sent-note" }
+    });
+
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(
+      `sent-note ${wrapper.find(".field__hint").attributes("id")}`
+    );
+  });
+
   it("describes the input with just a hint", () => {
     const wrapper = mount(BaseInput, { props: { label: "URL", hint: "Include https://" } });
 

@@ -9,6 +9,14 @@ export class UserManagement {
     static github: string = `${API_BASE_URL}/auth/github`;
     /** Also `DELETE` (a fetch call) to unlink GitHub (vb2007/vb2007.hu-api#134). */
     static githubLink: string = `${API_BASE_URL}/auth/github/link`;
+    /** `POST` the e-mailed code to finish registering (vb2007/vb2007.hu-api#28). */
+    static registerVerify: string = `${API_BASE_URL}/auth/register/verify`;
+    /** `POST` to send the registration code again (vb2007/vb2007.hu-api#30). */
+    static registerResend: string = `${API_BASE_URL}/auth/register/resend`;
+    /** `POST` to e-mail a password reset code (vb2007/vb2007.hu-api#163). */
+    static passwordReset: string = `${API_BASE_URL}/auth/password-reset`;
+    /** `POST` the code with the new password (vb2007/vb2007.hu-api#163). */
+    static passwordResetConfirm: string = `${API_BASE_URL}/auth/password-reset/confirm`;
   };
 
   static Actions = class {
@@ -18,6 +26,8 @@ export class UserManagement {
     static userEmail: string = `${API_BASE_URL}/user/email`;
     /** `PATCH` changes the password (vb2007/vb2007.hu-api#161). */
     static userPassword: string = `${API_BASE_URL}/user/password`;
+    /** `POST` the code sent to the new address to switch to it (vb2007/vb2007.hu-api#215). */
+    static userEmailConfirm: string = `${API_BASE_URL}/user/email/confirm`;
   };
 }
 

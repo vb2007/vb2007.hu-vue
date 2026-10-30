@@ -4,7 +4,7 @@ import { login } from "@/scripts/authentication/user";
 
 export const registerStatus = ref("");
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
+export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 const hasEmailFormat = (email: string) =>
   /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalizeEmail(email));
