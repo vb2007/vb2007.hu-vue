@@ -8,9 +8,22 @@ describe("API endpoints", () => {
     expect(UserManagement.Authentication.logout).toBe("https://api.test/auth/logout");
     expect(UserManagement.Authentication.github).toBe("https://api.test/auth/github");
     expect(UserManagement.Authentication.githubLink).toBe("https://api.test/auth/github/link");
+    expect(UserManagement.Authentication.registerVerify).toBe(
+      "https://api.test/auth/register/verify"
+    );
+    expect(UserManagement.Authentication.registerResend).toBe(
+      "https://api.test/auth/register/resend"
+    );
+    expect(UserManagement.Authentication.passwordReset).toBe(
+      "https://api.test/auth/password-reset"
+    );
+    expect(UserManagement.Authentication.passwordResetConfirm).toBe(
+      "https://api.test/auth/password-reset/confirm"
+    );
     expect(UserManagement.Actions.user).toBe("https://api.test/user");
     expect(UserManagement.Actions.userEmail).toBe("https://api.test/user/email");
     expect(UserManagement.Actions.userPassword).toBe("https://api.test/user/password");
+    expect(UserManagement.Actions.userEmailConfirm).toBe("https://api.test/user/email/confirm");
   });
 
   it("builds the URL shortening endpoints from VITE_API_BASE_URL", () => {
