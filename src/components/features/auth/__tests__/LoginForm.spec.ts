@@ -1,19 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
-import { isLoggedIn } from "@/scripts/authentication/authState";
-import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
+import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
   login: vi.fn(),
+  logout: vi.fn(),
   restoreSession: vi.fn()
 }));
 
 describe("LoginForm", () => {
   beforeEach(() => {
     vi.mocked(login).mockReset();
+    vi.mocked(logout).mockReset();
     vi.mocked(restoreSession).mockReset();
   });
 
@@ -87,6 +90,66 @@ describe("LoginForm", () => {
     expect(wrapper.find('a[href="https://api.test/auth/github"]').text()).toBe(
       "Log in with GitHub"
     );
+  });
+
+  it("links to resetting a forgotten password", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find('a[href="/reset-password"]').text()).toBe("Forgot password?");
+  });
+
+  it("shows a password reset's message once", async () => {
+    passwordResetNotice.value = "Password reset successfully: log in with the new password.";
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find("form").find('[role="status"]').text()).toBe(
+      "Password reset successfully: log in with the new password."
+    );
+    expect(passwordResetNotice.value).toBe("");
+
+    const { wrapper: again } = await mountWithRouter(LoginForm);
+    expect(again.find('[role="status"]').exists()).toBe(false);
+  });
+
+  it("shows a reset's message to a user logged in as another account, with a way to log out", async () => {
+    isLoggedIn.value = true;
+    userEmail.value = "anna@example.com";
+    passwordResetNotice.value = "Password reset successfully: log in with the new password.";
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Password reset successfully: log in with the new password."
+    );
+    expect(wrapper.text()).not.toContain("Login successful!");
+    expect(wrapper.find(".who").text()).toBe("anna@example.com");
+
+    await wrapper.find("button").trigger("click");
+    expect(logout).toHaveBeenCalledOnce();
+
+    isLoggedIn.value = false;
+    await flushPromises();
+    expect(wrapper.find("form").find('[role="status"]').text()).toBe(
+      "Password reset successfully: log in with the new password."
+    );
+  });
+
+  it("drops a reset's message once the user logs in, so the login shows as usual", async () => {
+    passwordResetNotice.value = "Password reset successfully: log in with the new password.";
+    vi.mocked(login).mockImplementationOnce(async () => {
+      isLoggedIn.value = true;
+      loginStatus.value = "success";
+    });
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    await email.setValue("me@example.com");
+    await password.setValue("a new password");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Login successful!");
+    expect(wrapper.text()).not.toContain("Password reset successfully");
+    expect(wrapper.find('a[href="/shorten"]').exists()).toBe(true);
   });
 
   it("explains a failed GitHub login from the URL", async () => {

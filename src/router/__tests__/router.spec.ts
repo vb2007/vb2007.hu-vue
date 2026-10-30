@@ -10,7 +10,8 @@ describe("router", () => {
     ["admin", "/admin"],
     ["account", "/account"],
     ["login", "/login"],
-    ["register", "/register"]
+    ["register", "/register"],
+    ["reset-password", "/reset-password"]
   ])("resolves the %s route to %s", (name, path) => {
     expect(router.resolve({ name }).path).toBe(path);
   });
