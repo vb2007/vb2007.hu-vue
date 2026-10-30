@@ -22,7 +22,7 @@ export type RegisterCodeResult =
   | "created"
   /** The address or username was taken meanwhile; the waiting registration is gone. */
   | "taken"
-  /** Nothing changed; `codeError` says why. */
+  /** Nothing changed; `codeFieldError` or `codeError` says why. */
   | "failed";
 
 /** What the step tells about the address's code. */
@@ -60,7 +60,10 @@ export const useRegisterCode = () => {
   const notice = ref<CodeNotice>("sent");
   const isVerifying = ref(false);
   const isResending = ref(false);
+  /** What went wrong, when it isn't the typed code's fault (limits, mail, the network). */
   const codeError = ref("");
+  /** What's wrong with the typed code itself: not 6 digits, or the API's 400. */
+  const codeFieldError = ref("");
   const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The address the countdown holds back; any other can be sent a code right away. */
   const cooldownFor = ref("");
@@ -71,9 +74,16 @@ export const useRegisterCode = () => {
     () => cooldown.active.value && normalizeEmail(cooldownFor.value) === normalizeEmail(email.value)
   );
 
+  /** Shows one problem at a time; an empty message clears both. */
   const showError = (message: string, endsWithCooldown = false) => {
     codeError.value = message;
+    codeFieldError.value = "";
     errorEndsWithCooldown = endsWithCooldown;
+  };
+
+  const showCodeProblem = (message: string) => {
+    showError("");
+    codeFieldError.value = message;
   };
 
   const holdResend = (seconds: number) => {
@@ -111,7 +121,7 @@ export const useRegisterCode = () => {
   const verify = async (code: string): Promise<RegisterCodeResult> => {
     const digits = code.replace(/\s/g, "");
     if (!CODE_PATTERN.test(digits)) {
-      showError("Enter the 6-digit code from the e-mail.");
+      showCodeProblem("Enter the 6-digit code from the e-mail.");
       return "failed";
     }
 
@@ -135,7 +145,12 @@ export const useRegisterCode = () => {
         result = (await fetchUserDetails()) ? "logged-in" : "created";
       } else {
         // 400 (wrong, expired or used code), 409 (taken meanwhile) and 429 are the user's to fix.
-        showError(await errorFrom(response, "Failed to confirm the code"));
+        const message = await errorFrom(response, "Failed to confirm the code");
+        if (response.status === 400) {
+          showCodeProblem(message);
+        } else {
+          showError(message);
+        }
         if (response.status === 409) {
           result = "taken";
         }
@@ -216,6 +231,7 @@ export const useRegisterCode = () => {
     isVerifying,
     isResending,
     codeError,
+    codeFieldError,
     cooldown,
     resendWaiting,
     open,

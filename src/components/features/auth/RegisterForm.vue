@@ -38,6 +38,7 @@ const {
   isVerifying,
   isResending,
   codeError,
+  codeFieldError,
   cooldown,
   resendWaiting,
   open,
@@ -61,8 +62,8 @@ const fieldRefs: Record<RegisterField, Readonly<{ value: { $el: HTMLElement } | 
 
 const MESSAGES: Record<string, string> = {
   "missing-fields": "Please fill out all required input fields.",
-  "invalid-email": "Please enter a valid email address.",
-  "email-too-long": "Your email address can't be longer than 254 characters.",
+  "invalid-email": "Please enter a valid e-mail address.",
+  "email-too-long": "Your e-mail address can't be longer than 254 characters.",
   "unmatched-passwords": "The two passwords don't match.",
   error: "Registration failed. Please try again."
 };
@@ -119,9 +120,12 @@ const clearForm = () => {
   showProblem("");
 };
 
+let flagTimer: ReturnType<typeof setTimeout> | undefined;
+/** Flashes the submit key red for a second, counted from the latest failure. */
 const flagError = () => {
+  clearTimeout(flagTimer);
   isButtonError.value = true;
-  setTimeout(() => {
+  flagTimer = setTimeout(() => {
     isButtonError.value = false;
   }, 1000);
 };
@@ -241,7 +245,7 @@ const changeAddress = async () => {
 
 // A new attempt at the code makes the last error old news.
 watch(code, () => {
-  codeError.value = "";
+  codeError.value = codeFieldError.value = "";
 });
 
 // Likewise for a field's own error once that field is edited.
@@ -306,6 +310,7 @@ watch(isLoggedIn, (newVal) => {
         autocomplete="one-time-code"
         hint="Nothing yet? Check your spam folder, or send a new code below."
         :describedby="noticeId"
+        :error="codeFieldError"
         mono
         required
       />
