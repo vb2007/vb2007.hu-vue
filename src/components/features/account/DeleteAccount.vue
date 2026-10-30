@@ -23,7 +23,7 @@ const ready = computed(() =>
   hasPassword.value ? confirmation.value !== "" : confirmation.value === username.value
 );
 
-const focusField = () => field.value!.$el.querySelector("input").focus();
+const focusField = () => field.value?.$el.querySelector("input").focus();
 
 const open = async () => {
   confirming.value = true;
@@ -42,11 +42,12 @@ const cancel = async () => {
 
 const submit = async () => {
   if (!ready.value) return;
-  if (await deleteAccount(confirmation.value)) {
-    await router.push("/");
-    return clearSession();
+  if (!(await deleteAccount(confirmation.value))) {
+    if (!form.value?.contains(document.activeElement)) focusField();
+    return;
   }
-  if (!form.value!.contains(document.activeElement)) focusField();
+  await router.push("/");
+  clearSession();
 };
 </script>
 
