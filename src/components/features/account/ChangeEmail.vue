@@ -7,6 +7,8 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
+const emit = defineEmits<{ open: [] }>();
+
 const { isChanging, changeError, changeMessage, change } = useChangeEmail();
 
 const open = ref(false);
@@ -26,6 +28,7 @@ const focusField = (field: { $el: HTMLElement } | null) =>
 const start = async () => {
   open.value = true;
   changeMessage.value = "";
+  emit("open");
   await nextTick();
   focusField(emailField.value);
 };
