@@ -23,8 +23,6 @@ const MESSAGES: Record<string, string> = {
   "missing-fields": "Please fill out all required input fields.",
   "invalid-email": "Please enter a valid email address.",
   "email-too-long": "Your email address can't be longer than 254 characters.",
-  "invalid-username": "Your username's length must be between 2 and 16 characters.",
-  "invalid-password": "Your password's length must be between 6 and 30 characters.",
   "unmatched-passwords": "The two passwords don't match.",
   error: "Registration failed. Please try again."
 };

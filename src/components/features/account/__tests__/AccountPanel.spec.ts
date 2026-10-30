@@ -53,6 +53,37 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
+  /** A row of the log-in details, by its name. */
+  const detailsRow =
+    (name: string) => (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+      wrapper
+        .findAll('[aria-labelledby="details-title"] .login')
+        .find((row) => row.find("h3").text() === name)!;
+  const passwordRow = detailsRow("Password");
+  const emailRow = detailsRow("E-mail");
+
+  it("offers to change the password in the log-in details", async () => {
+    logIn();
+    hasPassword.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(wrapper.find("#details-title").text()).toBe("Log-in details");
+    expect(passwordRow(wrapper).find(".login__note").text()).toBe(
+      "Changing it logs out your other devices; you stay logged in here."
+    );
+    expect(passwordRow(wrapper).find("button").text()).toBe("Change password");
+  });
+
+  it("has no password to change on an account made with GitHub", async () => {
+    logIn();
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(passwordRow(wrapper).find(".login__note").text()).toBe(
+      "None yet. Set one in the Password section below."
+    );
+    expect(passwordRow(wrapper).find("button").exists()).toBe(false);
+  });
+
   const linkGithub = (login = "octocat", password = true) => {
     logIn();
     githubLinked.value = true;
@@ -91,7 +122,7 @@ describe("AccountPanel", () => {
 
     // Two sentences from two template branches; the browser collapses the doubled space between them.
     expect(githubNote(wrapper).text().replace(/\s+/g, " ")).toBe(
-      "You can log in with GitHub as @octocat. This account has no password, so GitHub stays linked: it's how you log in."
+      "You can log in with GitHub as @octocat. It stays linked while it's your only way to log in."
     );
     expect(unlinkKey(wrapper).exists()).toBe(false);
   });
@@ -203,6 +234,7 @@ describe("AccountPanel", () => {
     expect(wrapper.find("#password-title").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
+    expect(wrapper.find("button.change__key").text()).toBe("Change password");
     wrapper.unmount();
   });
 
@@ -223,15 +255,14 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
   });
 
-  const emailRow = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
-    wrapper.findAll(".login").find((row) => row.find("h3").text() === "E-mail")!;
-
   it("offers to change the e-mail address of an account with a password", async () => {
     logIn();
     hasPassword.value = true;
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find("#details-title").text()).toBe("Log-in details");
+    expect(
+      wrapper.findAll('[aria-labelledby="details-title"] h3').map((name) => name.text())
+    ).toEqual(["Password", "E-mail"]);
     expect(emailRow(wrapper).find(".login__mark path").attributes("d")).toMatch(/^M3\.5 5\.5h17/);
     expect(emailRow(wrapper).find(".login__note").text()).toBe(
       "You log in with it. Changing it takes your current password."
@@ -240,7 +271,7 @@ describe("AccountPanel", () => {
   });
 
   it.each([
-    ["an account without a password", false, false, "Set a password below to change it."],
+    ["an account without a password", false, false, "Changing it needs a password."],
     ["the superuser", true, true, "It's set in the API's configuration."]
   ])("explains why %s can't change its e-mail", async (_who, password, superuser, note) => {
     logIn();

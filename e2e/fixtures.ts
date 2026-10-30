@@ -8,9 +8,12 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
- * An account with a password accepts `MOCK_PASSWORD` as its current one; `hasUser(...)` addresses count as taken.
+ * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
+ * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken.
  * Linking GitHub (`GET /auth/github/link`) skips GitHub: it links @e2e-octocat and comes straight back to `/account?github=linked`, which also confirms the user for setting a password.
- * `DELETE /user` takes `MOCK_PASSWORD`, or the username for a GitHub-only account.
+ * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
+ * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
+ * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -47,6 +50,9 @@ export interface MockAdminUser {
   isSuperuser: boolean;
   uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
 }
+
+/** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
+type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
@@ -111,6 +117,11 @@ export class MockApi {
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
+  /** What `PATCH /user/password` checks the current password against, and changes. */
+  password = MOCK_PASSWORD;
+  /** The only `VB-AUTH` value still accepted; each new session replaces it. */
+  private session = "";
+  private sessionCount = 0;
   private cdnOrigin = "https://cdn.e2e.invalid";
   private appOrigin = "";
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
@@ -244,11 +255,16 @@ export class MockApi {
       return route.fulfill({ status: response.status, headers, json: response.body });
     }
 
-    const response = this.respond(
-      `${request.method()} ${url.pathname}`,
-      request.postDataJSON(),
-      url.searchParams
-    );
+    const cookie = (await request.headerValue("cookie")) ?? "";
+    const sentSession = cookie.match(/(?:^|;\s*)VB-AUTH=([^;]+)/)?.[1];
+    const response =
+      sentSession && sentSession !== this.session
+        ? this.staleSession(`${request.method()} ${url.pathname}`)
+        : this.respond(
+            `${request.method()} ${url.pathname}`,
+            request.postDataJSON(),
+            url.searchParams
+          );
     if (!response) {
       this.unhandled.push(`${request.method()} ${request.url()}`);
       return route.abort();
@@ -256,7 +272,23 @@ export class MockApi {
     if (response.location) {
       return route.fulfill({ status: response.status, headers: { location: response.location } });
     }
+    if (response.newSession) {
+      this.session = `e2e-session-${++this.sessionCount}`;
+      const sessionCookie = `VB-AUTH=${this.session}; Path=/; HttpOnly; Secure; SameSite=None`;
+      return route.fulfill({
+        status: response.status,
+        headers: { ...headers, "Set-Cookie": sessionCookie },
+        json: response.body ?? {}
+      });
+    }
     return route.fulfill({ status: response.status, headers, json: response.body ?? {} });
+  }
+
+  /** What the API answers a session it has replaced: logged out. */
+  private staleSession(endpoint: string): MockResponse {
+    return endpoint === "GET /user"
+      ? { status: 401 }
+      : { status: 403, body: { error: "You are not logged in." } };
   }
 
   private respond(
@@ -269,10 +301,12 @@ export class MockApi {
       originalFileName?: string;
       visibility?: MockUpload["visibility"];
       quotaBytes?: number | null;
+      currentPassword?: string;
+      newPassword?: string;
       username?: string;
     } | null,
     query: URLSearchParams
-  ): { status: number; body?: unknown; location?: string } | undefined {
+  ): MockResponse | undefined {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
@@ -334,7 +368,7 @@ export class MockApi {
           isSuperuser: false,
           hasPassword: true
         };
-        return { status: 200 };
+        return { status: 200, newSession: true };
       case "DELETE /user":
         return this.deleteAccount(body);
       case "POST /auth/logout":
@@ -362,6 +396,8 @@ export class MockApi {
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
       case "PATCH /user/email":
         return this.changeEmail(body?.email, body?.password);
+      case "PATCH /user/password":
+        return this.changePassword(body?.currentPassword, body?.newPassword);
       case "POST /auth/register":
         return { status: 201 };
       case "POST /shortenUrl/create":
@@ -415,7 +451,7 @@ export class MockApi {
     if (!this.user.hasPassword) {
       return { status: 409, body: { error: "This account has no password." } };
     }
-    if (password !== MOCK_PASSWORD) {
+    if (password !== this.password) {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
     if (this.users.some((user) => user.email === normalized)) {
@@ -426,6 +462,39 @@ export class MockApi {
     }
     this.user.email = normalized;
     return { status: 200, body: { message: "E-mail address updated successfully." } };
+  }
+
+  private changePassword(currentPassword?: string, newPassword?: string) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (this.passwordChecksLimited) {
+      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+    }
+    if (!currentPassword || !newPassword) {
+      return {
+        status: 400,
+        body: { error: "You must provide the current password and a new password." }
+      };
+    }
+    const length = [...newPassword].length;
+    if (length < 8 || length > 128) {
+      return {
+        status: 400,
+        body: {
+          error: `The password's too ${length < 8 ? "short" : "long"}: it must be between 8 and 128 characters.`
+        }
+      };
+    }
+    if (!this.user.hasPassword) {
+      return {
+        status: 409,
+        body: { error: "This account has no password: set one first with POST /user/password." }
+      };
+    }
+    if (currentPassword !== this.password) {
+      return { status: 403, body: { error: "The provided password is incorrect." } };
+    }
+    this.password = newPassword;
+    return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
   private setPassword(password: string | undefined) {
@@ -454,8 +523,9 @@ export class MockApi {
       };
     }
     this.user.hasPassword = true;
+    this.password = password;
     this.githubConfirmed = false;
-    return { status: 200, body: { message: "Password set successfully." } };
+    return { status: 200, body: { message: "Password set successfully." }, newSession: true };
   }
 
   private deleteAccount(body: { password?: string; username?: string } | null) {
@@ -472,7 +542,7 @@ export class MockApi {
           body: { error: "You must provide your password to delete this account." }
         };
       }
-      if (body.password !== MOCK_PASSWORD) {
+      if (body.password !== this.password) {
         return { status: 403, body: { error: "The provided password is incorrect." } };
       }
     } else {

@@ -12,6 +12,20 @@ const hasEmailFormat = (email: string) =>
 export const isValidEmail = (email: string) =>
   hasEmailFormat(email) && normalizeEmail(email).length <= 254;
 
+export const usernameLengthError = (username: string) => {
+  const { length } = username.trim();
+
+  if (length < 2) {
+    return "The username's too short: it must be between 2 and 16 characters.";
+  }
+
+  if (length > 16) {
+    return "The username's too long: it must be between 2 and 16 characters.";
+  }
+
+  return;
+};
+
 export const passwordLengthError = (password: string) => {
   const length = [...password].length;
 
@@ -36,12 +50,14 @@ export const validateRegisterData = (
     return hasEmailFormat(email) ? "email-too-long" : "invalid-email";
   }
 
-  if (username.length < 2 || username.length > 16) {
-    return "invalid-username";
+  const usernameError = usernameLengthError(username);
+  if (usernameError) {
+    return usernameError;
   }
 
-  if (password.length < 6 || password.length > 30) {
-    return "invalid-password";
+  const passwordError = passwordLengthError(password);
+  if (passwordError) {
+    return passwordError;
   }
 
   if (password !== confirmPassword) {
