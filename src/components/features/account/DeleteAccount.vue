@@ -15,6 +15,7 @@ const { isDeleting, deleteError, deleteAccount } = useAccountDelete();
 
 const confirming = ref(false);
 const confirmation = ref("");
+const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
 
@@ -22,10 +23,12 @@ const ready = computed(() =>
   hasPassword.value ? confirmation.value !== "" : confirmation.value === username.value
 );
 
+const focusField = () => field.value!.$el.querySelector("input").focus();
+
 const open = async () => {
   confirming.value = true;
   await nextTick();
-  field.value!.$el.querySelector("input").focus();
+  focusField();
 };
 
 const cancel = async () => {
@@ -39,9 +42,11 @@ const cancel = async () => {
 
 const submit = async () => {
   if (!ready.value) return;
-  if (!(await deleteAccount(confirmation.value))) return;
-  await router.push("/");
-  clearSession();
+  if (await deleteAccount(confirmation.value)) {
+    await router.push("/");
+    return clearSession();
+  }
+  if (!form.value!.contains(document.activeElement)) focusField();
 };
 </script>
 
@@ -54,6 +59,7 @@ const submit = async () => {
 
     <form
       v-if="confirming"
+      ref="form"
       class="confirm"
       novalidate
       @submit.prevent="submit"
