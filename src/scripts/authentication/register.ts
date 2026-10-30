@@ -4,6 +4,14 @@ import { login } from "@/scripts/authentication/user";
 
 export const registerStatus = ref("");
 
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const hasEmailFormat = (email: string) =>
+  /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalizeEmail(email));
+
+export const isValidEmail = (email: string) =>
+  hasEmailFormat(email) && normalizeEmail(email).length <= 254;
+
 export const usernameLengthError = (username: string) => {
   const { length } = username.trim();
 
@@ -38,9 +46,8 @@ export const validateRegisterData = (
   password: string,
   confirmPassword: string
 ) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return "invalid-email";
+  if (!isValidEmail(email)) {
+    return hasEmailFormat(email) ? "email-too-long" : "invalid-email";
   }
 
   const usernameError = usernameLengthError(username);

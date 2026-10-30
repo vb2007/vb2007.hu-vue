@@ -24,6 +24,7 @@ describe("BaseInput", () => {
         type: "email",
         placeholder: "me@example.com",
         autocomplete: "email",
+        autocapitalize: "off",
         required: true,
         mono: true
       }
@@ -33,7 +34,8 @@ describe("BaseInput", () => {
     expect(input.attributes()).toMatchObject({
       type: "email",
       placeholder: "me@example.com",
-      autocomplete: "email"
+      autocomplete: "email",
+      autocapitalize: "off"
     });
     expect(input.attributes("required")).toBeDefined();
     expect(input.classes()).toContain("field__input--mono");
