@@ -1,20 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
-import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
+import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
   login: vi.fn(),
+  logout: vi.fn(),
   restoreSession: vi.fn()
 }));
 
 describe("LoginForm", () => {
   beforeEach(() => {
     vi.mocked(login).mockReset();
+    vi.mocked(logout).mockReset();
     vi.mocked(restoreSession).mockReset();
   });
 
@@ -107,6 +109,28 @@ describe("LoginForm", () => {
 
     const { wrapper: again } = await mountWithRouter(LoginForm);
     expect(again.find('[role="status"]').exists()).toBe(false);
+  });
+
+  it("shows a reset's message to a user logged in as another account, with a way to log out", async () => {
+    isLoggedIn.value = true;
+    userEmail.value = "anna@example.com";
+    passwordResetNotice.value = "Password reset successfully: log in with the new password.";
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Password reset successfully: log in with the new password."
+    );
+    expect(wrapper.text()).not.toContain("Login successful!");
+    expect(wrapper.find(".who").text()).toBe("anna@example.com");
+
+    await wrapper.find("button").trigger("click");
+    expect(logout).toHaveBeenCalledOnce();
+
+    isLoggedIn.value = false;
+    await flushPromises();
+    expect(wrapper.find("form").find('[role="status"]').text()).toBe(
+      "Password reset successfully: log in with the new password."
+    );
   });
 
   it("explains a failed GitHub login from the URL", async () => {

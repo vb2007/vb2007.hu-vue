@@ -608,7 +608,9 @@ export class MockApi {
       };
     }
     this.password = body.newPassword!;
-    this.user = null;
+    if (this.user && normalize(this.user.email) === normalize(body.email!)) {
+      this.user = null;
+    }
     return {
       status: 200,
       body: { message: "Password reset successfully: log in with the new password." }
