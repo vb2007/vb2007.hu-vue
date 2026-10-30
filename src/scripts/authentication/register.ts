@@ -40,8 +40,9 @@ export const validateRegisterData = (
     return "invalid-username";
   }
 
-  if (password.length < 6 || password.length > 30) {
-    return "invalid-password";
+  const passwordError = passwordLengthError(password);
+  if (passwordError) {
+    return passwordError;
   }
 
   if (password !== confirmPassword) {
