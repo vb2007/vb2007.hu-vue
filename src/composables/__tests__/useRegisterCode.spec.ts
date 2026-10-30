@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { RESEND_COOLDOWN_SECONDS, useRegisterCode } from "@/composables/useRegisterCode";
+import {
+  COOLDOWN_STORAGE_KEY,
+  RESEND_COOLDOWN_SECONDS,
+  useRegisterCode
+} from "@/composables/useRegisterCode";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -27,6 +31,7 @@ describe("useRegisterCode", () => {
     vi.mocked(fetchUserDetails).mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.useFakeTimers();
+    sessionStorage.clear();
   });
 
   it("starts closed, with resending allowed", () => {
@@ -67,6 +72,46 @@ describe("useRegisterCode", () => {
 
     step.open(" Me@Example.com ", "earlier");
     expect(step.resendWaiting.value).toBe(true);
+  });
+
+  it("keeps the countdown for the normalized address, so a reload can pick it up", () => {
+    const { api, wrapper } = mountComposable(useRegisterCode);
+    api.open(" Me@Example.com ", "sent", RESEND_COOLDOWN_SECONDS);
+
+    expect(COOLDOWN_STORAGE_KEY).toBe("register-cooldown");
+    expect(JSON.parse(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)!).id).toBe("me@example.com");
+
+    // A reload: the page and its countdown are gone, the kept deadline isn't.
+    wrapper.unmount();
+    vi.advanceTimersByTime(20_000);
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.cooldown.remaining.value).toBe(40);
+  });
+
+  it("resumes nothing for another address", () => {
+    openStep();
+    const { api: reloaded } = mountComposable(useRegisterCode);
+
+    reloaded.open("you@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(false);
+  });
+
+  it.each([
+    ["a resend", 200, {}, 60],
+    ["a refused resend", 429, { error: "Wait.", retryAfter: 42 }, 42]
+  ])("keeps the countdown after %s", async (_, status, body, seconds) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+
+    await step.resend();
+
+    const kept = JSON.parse(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)!);
+    expect(kept).toEqual({ id: "me@example.com", deadline: Date.now() + seconds * 1000 });
   });
 
   it("forgets an old error when opened again", () => {

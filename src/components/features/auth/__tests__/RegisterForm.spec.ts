@@ -66,6 +66,7 @@ describe("RegisterForm", () => {
   afterEach(() => {
     registerStatus.value = "";
     document.body.innerHTML = "";
+    sessionStorage.clear();
   });
 
   it("offers registering with GitHub under the form", async () => {
@@ -269,6 +270,22 @@ describe("RegisterForm", () => {
     );
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend code");
+  });
+
+  it("picks up the resend countdown kept from before a reload", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+    sessionStorage.setItem(
+      "register-cooldown",
+      JSON.stringify({ id: "me@example.com", deadline: Date.now() + 30_000 })
+    );
+    const wrapper = await mountForm();
+    await wrapper.find('input[type="email"]').setValue("Me@Example.com");
+
+    await enterCodeButton(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(resendButton(wrapper).text()).toBe("Resend in 30 s");
+    expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
   });
 
   it("asks for the address before entering a code", async () => {

@@ -104,7 +104,8 @@ test("a code that already arrived can be entered after a reload", async ({ page 
   await expect(page.getByRole("status")).toContainText(
     "Enter the code that was mailed to new@example.com."
   );
-  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  // The minute since the code was sent survives the reload, so no click is wasted on a 429.
+  await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
