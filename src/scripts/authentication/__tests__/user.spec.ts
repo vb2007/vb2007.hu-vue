@@ -87,6 +87,28 @@ describe("restoreSession", () => {
     expect(fresh.hasPassword.value).toBe(false);
   });
 
+  it("knows a change waiting for its code, and only takes a real true for emailVerified", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        email: "me@example.com",
+        emailVerified: true,
+        pendingEmail: "new@example.com"
+      })
+    );
+    const { restoreSession, emailVerified, pendingEmail } = await load();
+    await restoreSession();
+    expect(pendingEmail.value).toBe("new@example.com");
+    expect(emailVerified.value).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { email: "me@example.com", emailVerified: "yes", pendingEmail: null })
+    );
+    const fresh = await load();
+    await fresh.restoreSession();
+    expect(fresh.pendingEmail.value).toBe("");
+    expect(fresh.emailVerified.value).toBe(false);
+  });
+
   it("leaves the username empty when the API doesn't send one", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     const { restoreSession, isLoggedIn, username } = await load();
@@ -196,9 +218,19 @@ describe("login", () => {
 
 describe("clearSession", () => {
   it("forgets the user locally without asking the API", async () => {
-    const { clearSession, isLoggedIn, hasPassword, userEmail, username } = await load();
+    const {
+      clearSession,
+      isLoggedIn,
+      hasPassword,
+      emailVerified,
+      pendingEmail,
+      userEmail,
+      username
+    } = await load();
     isLoggedIn.value = true;
     hasPassword.value = true;
+    emailVerified.value = true;
+    pendingEmail.value = "new@example.com";
     userEmail.value = "me@example.com";
     username.value = "me";
 
@@ -207,6 +239,8 @@ describe("clearSession", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(isLoggedIn.value).toBe(false);
     expect(hasPassword.value).toBe(false);
+    expect(emailVerified.value).toBe(false);
+    expect(pendingEmail.value).toBe("");
     expect(userEmail.value).toBe("");
     expect(username.value).toBe("");
   });

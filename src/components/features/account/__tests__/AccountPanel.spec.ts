@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import {
+  emailVerified,
   githubLinked,
   githubLogin,
   hasPassword,
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  pendingEmail,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -268,6 +270,34 @@ describe("AccountPanel", () => {
       "You log in with it. Changing it takes your current password."
     );
     expect(emailRow(wrapper).find("button").text()).toBe("Change e-mail");
+    expect(emailRow(wrapper).find(".badge").exists()).toBe(false);
+  });
+
+  it("marks a confirmed address", async () => {
+    logIn();
+    hasPassword.value = true;
+    emailVerified.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    const badge = emailRow(wrapper).find(".login__head .badge");
+    expect(badge.text()).toBe("Confirmed");
+    expect(badge.classes()).toContain("badge--on");
+  });
+
+  it("asks for the code of a change that's waiting, under the current address", async () => {
+    logIn();
+    hasPassword.value = true;
+    emailVerified.value = true;
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(wrapper.findAll("dd").map((value) => value.text())).toEqual(["vb", "vb@example.com"]);
+    // A Confirmed badge would read as being about the waiting address.
+    expect(emailRow(wrapper).find(".badge").exists()).toBe(false);
+    expect(emailRow(wrapper).find(".change__pending").text()).toBe(
+      "Waiting for confirmation: new@example.com"
+    );
+    expect(emailRow(wrapper).find("label").text()).toBe("Confirmation code");
   });
 
   it.each([
