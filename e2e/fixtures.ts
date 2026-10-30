@@ -9,7 +9,10 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
- * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken.
+ * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
+ * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
+ * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
+ * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
  * Linking GitHub (`GET /auth/github/link`) skips GitHub: it links @e2e-octocat and comes straight back to `/account?github=linked`, which also confirms the user for setting a password.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
@@ -70,6 +73,8 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
 const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
+/** The code `PATCH /user/email` "mails" to the new address. */
+export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
@@ -104,9 +109,12 @@ export class MockApi {
     username: string;
     isSuperuser: boolean;
     hasPassword: boolean;
+    emailVerified: boolean;
     githubId?: string;
     githubLogin?: string;
   } | null = null;
+  /** A new address waiting for `MOCK_EMAIL_CODE`, and when its code was sent. */
+  private emailChange: { email: string; sentAt: number } | null = null;
   private shortCode = "e2e123";
   /** Short code -> link, filled by shortening and by `hasShortLink`. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -150,9 +158,9 @@ export class MockApi {
   loggedInAs(
     email = "e2e@example.com",
     username = "e2e",
-    { superuser = false, githubLinked = false, password = true } = {}
+    { superuser = false, githubLinked = false, password = true, emailVerified = false } = {}
   ) {
-    this.user = { email, username, isSuperuser: superuser, hasPassword: password };
+    this.user = { email, username, isSuperuser: superuser, hasPassword: password, emailVerified };
     if (githubLinked) {
       this.user.githubId = "583231";
       this.user.githubLogin = "e2e-octocat";
@@ -225,6 +233,11 @@ export class MockApi {
     this.uploads.push(upload);
     this.uploadOwners.set(id, owner);
     return upload;
+  }
+
+  /** A change to `email` that waits for its code, mailed `sentSecondsAgo`. */
+  hasPendingEmail(email: string, { sentSecondsAgo = 120 } = {}) {
+    this.emailChange = { email, sentAt: Date.now() - sentSecondsAgo * 1000 };
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -375,13 +388,22 @@ export class MockApi {
       case "GET /uploads/usage":
         return this.usage();
       case "GET /user":
-        return this.user ? { status: 200, body: this.user } : { status: 401 };
+        return this.user
+          ? {
+              status: 200,
+              body: {
+                ...this.user,
+                pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
+              }
+            }
+          : { status: 401 };
       case "POST /auth/login":
         this.user = {
           email: body?.email ?? "e2e@example.com",
           username: "e2e",
           isSuperuser: false,
-          hasPassword: true
+          hasPassword: true,
+          emailVerified: false
         };
         return { status: 200, newSession: true };
       case "DELETE /user":
@@ -411,6 +433,8 @@ export class MockApi {
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
       case "PATCH /user/email":
         return this.changeEmail(body?.email, body?.password);
+      case "POST /user/email/confirm":
+        return this.confirmEmail(body?.code);
       case "PATCH /user/password":
         return this.changePassword(body?.currentPassword, body?.newPassword);
       case "POST /auth/register": {
@@ -455,7 +479,9 @@ export class MockApi {
           email: this.pendingRegistration.email,
           username: this.pendingRegistration.username,
           isSuperuser: false,
-          hasPassword: true
+          hasPassword: true,
+          // Entering the mailed code confirms the address.
+          emailVerified: true
         };
         this.password = this.pendingRegistration.password;
         this.pendingRegistration = null;
@@ -507,7 +533,10 @@ export class MockApi {
     }
   }
 
-  /** Checks in the API's order (vb2007/vb2007.hu-api#162), short of the superuser-reserved address. */
+  /**
+   * Checks in the API's order (vb2007/vb2007.hu-api#162 and #215), short of the superuser-reserved
+   * address and the domain checks.
+   */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
@@ -540,13 +569,60 @@ export class MockApi {
     if (password !== this.password) {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
+    if (normalized === this.user.email) {
+      return { status: 200, body: { message: "E-mail address updated successfully." } };
+    }
     if (this.users.some((user) => user.email === normalized)) {
       return {
         status: 409,
         body: { error: "An account with this E-mail address already exists." }
       };
     }
-    this.user.email = normalized;
+    const retryAfter = Math.ceil(((this.emailChange?.sentAt ?? 0) + 60_000 - Date.now()) / 1000);
+    if (retryAfter > 0) {
+      return {
+        status: 429,
+        body: {
+          error: `A code was sent just now: wait ${retryAfter} seconds before requesting another one.`,
+          retryAfter
+        }
+      };
+    }
+    this.emailChange = { email: normalized, sentAt: Date.now() };
+    return {
+      status: 202,
+      body: {
+        message: `A confirmation code was sent to ${normalized}: send it to POST /user/email/confirm to switch to that address.`
+      }
+    };
+  }
+
+  /** A waiting change's code works for 15 minutes; after that, GET /user leaves it out. */
+  private isEmailChangeLive() {
+    return this.emailChange !== null && Date.now() < this.emailChange.sentAt + 15 * 60_000;
+  }
+
+  private confirmEmail(code?: string) {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
+    if (!this.isEmailChangeLive() || code.replace(/\s/g, "") !== MOCK_EMAIL_CODE) {
+      return {
+        status: 400,
+        body: {
+          error: "The code is wrong, expired or already used: check it or request a new one."
+        }
+      };
+    }
+    const { email } = this.emailChange!;
+    this.emailChange = null;
+    if (this.users.some((user) => user.email === email)) {
+      return {
+        status: 409,
+        body: { error: "An account with this E-mail address already exists." }
+      };
+    }
+    this.user.email = email;
+    this.user.emailVerified = true;
     return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 

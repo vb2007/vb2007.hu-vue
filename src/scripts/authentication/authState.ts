@@ -12,5 +12,9 @@ export const githubLinked = ref(false);
 export const githubLogin = ref("");
 /** False for an account made with GitHub, which can't unlink it (vb2007/vb2007.hu-api#133). */
 export const hasPassword = ref(false);
+/** The new address while a change waits for its mailed code, or "" (vb2007/vb2007.hu-api#215). */
+export const pendingEmail = ref("");
+/** Whether the address was confirmed with a code or by GitHub; false for older accounts. */
+export const emailVerified = ref(false);
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */
 export const isSessionChecked = ref(false);
