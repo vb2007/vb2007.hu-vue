@@ -118,19 +118,25 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
-  it("forgets the typed username once the account sets a password", async () => {
+  it("forgets the typed username and its refusal once the account sets a password", async () => {
     hasPassword.value = false;
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }));
     const { wrapper } = await mountPanel();
 
     await open(wrapper);
     await wrapper.find("input").setValue("me");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toBe("Something went wrong.");
     expect(deleteKey(wrapper).attributes("disabled")).toBeUndefined();
+    fetchMock.mockClear();
 
     hasPassword.value = true;
     await flushPromises();
 
     expect(wrapper.find("label").text()).toBe("Password");
     expect(wrapper.find("input").element.value).toBe("");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
     expect(deleteKey(wrapper).classes()).not.toContain("btn--error");
     await wrapper.find("form").trigger("submit");

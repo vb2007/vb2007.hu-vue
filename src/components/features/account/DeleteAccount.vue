@@ -18,7 +18,10 @@ const confirmation = ref("");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
 
-watch(hasPassword, () => (confirmation.value = ""));
+watch(hasPassword, () => {
+  confirmation.value = "";
+  deleteError.value = "";
+});
 
 const ready = computed(() =>
   hasPassword.value ? confirmation.value !== "" : confirmation.value === username.value
