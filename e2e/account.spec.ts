@@ -454,6 +454,38 @@ test("an account made with GitHub is deleted by typing its username", async ({ p
   await expect(page).toHaveURL("/");
 });
 
+test("a username typed to delete is forgotten once a password is set", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  const newPassword = page.getByLabel("New password");
+  const confirmPassword = page.getByLabel("Confirm password");
+  await newPassword.fill("correct horse battery");
+  await confirmPassword.fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await expect(page).toHaveURL("/account");
+
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await deletion.getByLabel("Username").fill("me");
+  const confirm = deletion.getByRole("button", { name: "Delete account" });
+  await expect(confirm).toBeEnabled();
+
+  await newPassword.fill("correct horse battery");
+  await confirmPassword.fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Your password is set. You can log in with it from now on."
+  );
+
+  await expect(deletion.getByLabel("Password")).toHaveValue("");
+  await expect(confirm).toBeDisabled();
+  await deletion.getByLabel("Password").fill("correct horse battery");
+  await confirm.click();
+
+  await expect(page).toHaveURL("/");
+});
+
 test("deleting the account can be cancelled, and says when to try again", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   api.limitsPasswordChecks();
