@@ -287,10 +287,13 @@ describe("AccountPanel", () => {
   it("asks for the code of a change that's waiting, under the current address", async () => {
     logIn();
     hasPassword.value = true;
+    emailVerified.value = true;
     pendingEmail.value = "new@example.com";
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     expect(wrapper.findAll("dd").map((value) => value.text())).toEqual(["vb", "vb@example.com"]);
+    // A Confirmed badge would read as being about the waiting address.
+    expect(emailRow(wrapper).find(".badge").exists()).toBe(false);
     expect(emailRow(wrapper).find(".change__pending").text()).toBe(
       "Waiting for confirmation: new@example.com"
     );

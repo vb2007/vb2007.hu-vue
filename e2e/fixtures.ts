@@ -12,7 +12,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's 429 with `retryAfter`.
+ * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
  * Linking GitHub (`GET /auth/github/link`) skips GitHub: it links @e2e-octocat and comes straight back to `/account?github=linked`, which also confirms the user for setting a password.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
@@ -377,7 +377,10 @@ export class MockApi {
         return this.user
           ? {
               status: 200,
-              body: { ...this.user, pendingEmail: this.emailChange?.email ?? null }
+              body: {
+                ...this.user,
+                pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
+              }
             }
           : { status: 401 };
       case "POST /auth/login":
@@ -507,10 +510,15 @@ export class MockApi {
     };
   }
 
+  /** A waiting change's code works for 15 minutes; after that, GET /user leaves it out. */
+  private isEmailChangeLive() {
+    return this.emailChange !== null && Date.now() < this.emailChange.sentAt + 15 * 60_000;
+  }
+
   private confirmEmail(code?: string) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
-    if (!this.emailChange || code.replace(/\s/g, "") !== MOCK_EMAIL_CODE) {
+    if (!this.isEmailChangeLive() || code.replace(/\s/g, "") !== MOCK_EMAIL_CODE) {
       return {
         status: 400,
         body: {
@@ -518,7 +526,7 @@ export class MockApi {
         }
       };
     }
-    const { email } = this.emailChange;
+    const { email } = this.emailChange!;
     this.emailChange = null;
     if (this.users.some((user) => user.email === email)) {
       return {

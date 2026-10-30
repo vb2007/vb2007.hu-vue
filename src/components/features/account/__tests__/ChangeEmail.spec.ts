@@ -27,6 +27,7 @@ describe("ChangeEmail", () => {
     fetchMock = mockFetch();
     vi.spyOn(console, "error").mockImplementation(() => {});
     userEmail.value = "old@example.com";
+    sessionStorage.clear();
     wrapper = mount(ChangeEmail, { attachTo: document.body });
   });
 
@@ -301,7 +302,7 @@ describe("ChangeEmail", () => {
       const describedBy = codeInput().attributes("aria-describedby")!.split(" ");
       expect(describedBy[0]).toBe(pendingLine().attributes("id"));
       expect(document.getElementById(describedBy[1])!.textContent).toBe(
-        "The code works for 15 minutes. Nothing yet? Check your spam folder, or get a new one with Change e-mail."
+        "The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail."
       );
     });
 
@@ -373,13 +374,17 @@ describe("ChangeEmail", () => {
     it("shows a wrong code's error by the field and keeps it to fix", async () => {
       await remount();
       const error = "The code is wrong, expired or already used: check it or request a new one.";
-      fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       (codeInput().element as HTMLInputElement).focus();
 
       await enterCode("000000");
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(wrapper.find("form").find('[role="alert"]').text()).toBe(error);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(wrapper.find(".field__error").text()).toBe(error);
+      expect(codeInput().attributes("aria-invalid")).toBe("true");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect((codeInput().element as HTMLInputElement).value).toBe("000000");
       expect(document.activeElement).toBe(codeInput().element);
       expect(pendingLine().exists()).toBe(true);
@@ -415,7 +420,9 @@ describe("ChangeEmail", () => {
 
       expect(pendingLine().exists()).toBe(false);
       expect(wrapper.find("form").exists()).toBe(false);
-      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `new@example.com wasn't confirmed. ${error}`
+      );
       expect(document.activeElement).toBe(key().element);
       expect(userEmail.value).toBe("old@example.com");
 
@@ -483,7 +490,49 @@ describe("ChangeEmail", () => {
       expect(button("Send code").attributes("disabled")).toBeUndefined();
     });
 
-    it("counts down the wait after a 429, then drops its stale message", async () => {
+    it("takes the code step away when the code had expired, and says which address", async () => {
+      await remount();
+      const error = "The code is wrong, expired or already used: check it or request a new one.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+
+      await enterCode("123456");
+
+      expect(codeInput().exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `new@example.com wasn't confirmed. ${error}`
+      );
+      expect(document.activeElement).toBe(key().element);
+    });
+
+    it("forgets a code's error once the form opens", async () => {
+      await remount();
+      await enterCode("1");
+
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await wrapper.find("form").trigger("keydown", { key: "Escape" });
+      await flushPromises();
+
+      expect(wrapper.find(".field__error").exists()).toBe(false);
+    });
+
+    it("still waits out the minute after a reload", async () => {
+      fakeCountdown();
+      sessionStorage.setItem(
+        "email-change-cooldown",
+        JSON.stringify({ id: "old@example.com", deadline: Date.now() + 25_000 })
+      );
+      await remount();
+
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+
+      expect(button("Send code in 25 s").attributes("disabled")).toBeDefined();
+    });
+
+    it("counts down the wait after a 429, then drops its message", async () => {
       fakeCountdown();
       const error = "A code was sent just now: wait 42 seconds before requesting another one.";
       fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }));
@@ -495,7 +544,10 @@ describe("ChangeEmail", () => {
       await wrapper.find("form").trigger("submit");
       await flushPromises();
 
-      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      // The API's number would go stale next to the key's count.
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        "A code was sent just now. You can send another once the countdown ends."
+      );
       expect(button("Send code in 42 s").attributes("disabled")).toBeDefined();
       expect(document.activeElement).toBe(inputs()[1].element);
 
