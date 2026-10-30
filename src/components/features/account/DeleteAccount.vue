@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Deletes the account once the user confirms with their password, or their username if it has none. */
-import { computed, nextTick, ref, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { useRouter } from "vue-router";
 import { hasPassword, username } from "@/scripts/authentication/authState";
 import { clearSession } from "@/scripts/authentication/user";
@@ -15,6 +15,7 @@ const { isDeleting, deleteError, deleteAccount } = useAccountDelete();
 
 const confirming = ref(false);
 const confirmation = ref("");
+const errorId = useId();
 const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
@@ -73,6 +74,7 @@ const submit = async () => {
         label="Password"
         type="password"
         autocomplete="current-password"
+        :describedby="deleteError ? errorId : undefined"
         required
       />
       <BaseInput
@@ -81,12 +83,13 @@ const submit = async () => {
         v-model="confirmation"
         label="Username"
         :hint="`Type “${username}” to confirm.`"
+        :describedby="deleteError ? errorId : undefined"
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
         required
       />
-      <StatusMessage v-if="deleteError" tone="error">{{ deleteError }}</StatusMessage>
+      <StatusMessage v-if="deleteError" :id="errorId" tone="error">{{ deleteError }}</StatusMessage>
       <div class="confirm__actions">
         <BaseButton type="submit" size="sm" :error="ready" :disabled="!ready" :loading="isDeleting">
           {{ isDeleting ? "Deleting" : "Delete account" }}
