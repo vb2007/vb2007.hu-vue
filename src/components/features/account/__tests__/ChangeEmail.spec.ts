@@ -501,7 +501,7 @@ describe("ChangeEmail", () => {
 
       expect(codeInput().exists()).toBe(false);
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        `new@example.com wasn't confirmed. ${error}`
+        "new@example.com wasn't confirmed: its code expired. Send a new one with Change e-mail."
       );
       expect(document.activeElement).toBe(key().element);
     });
@@ -535,7 +535,9 @@ describe("ChangeEmail", () => {
     it("counts down the wait after a 429, then drops its message", async () => {
       fakeCountdown();
       const error = "A code was sent just now: wait 42 seconds before requesting another one.";
-      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }))
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await remount();
       await button("Change e-mail").trigger("click");
       await flushPromises();
@@ -559,6 +561,28 @@ describe("ChangeEmail", () => {
       await flushPromises();
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(button("Send code").attributes("disabled")).toBeUndefined();
+    });
+
+    it("shows the change a 429 waits for, when its code was asked for elsewhere", async () => {
+      fakeCountdown();
+      wrapper.unmount();
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(429, { error: "Wait.", retryAfter: 50 }))
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
+      await openForm();
+      await fill("other@example.com", "secret-password");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(pendingLine().text()).toBe("Waiting for confirmation: new@example.com");
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        "A code was sent just now. You can send another once the countdown ends."
+      );
+      await wrapper.find("form").trigger("keydown", { key: "Escape" });
+      await flushPromises();
+      expect(codeInput().exists()).toBe(true);
     });
   });
 });

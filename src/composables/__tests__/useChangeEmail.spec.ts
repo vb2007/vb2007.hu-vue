@@ -191,16 +191,24 @@ describe("useChangeEmail", () => {
 
     it("counts down the API's retryAfter after a 429, with a message that has no number", async () => {
       vi.useFakeTimers();
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, {
-          error: "A code was sent just now: wait 42 seconds before requesting another one.",
-          retryAfter: 42
-        })
-      );
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(429, {
+            error: "A code was sent just now: wait 42 seconds before requesting another one.",
+            retryAfter: 42
+          })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       const email = useEmail();
 
-      expect(await email.change("new@example.com", "secret-password")).toBe(false);
+      expect(await email.change("other@example.com", "secret-password")).toBe(false);
 
+      // The code it waits for went out elsewhere, e.g. from another tab, so the user is refreshed.
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+        method: "GET",
+        credentials: "include"
+      });
+      expect(pendingEmail.value).toBe("new@example.com");
       expect(email.changeError.value).toBe(COOLDOWN_MESSAGE);
       expect(email.cooldown.remaining.value).toBe(42);
       expect(savedCooldown()).toEqual({ id: "old@example.com", deadline: Date.now() + 42_000 });
@@ -219,6 +227,7 @@ describe("useChangeEmail", () => {
 
       await email.change("new@example.com", "secret-password");
 
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
       expect(email.cooldown.remaining.value).toBe(60);
       vi.advanceTimersByTime(60_000);
@@ -365,7 +374,10 @@ describe("useChangeEmail", () => {
 
       expect(pendingEmail.value).toBe("");
       expect(email.codeError.value).toBe("");
-      expect(email.confirmError.value).toBe(`new@example.com wasn't confirmed. ${wrongCode}`);
+      // Without the field, the API's "check it" no longer fits.
+      expect(email.confirmError.value).toBe(
+        "new@example.com wasn't confirmed: its code expired. Send a new one with Change e-mail."
+      );
     });
 
     it("shows a rate limiter's 429 apart from the code, and keeps the change waiting", async () => {

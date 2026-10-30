@@ -231,6 +231,29 @@ test("asking for a new code too soon counts down the API's wait", async ({ page,
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeVisible();
 });
 
+test("a code asked for in another tab shows up when the form is turned away", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { emailVerified: true });
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("other@example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+
+  // Meanwhile, another tab asks for a code to new@example.com.
+  api.hasPendingEmail("new@example.com", { sentSecondsAgo: 5 });
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "A code was sent just now. You can send another once the countdown ends."
+  );
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(page.getByText("Confirmed", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Confirmation code")).toBeVisible();
+});
+
 test("an address taken meanwhile drops the waiting change and says so", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   api.hasUser("taken");
@@ -271,7 +294,7 @@ test("a code that expired with the page open takes the waiting change away", asy
   await page.getByRole("button", { name: "Confirm code" }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
-    "new@example.com wasn't confirmed. The code is wrong, expired or already used: check it or request a new one."
+    "new@example.com wasn't confirmed: its code expired. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
