@@ -133,6 +133,25 @@ describe("LoginForm", () => {
     );
   });
 
+  it("drops a reset's message once the user logs in, so the login shows as usual", async () => {
+    passwordResetNotice.value = "Password reset successfully: log in with the new password.";
+    vi.mocked(login).mockImplementationOnce(async () => {
+      isLoggedIn.value = true;
+      loginStatus.value = "success";
+    });
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    await email.setValue("me@example.com");
+    await password.setValue("a new password");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Login successful!");
+    expect(wrapper.text()).not.toContain("Password reset successfully");
+    expect(wrapper.find('a[href="/shorten"]').exists()).toBe(true);
+  });
+
   it("explains a failed GitHub login from the URL", async () => {
     const { wrapper, router } = await mountWithRouter(
       LoginForm,

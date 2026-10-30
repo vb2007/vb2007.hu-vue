@@ -15,11 +15,13 @@ const email = ref("");
 const password = ref("");
 const isLoading = ref(false);
 const oauthError = useOauthError();
-// Shown once: a reset sends the user here with the API's message.
-const resetNotice = passwordResetNotice.value;
+// Shown once: a reset sends the user here with the API's message. It's about the session at the
+// time of the reset, so logging in here drops it.
+const resetNotice = ref(passwordResetNotice.value);
 passwordResetNotice.value = "";
 
 const handleSubmit = async () => {
+  resetNotice.value = "";
   isLoading.value = true;
   try {
     await login(email.value, password.value);

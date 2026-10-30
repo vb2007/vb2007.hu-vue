@@ -34,6 +34,13 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
     "Password reset successfully: log in with the new password."
   );
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+
+  // Logging in with the new password on the same page is an ordinary login.
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("a new password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  await expect(page.getByRole("main")).not.toContainText("Password reset successfully");
 });
 
 test("the code can be sent again once the countdown ends, and the address changed", async ({
@@ -181,4 +188,11 @@ test("resetting another account's password keeps the user logged in and says so"
   await expect(main.getByRole("status")).toHaveText(
     "Password reset successfully: log in with the new password."
   );
+
+  // Then logging in as the reset account shows the login, not the reset branch again.
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("a new password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(main).toContainText("Login successful!");
+  await expect(main).not.toContainText("You're still logged in");
 });
