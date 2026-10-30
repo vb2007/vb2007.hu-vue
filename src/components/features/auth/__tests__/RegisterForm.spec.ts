@@ -99,10 +99,10 @@ describe("RegisterForm", () => {
   });
 
   it.each([
-    [{ email: "nope" }, "Please enter a valid email address.", 0],
+    [{ email: "nope" }, "Please enter a valid e-mail address.", 0],
     [
       { email: `${"a".repeat(243)}@example.com` },
-      "Your email address can't be longer than 254 characters.",
+      "Your e-mail address can't be longer than 254 characters.",
       0
     ],
     [{ username: " v " }, "The username's too short: it must be between 2 and 16 characters.", 1],
@@ -295,7 +295,7 @@ describe("RegisterForm", () => {
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
 
-    expect(errorUnder(wrapper, FIELDS.email)).toBe("Please enter a valid email address.");
+    expect(errorUnder(wrapper, FIELDS.email)).toBe("Please enter a valid e-mail address.");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     // Not a failed registration: the Register key doesn't flash.
     expect(submitButton(wrapper).classes()).not.toContain("btn--error");
@@ -398,17 +398,65 @@ describe("RegisterForm", () => {
       expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
     });
 
-    it("shows the API's message for a wrong code and stays on the step", async () => {
-      const error = "The code is wrong, expired or already used: check it or request a new one.";
+    it.each([
+      [
+        "a wrong code, as the API's 400",
+        "654321",
+        "The code is wrong, expired or already used: check it or request a new one."
+      ],
+      ["a code that isn't 6 digits", "123", "Enter the 6-digit code from the e-mail."]
+    ])("marks the code field for %s and stays on the step", async (_, code, error) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
       fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper, code);
+
+      const input = wrapper.find("input");
+      expect(input.attributes("aria-invalid")).toBe("true");
+      expect(errorUnder(wrapper, 'input[autocomplete="one-time-code"]')).toBe(error);
+      expect(input.attributes("aria-describedby")).toContain(
+        wrapper.find(".field__error").attributes("id")
+      );
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(submitButton(wrapper).text()).toBe("Confirm code");
+      expect(submitButton(wrapper).classes()).toContain("btn--error");
+      expect(document.activeElement).toBe(input.element);
+
+      // Typing a new code drops it.
+      await input.setValue("1");
+      expect(input.attributes("aria-invalid")).toBeUndefined();
+    });
+
+    it("keeps a problem that isn't the code's above the key", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+      );
       const wrapper = await atCodeStep();
 
       await confirm(wrapper);
 
-      expect(wrapper.find('[role="alert"]').text()).toBe(error);
-      expect(submitButton(wrapper).text()).toBe("Confirm code");
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        "Too many failed attempts: try again later."
+      );
+      expect(wrapper.find("input").attributes("aria-invalid")).toBeUndefined();
       expect(submitButton(wrapper).classes()).toContain("btn--error");
-      expect(document.activeElement).toBe(wrapper.find("input").element);
+    });
+
+    it("flashes the key for its full second on each failed try", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "Date"] });
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper, "1");
+      vi.advanceTimersByTime(600);
+      await confirm(wrapper, "12");
+      vi.advanceTimersByTime(600);
+      await flushPromises();
+      expect(submitButton(wrapper).classes()).toContain("btn--error");
+
+      vi.advanceTimersByTime(400);
+      await flushPromises();
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
     });
 
     it.each([

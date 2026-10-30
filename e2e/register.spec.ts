@@ -24,11 +24,22 @@ test("registering asks for the mailed code, then logs the new account in", async
   await expect(code).toHaveAttribute("autocomplete", "one-time-code");
   await expect(code).toHaveAttribute("inputmode", "numeric");
 
+  const confirmKey = page.getByRole("button", { name: "Confirm code" });
+  await code.fill("123");
+  await confirmKey.click();
+  await expect(code).toHaveAttribute("aria-invalid", "true");
+  await expect(code).toHaveAccessibleDescription(/Enter the 6-digit code from the e-mail\./);
+  await expect(confirmKey).toHaveClass(/btn--error/);
+
   await code.fill("654321");
-  await page.getByRole("button", { name: "Confirm code" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "The code is wrong, expired or already used: check it or request a new one."
+  await confirmKey.click();
+  // The code's own problem: on the field, not in a separate alert.
+  await expect(code).toHaveAccessibleDescription(
+    /The code is wrong, expired or already used: check it or request a new one\./
   );
+  await expect(code).toHaveAttribute("aria-invalid", "true");
+  await expect(confirmKey).toHaveClass(/btn--error/);
+  await expect(page.getByRole("alert")).toHaveCount(0);
   // The key was disabled while it checked; focus is back on the code, not lost to the page.
   await expect(code).toBeFocused();
 
@@ -199,7 +210,7 @@ test("entering a code needs the address first, without failing Register", async 
   await page.getByRole("button", { name: "Enter it" }).click();
 
   const email = page.getByLabel("E-mail");
-  await expect(email).toHaveAccessibleDescription("Please enter a valid email address.");
+  await expect(email).toHaveAccessibleDescription("Please enter a valid e-mail address.");
   await expect(email).toBeFocused();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Register", exact: true })).not.toHaveClass(

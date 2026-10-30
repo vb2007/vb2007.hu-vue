@@ -124,14 +124,16 @@ describe("useRegisterCode", () => {
     expect(step.codeError.value).toBe("");
   });
 
-  it("closes again, dropping its error but not the countdown", () => {
+  it("closes again, dropping its errors but not the countdown", () => {
     const step = openStep();
-    step.codeError.value = invalidCode;
+    step.codeError.value = "Error connecting to server";
+    step.codeFieldError.value = invalidCode;
 
     step.leave();
 
     expect(step.email.value).toBe("");
     expect(step.codeError.value).toBe("");
+    expect(step.codeFieldError.value).toBe("");
     expect(step.cooldown.active.value).toBe(true);
   });
 
@@ -177,23 +179,29 @@ describe("useRegisterCode", () => {
       expect(await step.verify(code)).toBe("failed");
 
       expect(fetchMock).not.toHaveBeenCalled();
-      expect(step.codeError.value).toBe("Enter the 6-digit code from the e-mail.");
+      expect(step.codeFieldError.value).toBe("Enter the 6-digit code from the e-mail.");
+      expect(step.codeError.value).toBe("");
     });
 
     it.each([
-      [400, invalidCode],
-      [429, "Too many failed attempts: try again later."]
-    ])("shows the API's message for a %i response, without logging it", async (status, error) => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
-      const step = openStep();
+      [400, invalidCode, "codeFieldError"],
+      [429, "Too many failed attempts: try again later.", "codeError"]
+    ] as const)(
+      "shows the API's message for a %i response as %s, without logging it",
+      async (status, error, shownAs) => {
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+        const step = openStep();
+        step.codeError.value = "old";
 
-      expect(await step.verify("123456")).toBe("failed");
+        expect(await step.verify("123456")).toBe("failed");
 
-      expect(step.codeError.value).toBe(error);
-      expect(fetchUserDetails).not.toHaveBeenCalled();
-      expect(console.error).not.toHaveBeenCalled();
-      expect(step.isVerifying.value).toBe(false);
-    });
+        expect(step[shownAs].value).toBe(error);
+        expect(step[shownAs === "codeError" ? "codeFieldError" : "codeError"].value).toBe("");
+        expect(fetchUserDetails).not.toHaveBeenCalled();
+        expect(console.error).not.toHaveBeenCalled();
+        expect(step.isVerifying.value).toBe(false);
+      }
+    );
 
     it("reports a name taken meanwhile, which ends the waiting registration", async () => {
       fetchMock.mockResolvedValueOnce(
@@ -296,7 +304,7 @@ describe("useRegisterCode", () => {
       vi.advanceTimersByTime(60_000);
       await nextTick();
 
-      expect(step.codeError.value).toBe(invalidCode);
+      expect(step.codeFieldError.value).toBe(invalidCode);
     });
 
     it("says the old code is gone too when the new one couldn't be mailed", async () => {
