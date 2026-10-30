@@ -333,6 +333,71 @@ describe("AccountPanel", () => {
     wrapper.unmount();
   });
 
+  it("drops a failed GitHub link once the password is set", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?oauthError=githubAlreadyLinked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      );
+
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "Your password is set. You can log in with it from now on."
+    ]);
+    wrapper.unmount();
+  });
+
+  it("drops the link notice once an unlink is confirmed, even when it fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch().mockResolvedValueOnce(jsonResponse(500, { error: "Something broke." }));
+    linkGithub();
+    const { wrapper } = await mountWithRouter(AccountPanel, {}, "/account?github=linked");
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.find('[role="alert"]').text()).toBe("Something broke.");
+  });
+
+  it("drops a failed GitHub link once GitHub is unlinked", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { message: "Unlinked." }));
+    linkGithub();
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      {},
+      "/account?oauthError=githubAlreadyLinked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "GitHub is unlinked. Log in with your password from now on."
+    ]);
+  });
+
   it("shows only the password change after setting the password", async () => {
     linkGithub("octocat", false);
     const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
