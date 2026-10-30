@@ -8,6 +8,9 @@ import { errorFrom } from "@/scripts/pastebin/paste";
 /** The API sends at most one code a minute per address. */
 export const RESEND_COOLDOWN_SECONDS = 60;
 
+/** Where the resend countdown is kept, so a reload doesn't forget it (one address at a time). */
+export const COOLDOWN_STORAGE_KEY = "register-cooldown";
+
 /** The API's codes are 6 digits; it ignores spaces in them. */
 const CODE_PATTERN = /^\d{6}$/;
 
@@ -58,7 +61,7 @@ export const useRegisterCode = () => {
   const isVerifying = ref(false);
   const isResending = ref(false);
   const codeError = ref("");
-  const cooldown = useCountdown();
+  const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The address the countdown holds back; any other can be sent a code right away. */
   const cooldownFor = ref("");
   /** True while `codeError` is a refused resend's, which only holds until the countdown ends. */
@@ -75,7 +78,7 @@ export const useRegisterCode = () => {
 
   const holdResend = (seconds: number) => {
     cooldownFor.value = email.value;
-    cooldown.start(seconds);
+    cooldown.start(seconds, normalizeEmail(email.value));
   };
 
   watch(cooldown.active, (active) => {
@@ -84,13 +87,18 @@ export const useRegisterCode = () => {
     }
   });
 
-  /** Opens the step for `address`; `waitSeconds` holds resending back that long. */
+  /**
+   * Opens the step for `address`; `waitSeconds` holds resending back that long. Without it, a
+   * countdown kept for the address (e.g. from before a reload) picks up where it was.
+   */
   const open = (address: string, kind: CodeNotice, waitSeconds = 0) => {
     email.value = address;
     notice.value = kind;
     showError("");
     if (waitSeconds > 0) {
       holdResend(waitSeconds);
+    } else if (cooldown.resume(normalizeEmail(address))) {
+      cooldownFor.value = address;
     }
   };
 
