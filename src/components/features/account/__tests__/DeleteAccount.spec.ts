@@ -135,6 +135,30 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
+  it("brings focus back to the field when a refusal finds it outside, so Escape still closes", async () => {
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    const { wrapper } = await mountPanel();
+
+    await open(wrapper);
+    const input = wrapper.find("input");
+    await input.setValue("wrong");
+    await wrapper.find("form").trigger("submit");
+    (input.element as HTMLInputElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    answer(jsonResponse(403, { error: "The provided password is incorrect." }));
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe("The provided password is incorrect.");
+    expect(document.activeElement).toBe(input.element);
+
+    await input.trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find("button").element);
+    wrapper.unmount();
+  });
+
   it("puts the key back on Cancel or Escape, forgetting what was typed", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: "Too many failed attempts." }));
     const { wrapper } = await mountPanel();
