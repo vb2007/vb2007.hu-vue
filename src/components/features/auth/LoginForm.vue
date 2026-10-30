@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, computed } from "vue";
 import { RouterLink } from "vue-router";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
-import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
+import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
 import { useOauthError } from "@/composables/useOauthError";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -79,6 +79,16 @@ watch(isLoggedIn, (newVal) => {
       <BaseButton to="/account">Go to your account</BaseButton>
     </div>
 
+    <!-- Resetting another account's password leaves this one logged in. -->
+    <div v-else-if="resetNotice" class="done">
+      <StatusMessage tone="success">{{ resetNotice }}</StatusMessage>
+      <p>
+        You're still logged in as <strong class="who">{{ userEmail }}</strong
+        >. Log out to log in with the new password.
+      </p>
+      <BaseButton @click="logout">Log out</BaseButton>
+    </div>
+
     <div v-else class="done">
       <StatusMessage tone="success">Login successful!</StatusMessage>
       <BaseButton to="/shorten">Go to Shorten</BaseButton>
@@ -105,5 +115,10 @@ watch(isLoggedIn, (newVal) => {
 
 .alt {
   font-size: var(--fs-sm);
+}
+
+.who {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 </style>

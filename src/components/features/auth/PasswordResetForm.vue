@@ -11,9 +11,15 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = 60;
-/** The API's own message reads the same for the first code; this one tells a resend apart. */
+/**
+ * The API answers a resend like the first code, but sends nothing within a minute of the last one,
+ * which another tab or a lost countdown can't rule out.
+ */
 const RESENT_MESSAGE =
-  "If an account uses this address, a new code was sent to it. The one before no longer works.";
+  "If an account uses this address, a new code is on its way, unless one was sent in the last minute: then the one before still works.";
+/** Back on an address whose code is still recent, with no message of the API's to show again. */
+const RECENT_MESSAGE =
+  "If an account uses this address, a code was sent to it in the last minute and still works.";
 
 const router = useRouter();
 const email = ref("");
@@ -32,7 +38,7 @@ const isResetting = ref(false);
 const isButtonError = ref(false);
 const step = ref<HTMLFormElement>();
 const sentMessageId = useId();
-const resend = useCountdown();
+const resend = useCountdown("password-reset-cooldown");
 
 /** Only the address the countdown started for has to wait; any other can get a code now. */
 const isResendWaiting = computed(
@@ -50,6 +56,20 @@ const flagError = () => {
 const focusFirstField = async () => {
   await nextTick();
   step.value?.querySelector<HTMLInputElement>("input:not([hidden])")?.focus();
+};
+
+/** Holds the resend key back for `address`; the wait outlives a reload of the page. */
+const waitBeforeResend = (address: string, seconds: number) => {
+  lastSentTo.value = address;
+  resend.start(seconds, normalizeEmail(address));
+};
+
+/** Whether `address` still has to wait for another code, also counting from before a reload. */
+const isWaitingFor = (address: string) => {
+  if (resend.resume(normalizeEmail(address))) {
+    lastSentTo.value = address;
+  }
+  return resend.active.value && normalizeEmail(address) === normalizeEmail(lastSentTo.value);
 };
 
 const formatSeconds = (seconds: number) =>
@@ -73,16 +93,14 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
       failure.value = answer.error;
       // Only the code step has a key to hold back; the e-mail step just shows the error.
       if (onCodeStep && answer.retryAfter) {
-        lastSentTo.value = address;
-        resend.start(answer.retryAfter);
+        waitBeforeResend(address, answer.retryAfter);
       }
       flagError();
       return null;
     }
 
-    lastSentTo.value = address;
     lastMessage.value = answer.message!;
-    resend.start(RESEND_SECONDS);
+    waitBeforeResend(address, RESEND_SECONDS);
     return answer.message!;
   } finally {
     isSending.value = false;
@@ -91,8 +109,8 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
 
 const handleSend = async () => {
   // A code went to this address moments ago and the API wouldn't send another yet.
-  if (resend.active.value && normalizeEmail(email.value) === normalizeEmail(lastSentTo.value)) {
-    await showCodeStep(lastMessage.value);
+  if (isWaitingFor(email.value)) {
+    await showCodeStep(lastMessage.value || RECENT_MESSAGE);
     return;
   }
 
@@ -105,6 +123,8 @@ const handleSend = async () => {
 /** For a code that already arrived, e.g. after a reload: nothing is sent. */
 const enterCode = async () => {
   if (step.value!.reportValidity()) {
+    // Picks up the countdown, so the key doesn't offer a code the API wouldn't send yet.
+    isWaitingFor(email.value);
     await showCodeStep("");
   }
 };
@@ -112,6 +132,8 @@ const enterCode = async () => {
 const sendAgain = async () => {
   if ((await askForCode(sentTo.value, true)) !== null) {
     sentMessage.value = RESENT_MESSAGE;
+    // A code typed before was most likely the one that didn't work.
+    code.value = "";
   }
   // The key is disabled now, which drops focus; the code is what comes next anyway.
   await focusFirstField();
