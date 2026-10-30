@@ -26,8 +26,8 @@ const focusField = (field: { $el: HTMLElement } | null) =>
   field?.$el.querySelector("input")!.focus();
 
 const start = async () => {
-  open.value = true;
   changeMessage.value = "";
+  open.value = true;
   emit("open");
   await nextTick();
   focusField(emailField.value);

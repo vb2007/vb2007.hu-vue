@@ -53,7 +53,6 @@ describe("ChangeEmail", () => {
     await openForm();
 
     expect(wrapper.emitted("open")).toHaveLength(1);
-
     expect(wrapper.find("form").attributes("novalidate")).toBeDefined();
     expect(wrapper.findAll("label").map((label) => label.text())).toEqual([
       "New e-mail",
