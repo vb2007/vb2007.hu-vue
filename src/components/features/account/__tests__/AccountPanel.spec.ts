@@ -227,6 +227,7 @@ describe("AccountPanel", () => {
     expect(wrapper.find("#password-title").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
+    expect(wrapper.find("button.change__key").text()).toBe("Change password");
     wrapper.unmount();
   });
 
