@@ -118,6 +118,26 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
+  it("forgets the typed username once the account sets a password", async () => {
+    hasPassword.value = false;
+    const { wrapper } = await mountPanel();
+
+    await open(wrapper);
+    await wrapper.find("input").setValue("me");
+    expect(deleteKey(wrapper).attributes("disabled")).toBeUndefined();
+
+    hasPassword.value = true;
+    await flushPromises();
+
+    expect(wrapper.find("label").text()).toBe("Password");
+    expect(wrapper.find("input").element.value).toBe("");
+    expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(deleteKey(wrapper).classes()).not.toContain("btn--error");
+    await wrapper.find("form").trigger("submit");
+    expect(fetchMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("shows why the API refused and keeps the account", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(403, { error: "The provided password is incorrect." })
