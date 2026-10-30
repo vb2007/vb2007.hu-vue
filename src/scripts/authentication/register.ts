@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
-import { login } from "@/scripts/authentication/user";
+import { retryAfterFrom } from "@/composables/useCountdown";
 
 export const registerStatus = ref("");
 
@@ -67,13 +67,26 @@ export const validateRegisterData = (
   return;
 };
 
-/** Returns true when the account was created (and, optionally, the user was logged in). */
+/** What POST /auth/register led to. */
+export interface RegisterAnswer {
+  /** A code was mailed; the account waits for it. */
+  sent: boolean;
+  /**
+   * Set when a code went to this address less than a minute ago (the API's per-address
+   * cooldown): that code still works, and another can be sent after this many seconds.
+   */
+  retryAfter?: number;
+}
+
+/**
+ * Asks the API to mail a confirmation code (vb2007/vb2007.hu-api#28): the account is only
+ * created once the code is confirmed, see useRegisterCode. `registerStatus` says what went wrong.
+ */
 export const register = async (
   username: string,
   email: string,
-  password: string,
-  autologin: boolean
-) => {
+  password: string
+): Promise<RegisterAnswer> => {
   try {
     const response = await fetch(UserManagement.Authentication.register, {
       method: "POST",
@@ -83,41 +96,31 @@ export const register = async (
       body: JSON.stringify({ username, email, password })
     });
 
-    switch (response.status) {
-      case 201:
-        registerStatus.value = "success";
-
-        if (autologin) {
-          setTimeout(async () => {
-            try {
-              await login(email, password);
-            } catch (loginError) {
-              console.error("Error while trying to auto-login:", loginError);
-            }
-          }, 1000);
-        }
-        return true;
-      case 400:
-      case 403:
-      case 409: {
-        let message = "error";
-        try {
-          const data = await response.json();
-          if (data.error) {
-            message = data.error;
-          }
-        } catch (jsonError) {
-          console.error("Error parsing JSON response:", jsonError);
-        }
-        registerStatus.value = message;
-        return false;
-      }
-      default:
-        throw new Error(`HTTP error! status: ${response.status}`);
+    if (response.status === 202) {
+      registerStatus.value = "";
+      return { sent: true };
     }
+
+    // 400 (rules, disposable or undeliverable address), 409 (taken), 429 (too soon), 503 (mail failed)
+    let message = "error";
+    const answer: RegisterAnswer = { sent: false };
+    try {
+      const data = await response.json();
+      if (data.error) {
+        message = data.error;
+      }
+      // Only the per-address cooldown says how long; the rate limiters' 429s don't.
+      if (response.status === 429 && typeof data.retryAfter === "number") {
+        answer.retryAfter = retryAfterFrom(data);
+      }
+    } catch (jsonError) {
+      console.error("Error parsing JSON response:", jsonError);
+    }
+    registerStatus.value = message;
+    return answer;
   } catch (error) {
     console.error("Error while trying to register user: ", error);
     registerStatus.value = "error";
-    return false;
+    return { sent: false };
   }
 };
