@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 
@@ -103,6 +103,109 @@ describe("useCountdown", () => {
     wrapper.unmount();
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("useCountdown with a storage key", () => {
+  const KEY = "test-cooldown";
+  const keyed = () => useCountdown(KEY);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the deadline for an id, so a reloaded page resumes it", () => {
+    const first = mountComposable(keyed);
+    first.api.start(60, "me@example.com");
+    vi.advanceTimersByTime(20_000);
+    first.wrapper.unmount();
+
+    const { api } = mountComposable(keyed);
+    expect(api.active.value).toBe(false);
+
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.remaining.value).toBe(40);
+    vi.advanceTimersByTime(40_000);
+    expect(api.active.value).toBe(false);
+  });
+
+  it("doesn't resume another id's countdown, and leaves the running one alone", () => {
+    const { api } = mountComposable(keyed);
+    api.start(60, "me@example.com");
+    api.start(30);
+
+    expect(api.resume("you@example.com")).toBe(false);
+    expect(api.remaining.value).toBe(30);
+  });
+
+  it("keeps one deadline per key: the last id started replaces the one before", () => {
+    const { api } = mountComposable(keyed);
+    api.start(60, "me@example.com");
+    api.start(60, "you@example.com");
+    api.stop();
+
+    expect(api.resume("me@example.com")).toBe(false);
+    expect(api.resume("you@example.com")).toBe(true);
+  });
+
+  it("doesn't resume a countdown that already ran out", () => {
+    const { api } = mountComposable(keyed);
+    api.start(5, "me@example.com");
+    vi.advanceTimersByTime(5000);
+
+    expect(api.resume("me@example.com")).toBe(false);
+    expect(api.active.value).toBe(false);
+  });
+
+  it("keeps nothing without an id or for zero seconds", () => {
+    const { api } = mountComposable(keyed);
+    api.start(60);
+    api.start(0, "me@example.com");
+
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+    expect(api.resume("me@example.com")).toBe(false);
+  });
+
+  it("keeps nothing and resumes nothing without a storage key", () => {
+    const { api } = mountComposable(useCountdown);
+    api.start(60, "me@example.com");
+    api.stop();
+
+    expect(sessionStorage.length).toBe(0);
+    expect(api.resume("me@example.com")).toBe(false);
+  });
+
+  it.each([
+    ["isn't JSON", "{"],
+    ["has no id", JSON.stringify({ deadline: Date.now() + 60_000 })],
+    ["has no deadline", JSON.stringify({ id: "me@example.com" })],
+    ["is null", "null"]
+  ])("ignores an entry that %s", (_, entry) => {
+    sessionStorage.setItem(KEY, entry);
+    const { api } = mountComposable(keyed);
+
+    expect(api.resume("me@example.com")).toBe(false);
+  });
+
+  it("still counts down when storage is off, without resuming", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Access is denied.", "SecurityError");
+    });
+    const { api } = mountComposable(keyed);
+
+    api.start(60, "me@example.com");
+    expect(api.remaining.value).toBe(60);
+
+    api.stop();
+    expect(api.resume("me@example.com")).toBe(false);
   });
 });
 
