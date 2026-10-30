@@ -468,3 +468,19 @@ test("deleting the account can be cancelled, and says when to try again", async 
   await expect(page.getByLabel("Password")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete account" })).toBeFocused();
 });
+
+test("Escape still closes the delete panel after a refused click", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  const password = page.getByLabel("Password");
+  await password.fill("wrong-password");
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(password).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(password).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete account" })).toBeFocused();
+});
