@@ -258,6 +258,52 @@ describe("AccountPanel", () => {
     wrapper.unmount();
   });
 
+  it("drops a failed GitHub link once the password changes", async () => {
+    linkGithub();
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?oauthError=githubAlreadyLinked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    mockFetch().mockResolvedValueOnce(
+      jsonResponse(200, { message: "Password changed successfully." })
+    );
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "Password changed successfully."
+    ]);
+    wrapper.unmount();
+  });
+
+  it("drops a failed unlink once the e-mail form opens", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch().mockResolvedValueOnce(jsonResponse(500, { error: "Something broke." }));
+    linkGithub();
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toBe("Something broke.");
+
+    await emailRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("shows only the password change after setting the password", async () => {
     linkGithub("octocat", false);
     const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });

@@ -35,18 +35,20 @@ const shownNotice = computed(() => {
     ? "GitHub is linked. You can log in with it from now on."
     : "GitHub confirmed it's you. Set your password within 10 minutes.";
 });
+const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const clearNotice = () => {
+  oauthError.value = "";
+  unlinkError.value = "";
   githubReturned.value = false;
   notice.value = "";
 };
 const onPasswordSet = async () => {
-  githubReturned.value = false;
+  clearNotice();
   notice.value = "Your password is set. You can log in with it from now on.";
   await nextTick();
   noticeMessage.value?.$el.focus();
 };
-const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 
 /** Unlinking takes two clicks, like deleting an upload; the armed state wears off. */
 const confirming = ref(false);
