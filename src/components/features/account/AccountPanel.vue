@@ -2,6 +2,7 @@
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from "vue";
 import {
+  emailVerified,
   githubLinked,
   githubLogin,
   hasPassword,
@@ -106,7 +107,14 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       <div class="login">
         <span class="login__mark"><AppIcon name="mail" :size="26" /></span>
         <div class="login__main">
-          <h3 class="login__name">E-mail</h3>
+          <div class="login__head">
+            <h3 class="login__name">E-mail</h3>
+            <!-- Only a confirmed address gets one: accounts from before codes were never asked to. -->
+            <span v-if="emailVerified" class="badge badge--on">
+              <AppIcon name="check" :size="14" />
+              Confirmed
+            </span>
+          </div>
           <p class="login__note">
             <template v-if="isSuperuser">It's set in the API's configuration.</template>
             <template v-else-if="!hasPassword">Changing it needs a password.</template>
