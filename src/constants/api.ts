@@ -12,10 +12,12 @@ export class UserManagement {
   };
 
   static Actions = class {
+    /** Also `DELETE` to delete the account (vb2007/vb2007.hu-api#164). */
     static user: string = `${API_BASE_URL}/user`;
     /** `PATCH` with the new address and the current password (vb2007/vb2007.hu-api#162). */
     static userEmail: string = `${API_BASE_URL}/user/email`;
-    static userWithId: string = `${API_BASE_URL}/users/:id`;
+    /** `PATCH` changes the password (vb2007/vb2007.hu-api#161). */
+    static userPassword: string = `${API_BASE_URL}/user/password`;
   };
 }
 

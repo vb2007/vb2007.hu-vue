@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
-import { onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from "vue";
 import {
   githubLinked,
   githubLogin,
@@ -16,18 +16,31 @@ import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
+import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
+import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const oauthError = useOauthError();
-// The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132).
-const notice = ref(
-  useQueryNotice("github") === "linked"
+// The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
+// without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183).
+const githubReturned = ref(useQueryNotice("github") === "linked");
+const notice = ref("");
+const shownNotice = computed(() => {
+  if (notice.value || !githubReturned.value) return notice.value;
+  return hasPassword.value
     ? "GitHub is linked. You can log in with it from now on."
-    : ""
-);
+    : "GitHub confirmed it's you. Set your password within 10 minutes.";
+});
+const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
+const onPasswordSet = async () => {
+  githubReturned.value = false;
+  notice.value = "Your password is set. You can log in with it from now on.";
+  await nextTick();
+  noticeMessage.value?.$el.focus();
+};
 const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 
 /** Unlinking takes two clicks, like deleting an upload; the armed state wears off. */
@@ -41,6 +54,7 @@ const onUnlink = async () => {
     return;
   }
   confirming.value = false;
+  githubReturned.value = false;
   notice.value = "";
   if (await unlink()) {
     notice.value = "GitHub is unlinked. Log in with your password from now on.";
@@ -53,7 +67,14 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   <StationBoard v-if="isLoggedIn" title="Your account" as="h1">
     <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
     <StatusMessage v-if="unlinkError" tone="error">{{ unlinkError }}</StatusMessage>
-    <StatusMessage v-if="notice" tone="success">{{ notice }}</StatusMessage>
+    <StatusMessage
+      v-if="shownNotice"
+      ref="noticeMessage"
+      class="notice"
+      tone="success"
+      tabindex="-1"
+      >{{ shownNotice }}</StatusMessage
+    >
 
     <dl class="facts">
       <div class="fact">
@@ -74,10 +95,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           <h3 class="login__name">E-mail</h3>
           <p class="login__note">
             <template v-if="isSuperuser">It's set in the API's configuration.</template>
-            <template v-else-if="!hasPassword"
-              >This account logs in with GitHub, so there's no password to confirm the change
-              with.</template
-            >
+            <template v-else-if="!hasPassword">Set a password below to change it.</template>
             <template v-else>You log in with it. Changing it takes your current password.</template>
           </p>
           <ChangeEmail v-if="hasPassword && !isSuperuser" />
@@ -133,6 +151,10 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         </div>
       </div>
     </section>
+
+    <SetPasswordForm @set="onPasswordSet" />
+
+    <DeleteAccount />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
@@ -148,6 +170,10 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
 </template>
 
 <style scoped>
+.notice {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
+}
+
 .facts {
   display: grid;
   margin: 0;

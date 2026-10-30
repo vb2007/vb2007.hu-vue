@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import { validateUrl } from "@/scripts/utility/text";
 import { UrlShortening } from "@/constants/api";
+import { errorFrom } from "@/scripts/pastebin/paste";
 
 export const shortLink = (code: string) => `${window.location.origin}/r/${code}`;
 
@@ -40,7 +41,7 @@ export const useShortener = () => {
         shortenedCode.value = data.data.shortenedUrl;
         originalUrl.value = "";
       } else {
-        errorMessage.value = `Failed to shorten URL: ${response.statusText}`;
+        errorMessage.value = await errorFrom(response, "Failed to shorten URL");
         console.error("Failed to shorten url: ", response.status);
       }
     } catch (error) {

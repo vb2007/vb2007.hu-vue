@@ -194,6 +194,24 @@ describe("login", () => {
   });
 });
 
+describe("clearSession", () => {
+  it("forgets the user locally without asking the API", async () => {
+    const { clearSession, isLoggedIn, hasPassword, userEmail, username } = await load();
+    isLoggedIn.value = true;
+    hasPassword.value = true;
+    userEmail.value = "me@example.com";
+    username.value = "me";
+
+    clearSession();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(isLoggedIn.value).toBe(false);
+    expect(hasPassword.value).toBe(false);
+    expect(userEmail.value).toBe("");
+    expect(username.value).toBe("");
+  });
+});
+
 describe("logout", () => {
   it("asks the API to clear the cookie and resets the local state", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200));

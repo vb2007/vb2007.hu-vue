@@ -4,7 +4,27 @@ import { login } from "@/scripts/authentication/user";
 
 export const registerStatus = ref("");
 
-export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const hasEmailFormat = (email: string) =>
+  /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalizeEmail(email));
+
+export const isValidEmail = (email: string) =>
+  hasEmailFormat(email) && normalizeEmail(email).length <= 254;
+
+export const passwordLengthError = (password: string) => {
+  const length = [...password].length;
+
+  if (length < 8) {
+    return "The password's too short: it must be between 8 and 128 characters.";
+  }
+
+  if (length > 128) {
+    return "The password's too long: it must be between 8 and 128 characters.";
+  }
+
+  return;
+};
 
 export const validateRegisterData = (
   username: string,
@@ -13,7 +33,7 @@ export const validateRegisterData = (
   confirmPassword: string
 ) => {
   if (!isValidEmail(email)) {
-    return "invalid-email";
+    return hasEmailFormat(email) ? "email-too-long" : "invalid-email";
   }
 
   if (username.length < 2 || username.length > 16) {
