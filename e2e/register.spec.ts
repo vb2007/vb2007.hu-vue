@@ -29,11 +29,14 @@ test("registering asks for the mailed code, then logs the new account in", async
   await expect(page.getByRole("alert")).toHaveText(
     "The code is wrong, expired or already used: check it or request a new one."
   );
+  // The key was disabled while it checked; focus is back on the code, not lost to the page.
+  await expect(code).toBeFocused();
 
   await code.fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
   await expect(page.getByText("Registration successful!")).toBeVisible();
+  await expect(page.getByRole("status")).toBeFocused();
   await page.getByRole("link", { name: "Go to Shorten" }).click();
   await expect(page).toHaveURL("/shorten");
   await expect(page.getByLabel("URL")).toBeVisible();
@@ -157,8 +160,63 @@ test("the API's reason for refusing an address is shown on the form", async ({ p
 
   await fillForm(page, "someone@mailinator.com");
 
-  await expect(page.getByRole("alert")).toHaveText(
+  // It's about the address, so it shows under the E-mail field, which takes focus.
+  const email = page.getByLabel("E-mail");
+  await expect(email).toHaveAccessibleDescription(
     "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
   );
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await expect(email).toBeFocused();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+});
+
+test("a taken username is shown at the Username field, which takes focus", async ({ page }) => {
+  await page.route("**/auth/register", (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fallback()
+      : route.fulfill({
+          status: 409,
+          headers: { "Access-Control-Allow-Origin": "*" },
+          json: { error: "This username is already taken." }
+        })
+  );
+
+  await fillForm(page);
+
+  const username = page.getByLabel("Username");
+  await expect(username).toHaveAccessibleDescription("This username is already taken.");
+  await expect(username).toBeFocused();
+
+  await username.fill("someone-else");
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+});
+
+test("entering a code needs the address first, without failing Register", async ({ page }) => {
+  await page.goto("/register");
+
+  await page.getByRole("button", { name: "Enter it" }).click();
+
+  const email = page.getByLabel("E-mail");
+  await expect(email).toHaveAccessibleDescription("Please enter a valid email address.");
+  await expect(email).toBeFocused();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Register", exact: true })).not.toHaveClass(
+    /btn--error/
+  );
+});
+
+test("logging out after registering leaves an empty form", async ({ page, isMobile }) => {
+  await fillForm(page);
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+  await expect(page.getByText("Registration successful!")).toBeVisible();
+
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  await expect(page.getByLabel("E-mail")).toHaveValue("");
+  await expect(page.getByLabel("Username")).toHaveValue("");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Confirm password")).toHaveValue("");
 });

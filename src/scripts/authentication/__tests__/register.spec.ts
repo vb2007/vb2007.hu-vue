@@ -3,6 +3,7 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import {
   passwordLengthError,
   register,
+  registerFieldOf,
   registerStatus,
   usernameLengthError,
   validateRegisterData
@@ -40,6 +41,23 @@ describe("passwordLengthError", () => {
     ["4 emoji, counted as one character each", "🔑".repeat(4), TOO_SHORT]
   ])("checks %s", (_case, password, expected) => {
     expect(passwordLengthError(password)).toBe(expected);
+  });
+});
+
+describe("registerFieldOf", () => {
+  it.each([
+    ["invalid-email", "email"],
+    ["email-too-long", "email"],
+    ["unmatched-passwords", "confirmPassword"],
+    [USERNAME_TOO_SHORT, "username"],
+    [TOO_LONG, "password"],
+    ["This username is already taken.", "username"],
+    ["An account with this E-mail address already exists.", "email"],
+    ["This e-mail address's domain can't receive e-mail: check it for typos.", "email"],
+    ["error", undefined],
+    ["Registration failed.", undefined]
+  ])("puts %j under the %s field", (problem, field) => {
+    expect(registerFieldOf(problem)).toBe(field);
   });
 });
 
@@ -133,15 +151,20 @@ describe("register", () => {
   });
 
   it.each([
-    [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one."],
-    [400, "This e-mail address's domain can't receive e-mail: check it for typos."],
-    [409, "An account with this E-mail address already exists."],
-    [429, "Too many e-mails requested: try again later."],
-    [503, "The e-mail couldn't be sent: please try again later."]
-  ])("shows the API's message for a %i response: %s", async (status, error) => {
+    [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one.", "email"],
+    [400, "This e-mail address's domain can't receive e-mail: check it for typos.", "email"],
+    [400, "The password's too short: it must be between 8 and 128 characters.", "password"],
+    [409, "An account with this E-mail address already exists.", "email"],
+    [409, "This username is already taken.", "username"],
+    // These name e-mails, but aren't the address's fault.
+    [429, "Too many e-mails requested: try again later.", undefined],
+    [503, "The e-mail couldn't be sent: please try again later.", undefined]
+  ])("shows the API's message for a %i response: %s", async (status, error, field) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
 
-    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual(
+      field ? { sent: false, field } : { sent: false }
+    );
     expect(registerStatus.value).toBe(error);
   });
 
@@ -157,7 +180,9 @@ describe("register", () => {
   });
 
   it("ignores a retryAfter on anything but a 429", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: "Taken.", retryAfter: 42 }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(503, { error: "The e-mail couldn't be sent.", retryAfter: 42 })
+    );
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
   });

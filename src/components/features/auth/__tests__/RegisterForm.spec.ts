@@ -48,6 +48,16 @@ const resendButton = (wrapper: Wrapper) => wrapper.find(".code-actions button");
 
 const enterCodeButton = (wrapper: Wrapper) => wrapper.find(".alt button");
 
+const FIELDS = {
+  email: 'input[type="email"]',
+  username: 'input[autocomplete="username"]',
+  password: 'input[autocomplete="new-password"]'
+};
+
+/** A field's own error, shown under it. */
+const errorUnder = (wrapper: Wrapper, selector: string) =>
+  wrapper.find(selector).element.closest(".field")!.querySelector(".field__error")?.textContent;
+
 describe("RegisterForm", () => {
   beforeEach(() => {
     vi.mocked(register).mockReset();
@@ -88,29 +98,44 @@ describe("RegisterForm", () => {
   });
 
   it.each([
-    [{ email: "nope" }, "Please enter a valid email address."],
+    [{ email: "nope" }, "Please enter a valid email address.", 0],
     [
       { email: `${"a".repeat(243)}@example.com` },
-      "Your email address can't be longer than 254 characters."
+      "Your email address can't be longer than 254 characters.",
+      0
     ],
-    [{ username: " v " }, "The username's too short: it must be between 2 and 16 characters."],
-    [{ password: "1234567" }, "The password's too short: it must be between 8 and 128 characters."],
-    [{ confirm: "different" }, "The two passwords don't match."]
-  ])("rejects invalid input %o before calling the API", async (input, message) => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const wrapper = await mountForm();
-    await fill(wrapper, input);
+    [{ username: " v " }, "The username's too short: it must be between 2 and 16 characters.", 1],
+    [
+      { password: "1234567" },
+      "The password's too short: it must be between 8 and 128 characters.",
+      2
+    ],
+    [{ confirm: "different" }, "The two passwords don't match.", 3]
+  ])(
+    "rejects invalid input %o under its field before calling the API",
+    async (input, message, index) => {
+      vi.useFakeTimers({ toFake: ["setTimeout"] });
+      const wrapper = await mountForm();
+      await fill(wrapper, input);
 
-    await wrapper.find("form").trigger("submit");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
 
-    expect(register).not.toHaveBeenCalled();
-    expect(wrapper.find('[role="alert"]').text()).toBe(message);
-    expect(submitButton(wrapper).classes()).toContain("btn--error");
+      expect(register).not.toHaveBeenCalled();
+      const field = wrapper.findAll("input")[index];
+      expect(field.attributes("aria-invalid")).toBe("true");
+      expect(field.element.closest(".field")!.querySelector(".field__error")!.textContent).toBe(
+        message
+      );
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(document.activeElement).toBe(field.element);
+      expect(submitButton(wrapper).classes()).toContain("btn--error");
 
-    vi.advanceTimersByTime(1000);
-    await flushPromises();
-    expect(submitButton(wrapper).classes()).not.toContain("btn--error");
-  });
+      vi.advanceTimersByTime(1000);
+      await flushPromises();
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+    }
+  );
 
   it("asks for the code on the same board once the API mailed it", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
@@ -155,10 +180,42 @@ describe("RegisterForm", () => {
     expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
   });
 
-  it("shows the API's message when registering fails", async () => {
+  it.each([
+    [
+      "email",
+      "Disposable (temporary) e-mail addresses can't be used: use a permanent one.",
+      FIELDS.email
+    ],
+    ["email", "An account with this E-mail address already exists.", FIELDS.email],
+    ["username", "This username is already taken.", FIELDS.username]
+  ] as const)(
+    "shows the API's refusal under the %s field and focuses it",
+    async (field, error, selector) => {
+      vi.mocked(register).mockImplementationOnce(async () => {
+        registerStatus.value = error;
+        return { sent: false, field };
+      });
+      const wrapper = await mountForm();
+      await fill(wrapper);
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(errorUnder(wrapper, selector)).toBe(error);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(document.activeElement).toBe(wrapper.find(selector).element);
+      expect(submitButton(wrapper).classes()).toContain("btn--error");
+      expect(submitButton(wrapper).text()).toBe("Register");
+
+      // Editing that field drops its error.
+      await wrapper.find(selector).setValue("changed@example.com");
+      expect(errorUnder(wrapper, selector)).toBeUndefined();
+    }
+  );
+
+  it("shows a refusal about no one field above the key, which gets focus back", async () => {
     vi.mocked(register).mockImplementationOnce(async () => {
-      registerStatus.value =
-        "Disposable (temporary) e-mail addresses can't be used: use a permanent one.";
+      registerStatus.value = "The e-mail couldn't be sent: please try again later.";
       return { sent: false };
     });
     const wrapper = await mountForm();
@@ -168,10 +225,14 @@ describe("RegisterForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(
-      "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
+      "The e-mail couldn't be sent: please try again later."
     );
-    expect(submitButton(wrapper).classes()).toContain("btn--error");
-    expect(submitButton(wrapper).text()).toBe("Register");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(document.activeElement).toBe(submitButton(wrapper).element);
+
+    // Editing a field keeps it: the problem wasn't that field.
+    await wrapper.find(FIELDS.email).setValue("you@example.com");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
   });
 
   it("opens the code step when a code went to the address moments ago", async () => {
@@ -217,8 +278,11 @@ describe("RegisterForm", () => {
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe("Please enter a valid email address.");
-    expect(document.activeElement).toBe(wrapper.find('input[type="email"]').element);
+    expect(errorUnder(wrapper, FIELDS.email)).toBe("Please enter a valid email address.");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    // Not a failed registration: the Register key doesn't flash.
+    expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+    expect(document.activeElement).toBe(wrapper.find(FIELDS.email).element);
     expect(wrapper.find('input[autocomplete="one-time-code"]').exists()).toBe(false);
   });
 
@@ -231,8 +295,9 @@ describe("RegisterForm", () => {
     expect(wrapper.find('[role="alert"]').text()).toBe("Registration failed. Please try again.");
   });
 
-  it("clears the status after logging out, but not after logging in", async () => {
-    await mountForm();
+  it("clears the status and the form after logging out, but not after logging in", async () => {
+    const wrapper = await mountForm();
+    await fill(wrapper);
     registerStatus.value = "error";
 
     isLoggedIn.value = true;
@@ -242,6 +307,7 @@ describe("RegisterForm", () => {
     isLoggedIn.value = false;
     await flushPromises();
     expect(registerStatus.value).toBe("");
+    expect(wrapper.findAll("input").map((input) => input.element.value)).toEqual(["", "", "", ""]);
   });
 
   describe("the code step", () => {
@@ -285,12 +351,20 @@ describe("RegisterForm", () => {
       });
       expect(wrapper.text()).toContain("Registration successful!");
       expect(wrapper.find('a[href="/shorten"]').exists()).toBe(true);
+      // Confirm code was disabled while it checked; focus goes to the news instead of the page.
+      expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
 
-      // Logging out from the navbar shows the form again, not the finished code step.
+      // Logging out from the navbar shows an empty form, not the finished code step.
       isLoggedIn.value = false;
       await flushPromises();
       expect(submitButton(wrapper).text()).toBe("Register");
       expect(wrapper.find('input[autocomplete="one-time-code"]').exists()).toBe(false);
+      expect(wrapper.findAll("input").map((input) => input.element.value)).toEqual([
+        "",
+        "",
+        "",
+        ""
+      ]);
     });
 
     it("asks to log in when the browser didn't keep the session", async () => {
@@ -304,6 +378,7 @@ describe("RegisterForm", () => {
         "Your account was created, but your browser didn't keep the session. Please check that cookies are enabled, then log in."
       );
       expect(wrapper.find('a[href="/login"]').text()).toBe("Log in");
+      expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
     });
 
     it("shows the API's message for a wrong code and stays on the step", async () => {
@@ -316,6 +391,7 @@ describe("RegisterForm", () => {
       expect(wrapper.find('[role="alert"]').text()).toBe(error);
       expect(submitButton(wrapper).text()).toBe("Confirm code");
       expect(submitButton(wrapper).classes()).toContain("btn--error");
+      expect(document.activeElement).toBe(wrapper.find("input").element);
     });
 
     it.each([
@@ -329,7 +405,7 @@ describe("RegisterForm", () => {
 
         await confirm(wrapper);
 
-        expect(wrapper.find('[role="alert"]').text()).toBe(error);
+        expect(errorUnder(wrapper, field)).toBe(error);
         expect(submitButton(wrapper).text()).toBe("Register");
         expect(wrapper.findAll("input").map((input) => input.element.value)).toEqual([
           "me@example.com",
