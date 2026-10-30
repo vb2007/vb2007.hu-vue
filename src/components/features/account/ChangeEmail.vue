@@ -13,6 +13,7 @@ const {
   changeMessage,
   change,
   isConfirming,
+  codeError,
   confirmError,
   confirm,
   cooldown
@@ -25,7 +26,6 @@ const password = ref("");
 const emailError = ref("");
 const passwordError = ref("");
 const code = ref("");
-const codeError = ref("");
 
 /** Ties the code field to the waiting address it confirms. */
 const pendingId = useId();
@@ -45,6 +45,7 @@ const start = async () => {
   open.value = true;
   email.value = pendingEmail.value;
   changeMessage.value = "";
+  codeError.value = "";
   confirmError.value = "";
   await nextTick();
   focusField(pendingEmail.value ? passwordField.value : emailField.value);
@@ -102,7 +103,7 @@ const confirmCode = async () => {
   if (codeError.value) return focusField(codeField.value);
   if (await confirm(digits)) code.value = "";
   await nextTick();
-  // Confirmed, or dropped by the API: the code step is gone, and its key is left.
+  // Confirmed, dropped or expired: the code step is gone, and its key is left.
   if (!pendingEmail.value) return key.value?.$el.focus();
   if (!codeForm.value?.contains(document.activeElement)) focusField(codeField.value);
 };
@@ -112,7 +113,7 @@ const confirmCode = async () => {
   <StatusMessage v-if="changeMessage" class="change__saved" tone="success">
     {{ changeMessage }}
   </StatusMessage>
-  <!-- A refusal that dropped the waiting change; one that keeps it shows by the code field. -->
+  <!-- A refusal that took the waiting change away; one that keeps it shows in the code form. -->
   <StatusMessage v-if="confirmError && !pendingEmail" class="change__saved" tone="error">
     {{ confirmError }}
   </StatusMessage>
@@ -135,7 +136,7 @@ const confirmCode = async () => {
       label="Confirmation code"
       inputmode="numeric"
       autocomplete="one-time-code"
-      hint="The code works for 15 minutes. Nothing yet? Check your spam folder, or get a new one with Change e-mail."
+      hint="The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail."
       :describedby="pendingId"
       :error="codeError"
       mono

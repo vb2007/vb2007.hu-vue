@@ -9,6 +9,7 @@ import {
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  pendingEmail,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -109,8 +110,9 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <div class="login__main">
           <div class="login__head">
             <h3 class="login__name">E-mail</h3>
-            <!-- Only a confirmed address gets one: accounts from before codes were never asked to. -->
-            <span v-if="emailVerified" class="badge badge--on">
+            <!-- Only a confirmed address gets one: accounts from before codes were never asked to.
+                 It waits out a change, so it can't be read as being about the new address. -->
+            <span v-if="emailVerified && !pendingEmail" class="badge badge--on">
               <AppIcon name="check" :size="14" />
               Confirmed
             </span>
