@@ -1,4 +1,4 @@
-import { expect, MOCK_PASSWORD, test } from "./fixtures";
+import { expect, MOCK_EMAIL_CODE, MOCK_PASSWORD, test } from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
@@ -115,7 +115,11 @@ test("a failed GitHub link is explained on the account page", async ({ page, api
   await expect(page).toHaveURL("/account");
 });
 
-test("changing the e-mail shows the new address everywhere", async ({ page, api, isMobile }) => {
+test("changing the e-mail takes the code mailed to the new address", async ({
+  page,
+  api,
+  isMobile
+}) => {
   api.loggedInAs("me@example.com", "me");
   await page.goto("/account");
 
@@ -123,17 +127,102 @@ test("changing the e-mail shows the new address everywhere", async ({ page, api,
   await expect(page.getByLabel("New e-mail")).toBeFocused();
   await page.getByLabel("New e-mail").fill("New@Example.com");
   await page.getByLabel("Current password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Save e-mail" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  // The address only changes once the code comes back.
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  const code = page.getByLabel("Confirmation code");
+  await expect(code).toBeFocused();
+  await expect(code).toHaveAttribute("autocomplete", "one-time-code");
+  await expect(code).toHaveAttribute("inputmode", "numeric");
+  await expect(code).toHaveAccessibleDescription(
+    /^Waiting for confirmation: new@example\.com The code works for 15 minutes\./
+  );
+  await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+
+  await code.fill(MOCK_EMAIL_CODE);
+  await page.keyboard.press("Enter");
 
   await expect(page.getByRole("status")).toHaveText("E-mail address updated successfully.");
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
-  await expect(page.getByLabel("New e-mail")).toHaveCount(0);
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
   await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
   if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("link", { name: "new@example.com" })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+});
+
+test("a wrong code keeps the change waiting", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+
+  await page.getByLabel("Confirmation code").fill("000000");
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The code is wrong, expired or already used: check it or request a new one."
+  );
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await expect(page.getByLabel("Confirmation code")).toHaveValue("000000");
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+
+  await page.getByLabel("Confirmation code").fill("12345");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Enter the 6-digit code from the e-mail.")).toBeVisible();
+});
+
+test("a waiting change survives a reload, and a new code is one password away", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("new@example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+
+  await page.reload();
+
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(page.getByLabel("Confirmation code")).toBeVisible();
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await expect(page.getByLabel("New e-mail")).toHaveValue("new@example.com");
+  await expect(page.getByLabel("Current password")).toBeFocused();
+  await expect(page.getByText("A new code replaces the one already sent.")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Confirmation code")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+});
+
+test("asking for a new code too soon counts down the API's wait", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  // The last code went 57 seconds ago, so the API wants 3 more.
+  api.hasPendingEmail("new@example.com", { sentSecondsAgo: 57 });
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("A code was sent just now: wait");
+  await expect(page.getByRole("button", { name: /^Send code in \d s$/ })).toBeDisabled();
+
+  await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled({
+    timeout: 5000
+  });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "Send code", exact: true }).click();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeVisible();
 });
 
 test("the e-mail form checks the address before sending it", async ({ page, api }) => {
@@ -142,7 +231,7 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
 
   await page.getByRole("button", { name: "Change e-mail" }).click();
   await page.getByLabel("New e-mail").fill("not-an-address");
-  await page.getByRole("button", { name: "Save e-mail" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
 
   await expect(page.getByText("Enter a valid e-mail address.")).toBeVisible();
   await expect(page.getByText("Enter your current password.")).toBeVisible();
@@ -150,7 +239,7 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
 
   await page.getByLabel("New e-mail").fill(" Me@Example.com ");
   await page.getByLabel("Current password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Save e-mail" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
   await expect(page.getByText("That's already your e-mail address.")).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -172,7 +261,7 @@ for (const [status, email, password, error] of [
     await page.getByRole("button", { name: "Change e-mail" }).click();
     await page.getByLabel("New e-mail").fill(email);
     await page.getByLabel("Current password").fill(password);
-    await page.getByRole("button", { name: "Save e-mail" }).click();
+    await page.getByRole("button", { name: "Send code" }).click();
 
     await expect(page.getByRole("alert")).toContainText(error);
     await expect(page.getByLabel("New e-mail")).toHaveValue(email);
