@@ -7,6 +7,7 @@ import {
   hasPassword,
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -15,6 +16,7 @@ import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import ChangePassword from "@/components/features/account/ChangePassword.vue";
+import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -99,6 +101,18 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
             <template v-else>None yet. Set one in the Password section below.</template>
           </p>
           <ChangePassword v-if="hasPassword" />
+        </div>
+      </div>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="mail" :size="26" /></span>
+        <div class="login__main">
+          <h3 class="login__name">E-mail</h3>
+          <p class="login__note">
+            <template v-if="isSuperuser">It's set in the API's configuration.</template>
+            <template v-else-if="!hasPassword">Changing it needs a password.</template>
+            <template v-else>You log in with it. Changing it takes your current password.</template>
+          </p>
+          <ChangeEmail v-if="hasPassword && !isSuperuser" />
         </div>
       </div>
     </section>

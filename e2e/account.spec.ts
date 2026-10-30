@@ -115,6 +115,87 @@ test("a failed GitHub link is explained on the account page", async ({ page, api
   await expect(page).toHaveURL("/account");
 });
 
+test("changing the e-mail shows the new address everywhere", async ({ page, api, isMobile }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await expect(page.getByLabel("New e-mail")).toBeFocused();
+  await page.getByLabel("New e-mail").fill("New@Example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Save e-mail" }).click();
+
+  await expect(page.getByRole("status")).toHaveText("E-mail address updated successfully.");
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  await expect(page.getByLabel("New e-mail")).toHaveCount(0);
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("link", { name: "new@example.com" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+});
+
+test("the e-mail form checks the address before sending it", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("not-an-address");
+  await page.getByRole("button", { name: "Save e-mail" }).click();
+
+  await expect(page.getByText("Enter a valid e-mail address.")).toBeVisible();
+  await expect(page.getByText("Enter your current password.")).toBeVisible();
+  await expect(page.getByLabel("New e-mail")).toBeFocused();
+
+  await page.getByLabel("New e-mail").fill(" Me@Example.com ");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Save e-mail" }).click();
+  await expect(page.getByText("That's already your e-mail address.")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+});
+
+// The form checks the address with the API's own rule, so a 400 can't come from it.
+for (const [status, email, password, error] of [
+  [403, "new@example.com", "wrong-password", "The provided password is incorrect."],
+  [409, "taken@example.com", MOCK_PASSWORD, "An account with this E-mail address already exists."],
+  [429, "new@example.com", MOCK_PASSWORD, "Too many failed attempts: try again later."]
+] as const) {
+  test(`a ${status} from the API keeps the form and the address`, async ({ page, api }) => {
+    api.loggedInAs("me@example.com", "me");
+    api.hasUser("taken");
+    if (status === 429) api.limitsPasswordChecks();
+    await page.goto("/account");
+
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await page.getByLabel("New e-mail").fill(email);
+    await page.getByLabel("Current password").fill(password);
+    await page.getByRole("button", { name: "Save e-mail" }).click();
+
+    await expect(page.getByRole("alert")).toContainText(error);
+    await expect(page.getByLabel("New e-mail")).toHaveValue(email);
+    await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("New e-mail")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  });
+}
+
+test("accounts that can't change their e-mail say why", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  await expect(page.getByText("Changing it needs a password.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toHaveCount(0);
+
+  api.loggedInAs("admin@example.com", "admin", { superuser: true });
+  await page.reload();
+  await expect(page.getByText("It's set in the API's configuration.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toHaveCount(0);
+});
+
 test("the password changes in place and the session carries on", async ({ page, api }) => {
   // A real login, so the browser holds a VB-AUTH cookie that the change has to replace.
   await page.goto("/login");

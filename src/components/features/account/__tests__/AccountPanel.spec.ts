@@ -7,6 +7,7 @@ import {
   hasPassword,
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -52,29 +53,35 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
+  /** A row of the log-in details, by its name. */
+  const detailsRow =
+    (name: string) => (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+      wrapper
+        .findAll('[aria-labelledby="details-title"] .login')
+        .find((row) => row.find("h3").text() === name)!;
+  const passwordRow = detailsRow("Password");
+  const emailRow = detailsRow("E-mail");
+
   it("offers to change the password in the log-in details", async () => {
     logIn();
     hasPassword.value = true;
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    const details = wrapper.find('[aria-labelledby="details-title"]');
-    expect(details.find("h2").text()).toBe("Log-in details");
-    expect(details.find("h3").text()).toBe("Password");
-    expect(details.find(".login__note").text()).toBe(
+    expect(wrapper.find("#details-title").text()).toBe("Log-in details");
+    expect(passwordRow(wrapper).find(".login__note").text()).toBe(
       "Changing it logs out your other devices; you stay logged in here."
     );
-    expect(details.find("button").text()).toBe("Change password");
+    expect(passwordRow(wrapper).find("button").text()).toBe("Change password");
   });
 
   it("has no password to change on an account made with GitHub", async () => {
     logIn();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    const details = wrapper.find('[aria-labelledby="details-title"]');
-    expect(details.find(".login__note").text()).toBe(
+    expect(passwordRow(wrapper).find(".login__note").text()).toBe(
       "None yet. Set one in the Password section below."
     );
-    expect(details.find("button").exists()).toBe(false);
+    expect(passwordRow(wrapper).find("button").exists()).toBe(false);
   });
 
   const linkGithub = (login = "octocat", password = true) => {
@@ -246,5 +253,33 @@ describe("AccountPanel", () => {
     isLoggedIn.value = false;
     await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  });
+
+  it("offers to change the e-mail address of an account with a password", async () => {
+    logIn();
+    hasPassword.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(
+      wrapper.findAll('[aria-labelledby="details-title"] h3').map((name) => name.text())
+    ).toEqual(["Password", "E-mail"]);
+    expect(emailRow(wrapper).find(".login__mark path").attributes("d")).toMatch(/^M3\.5 5\.5h17/);
+    expect(emailRow(wrapper).find(".login__note").text()).toBe(
+      "You log in with it. Changing it takes your current password."
+    );
+    expect(emailRow(wrapper).find("button").text()).toBe("Change e-mail");
+  });
+
+  it.each([
+    ["an account without a password", false, false, "Changing it needs a password."],
+    ["the superuser", true, true, "It's set in the API's configuration."]
+  ])("explains why %s can't change its e-mail", async (_who, password, superuser, note) => {
+    logIn();
+    hasPassword.value = password;
+    isSuperuser.value = superuser;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(emailRow(wrapper).find(".login__note").text()).toBe(note);
+    expect(emailRow(wrapper).find("button").exists()).toBe(false);
   });
 });

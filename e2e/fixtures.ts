@@ -9,6 +9,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
+ * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken.
  * Linking GitHub (`GET /auth/github/link`) skips GitHub: it links @e2e-octocat and comes straight back to `/account?github=linked`, which also confirms the user for setting a password.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
@@ -294,6 +295,7 @@ export class MockApi {
     endpoint: string,
     body: {
       email?: string;
+      password?: string;
       paste?: string;
       language?: string;
       originalFileName?: string;
@@ -301,7 +303,6 @@ export class MockApi {
       quotaBytes?: number | null;
       currentPassword?: string;
       newPassword?: string;
-      password?: string;
       username?: string;
     } | null,
     query: URLSearchParams
@@ -393,6 +394,8 @@ export class MockApi {
         delete this.user.githubId;
         delete this.user.githubLogin;
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
+      case "PATCH /user/email":
+        return this.changeEmail(body?.email, body?.password);
       case "PATCH /user/password":
         return this.changePassword(body?.currentPassword, body?.newPassword);
       case "POST /auth/register":
@@ -416,6 +419,49 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  /** Checks in the API's order (vb2007/vb2007.hu-api#162), short of the superuser-reserved address. */
+  private changeEmail(email?: string, password?: string) {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (this.passwordChecksLimited) {
+      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+    }
+    if (!email || !password) {
+      return {
+        status: 400,
+        body: { error: "You must provide an E-mail address and a password." }
+      };
+    }
+    const normalized = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalized)) {
+      return {
+        status: 400,
+        body: { error: "The e-mail address is invalid: must match name@provider.com format." }
+      };
+    }
+    if (this.user.isSuperuser) {
+      return {
+        status: 403,
+        body: { error: "The superuser's e-mail address can't be changed here." }
+      };
+    }
+    if (!this.user.hasPassword) {
+      return { status: 409, body: { error: "This account has no password." } };
+    }
+    if (password !== this.password) {
+      return { status: 403, body: { error: "The provided password is incorrect." } };
+    }
+    if (this.users.some((user) => user.email === normalized)) {
+      return {
+        status: 409,
+        body: { error: "An account with this E-mail address already exists." }
+      };
+    }
+    this.user.email = normalized;
+    return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
   private changePassword(currentPassword?: string, newPassword?: string) {
