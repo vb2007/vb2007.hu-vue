@@ -14,6 +14,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
+ * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -71,6 +72,9 @@ const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 
+/** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
+export const REGISTRATION_CODE = "123456";
+
 /** 1×1 PNG served for every cdn file, so thumbnails and previews load. */
 const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk2Lb3PwAEtwJBEP5yGQAAAABJRU5ErkJggg==",
@@ -122,6 +126,13 @@ export class MockApi {
   /** The only `VB-AUTH` value still accepted; each new session replaces it. */
   private session = "";
   private sessionCount = 0;
+  /** The registration waiting for its code, by `POST /auth/register`. */
+  private pendingRegistration: {
+    email: string;
+    username: string;
+    password: string;
+    sentAt: number;
+  } | null = null;
   private cdnOrigin = "https://cdn.e2e.invalid";
   private appOrigin = "";
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
@@ -296,6 +307,7 @@ export class MockApi {
     body: {
       email?: string;
       password?: string;
+      code?: string;
       paste?: string;
       language?: string;
       originalFileName?: string;
@@ -398,8 +410,66 @@ export class MockApi {
         return this.changeEmail(body?.email, body?.password);
       case "PATCH /user/password":
         return this.changePassword(body?.currentPassword, body?.newPassword);
-      case "POST /auth/register":
-        return { status: 201 };
+      case "POST /auth/register": {
+        // Like the API, one code a minute per address; the one sent then still works.
+        const waited = this.pendingRegistration
+          ? Math.ceil(60 - (Date.now() - this.pendingRegistration.sentAt) / 1000)
+          : 0;
+        if (this.pendingRegistration?.email === body?.email && waited > 0) {
+          return {
+            status: 429,
+            body: {
+              error: `A code was sent just now: wait ${waited} seconds before requesting another one.`,
+              retryAfter: waited
+            }
+          };
+        }
+        this.pendingRegistration = {
+          email: body?.email ?? "",
+          username: body?.username ?? "",
+          password: body?.password ?? "",
+          sentAt: Date.now()
+        };
+        return {
+          status: 202,
+          body: { message: `A confirmation code was sent to ${body?.email}.` }
+        };
+      }
+      case "POST /auth/register/verify":
+        if (
+          !this.pendingRegistration ||
+          body?.email !== this.pendingRegistration.email ||
+          body?.code !== REGISTRATION_CODE
+        ) {
+          return {
+            status: 400,
+            body: {
+              error: "The code is wrong, expired or already used: check it or request a new one."
+            }
+          };
+        }
+        this.user = {
+          email: this.pendingRegistration.email,
+          username: this.pendingRegistration.username,
+          isSuperuser: false,
+          hasPassword: true
+        };
+        this.password = this.pendingRegistration.password;
+        this.pendingRegistration = null;
+        // Like logging in, confirming the code starts a session.
+        return {
+          status: 201,
+          body: { message: `User ${this.user.username} registered successfully.` },
+          newSession: true
+        };
+      case "POST /auth/register/resend":
+        return {
+          status: 200,
+          body: {
+            message:
+              "If a registration is waiting for this address, a new confirmation code was sent to it."
+          }
+        };
       case "POST /shortenUrl/create":
         this.hasShortLink(
           this.shortCode,
