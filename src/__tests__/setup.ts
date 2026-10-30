@@ -1,11 +1,13 @@
 import { afterEach, vi } from "vitest";
 import {
+  emailVerified,
   githubLinked,
   githubLogin,
   hasPassword,
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  pendingEmail,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -46,6 +48,8 @@ afterEach(() => {
   githubLinked.value = false;
   githubLogin.value = "";
   hasPassword.value = false;
+  pendingEmail.value = "";
+  emailVerified.value = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
