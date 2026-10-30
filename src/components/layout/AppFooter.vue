@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+import { isLoggedIn } from "@/scripts/authentication/authState";
 import { getCurrentYear } from "@/scripts/utility/dateUtil";
 
 const currentYear = getCurrentYear();
@@ -15,8 +16,11 @@ const currentYear = getCurrentYear();
       <nav class="foot__links" aria-label="Footer">
         <RouterLink to="/shorten">Shorten</RouterLink>
         <RouterLink to="/pastebin">Paste</RouterLink>
-        <RouterLink to="/login">Log in</RouterLink>
-        <RouterLink to="/register">Register</RouterLink>
+        <RouterLink v-if="isLoggedIn" to="/account">Account</RouterLink>
+        <template v-else>
+          <RouterLink to="/login">Log in</RouterLink>
+          <RouterLink to="/register">Register</RouterLink>
+        </template>
       </nav>
     </div>
   </footer>
