@@ -5,8 +5,10 @@ import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
   isValidEmail,
   register,
+  registerFieldOf,
   registerStatus,
-  validateRegisterData
+  validateRegisterData,
+  type RegisterField
 } from "@/scripts/authentication/register";
 import { restoreSession } from "@/scripts/authentication/user";
 import {
@@ -27,6 +29,8 @@ const confirmPassword = ref("");
 const code = ref("");
 const isLoading = ref(false);
 const isButtonError = ref(false);
+/** The field the shown problem is about; it shows under that field instead of above the key. */
+const errorField = ref<RegisterField>();
 
 const {
   email: codeEmail,
@@ -47,6 +51,13 @@ const noticeId = useId();
 
 /** The step on screen (form or code), to move focus into it when it changes. */
 const step = useTemplateRef<HTMLFormElement>("step");
+const doneMessage = useTemplateRef("doneMessage");
+const fieldRefs: Record<RegisterField, Readonly<{ value: { $el: HTMLElement } | null }>> = {
+  email: useTemplateRef("emailField"),
+  username: useTemplateRef("usernameField"),
+  password: useTemplateRef("passwordField"),
+  confirmPassword: useTemplateRef("confirmField")
+};
 
 const MESSAGES: Record<string, string> = {
   "missing-fields": "Please fill out all required input fields.",
@@ -93,6 +104,20 @@ const failure = computed(() => {
   if (!status || status === "success") return "";
   return MESSAGES[status] ?? status;
 });
+/** The problem, under its field when it's about one, or above the key otherwise. */
+const fieldError = (field: RegisterField) => (errorField.value === field ? failure.value : "");
+const formError = computed(() => (errorField.value ? "" : failure.value));
+
+const showProblem = (status: string, field?: RegisterField) => {
+  registerStatus.value = status;
+  errorField.value = field;
+};
+
+/** Forgets what was typed, e.g. once the account exists: nothing, least of all the password, stays. */
+const clearForm = () => {
+  email.value = username.value = password.value = confirmPassword.value = code.value = "";
+  showProblem("");
+};
 
 const flagError = () => {
   isButtonError.value = true;
@@ -101,14 +126,27 @@ const flagError = () => {
   }, 1000);
 };
 
-/** Puts the cursor in the step's first field (the e-mail, or the code), or the one `selector` picks. */
-const focusStep = async (selector = "input") => {
+/** Puts the cursor in the step's first field: the e-mail, or the code. */
+const focusStep = async () => {
   await nextTick();
-  step.value?.querySelector<HTMLInputElement>(selector)?.focus();
+  step.value?.querySelector("input")?.focus();
+};
+
+/**
+ * After a problem the focused key may have been disabled while it loaded, which drops focus:
+ * it goes to the field the problem is about, or back to the key.
+ */
+const focusProblem = async () => {
+  await nextTick();
+  const field = errorField.value && fieldRefs[errorField.value].value;
+  const target = field
+    ? field.$el.querySelector("input")
+    : step.value?.querySelector<HTMLButtonElement>("button[type=submit]");
+  target?.focus();
 };
 
 const openCodeStep = async (kind: CodeNotice, waitSeconds?: number) => {
-  registerStatus.value = "";
+  showProblem("");
   code.value = "";
   open(email.value, kind, waitSeconds);
   await focusStep();
@@ -122,33 +160,38 @@ const handleSubmit = async () => {
     confirmPassword.value
   );
   if (problem) {
-    registerStatus.value = problem;
+    showProblem(problem, registerFieldOf(problem));
     flagError();
+    await focusProblem();
     return;
   }
 
   isLoading.value = true;
+  let answer;
   try {
-    const answer = await register(username.value, email.value, password.value);
-    if (answer.sent) {
-      await openCodeStep("sent", RESEND_COOLDOWN_SECONDS);
-    } else if (answer.retryAfter) {
-      // A code went to this address moments ago and still works.
-      await openCodeStep("recent", answer.retryAfter);
-    } else {
-      flagError();
-    }
+    answer = await register(username.value, email.value, password.value);
   } finally {
     isLoading.value = false;
+  }
+
+  if (answer.sent) {
+    await openCodeStep("sent", RESEND_COOLDOWN_SECONDS);
+  } else if (answer.retryAfter) {
+    // A code went to this address moments ago and still works.
+    await openCodeStep("recent", answer.retryAfter);
+  } else {
+    errorField.value = answer.field;
+    flagError();
+    await focusProblem();
   }
 };
 
 /** For a code that already arrived, e.g. after a reload: nothing is sent. */
 const enterCode = async () => {
   if (!isValidEmail(email.value)) {
-    registerStatus.value = "invalid-email";
-    flagError();
-    await focusStep();
+    // The address is what's missing, not a failed registration, so the Register key stays calm.
+    showProblem("invalid-email", "email");
+    await focusProblem();
     return;
   }
 
@@ -160,24 +203,27 @@ const handleCode = async () => {
   switch (result) {
     case "logged-in":
     case "created":
-      // Done with the code; logging out later shows the form, not this step.
+      // Done with the code; logging out later shows an empty form, not this step.
       leave();
       cooldown.stop();
+      clearForm();
       registerStatus.value = result === "logged-in" ? "success" : "no-session";
+      await nextTick();
+      doneMessage.value?.$el.focus();
       break;
     case "taken": {
       // The waiting registration is gone, so only the form can go on from here.
       const error = codeError.value;
-      registerStatus.value = error;
       leave();
+      showProblem(error, registerFieldOf(error));
       flagError();
-      await focusStep(
-        /username/i.test(error) ? 'input[autocomplete="username"]' : 'input[type="email"]'
-      );
+      await focusProblem();
       break;
     }
     default:
       flagError();
+      // Confirm code was disabled while it checked; the code is what to fix.
+      await focusStep();
   }
 };
 
@@ -188,7 +234,7 @@ const sendAgain = async () => {
 };
 
 const changeAddress = async () => {
-  registerStatus.value = "";
+  showProblem("");
   leave();
   await focusStep();
 };
@@ -196,6 +242,15 @@ const changeAddress = async () => {
 // A new attempt at the code makes the last error old news.
 watch(code, () => {
   codeError.value = "";
+});
+
+// Likewise for a field's own error once that field is edited.
+watch([email, username, password, confirmPassword], (now, before) => {
+  const fields: RegisterField[] = ["email", "username", "password", "confirmPassword"];
+  const edited = fields.filter((_, index) => now[index] !== before[index]);
+  if (errorField.value && edited.includes(errorField.value)) {
+    showProblem("");
+  }
 });
 
 onMounted(async () => {
@@ -208,7 +263,8 @@ onMounted(async () => {
 
 watch(isLoggedIn, (newVal) => {
   if (!newVal) {
-    registerStatus.value = "";
+    // Logged out, maybe on a shared machine: the next person gets an empty form.
+    clearForm();
   }
 });
 </script>
@@ -216,12 +272,14 @@ watch(isLoggedIn, (newVal) => {
 <template>
   <StationBoard title="Register" as="h1">
     <div v-if="registerStatus === 'success'" class="form">
-      <StatusMessage tone="success">Registration successful!</StatusMessage>
+      <StatusMessage ref="doneMessage" class="done" tone="success" tabindex="-1">
+        Registration successful!
+      </StatusMessage>
       <BaseButton to="/shorten">Go to Shorten</BaseButton>
     </div>
 
     <div v-else-if="registerStatus === 'no-session'" class="form">
-      <StatusMessage tone="error">
+      <StatusMessage ref="doneMessage" class="done" tone="error" tabindex="-1">
         Your account was created, but your browser didn't keep the session. Please check that
         cookies are enabled, then log in.
       </StatusMessage>
@@ -271,23 +329,42 @@ watch(isLoggedIn, (newVal) => {
 
     <template v-else>
       <form ref="step" class="form" novalidate @submit.prevent="handleSubmit">
-        <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
-        <BaseInput v-model="username" label="Username" autocomplete="username" required />
         <BaseInput
+          ref="emailField"
+          v-model="email"
+          label="E-mail"
+          type="email"
+          autocomplete="email"
+          :error="fieldError('email')"
+          required
+        />
+        <BaseInput
+          ref="usernameField"
+          v-model="username"
+          label="Username"
+          autocomplete="username"
+          :error="fieldError('username')"
+          required
+        />
+        <BaseInput
+          ref="passwordField"
           v-model="password"
           label="Password"
           type="password"
           autocomplete="new-password"
+          :error="fieldError('password')"
           required
         />
         <BaseInput
+          ref="confirmField"
           v-model="confirmPassword"
           label="Confirm password"
           type="password"
           autocomplete="new-password"
+          :error="fieldError('confirmPassword')"
           required
         />
-        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage v-if="formError" tone="error">{{ formError }}</StatusMessage>
         <BaseButton type="submit" block :loading="isLoading" :error="isButtonError">
           {{ isLoading ? "Registering" : "Register" }}
         </BaseButton>
@@ -310,6 +387,11 @@ watch(isLoggedIn, (newVal) => {
 .form {
   display: grid;
   gap: var(--sp-4);
+}
+
+/* Focused once the account exists; clear of the sticky navbar. */
+.done {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
 }
 
 /* The address the code went to, so a typo is easy to spot. It moves to the next line whole

@@ -67,10 +67,29 @@ export const validateRegisterData = (
   return;
 };
 
+/** The register form's fields, for an error about one of them. */
+export type RegisterField = "email" | "username" | "password" | "confirmPassword";
+
+/**
+ * The field a problem is about: validateRegisterData's codes and messages, or the API's 400 and
+ * 409 messages (taken, disposable or undeliverable address, the length rules). Undefined when it
+ * isn't about one field.
+ */
+export const registerFieldOf = (problem: string): RegisterField | undefined => {
+  if (problem === "invalid-email" || problem === "email-too-long") return "email";
+  if (problem === "unmatched-passwords") return "confirmPassword";
+  if (/username/i.test(problem)) return "username";
+  if (/password/i.test(problem)) return "password";
+  if (/e-?mail/i.test(problem)) return "email";
+  return undefined;
+};
+
 /** What POST /auth/register led to. */
 export interface RegisterAnswer {
   /** A code was mailed; the account waits for it. */
   sent: boolean;
+  /** The field a 400 or 409 is about; a 429's or 503's message names no field's fault. */
+  field?: RegisterField;
   /**
    * Set when a code went to this address less than a minute ago (the API's per-address
    * cooldown): that code still works, and another can be sent after this many seconds.
@@ -108,6 +127,9 @@ export const register = async (
       const data = await response.json();
       if (data.error) {
         message = data.error;
+      }
+      if (response.status === 400 || response.status === 409) {
+        answer.field = registerFieldOf(message);
       }
       // Only the per-address cooldown says how long; the rate limiters' 429s don't.
       if (response.status === 429 && typeof data.retryAfter === "number") {
