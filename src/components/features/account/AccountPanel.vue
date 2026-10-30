@@ -14,6 +14,7 @@ import { UserManagement } from "@/constants/api";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
+import ChangePassword from "@/components/features/account/ChangePassword.vue";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -85,6 +86,23 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       </div>
     </dl>
 
+    <section class="logins" aria-labelledby="details-title">
+      <h2 id="details-title" class="logins__title">Log-in details</h2>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="lock" :size="26" /></span>
+        <div class="login__main">
+          <h3 class="login__name">Password</h3>
+          <p class="login__note">
+            <template v-if="hasPassword"
+              >Changing it logs out your other devices; you stay logged in here.</template
+            >
+            <template v-else>None yet. Set one in the Password section below.</template>
+          </p>
+          <ChangePassword v-if="hasPassword" />
+        </div>
+      </div>
+    </section>
+
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>
       <div class="login">
@@ -103,7 +121,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
                 as <strong class="login__handle">@{{ githubLogin }}</strong></template
               >.
               <template v-if="!hasPassword">
-                This account has no password, so GitHub stays linked: it's how you log in.
+                It stays linked while it's your only way to log in.
               </template>
             </template>
             <template v-else
