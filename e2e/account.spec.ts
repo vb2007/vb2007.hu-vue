@@ -105,6 +105,18 @@ test("a GitHub account the API just linked is confirmed once", async ({ page, ap
   await expect(page.getByText("GitHub is linked.")).toHaveCount(0);
 });
 
+test("the GitHub link notice goes once the e-mail form opens", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true });
+  await page.goto("/account?github=linked");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub is linked. You can log in with it from now on."
+  );
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+
+  await expect(page.getByRole("status")).toHaveCount(0);
+});
+
 test("a failed GitHub link is explained on the account page", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   await page.goto("/account?oauthError=githubAlreadyLinked");
@@ -392,14 +404,15 @@ test("an account made with GitHub confirms it with GitHub, then sets a password"
   await expect(page.getByRole("region", { name: "Password", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Unlink GitHub" })).toBeVisible();
 
-  // The new password can be changed straight away, without a reload.
+  // The new password can be changed straight away, without a reload, and only that outcome shows.
   const details = page.getByRole("region", { name: "Log-in details" });
   await details.getByRole("button", { name: "Change password" }).click();
+  await expect(page.getByRole("status")).toHaveCount(0);
   await details.getByLabel("Current password").fill("correct horse battery");
   await details.getByLabel("New password", { exact: true }).fill("a-new-password");
   await details.getByLabel("Confirm new password").fill("a-new-password");
   await details.getByRole("button", { name: "Save password" }).click();
-  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  await expect(page.getByRole("status")).toHaveText(["Password changed successfully."]);
   expect(api.password).toBe("a-new-password");
 
   await page.reload();
