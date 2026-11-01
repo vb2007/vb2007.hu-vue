@@ -323,6 +323,41 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(emailInput(wrapper).exists()).toBe(true);
+    expect(wrapper.find(".field__error").text()).toBe("Enter a valid e-mail address.");
+  });
+
+  it("checks the address before sending a code", async () => {
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBe("true");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(requestPasswordReset).not.toHaveBeenCalled();
+    expect(wrapper.find(".field__error").text()).toBe("Enter a valid e-mail address.");
+    expect(document.activeElement).toBe(emailInput(wrapper).element);
+    expect(submitButton(wrapper).classes()).toContain("btn--error");
+    wrapper.unmount();
+  });
+
+  it("checks each field once it's left", async () => {
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
+    await emailInput(wrapper).setValue("me");
+    await emailInput(wrapper).trigger("blur");
+    expect(wrapper.find(".field__error").text()).toBe("Enter a valid e-mail address.");
+    wrapper.unmount();
+
+    const { wrapper: codeStep } = await mountOnCodeStep();
+    await fillCodeStep(codeStep, "12", "short");
+    expect(codeStep.find(".field__error").exists()).toBe(false);
+    expect(submitButton(codeStep).attributes("aria-disabled")).toBe("true");
+    await codeInput(codeStep).trigger("blur");
+    await codeStep.find('input[type="password"]').trigger("blur");
+
+    expect(codeStep.findAll(".field__error").map((error) => error.text())).toEqual([
+      "Enter the 6-digit code from the e-mail.",
+      "The password's too short: it must be between 8 and 128 characters."
+    ]);
   });
 
   it("checks the password's length before sending it", async () => {
@@ -333,7 +368,8 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(confirmPasswordReset).not.toHaveBeenCalled();
-    expect(wrapper.find('[role="alert"]').text()).toBe(
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.find(".field__error").text()).toBe(
       "The password's too short: it must be between 8 and 128 characters."
     );
     expect(submitButton(wrapper).classes()).toContain("btn--error");

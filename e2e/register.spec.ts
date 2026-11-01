@@ -26,7 +26,8 @@ test("registering asks for the mailed code, then logs the new account in", async
 
   const confirmKey = page.getByRole("button", { name: "Confirm code" });
   await code.fill("123");
-  await confirmKey.click();
+  await expect(confirmKey).toHaveAttribute("aria-disabled", "true");
+  await confirmKey.click({ force: true });
   await expect(code).toHaveAttribute("aria-invalid", "true");
   await expect(code).toHaveAccessibleDescription(/Enter the 6-digit code from the e-mail\./);
   await expect(confirmKey).toHaveClass(/btn--error/);
@@ -210,7 +211,7 @@ test("entering a code needs the address first, without failing Register", async 
   await page.getByRole("button", { name: "Enter it" }).click();
 
   const email = page.getByLabel("E-mail");
-  await expect(email).toHaveAccessibleDescription("Please enter a valid e-mail address.");
+  await expect(email).toHaveAccessibleDescription("Enter a valid e-mail address.");
   await expect(email).toBeFocused();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Register", exact: true })).not.toHaveClass(
@@ -231,4 +232,55 @@ test("logging out after registering leaves an empty form", async ({ page, isMobi
   await expect(page.getByLabel("Username")).toHaveValue("");
   await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("Confirm password")).toHaveValue("");
+});
+
+test("each field is checked once it's left, and the key looks disabled until all pass", async ({
+  page
+}) => {
+  await page.goto("/register");
+  const key = page.getByRole("button", { name: "Register", exact: true });
+  const email = page.getByLabel("E-mail");
+  const password = page.getByLabel("Password", { exact: true });
+  await expect(key).toHaveAttribute("aria-disabled", "true");
+
+  await email.fill("new@");
+  await expect(email).not.toHaveAttribute("aria-invalid", "true");
+  await page.keyboard.press("Tab");
+  await expect(email).toHaveAccessibleDescription("Enter a valid e-mail address.");
+
+  // Once shown, the problem goes as soon as it's fixed.
+  await email.fill("new@example.com");
+  await expect(email).not.toHaveAttribute("aria-invalid", "true");
+
+  await page.getByLabel("Username").fill("newbie");
+  await password.fill("short");
+  await page.getByLabel("Confirm password").focus();
+  await expect(password).toHaveAccessibleDescription(
+    "The password's too short: it must be between 8 and 128 characters."
+  );
+
+  // Pressing the key anyway puts the cursor where the problem is.
+  await key.click({ force: true });
+  await expect(password).toBeFocused();
+  await expect(key).toHaveClass(/btn--error/);
+
+  await password.fill("correct horse");
+  await page.getByLabel("Confirm password").fill("correct horse");
+  await expect(key).not.toHaveAttribute("aria-disabled");
+});
+
+test("a taken username is said while it's typed", async ({ page, api }) => {
+  api.hasUser("Anna");
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+
+  await username.fill("anna");
+  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(page.getByRole("button", { name: "Register", exact: true })).toHaveAttribute(
+    "aria-disabled",
+    "true"
+  );
+
+  await username.fill("anna2");
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
 });

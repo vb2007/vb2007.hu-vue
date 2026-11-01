@@ -51,11 +51,11 @@ describe("DeleteAccount", () => {
     expect(input.attributes("type")).toBe("password");
     expect(input.attributes("autocomplete")).toBe("current-password");
     expect(document.activeElement).toBe(input.element);
-    expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(deleteKey(wrapper).attributes("aria-disabled")).toBe("true");
     expect(deleteKey(wrapper).classes()).not.toContain("btn--error");
 
     await input.setValue("hunter22");
-    expect(deleteKey(wrapper).attributes("disabled")).toBeUndefined();
+    expect(deleteKey(wrapper).attributes("aria-disabled")).toBeUndefined();
     expect(deleteKey(wrapper).classes()).toContain("btn--error");
 
     await wrapper.find("form").trigger("submit");
@@ -106,15 +106,43 @@ describe("DeleteAccount", () => {
     expect(wrapper.find(".field").attributes("spellcheck")).toBe("false");
 
     await input.setValue("Me");
-    expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(deleteKey(wrapper).attributes("aria-disabled")).toBe("true");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
     await wrapper.find("form").trigger("submit");
+    await flushPromises();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(wrapper.find(".field__error").text()).toBe("That doesn't match “me”.");
 
     await input.setValue("me");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
     expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ username: "me" });
+    wrapper.unmount();
+  });
+
+  it("asks for the password once its field is left empty", async () => {
+    const { wrapper } = await mountPanel();
+    await open(wrapper);
+    const input = wrapper.find("input");
+
+    await input.setValue("x");
+    await input.setValue("");
+    await input.trigger("blur");
+
+    expect(wrapper.find(".field__error").text()).toBe("Enter your password.");
+    wrapper.unmount();
+  });
+
+  it("says a typed username doesn't match once its field is left", async () => {
+    hasPassword.value = false;
+    const { wrapper } = await mountPanel();
+    await open(wrapper);
+
+    await wrapper.find("input").setValue("you");
+    await wrapper.find("input").trigger("blur");
+
+    expect(wrapper.find(".field__error").text()).toBe("That doesn't match “me”.");
     wrapper.unmount();
   });
 
@@ -128,7 +156,7 @@ describe("DeleteAccount", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toBe("Something went wrong.");
-    expect(deleteKey(wrapper).attributes("disabled")).toBeUndefined();
+    expect(deleteKey(wrapper).attributes("aria-disabled")).toBeUndefined();
     fetchMock.mockClear();
 
     hasPassword.value = true;
@@ -137,7 +165,7 @@ describe("DeleteAccount", () => {
     expect(wrapper.find("label").text()).toBe("Password");
     expect(wrapper.find("input").element.value).toBe("");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
-    expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(deleteKey(wrapper).attributes("aria-disabled")).toBe("true");
     expect(deleteKey(wrapper).classes()).not.toContain("btn--error");
     await wrapper.find("form").trigger("submit");
     expect(fetchMock).not.toHaveBeenCalled();

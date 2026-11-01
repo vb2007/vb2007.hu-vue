@@ -318,7 +318,12 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
 
   await page.getByRole("button", { name: "Change e-mail" }).click();
   await page.getByLabel("New e-mail").fill("not-an-address");
-  await page.getByRole("button", { name: "Send code" }).click();
+  // The key looks disabled until the form is right, but a click still shows what's missing.
+  await expect(page.getByRole("button", { name: "Send code" })).toHaveAttribute(
+    "aria-disabled",
+    "true"
+  );
+  await page.getByRole("button", { name: "Send code" }).click({ force: true });
 
   await expect(page.getByText("Enter a valid e-mail address.")).toBeVisible();
   await expect(page.getByText("Enter your current password.")).toBeVisible();
@@ -326,8 +331,10 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
 
   await page.getByLabel("New e-mail").fill(" Me@Example.com ");
   await page.getByLabel("Current password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Send code" }).click();
+  // Leaving the address checked it already.
   await expect(page.getByText("That's already your e-mail address.")).toBeVisible();
+  await page.getByRole("button", { name: "Send code" }).click({ force: true });
+  await expect(page.getByLabel("New e-mail")).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
@@ -434,7 +441,7 @@ test("the password form checks its fields before asking the API", async ({ page,
   await details.getByLabel("Current password").fill(MOCK_PASSWORD);
   await newPassword.fill("short");
   await details.getByLabel("Confirm new password").fill("shorter");
-  await details.getByRole("button", { name: "Save password" }).click();
+  await details.getByRole("button", { name: "Save password" }).click({ force: true });
 
   await expect(newPassword).toBeFocused();
   await expect(newPassword).toHaveAccessibleDescription(
@@ -531,10 +538,12 @@ test("an account made with GitHub confirms it with GitHub, then sets a password"
 
   await newPassword.fill("short");
   await confirmPassword.fill("short");
-  await page.getByRole("button", { name: "Set password" }).click();
+  // Leaving the field checked it already; the key only looks disabled.
   await expect(
     page.getByText("The password's too short: it must be between 8 and 128 characters.")
   ).toBeVisible();
+  await page.getByRole("button", { name: "Set password" }).click({ force: true });
+  await expect(newPassword).toBeFocused();
 
   await newPassword.fill("correct horse battery");
   await confirmPassword.fill("correct horse battery");

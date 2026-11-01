@@ -17,6 +17,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
+ * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
@@ -437,6 +438,13 @@ export class MockApi {
         return this.confirmEmail(body?.code);
       case "PATCH /user/password":
         return this.changePassword(body?.currentPassword, body?.newPassword);
+      case "GET /auth/username-available": {
+        const name = (query.get("username") ?? "").toLowerCase();
+        const taken = [...this.users.map((user) => user.username), this.user?.username].some(
+          (username) => username?.toLowerCase() === name
+        );
+        return { status: 200, body: { available: !taken } };
+      }
       case "POST /auth/register": {
         // Like the API, one code a minute per address; the one sent then still works.
         const waited = this.pendingRegistration

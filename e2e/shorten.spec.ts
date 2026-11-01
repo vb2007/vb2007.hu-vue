@@ -27,3 +27,16 @@ test("an already logged-in user goes straight to the form", async ({ page, api }
 
   await expect(page.getByLabel("URL")).toBeVisible();
 });
+
+test("the URL is checked once it's left", async ({ page, api }) => {
+  api.loggedInAs("someone@example.com");
+  await page.goto("/shorten");
+  const url = page.getByLabel("URL");
+
+  await url.fill("example.com");
+  await page.keyboard.press("Tab");
+  await expect(url).toHaveAccessibleDescription("Invalid URL / URI format.");
+
+  await url.fill("https://example.com");
+  await expect(url).not.toHaveAttribute("aria-invalid", "true");
+});
