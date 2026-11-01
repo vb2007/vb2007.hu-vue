@@ -6,11 +6,14 @@ const props = defineProps<{
   type?: string;
   placeholder?: string;
   autocomplete?: string;
+  autocapitalize?: string;
   hint?: string;
   error?: string;
   required?: boolean;
   mono?: boolean;
   inputmode?: "text" | "decimal" | "numeric";
+  /** Ids of elements outside the field that also describe it, e.g. a status message above. */
+  describedby?: string;
 }>();
 
 const model = defineModel<string>({ default: "" });
@@ -18,6 +21,7 @@ const model = defineModel<string>({ default: "" });
 const id = useId();
 const describedBy = computed(() => {
   const ids = [];
+  if (props.describedby) ids.push(props.describedby);
   if (props.hint) ids.push(`${id}-hint`);
   if (props.error) ids.push(`${id}-error`);
   return ids.join(" ") || undefined;
@@ -35,6 +39,7 @@ const describedBy = computed(() => {
       :type="type ?? 'text'"
       :placeholder="placeholder"
       :autocomplete="autocomplete"
+      :autocapitalize="autocapitalize"
       :inputmode="inputmode"
       :required="required"
       :aria-invalid="error ? true : undefined"

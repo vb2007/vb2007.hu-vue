@@ -41,14 +41,28 @@ describe("useShortener", () => {
     expect(shortener.isLoading.value).toBe(false);
   });
 
-  it("shows the status text when the API refuses", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, {}, "Too Many Requests"));
+  it("shows the API's error when it refuses", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "You must be logged in to perform this action." })
+    );
     const shortener = useShortener();
     shortener.originalUrl.value = "https://example.com";
 
     await shortener.shorten();
 
-    expect(shortener.errorMessage.value).toBe("Failed to shorten URL: Too Many Requests");
+    expect(shortener.errorMessage.value).toBe("You must be logged in to perform this action.");
+    expect(shortener.shortenedCode.value).toBe("");
+    expect(shortener.isLoading.value).toBe(false);
+  });
+
+  it("falls back to the status when the API sends no error", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(500));
+    const shortener = useShortener();
+    shortener.originalUrl.value = "https://example.com";
+
+    await shortener.shorten();
+
+    expect(shortener.errorMessage.value).toBe("Failed to shorten URL: 500");
     expect(shortener.shortenedCode.value).toBe("");
     expect(shortener.isLoading.value).toBe(false);
   });

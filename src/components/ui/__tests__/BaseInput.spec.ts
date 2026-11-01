@@ -24,6 +24,7 @@ describe("BaseInput", () => {
         type: "email",
         placeholder: "me@example.com",
         autocomplete: "email",
+        autocapitalize: "off",
         required: true,
         mono: true
       }
@@ -33,7 +34,8 @@ describe("BaseInput", () => {
     expect(input.attributes()).toMatchObject({
       type: "email",
       placeholder: "me@example.com",
-      autocomplete: "email"
+      autocomplete: "email",
+      autocapitalize: "off"
     });
     expect(input.attributes("required")).toBeDefined();
     expect(input.classes()).toContain("field__input--mono");
@@ -54,6 +56,16 @@ describe("BaseInput", () => {
     );
     expect(input.attributes("aria-invalid")).toBe("true");
     expect(wrapper.classes()).toContain("field--invalid");
+  });
+
+  it("adds outside descriptions before its own hint", () => {
+    const wrapper = mount(BaseInput, {
+      props: { label: "Code", hint: "6 digits", describedby: "sent-note" }
+    });
+
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(
+      `sent-note ${wrapper.find(".field__hint").attributes("id")}`
+    );
   });
 
   it("describes the input with just a hint", () => {

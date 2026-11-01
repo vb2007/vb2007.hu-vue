@@ -3,6 +3,7 @@ import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
 import HomeView from "@/views/HomeView.vue";
 import LoginView from "@/views/LoginView.vue";
 import RegisterView from "@/views/RegisterView.vue";
+import PasswordResetView from "@/views/PasswordResetView.vue";
 import ShortenView from "@/views/ShortenView.vue";
 import PastebinView from "@/views/PastebinView.vue";
 import PasteView from "@/views/PasteView.vue";
@@ -17,6 +18,7 @@ import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
+import PasswordResetForm from "@/components/features/auth/PasswordResetForm.vue";
 import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
 import PasteComposer from "@/components/features/pastebin/PasteComposer.vue";
 import PasteList from "@/components/features/pastebin/PasteList.vue";
@@ -54,6 +56,7 @@ describe("views", () => {
   it.each([
     ["LoginView", LoginView, LoginForm],
     ["RegisterView", RegisterView, RegisterForm],
+    ["PasswordResetView", PasswordResetView, PasswordResetForm],
     ["AccountView", AccountView, AccountPanel],
     ["ShortenView", ShortenView, ShortenPanel],
     ["PastebinView", PastebinView, PasteComposer],

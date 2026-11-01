@@ -1,4 +1,4 @@
-/** Limits the API's paste model enforces; it answers a bare 500 when they're broken, so check them first. */
+/** The API's paste length limits, checked here before sending. */
 export const PASTE_MIN_LENGTH = 2;
 export const PASTE_MAX_LENGTH = 10000;
 

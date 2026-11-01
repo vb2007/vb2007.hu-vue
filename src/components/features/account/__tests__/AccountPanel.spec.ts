@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import {
+  emailVerified,
   githubLinked,
   githubLogin,
   hasPassword,
   isLoggedIn,
   isSessionChecked,
+  isSuperuser,
+  pendingEmail,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -48,7 +51,39 @@ describe("AccountPanel", () => {
     expect(wrapper.find(".badge").text()).toBe("Not linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--off");
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').text()).toBe("Link GitHub");
+    expect(wrapper.find("#delete-title").text()).toBe("Delete account");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  /** A row of the log-in details, by its name. */
+  const detailsRow =
+    (name: string) => (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+      wrapper
+        .findAll('[aria-labelledby="details-title"] .login')
+        .find((row) => row.find("h3").text() === name)!;
+  const passwordRow = detailsRow("Password");
+  const emailRow = detailsRow("E-mail");
+
+  it("offers to change the password in the log-in details", async () => {
+    logIn();
+    hasPassword.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(wrapper.find("#details-title").text()).toBe("Log-in details");
+    expect(passwordRow(wrapper).find(".login__note").text()).toBe(
+      "Changing it logs out your other devices; you stay logged in here."
+    );
+    expect(passwordRow(wrapper).find("button").text()).toBe("Change password");
+  });
+
+  it("has no password to change on an account made with GitHub", async () => {
+    logIn();
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(passwordRow(wrapper).find(".login__note").text()).toBe(
+      "None yet. Set one in the Password section below."
+    );
+    expect(passwordRow(wrapper).find("button").exists()).toBe(false);
   });
 
   const linkGithub = (login = "octocat", password = true) => {
@@ -61,13 +96,16 @@ describe("AccountPanel", () => {
   const unlinkKey = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
     wrapper.find("button.login__action");
 
+  const githubNote = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+    wrapper.find('[aria-labelledby="logins-title"] .login__note');
+
   it("shows the linked GitHub login with an unlink key instead of the link key", async () => {
     linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     expect(wrapper.find(".badge").text()).toBe("Linked");
     expect(wrapper.find(".badge").classes()).toContain("badge--on");
-    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub as @octocat.");
+    expect(githubNote(wrapper).text()).toBe("You can log in with GitHub as @octocat.");
     expect(wrapper.find(".login__handle").text()).toBe("@octocat");
     expect(wrapper.find('a[href="https://api.test/auth/github/link"]').exists()).toBe(false);
     expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
@@ -77,7 +115,7 @@ describe("AccountPanel", () => {
     linkGithub("");
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find(".login__note").text()).toBe("You can log in with GitHub.");
+    expect(githubNote(wrapper).text()).toBe("You can log in with GitHub.");
   });
 
   it("keeps GitHub linked on an account without a password", async () => {
@@ -85,8 +123,8 @@ describe("AccountPanel", () => {
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     // Two sentences from two template branches; the browser collapses the doubled space between them.
-    expect(wrapper.find(".login__note").text().replace(/\s+/g, " ")).toBe(
-      "You can log in with GitHub as @octocat. This account has no password, so GitHub stays linked: it's how you log in."
+    expect(githubNote(wrapper).text().replace(/\s+/g, " ")).toBe(
+      "You can log in with GitHub as @octocat. It stays linked while it's your only way to log in."
     );
     expect(unlinkKey(wrapper).exists()).toBe(false);
   });
@@ -159,6 +197,237 @@ describe("AccountPanel", () => {
     expect(router.currentRoute.value.fullPath).toBe("/account");
   });
 
+  it("offers to set a password only to an account without one", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(AccountPanel);
+    expect(wrapper.find("#password-title").exists()).toBe(true);
+
+    hasPassword.value = true;
+    await flushPromises();
+    expect(wrapper.find("#password-title").exists()).toBe(false);
+  });
+
+  it("says the password is set, and offers to unlink GitHub instead of the form", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "GitHub confirmed it's you. Set your password within 10 minutes."
+    );
+
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      );
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Your password is set. You can log in with it from now on."
+    );
+    expect(wrapper.find("#password-title").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
+    expect(unlinkKey(wrapper).text()).toBe("Unlink GitHub");
+    expect(wrapper.find("button.change__key").text()).toBe("Change password");
+    wrapper.unmount();
+  });
+
+  it.each([
+    ["password", passwordRow],
+    ["e-mail", emailRow]
+  ])("drops the top notice once the %s form opens", async (_name, row) => {
+    linkGithub();
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+
+    await row(wrapper).find("button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".notice").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("drops a failed GitHub link once the password changes", async () => {
+    linkGithub();
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?oauthError=githubAlreadyLinked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    mockFetch().mockResolvedValueOnce(
+      jsonResponse(200, { message: "Password changed successfully." })
+    );
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "Password changed successfully."
+    ]);
+    wrapper.unmount();
+  });
+
+  it("drops a failed unlink once the e-mail form opens", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch().mockResolvedValueOnce(jsonResponse(500, { error: "Something broke." }));
+    linkGithub();
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toBe("Something broke.");
+
+    await emailRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("drops the top notice once a waiting e-mail change is confirmed", async () => {
+    linkGithub();
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?github=linked"
+    );
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "new@example.com", hasPassword: true, pendingEmail: null })
+      );
+
+    await emailRow(wrapper).find("input").setValue("123456");
+    await emailRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".notice").exists()).toBe(false);
+    expect(emailRow(wrapper).find('[role="status"]').text()).toBe(
+      "E-mail address updated successfully."
+    );
+    wrapper.unmount();
+  });
+
+  it("drops a failed GitHub link once the password is set", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      { attachTo: document.body },
+      "/account?oauthError=githubAlreadyLinked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      );
+
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "Your password is set. You can log in with it from now on."
+    ]);
+    wrapper.unmount();
+  });
+
+  it("drops the link notice once an unlink is confirmed, even when it fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch().mockResolvedValueOnce(jsonResponse(500, { error: "Something broke." }));
+    linkGithub();
+    const { wrapper } = await mountWithRouter(AccountPanel, {}, "/account?github=linked");
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.find('[role="alert"]').text()).toBe("Something broke.");
+  });
+
+  it("drops a failed GitHub link once GitHub is unlinked", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { message: "Unlinked." }));
+    linkGithub();
+    const { wrapper } = await mountWithRouter(
+      AccountPanel,
+      {},
+      "/account?oauthError=githubAlreadyLinked"
+    );
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+
+    await unlinkKey(wrapper).trigger("click");
+    await unlinkKey(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "GitHub is unlinked. Log in with your password from now on."
+    ]);
+  });
+
+  it("shows only the password change after setting the password", async () => {
+    linkGithub("octocat", false);
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }));
+    for (const input of wrapper.findAll('input[type="password"]')) {
+      await input.setValue("correct horse");
+    }
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find(".notice").exists()).toBe(true);
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
+      "Password changed successfully."
+    ]);
+    wrapper.unmount();
+  });
+
   it("explains a failed GitHub link, logged in or not", async () => {
     logIn();
     const { wrapper } = await mountWithRouter(
@@ -174,5 +443,61 @@ describe("AccountPanel", () => {
     isLoggedIn.value = false;
     await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  });
+
+  it("offers to change the e-mail address of an account with a password", async () => {
+    logIn();
+    hasPassword.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(
+      wrapper.findAll('[aria-labelledby="details-title"] h3').map((name) => name.text())
+    ).toEqual(["Password", "E-mail"]);
+    expect(emailRow(wrapper).find(".login__mark path").attributes("d")).toMatch(/^M3\.5 5\.5h17/);
+    expect(emailRow(wrapper).find(".login__note").text()).toBe(
+      "You log in with it. Changing it takes your current password."
+    );
+    expect(emailRow(wrapper).find("button").text()).toBe("Change e-mail");
+    expect(emailRow(wrapper).find(".badge").exists()).toBe(false);
+  });
+
+  it("marks a confirmed address", async () => {
+    logIn();
+    hasPassword.value = true;
+    emailVerified.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    const badge = emailRow(wrapper).find(".login__head .badge");
+    expect(badge.text()).toBe("Confirmed");
+    expect(badge.classes()).toContain("badge--on");
+  });
+
+  it("asks for the code of a change that's waiting, under the current address", async () => {
+    logIn();
+    hasPassword.value = true;
+    emailVerified.value = true;
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(wrapper.findAll("dd").map((value) => value.text())).toEqual(["vb", "vb@example.com"]);
+    // A Confirmed badge would read as being about the waiting address.
+    expect(emailRow(wrapper).find(".badge").exists()).toBe(false);
+    expect(emailRow(wrapper).find(".change__pending").text()).toBe(
+      "Waiting for confirmation: new@example.com"
+    );
+    expect(emailRow(wrapper).find("label").text()).toBe("Confirmation code");
+  });
+
+  it.each([
+    ["an account without a password", false, false, "Changing it needs a password."],
+    ["the superuser", true, true, "It's set in the API's configuration."]
+  ])("explains why %s can't change its e-mail", async (_who, password, superuser, note) => {
+    logIn();
+    hasPassword.value = password;
+    isSuperuser.value = superuser;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(emailRow(wrapper).find(".login__note").text()).toBe(note);
+    expect(emailRow(wrapper).find("button").exists()).toBe(false);
   });
 });
