@@ -1,11 +1,13 @@
 import { UserManagement } from "@/constants/api";
 import {
+  emailVerified,
   githubLinked,
   githubLogin,
   hasPassword,
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  pendingEmail,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -35,6 +37,8 @@ export const fetchUserDetails = async () => {
     githubLinked.value = Boolean(data.githubId);
     githubLogin.value = data.githubLogin ?? "";
     hasPassword.value = data.hasPassword === true;
+    pendingEmail.value = data.pendingEmail ?? "";
+    emailVerified.value = data.emailVerified === true;
     isLoggedIn.value = true;
     return true;
   } catch (error) {
@@ -104,6 +108,8 @@ export const clearSession = () => {
   githubLinked.value = false;
   githubLogin.value = "";
   hasPassword.value = false;
+  pendingEmail.value = "";
+  emailVerified.value = false;
   isLoggedIn.value = false;
 };
 

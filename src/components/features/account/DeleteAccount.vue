@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Deletes the account once the user confirms with their password, or their username if it has none. */
-import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { useRouter } from "vue-router";
 import { hasPassword, username } from "@/scripts/authentication/authState";
 import { clearSession } from "@/scripts/authentication/user";
@@ -19,6 +19,11 @@ const errorId = useId();
 const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
+
+watch(hasPassword, () => {
+  confirmation.value = "";
+  deleteError.value = "";
+});
 
 const ready = computed(() =>
   hasPassword.value ? confirmation.value !== "" : confirmation.value === username.value
