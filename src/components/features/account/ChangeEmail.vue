@@ -2,7 +2,14 @@
 import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { useChangeEmail } from "@/composables/useChangeEmail";
 import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
-import { isValidEmail } from "@/scripts/authentication/register";
+import {
+  confirmationCodeEarlyError,
+  confirmationCodeError,
+  emailError,
+  normalizeEmail,
+  requiredError
+} from "@/scripts/authentication/register";
+import { useFormValidation } from "@/composables/useFormValidation";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -25,9 +32,33 @@ const { remaining: waitSeconds, active: isWaiting } = cooldown;
 const open = ref(false);
 const email = ref("");
 const password = ref("");
-const emailError = ref("");
-const passwordError = ref("");
 const code = ref("");
+
+const addressError = (address: string) => {
+  const problem = emailError(address);
+  if (problem) return problem;
+  if (normalizeEmail(address) === normalizeEmail(userEmail.value)) {
+    return "That's already your e-mail address.";
+  }
+  return "";
+};
+
+const changeChecks = useFormValidation({
+  email: { value: email, check: () => addressError(email.value) },
+  password: {
+    value: password,
+    check: () => requiredError(password.value, "Enter your current password.")
+  }
+});
+const codeChecks = useFormValidation({
+  code: {
+    value: code,
+    check: () => confirmationCodeError(code.value),
+    early: () => confirmationCodeEarlyError(code.value)
+  }
+});
+const { errors: changeErrors, isValid: isChangeValid, leave: leaveChange } = changeChecks;
+const { errors: codeErrors, isValid: isCodeValid, leave: leaveCode } = codeChecks;
 
 /** Ties the code field to the waiting address it confirms. */
 const pendingId = useId();
@@ -48,6 +79,8 @@ const start = async () => {
   codeError.value = "";
   confirmError.value = "";
   email.value = pendingEmail.value;
+  changeChecks.reset();
+  codeChecks.reset();
   open.value = true;
   emit("start");
   await nextTick();
@@ -58,8 +91,7 @@ const reset = () => {
   open.value = false;
   email.value = "";
   password.value = "";
-  emailError.value = "";
-  passwordError.value = "";
+  changeChecks.reset();
   changeError.value = "";
 };
 
@@ -73,27 +105,16 @@ const cancel = () => {
   if (!isChanging.value) return close();
 };
 
-const addressError = (address: string) => {
-  if (!isValidEmail(address)) return "Enter a valid e-mail address.";
-  if (address.toLowerCase() === userEmail.value.toLowerCase()) {
-    return "That's already your e-mail address.";
-  }
-  return "";
-};
-
 const save = async () => {
   if (isWaiting.value) return;
-  const address = email.value.trim();
-  emailError.value = addressError(address);
-  passwordError.value = password.value ? "" : "Enter your current password.";
-  if (emailError.value) return focusField(emailField.value);
-  if (passwordError.value) return focusField(passwordField.value);
-  if (await change(address, password.value)) {
+  if (!(await changeChecks.validate(form.value))) return;
+  if (await change(email.value.trim(), password.value)) {
     if (!pendingEmail.value) return close();
     // A code is on its way, so its field is what comes next.
     reset();
     code.value = "";
     codeError.value = "";
+    codeChecks.reset();
     await nextTick();
     return focusField(codeField.value);
   }
@@ -101,11 +122,12 @@ const save = async () => {
 };
 
 const confirmCode = async () => {
-  const digits = code.value.replace(/\s/g, "");
-  codeError.value = /^\d{6}$/.test(digits) ? "" : "Enter the 6-digit code from the e-mail.";
-  if (codeError.value) return focusField(codeField.value);
+  if (!(await codeChecks.validate(codeForm.value))) return;
   emit("start");
-  if (await confirm(digits)) code.value = "";
+  if (await confirm(code.value.replace(/\s/g, ""))) {
+    code.value = "";
+    codeChecks.reset();
+  }
   await nextTick();
   // Confirmed, dropped or expired: the code step is gone, and its key is left.
   if (!pendingEmail.value) return key.value?.$el.focus();
@@ -142,14 +164,15 @@ const confirmCode = async () => {
       autocomplete="one-time-code"
       hint="The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail."
       :describedby="pendingId"
-      :error="codeError"
+      :error="codeErrors.code || codeError"
       mono
       required
       @update:model-value="codeError = ''"
+      @blur="leaveCode('code')"
     />
     <StatusMessage v-if="confirmError" tone="error">{{ confirmError }}</StatusMessage>
     <div class="change__actions">
-      <BaseButton type="submit" size="sm" :loading="isConfirming">
+      <BaseButton type="submit" size="sm" :loading="isConfirming" :blocked="!isCodeValid">
         {{ isConfirming ? "Confirming" : "Confirm code" }}
       </BaseButton>
       <BaseButton ref="key" size="sm" variant="secondary" :disabled="isConfirming" @click="start">
@@ -177,9 +200,9 @@ const confirmCode = async () => {
       type="email"
       autocomplete="email"
       :hint="pendingEmail ? 'A new code replaces the one already sent.' : undefined"
-      :error="emailError"
+      :error="changeErrors.email"
       required
-      @update:model-value="emailError = ''"
+      @blur="leaveChange('email')"
     />
     <BaseInput
       ref="passwordField"
@@ -187,13 +210,19 @@ const confirmCode = async () => {
       label="Current password"
       type="password"
       autocomplete="current-password"
-      :error="passwordError"
+      :error="changeErrors.password"
       required
-      @update:model-value="passwordError = ''"
+      @blur="leaveChange('password')"
     />
     <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
     <div class="change__actions">
-      <BaseButton type="submit" size="sm" :loading="isChanging" :disabled="isWaiting">
+      <BaseButton
+        type="submit"
+        size="sm"
+        :loading="isChanging"
+        :disabled="isWaiting"
+        :blocked="!isChangeValid"
+      >
         {{ isChanging ? "Sending" : isWaiting ? `Send code in ${waitSeconds} s` : "Send code" }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /** Deletes the account once the user confirms with their password, or their username if it has none. */
-import { computed, nextTick, ref, useId, useTemplateRef, watch } from "vue";
+import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { useRouter } from "vue-router";
 import { hasPassword, username } from "@/scripts/authentication/authState";
 import { clearSession } from "@/scripts/authentication/user";
 import { useAccountDelete } from "@/composables/useAccountDelete";
+import { useFormValidation } from "@/composables/useFormValidation";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -20,14 +21,22 @@ const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
 
+/** The password typed, or the username matched exactly; until then the key looks disabled. */
+const { errors, isValid, leave, validate, reset } = useFormValidation({
+  confirmation: {
+    value: confirmation,
+    check: () => {
+      if (hasPassword.value) return confirmation.value ? "" : "Enter your password.";
+      return confirmation.value === username.value ? "" : `That doesn't match “${username.value}”.`;
+    }
+  }
+});
+
 watch(hasPassword, () => {
   confirmation.value = "";
   deleteError.value = "";
+  reset();
 });
-
-const ready = computed(() =>
-  hasPassword.value ? confirmation.value !== "" : confirmation.value === username.value
-);
 
 const focusField = () => field.value?.$el.querySelector("input").focus();
 
@@ -42,12 +51,13 @@ const cancel = async () => {
   confirming.value = false;
   confirmation.value = "";
   deleteError.value = "";
+  reset();
   await nextTick();
   opener.value!.$el.focus();
 };
 
 const submit = async () => {
-  if (!ready.value) return;
+  if (!(await validate(form.value))) return;
   if (!(await deleteAccount(confirmation.value))) {
     if (!form.value?.contains(document.activeElement)) focusField();
     return;
@@ -80,7 +90,9 @@ const submit = async () => {
         type="password"
         autocomplete="current-password"
         :describedby="deleteError ? errorId : undefined"
+        :error="errors.confirmation"
         required
+        @blur="leave('confirmation')"
       />
       <BaseInput
         v-else
@@ -92,11 +104,19 @@ const submit = async () => {
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
+        :error="errors.confirmation"
         required
+        @blur="leave('confirmation')"
       />
       <StatusMessage v-if="deleteError" :id="errorId" tone="error">{{ deleteError }}</StatusMessage>
       <div class="confirm__actions">
-        <BaseButton type="submit" size="sm" :error="ready" :disabled="!ready" :loading="isDeleting">
+        <BaseButton
+          type="submit"
+          size="sm"
+          :error="isValid"
+          :blocked="!isValid"
+          :loading="isDeleting"
+        >
           {{ isDeleting ? "Deleting" : "Delete account" }}
         </BaseButton>
         <BaseButton size="sm" variant="ghost" :disabled="isDeleting" @click="cancel">

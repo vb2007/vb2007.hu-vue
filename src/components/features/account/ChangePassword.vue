@@ -3,7 +3,14 @@
 import { nextTick, ref, useTemplateRef } from "vue";
 import { useChangePassword } from "@/composables/useChangePassword";
 import { userEmail } from "@/scripts/authentication/authState";
-import { passwordLengthError } from "@/scripts/authentication/register";
+import {
+  passwordEarlyError,
+  passwordError,
+  passwordMatchEarlyError,
+  passwordMatchError,
+  requiredError
+} from "@/scripts/authentication/register";
+import { useFormValidation } from "@/composables/useFormValidation";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -16,9 +23,22 @@ const open = ref(false);
 const currentPassword = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
-const currentError = ref("");
-const newError = ref("");
-const confirmError = ref("");
+const { errors, isValid, leave, validate, reset } = useFormValidation({
+  current: {
+    value: currentPassword,
+    check: () => requiredError(currentPassword.value, "Enter your current password.")
+  },
+  new: {
+    value: newPassword,
+    check: () => passwordError(newPassword.value),
+    early: () => passwordEarlyError(newPassword.value)
+  },
+  confirm: {
+    value: confirmPassword,
+    check: () => passwordMatchError(newPassword.value, confirmPassword.value),
+    early: () => passwordMatchEarlyError(newPassword.value, confirmPassword.value)
+  }
+});
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
 const saveKey = useTemplateRef("saveKey");
@@ -36,7 +56,7 @@ const start = async () => {
 const close = async () => {
   open.value = false;
   currentPassword.value = newPassword.value = confirmPassword.value = "";
-  currentError.value = newError.value = confirmError.value = "";
+  reset();
   changeError.value = "";
   await nextTick();
   key.value?.$el.focus();
@@ -47,13 +67,7 @@ const cancel = () => {
 };
 
 const save = async () => {
-  currentError.value = currentPassword.value ? "" : "Enter your current password.";
-  newError.value = passwordLengthError(newPassword.value) ?? "";
-  confirmError.value =
-    newPassword.value === confirmPassword.value ? "" : "The two passwords don't match.";
-
-  const firstInvalid = [currentError, newError, confirmError].findIndex((error) => error.value);
-  if (firstInvalid !== -1) return fields()[firstInvalid].focus();
+  if (!(await validate(form.value))) return;
 
   if (await change(currentPassword.value, newPassword.value)) return close();
 
@@ -83,9 +97,9 @@ const save = async () => {
       label="Current password"
       type="password"
       autocomplete="current-password"
-      :error="currentError"
+      :error="errors.current"
       required
-      @update:model-value="currentError = ''"
+      @blur="leave('current')"
     />
     <BaseInput
       v-model="newPassword"
@@ -93,22 +107,22 @@ const save = async () => {
       type="password"
       autocomplete="new-password"
       hint="8 to 128 characters."
-      :error="newError"
+      :error="errors.new"
       required
-      @update:model-value="newError = ''"
+      @blur="leave('new')"
     />
     <BaseInput
       v-model="confirmPassword"
       label="Confirm new password"
       type="password"
       autocomplete="new-password"
-      :error="confirmError"
+      :error="errors.confirm"
       required
-      @update:model-value="confirmError = ''"
+      @blur="leave('confirm')"
     />
     <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
     <div class="change__actions">
-      <BaseButton ref="saveKey" type="submit" size="sm" :loading="isChanging">
+      <BaseButton ref="saveKey" type="submit" size="sm" :loading="isChanging" :blocked="!isValid">
         {{ isChanging ? "Saving" : "Save password" }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">

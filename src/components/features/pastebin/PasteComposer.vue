@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { PASTE_LANGUAGES, languageLabel } from "@/scripts/pastebin/languages";
-import { PASTE_MAX_LENGTH, pasteLink, type Paste } from "@/scripts/pastebin/paste";
+import { PASTE_MAX_LENGTH, pasteLink, validatePaste, type Paste } from "@/scripts/pastebin/paste";
 import { displayLink } from "@/scripts/utility/text";
+import { useFormValidation } from "@/composables/useFormValidation";
 import { AUTO_LANGUAGE, useNewPaste } from "@/composables/useNewPaste";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseSelect from "@/components/ui/BaseSelect.vue";
@@ -27,14 +28,37 @@ const languageOptions = computed(() => [
   ...PASTE_LANGUAGES.map(({ id, label }) => ({ value: id, label }))
 ]);
 
+const form = useTemplateRef("form");
+const {
+  errors,
+  isValid,
+  leave,
+  validate,
+  reset: resetChecks
+} = useFormValidation({
+  content: {
+    value: content,
+    check: () => validatePaste(content.value),
+    early: () => (content.value.length > PASTE_MAX_LENGTH ? validatePaste(content.value) : "")
+  }
+});
+
+const submit = async () => {
+  if (await validate(form.value)) await create();
+};
+
 watch(createdPaste, (paste) => {
-  if (paste) emit("created", paste);
+  if (paste) {
+    // The sent text is gone from the field; that's not a problem to show.
+    resetChecks();
+    emit("created", paste);
+  }
 });
 </script>
 
 <template>
   <StationBoard title="Paste" :as="as">
-    <form v-if="isLoggedIn" class="form" novalidate @submit.prevent="create">
+    <form v-if="isLoggedIn" ref="form" class="form" novalidate @submit.prevent="submit">
       <BaseTextarea
         v-model="content"
         label="Text"
@@ -43,10 +67,11 @@ watch(createdPaste, (paste) => {
         mono
         required
         :max-count="PASTE_MAX_LENGTH"
-        :error="errorMessage"
+        :error="errors.content || errorMessage"
+        @blur="leave('content')"
       />
       <BaseSelect v-model="language" label="Language" :options="languageOptions" />
-      <BaseButton type="submit" block :loading="isLoading">
+      <BaseButton type="submit" block :loading="isLoading" :blocked="!isValid">
         {{ isLoading ? "Creating" : "Create paste" }}
       </BaseButton>
     </form>

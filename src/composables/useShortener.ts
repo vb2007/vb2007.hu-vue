@@ -3,6 +3,8 @@ import { validateUrl } from "@/scripts/utility/text";
 import { UrlShortening } from "@/constants/api";
 import { errorFrom } from "@/scripts/pastebin/paste";
 
+export const INVALID_URL = "Invalid URL / URI format.";
+
 export const shortLink = (code: string) => `${window.location.origin}/r/${code}`;
 
 /** State and request logic for shortening a URL. Shared by Home and Shorten. */
@@ -17,7 +19,7 @@ export const useShortener = () => {
 
   const shorten = async () => {
     if (!validateUrl(originalUrl.value)) {
-      errorMessage.value = "Invalid URL / URI format.";
+      errorMessage.value = INVALID_URL;
       return;
     }
 

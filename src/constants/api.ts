@@ -13,6 +13,8 @@ export class UserManagement {
     static registerVerify: string = `${API_BASE_URL}/auth/register/verify`;
     /** `POST` to send the registration code again (vb2007/vb2007.hu-api#30). */
     static registerResend: string = `${API_BASE_URL}/auth/register/resend`;
+    /** `GET ?username=` says whether a username is free (vb2007/vb2007.hu-api#233). */
+    static usernameAvailable: string = `${API_BASE_URL}/auth/username-available`;
     /** `POST` to e-mail a password reset code (vb2007/vb2007.hu-api#163). */
     static passwordReset: string = `${API_BASE_URL}/auth/password-reset`;
     /** `POST` the code with the new password (vb2007/vb2007.hu-api#163). */
