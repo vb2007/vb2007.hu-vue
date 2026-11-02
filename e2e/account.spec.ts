@@ -221,8 +221,9 @@ test("a waiting change survives a reload, and a new code is one password away", 
 
 test("asking for a new code too soon counts down the API's wait", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
-  // The last code went 57 seconds ago, so the API wants 3 more.
-  api.hasPendingEmail("new@example.com", { sentSecondsAgo: 57 });
+  // The last code went 52 seconds ago, so the API wants up to 8 more. The mock counts in real time,
+  // so this leaves room for a slow page load on a busy runner host before "Send code" is clicked.
+  api.hasPendingEmail("new@example.com", { sentSecondsAgo: 52 });
   await page.goto("/account");
 
   await page.getByRole("button", { name: "Change e-mail" }).click();
@@ -235,7 +236,7 @@ test("asking for a new code too soon counts down the API's wait", async ({ page,
   await expect(page.getByRole("button", { name: /^Send code in \d s$/ })).toBeDisabled();
 
   await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled({
-    timeout: 5000
+    timeout: 12_000
   });
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "Send code", exact: true }).click();

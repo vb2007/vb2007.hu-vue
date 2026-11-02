@@ -9,7 +9,11 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("a new short link lives on the site and leads to its target", async ({ page, api }) => {
+test("a new short link lives on the site and leads to its target", async ({
+  page,
+  api,
+  baseURL
+}) => {
   api.loggedInAs();
   api.shortenReturns("abc123");
   await page.goto("/shorten");
@@ -17,8 +21,10 @@ test("a new short link lives on the site and leads to its target", async ({ page
   await page.getByLabel("URL").fill(TARGET);
   await page.getByRole("button", { name: "Shorten", exact: true }).click();
 
-  const shortLink = page.getByRole("link", { name: "localhost:4173/r/abc123" });
-  await expect(shortLink).toHaveAttribute("href", "http://localhost:4173/r/abc123");
+  // CI serves on a port of its own (E2E_PORT), so the link is built from the base URL.
+  const link = `${baseURL}/r/abc123`;
+  const shortLink = page.getByRole("link", { name: link.replace(/^https?:\/\//, "") });
+  await expect(shortLink).toHaveAttribute("href", link);
 
   await page.goto("/r/abc123");
   await expect(page).toHaveURL(TARGET);
