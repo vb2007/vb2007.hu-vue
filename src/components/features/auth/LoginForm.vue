@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, computed, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
+import { LoginStatus } from "@/constants/auth";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { emailShapeError, requiredError } from "@/scripts/authentication/register";
@@ -51,9 +53,9 @@ const handleSubmit = async () => {
 };
 
 const failure = computed(() => {
-  if (!loginStatus.value || loginStatus.value === "success") return "";
-  if (loginStatus.value === "unknown-error") {
-    return "An unknown error occurred. Please try again later.";
+  if (!loginStatus.value || loginStatus.value === LoginStatus.Success) return "";
+  if (loginStatus.value === LoginStatus.UnknownError) {
+    return Messages.Auth.loginUnknownError;
   }
   return loginStatus.value;
 });

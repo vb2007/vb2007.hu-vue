@@ -8,21 +8,15 @@ import { apiUrl } from "@/scripts/api/client";
 const legacy = (path: string) => `${API_BASE_URL}${path}`;
 
 export class UserManagement {
+  /** Only the GitHub links and unlinking are left, which move with the account calls (#102). */
   static Authentication = class {
-    static register: string = legacy(Endpoints.Auth.register.path);
-    static login: string = legacy(Endpoints.Auth.login.path);
-    static logout: string = legacy(Endpoints.Auth.logout.path);
     static github: string = legacy(Endpoints.Auth.github.path);
     static githubLink: string = legacy(Endpoints.Auth.githubLink.path);
-    static registerVerify: string = legacy(Endpoints.Auth.registerVerify.path);
-    static registerResend: string = legacy(Endpoints.Auth.registerResend.path);
-    static usernameAvailable: string = legacy(Endpoints.Auth.usernameAvailable.path);
-    static passwordReset: string = legacy(Endpoints.Auth.passwordReset.path);
-    static passwordResetConfirm: string = legacy(Endpoints.Auth.passwordResetConfirm.path);
   };
 
   static Actions = class {
-    static user: string = legacy(Endpoints.User.get.path);
+    /** Only deleting the account still uses it (#102). */
+    static user: string = legacy(Endpoints.User.remove.path);
     static userEmail: string = legacy(Endpoints.User.changeEmail.path);
     static userPassword: string = legacy(Endpoints.User.changePassword.path);
     static userEmailConfirm: string = legacy(Endpoints.User.confirmEmail.path);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRouter } from "vue-router";
+import { Limits } from "@/constants/limits";
 import { useCountdown } from "@/composables/useCountdown";
 import { confirmPasswordReset, requestPasswordReset } from "@/scripts/authentication/passwordReset";
 import {
@@ -18,7 +19,7 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 /** The API allows one code a minute per address. */
-const RESEND_SECONDS = 60;
+const RESEND_SECONDS = Limits.Code.cooldownSeconds;
 /**
  * The API answers a resend like the first code, but sends nothing within a minute of the last one,
  * which another tab or a lost countdown can't rule out.

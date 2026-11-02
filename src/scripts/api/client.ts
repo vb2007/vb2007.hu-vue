@@ -52,7 +52,15 @@ export interface ApiNetworkFailure {
   error: string;
 }
 
-export type ApiFailure = ApiHttpFailure | ApiNetworkFailure;
+/** The caller aborted it through its `signal`: nothing is logged, nobody waits for it. */
+export interface ApiAbortedFailure {
+  ok: false;
+  kind: "aborted";
+  status: 0;
+  error: string;
+}
+
+export type ApiFailure = ApiHttpFailure | ApiNetworkFailure | ApiAbortedFailure;
 export type ApiResult<Data> = ApiSuccess<Data> | ApiFailure;
 
 /** `options` can be left out when the endpoint needs neither params nor a query. */
@@ -98,6 +106,15 @@ export const errorMessageFrom = (
 };
 
 /**
+ * The API's own `{ error }` message, or undefined when it sent none: for a caller with its own
+ * fallback text rather than `failure` with the status.
+ */
+export const apiErrorOf = (failure: ApiFailure): string | undefined => {
+  const error: unknown = failure.kind === "http" ? failure.body?.error : undefined;
+  return typeof error === "string" && error !== "" ? error : undefined;
+};
+
+/**
  * `errorMessageFrom` for a raw `Response`.
  * @deprecated Only for calls not yet moved to `apiRequest`; removed with #104.
  */
@@ -106,7 +123,7 @@ export const errorFrom = async (response: Response, failure: string) =>
 
 /**
  * Calls an endpoint. Never throws: a failure comes back as `{ ok: false }` with the message to
- * show, and is logged once here.
+ * show, and is logged once here. A request aborted through its `signal` isn't logged.
  */
 export const apiRequest = async <E extends Endpoint>(
   endpoint: E,
@@ -127,10 +144,20 @@ export const apiRequest = async <E extends Endpoint>(
     init.signal = options.signal;
   }
 
+  const aborted: ApiAbortedFailure = {
+    ok: false,
+    kind: "aborted",
+    status: 0,
+    error: Messages.requestAborted
+  };
+
   let response: Response;
   try {
     response = await fetch(apiUrl(endpoint, options as UrlOptions<E>), init);
   } catch (error) {
+    if (options.signal?.aborted) {
+      return aborted;
+    }
     console.error(`${options.failure}: `, error);
     return { ok: false, kind: "network", status: 0, error: Messages.connectionError };
   }
@@ -138,6 +165,10 @@ export const apiRequest = async <E extends Endpoint>(
   const body = await readJson(response);
   if (response.ok && body !== null) {
     return { ok: true, status: response.status, data: body as ResponseOf<E> };
+  }
+  // Aborted while the body was read, which leaves it unread.
+  if (options.signal?.aborted) {
+    return aborted;
   }
 
   console.error(`${options.failure}: `, response.status);
