@@ -204,8 +204,8 @@ describe("ChangeEmail", () => {
     await openForm();
     await fill("taken@example.com", "secret-password");
 
+    // The click submits the form, as in the browser.
     await button("Send code").trigger("click");
-    await wrapper.find("form").trigger("submit");
     // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
     (document.activeElement as HTMLElement).blur();
     answer(jsonResponse(409, { error: "An account with this E-mail address already exists." }));
@@ -448,8 +448,8 @@ describe("ChangeEmail", () => {
       fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
       await codeInput().setValue("000000");
 
+      // The click submits the form, as in the browser.
       await button("Confirm code").trigger("click");
-      await wrapper.find("form").trigger("submit");
       // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
       (document.activeElement as HTMLElement).blur();
       answer(jsonResponse(429, { error: "Too many failed attempts: try again later." }));
@@ -485,7 +485,10 @@ describe("ChangeEmail", () => {
     it("doesn't trip over focus when it's gone before the code is checked", async () => {
       await remount();
       let answer!: (response: Response) => void;
-      fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+      fetchMock
+        .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
+        // A 400 may mean the change expired, so the user is looked up again.
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await codeInput().setValue("000000");
       await wrapper.find("form").trigger("submit");
 

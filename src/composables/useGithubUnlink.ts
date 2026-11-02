@@ -1,7 +1,8 @@
 import { ref } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
 import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
-import { errorFrom } from "@/scripts/api/client";
 
 /** Unlinks the logged-in user's GitHub account (vb2007/vb2007.hu-api#134). */
 export const useGithubUnlink = () => {
@@ -10,33 +11,22 @@ export const useGithubUnlink = () => {
 
   /** Returns whether it worked. */
   const unlink = async () => {
-    let unlinked = false;
+    isUnlinking.value = true;
+    unlinkError.value = "";
 
-    try {
-      isUnlinking.value = true;
-      unlinkError.value = "";
+    const result = await apiRequest(Endpoints.Auth.githubUnlink, {
+      failure: Messages.Account.githubUnlinkFailed
+    });
 
-      const response = await fetch(UserManagement.Authentication.githubLink, {
-        method: "DELETE",
-        credentials: "include"
-      });
-
-      if (response.ok) {
-        githubLinked.value = false;
-        githubLogin.value = "";
-        unlinked = true;
-      } else {
-        unlinkError.value = await errorFrom(response, "Failed to unlink GitHub");
-        console.error("Failed to unlink GitHub: ", response.status);
-      }
-    } catch (error) {
-      unlinkError.value = "Error connecting to server";
-      console.error("Error unlinking GitHub: ", error);
-    } finally {
-      isUnlinking.value = false;
+    if (result.ok) {
+      githubLinked.value = false;
+      githubLogin.value = "";
+    } else {
+      unlinkError.value = result.error;
     }
+    isUnlinking.value = false;
 
-    return unlinked;
+    return result.ok;
   };
 
   return { isUnlinking, unlinkError, unlink };

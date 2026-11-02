@@ -1,16 +1,19 @@
 <script setup lang="ts">
 /** The way into GitHub login: an "or" rule under the password form, then a key to the API. */
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { apiUrl } from "@/scripts/api/client";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 
 defineProps<{ label: string }>();
+
+const githubLogin = apiUrl(Endpoints.Auth.github);
 </script>
 
 <template>
   <div class="github">
     <p class="github__or">or</p>
-    <BaseButton :href="UserManagement.Authentication.github" variant="secondary" block>
+    <BaseButton :href="githubLogin" variant="secondary" block>
       <AppIcon name="github" :size="20" />
       {{ label }}
     </BaseButton>
