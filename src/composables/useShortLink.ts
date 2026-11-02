@@ -1,6 +1,10 @@
 import { ref } from "vue";
-import { UrlShortening } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest, apiUrl } from "@/scripts/api/client";
 import { isSafeRedirect } from "@/scripts/utility/text";
+import type { ApiErrorBody } from "@/types/api/common";
+import type { ShortUrlLookupResponse } from "@/types/api/shortener";
 
 export type ShortLinkState =
   | "resolving"
@@ -16,12 +20,8 @@ export type ShortLinkDetails = {
   addedOn?: string;
 };
 
-type LookupResponse = {
-  originalUrl?: string;
-  addedBy?: { username?: string } | null;
-  addedOn?: string;
-  error?: string;
-};
+/** Whatever JSON the lookup answered, success or not. */
+type LookupJson = (Partial<ShortUrlLookupResponse> & ApiErrorBody) | null;
 
 /**
  * Resolves a short code through the API, then sends the browser on to its target,
@@ -35,7 +35,7 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
   const errorMessage = ref("");
 
   const resolve = async (code: string, preview = false) => {
-    const apiRedirect = UrlShortening.redirect + encodeURIComponent(code);
+    const params = { shortenedUrl: code };
     state.value = "resolving";
     target.value = "";
     details.value = {};
@@ -51,39 +51,37 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
       }
     };
 
-    try {
-      const response = await fetch(
-        UrlShortening.lookup.replace(":shortenedUrl", encodeURIComponent(code)),
-        { method: "GET" }
-      );
+    const result = await apiRequest(Endpoints.ShortUrl.lookup, {
+      params,
+      failure: Messages.ShortUrl.lookupFailed
+    });
 
-      let data: LookupResponse | undefined;
-      try {
-        data = await response.json();
-      } catch {
-        // Not JSON: an API without the lookup endpoint yet. Its own redirect still works.
-      }
-
-      if (response.ok && data?.originalUrl) {
-        details.value = {
-          addedBy: data.addedBy?.username || undefined,
-          addedOn: data.addedOn || undefined
-        };
-        if (!isSafeRedirect(data.originalUrl)) {
-          state.value = "unsafe";
-          return;
-        }
-        go(data.originalUrl);
-      } else if (data?.error) {
-        state.value = "not-found";
-        errorMessage.value = data.error;
-      } else {
-        go(apiRedirect);
-      }
-    } catch (error) {
+    // No answer (the lookup is never aborted: it passes no signal).
+    if (!result.ok && result.kind !== "http") {
       state.value = "error";
-      errorMessage.value = "Error connecting to server";
-      console.error("Error resolving short link: ", error);
+      errorMessage.value = result.error;
+      return;
+    }
+
+    // `body` is null when the answer wasn't JSON, even with a success status.
+    const json: LookupJson = result.ok ? result.data : result.body;
+
+    if (result.ok && json?.originalUrl) {
+      details.value = {
+        addedBy: json.addedBy?.username || undefined,
+        addedOn: json.addedOn || undefined
+      };
+      if (!isSafeRedirect(json.originalUrl)) {
+        state.value = "unsafe";
+        return;
+      }
+      go(json.originalUrl);
+    } else if (json?.error) {
+      state.value = "not-found";
+      errorMessage.value = json.error;
+    } else {
+      // Not JSON, or no target: an API without the lookup endpoint yet. Its own redirect still works.
+      go(apiUrl(Endpoints.ShortUrl.redirect, { params }));
     }
   };
 

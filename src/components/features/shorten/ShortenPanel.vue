@@ -2,7 +2,8 @@
 import { useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { INVALID_URL, useShortener } from "@/composables/useShortener";
+import { useShortener } from "@/composables/useShortener";
+import { Messages } from "@/constants/messages";
 import { displayLink, validateUrl } from "@/scripts/utility/text";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -23,7 +24,10 @@ const {
   validate,
   reset: resetChecks
 } = useFormValidation({
-  url: { value: originalUrl, check: () => (validateUrl(originalUrl.value) ? "" : INVALID_URL) }
+  url: {
+    value: originalUrl,
+    check: () => (validateUrl(originalUrl.value) ? "" : Messages.ShortUrl.invalidUrl)
+  }
 });
 
 const submit = async () => {

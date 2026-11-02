@@ -62,7 +62,7 @@ The site talks to [vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api) at `V
 - `src/scripts/api/client.ts`: `apiRequest(Endpoints.Pastebin.get, { params: { id }, failure })` never throws. It returns `{ ok: true, data }` or `{ ok: false, status, error }`, with the error ready to show. It logs a failure once, except a request its caller aborted through `signal` (e.g. a username check that newer typing replaced), which comes back as `{ ok: false, kind: "aborted" }`. `apiErrorOf` gives the API's own message when a caller has its own fallback. `apiUrl` builds hrefs for browser navigations.
 - `src/constants/messages.ts`, `limits.ts` and `http.ts`: the site's own texts, the API limits checked before sending, and the HTTP methods and statuses. `oauth.ts` holds the GitHub redirects' `?oauthError=` codes (mirroring the API's `Responses.GithubOauth`), and `auth.ts` the login and register status values.
 
-Calls still being moved over (#101 to #104) use `fetch` with the derived URLs in `src/constants/api.ts`, which goes away after that.
+Nothing else may call the API: ESLint rejects `fetch` and `XMLHttpRequest` outside `src/scripts/api/`, apart from the upload, which needs XHR's progress events (`src/scripts/uploads/upload.ts`, still built from `apiUrl` and `errorMessageFrom`).
 
 ## Docker
 

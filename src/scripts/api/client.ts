@@ -9,12 +9,10 @@ type ParamsOption<E> = keyof ParamsOf<E> extends never
   ? { params?: undefined }
   : { params: ParamsOf<E> };
 
-/** `query` is required when the endpoint declares one, optional on untyped endpoints. */
+/** `query` is required exactly when the endpoint declares one. */
 type QueryOption<E> = keyof QueryOf<E> extends never
   ? { query?: undefined }
-  : string extends keyof QueryOf<E>
-    ? { query?: QueryOf<E> }
-    : { query: QueryOf<E> };
+  : { query: QueryOf<E> };
 
 /** `body` is required when the endpoint declares one. */
 type BodyOption<E> = undefined extends BodyOf<E> ? { body?: BodyOf<E> } : { body: BodyOf<E> };
@@ -115,13 +113,6 @@ export const apiErrorOf = (failure: ApiFailure): string | undefined => {
   const error: unknown = failure.kind === "http" ? failure.body?.error : undefined;
   return typeof error === "string" && error !== "" ? error : undefined;
 };
-
-/**
- * `errorMessageFrom` for a raw `Response`.
- * @deprecated Only for calls not yet moved to `apiRequest`; removed with #104.
- */
-export const errorFrom = async (response: Response, failure: string) =>
-  errorMessageFrom(await readJson(response), response.status, response.statusText, failure);
 
 /**
  * Calls an endpoint. Never throws: a failure comes back as `{ ok: false }` with the message to

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { UrlShortening } from "@/constants/api";
 import { API_BASE_URL, Endpoints } from "@/constants/endpoints";
 
 describe("Endpoints", () => {
@@ -48,12 +47,5 @@ describe("Endpoints", () => {
 
   it("logs out without following the API's redirect", () => {
     expect(Endpoints.Auth.logout.redirect).toBe("manual");
-  });
-});
-
-describe("legacy URLs", () => {
-  it("derives the not yet migrated URLs from Endpoints", () => {
-    expect(UrlShortening.redirect).toBe("https://api.test/r/");
-    expect(UrlShortening.lookup).toBe("https://api.test/shortenUrl/:shortenedUrl");
   });
 });

@@ -7,7 +7,6 @@ import {
   apiErrorOf,
   apiRequest,
   apiUrl,
-  errorFrom,
   errorMessageFrom,
   readJson,
   type ApiFailure
@@ -114,15 +113,6 @@ describe("apiErrorOf", () => {
     expect(
       apiErrorOf({ ok: false, kind: "network", status: 0, error: Messages.connectionError })
     ).toBeUndefined();
-  });
-});
-
-describe("errorFrom", () => {
-  it("reads the message from a response", async () => {
-    expect(await errorFrom(jsonResponse(404, { error: "No such paste." }), failure)).toBe(
-      "No such paste."
-    );
-    expect(await errorFrom(jsonResponse(500), failure)).toBe(`${failure}: 500`);
   });
 });
 

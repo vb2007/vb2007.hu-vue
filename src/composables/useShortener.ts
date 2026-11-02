@@ -1,9 +1,8 @@
 import { ref } from "vue";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
 import { validateUrl } from "@/scripts/utility/text";
-import { UrlShortening } from "@/constants/api";
-import { errorFrom } from "@/scripts/api/client";
-
-export const INVALID_URL = "Invalid URL / URI format.";
 
 export const shortLink = (code: string) => `${window.location.origin}/r/${code}`;
 
@@ -19,39 +18,25 @@ export const useShortener = () => {
 
   const shorten = async () => {
     if (!validateUrl(originalUrl.value)) {
-      errorMessage.value = INVALID_URL;
+      errorMessage.value = Messages.ShortUrl.invalidUrl;
       return;
     }
 
-    try {
-      isLoading.value = true;
-      errorMessage.value = "";
+    isLoading.value = true;
+    errorMessage.value = "";
 
-      const response = await fetch(UrlShortening.shortenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          url: originalUrl.value
-        }),
-        credentials: "include"
-      });
+    const result = await apiRequest(Endpoints.ShortUrl.create, {
+      body: { url: originalUrl.value },
+      failure: Messages.ShortUrl.shortenFailed
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        shortenedCode.value = data.data.shortenedUrl;
-        originalUrl.value = "";
-      } else {
-        errorMessage.value = await errorFrom(response, "Failed to shorten URL");
-        console.error("Failed to shorten url: ", response.status);
-      }
-    } catch (error) {
-      errorMessage.value = "Error connecting to server";
-      console.error("Error shortening url: ", error);
-    } finally {
-      isLoading.value = false;
+    if (result.ok) {
+      shortenedCode.value = result.data.data.shortenedUrl;
+      originalUrl.value = "";
+    } else {
+      errorMessage.value = result.error;
     }
+    isLoading.value = false;
   };
 
   const reset = () => {

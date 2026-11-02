@@ -1,5 +1,5 @@
 import { HttpMethod } from "@/constants/http";
-import { defineEndpoint, type QueryValues } from "@/scripts/api/endpoint";
+import { defineEndpoint } from "@/scripts/api/endpoint";
 import type {
   AdminUserListQuery,
   AdminUsersResponse,
@@ -26,6 +26,11 @@ import type {
   UpdatePasteBody
 } from "@/types/api/pastebin";
 import type {
+  ShortenUrlBody,
+  ShortenUrlResponse,
+  ShortUrlLookupResponse
+} from "@/types/api/shortener";
+import type {
   UpdateUploadBody,
   UploadDeletedResponse,
   UploadFileFields,
@@ -45,12 +50,6 @@ import type {
 
 /** Baked in at build time; tests pin it to `https://api.test`. */
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
-
-/**
- * Not typed yet: the groups whose calls still use `fetch` directly get their body and response
- * types when they move to `apiRequest` (#101 to #104).
- */
-const untyped = defineEndpoint<unknown, unknown, QueryValues>;
 
 /**
  * Every API route the site calls, grouped like the API's routers, one entry per method and path.
@@ -170,20 +169,23 @@ export class Endpoints {
   };
 
   static readonly ShortUrl = class {
-    /** The API's own redirect, still the fallback of the site's /r/:code page. */
-    static readonly redirect = untyped()({
+    /**
+     * The API's own redirect, still the fallback of the site's /r/:code page: a browser
+     * navigation (`apiUrl`), not a fetch call.
+     */
+    static readonly redirect = defineEndpoint()({
       method: HttpMethod.Get,
       path: "/r/:shortenedUrl",
       credentials: false
     });
     /** Resolves a short code to its target as JSON (vb2007/vb2007.hu-api#75). */
-    static readonly lookup = untyped()({
+    static readonly lookup = defineEndpoint<undefined, ShortUrlLookupResponse>()({
       method: HttpMethod.Get,
       path: "/shortenUrl/:shortenedUrl",
       credentials: false
     });
     // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
-    static readonly create = untyped()({
+    static readonly create = defineEndpoint<ShortenUrlBody, ShortenUrlResponse>()({
       method: HttpMethod.Post,
       path: "/shortenUrl/create",
       credentials: true
