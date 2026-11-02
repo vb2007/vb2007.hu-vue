@@ -28,6 +28,32 @@ These rules apply to every change, however small.
 
 Recent PRs (#31, #32, #35, #37) are good references for the schema.
 
+# API calls & constants (mandatory)
+
+Calling the API is generalised: write no boilerplate around it, and no raw value that already has a constant. `README.md` ("Calling the API") describes the pieces.
+
+## Where things live
+
+| What                                                                                                                         | Where                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Endpoints: method, path (as the API's Express route, `"/paste/:id"`), whether it sends the session cookie, the redirect mode | `Endpoints` in `src/constants/endpoints.ts`, one `defineEndpoint<Body, Response, Query>()` entry per method and path     |
+| Request bodies, queries and responses                                                                                        | `src/types/api/<domain>.ts`; shared shapes (`MessageResponse`, `ApiErrorBody`, `Pagination`, `SortOrder`) in `common.ts` |
+| Texts about API calls: `failure` fallbacks, client-side validation messages, notices                                         | `Messages` in `src/constants/messages.ts`, grouped by domain; texts that take values are static methods                  |
+| Limits the API enforces and the site checks before sending (lengths, sizes, cooldowns)                                       | `Limits` in `src/constants/limits.ts`, mirroring the API's values                                                        |
+| HTTP methods, statuses, headers and content types                                                                            | `src/constants/http.ts`                                                                                                  |
+| OAuth `?oauthError=` codes, login and register status values                                                                 | `src/constants/oauth.ts`, `src/constants/auth.ts`                                                                        |
+
+These mirror `vb2007.hu-api`'s `src/constants/` (e.g. `Responses`). When the API adds or changes a route, limit or error code, update the matching entry here instead of patching the call site.
+
+## Rules
+
+- **Every request goes through `apiRequest`** from `@/scripts/api/client`, and every browser navigation or href to the API through `apiUrl`. ESLint rejects `fetch` and `XMLHttpRequest` elsewhere. The only exception is the upload's XHR (`src/scripts/uploads/upload.ts`, for progress events), which still builds its URL with `apiUrl` and its error with `errorMessageFrom`.
+- **Add a new call in this order:** types in `src/types/api/`, then the `Endpoints` entry, then the `Messages` failure text, then the call site. Don't build URLs by hand, use `.replace(":id", …)`, set `credentials`, headers or `JSON.stringify`, or parse error bodies: the endpoint and the client do that.
+- **Handle the result, don't re-implement it.** `apiRequest` never throws, logs failures itself, and returns `ApiResult`. Branch on `result.ok`, then on `result.kind` (`http` / `network` / `aborted`) and `result.status` compared with `HttpStatus.*`. Show `result.error`, or use `apiErrorOf` when the caller has its own fallback. Don't add `try/catch`, extra `console.error` calls or local `bodyOf`/`messageFrom` helpers. Expected statuses that shouldn't be logged go in `quietStatuses`.
+- **No raw literals at call sites:** no path, method, status number, query key, API-related message or mirrored limit in components, composables or scripts. New copy that states a limit is built from `Limits`. A few older form hints still hardcode theirs ("8 to 128 characters.", "6-digit code"); move them when touching those forms.
+- **Keep one copy.** Before adding a constant or type, look for an existing one. Move it to `src/types/api/` or `src/constants/` rather than re-exporting it or duplicating it in a feature module.
+- **Tests:** unit specs mock the network with `mockFetch` and `jsonResponse` from `src/__tests__/helpers/fetch.ts`. Queue a response for every request the code under test makes, since an unqueued one fails as an unhandled rejection. Each new endpoint gets a row in `src/constants/__tests__/endpoints.spec.ts`. `e2e/fixtures.ts` stays an independent double of the API, matched by path: don't import `Endpoints` there, or the e2e suite would check the code against itself.
+
 # Project context
 
 - **Stack:** Vue 3 + Vite + TypeScript SPA (vue-router, history mode). No backend in this repo: it calls the separate API (`vb2007/vb2007.hu-api`) at `VITE_API_BASE_URL`, which is baked in at build time. API-side needs are filed there (e.g. vb2007/vb2007.hu-api#75), not worked around here.
