@@ -18,6 +18,23 @@ export default [
   ...vueTsEslintConfig(),
   
   {
+    // Every API call goes through src/scripts/api/client.ts (see README, "Calling the API").
+    name: 'app/api-calls-through-the-client',
+    files: ['src/**/*.{ts,vue}'],
+    ignores: ['src/scripts/api/**', 'src/scripts/uploads/upload.ts', 'src/**/__tests__/**'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        { name: 'fetch', message: 'Call the API with apiRequest from @/scripts/api/client.' },
+        {
+          name: 'XMLHttpRequest',
+          message: 'Call the API with apiRequest from @/scripts/api/client.'
+        }
+      ]
+    }
+  },
+
+  {
     ...pluginVitest.configs.recommended,
     files: ['src/**/__tests__/**/*'],
   },
