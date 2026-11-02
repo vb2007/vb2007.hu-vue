@@ -5,6 +5,8 @@
  */
 import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import {
@@ -19,6 +21,11 @@ import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+
+const passwordHint = Messages.Auth.passwordHint(
+  Limits.Password.minLength,
+  Limits.Password.maxLength
+);
 
 const emit = defineEmits<{ set: [] }>();
 
@@ -60,8 +67,8 @@ const onSubmit = async () => {
     <h2 id="password-title" class="password__title">Password</h2>
     <p class="password__note">
       This account has no password yet: you log in with GitHub. Set one to also log in with your
-      e-mail address, and to be able to unlink GitHub. If you logged in more than 10 minutes ago,
-      GitHub confirms it's you first.
+      e-mail address, and to be able to unlink GitHub. If you logged in more than
+      {{ Limits.Github.reauthMinutes }} minutes ago, GitHub confirms it's you first.
     </p>
     <form ref="form" class="password__form" novalidate @submit.prevent="onSubmit">
       <!-- Tells password managers which account the new password belongs to. -->
@@ -79,7 +86,7 @@ const onSubmit = async () => {
         label="New password"
         type="password"
         autocomplete="new-password"
-        hint="8 to 128 characters."
+        :hint="passwordHint"
         :error="errors.password"
         required
         @blur="leave('password')"

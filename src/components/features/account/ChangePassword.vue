@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /** The Password row's key, which opens a form in place to change it. */
 import { nextTick, ref, useTemplateRef } from "vue";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { useChangePassword } from "@/composables/useChangePassword";
 import { userEmail } from "@/scripts/authentication/authState";
 import {
@@ -14,6 +16,11 @@ import { useFormValidation } from "@/composables/useFormValidation";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+
+const passwordHint = Messages.Auth.passwordHint(
+  Limits.Password.minLength,
+  Limits.Password.maxLength
+);
 
 const emit = defineEmits<{ start: [] }>();
 
@@ -106,7 +113,7 @@ const save = async () => {
       label="New password"
       type="password"
       autocomplete="new-password"
-      hint="8 to 128 characters."
+      :hint="passwordHint"
       :error="errors.new"
       required
       @blur="leave('new')"

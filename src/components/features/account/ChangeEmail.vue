@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, useId, useTemplateRef } from "vue";
+import { Limits } from "@/constants/limits";
 import { useChangeEmail } from "@/composables/useChangeEmail";
 import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import {
@@ -13,6 +14,8 @@ import { useFormValidation } from "@/composables/useFormValidation";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+
+const codeHint = `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail.`;
 
 const emit = defineEmits<{ start: [] }>();
 
@@ -162,7 +165,7 @@ const confirmCode = async () => {
       label="Confirmation code"
       inputmode="numeric"
       autocomplete="one-time-code"
-      hint="The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail."
+      :hint="codeHint"
       :describedby="pendingId"
       :error="codeErrors.code || codeError"
       mono

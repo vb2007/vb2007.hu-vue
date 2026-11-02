@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { useCountdown } from "@/composables/useCountdown";
 import { confirmPasswordReset, requestPasswordReset } from "@/scripts/authentication/passwordReset";
 import {
@@ -17,6 +18,12 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+
+const codeHint = `The ${Limits.Code.digits}-digit code from the e-mail. It works for ${Limits.Code.passwordResetValidMinutes} minutes.`;
+const passwordHint = Messages.Auth.passwordHint(
+  Limits.Password.minLength,
+  Limits.Password.maxLength
+);
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = Limits.Code.cooldownSeconds;
@@ -268,7 +275,7 @@ const handleReset = async () => {
         <BaseInput
           v-model="code"
           label="Code"
-          hint="The 6-digit code from the e-mail. It works for 30 minutes."
+          :hint="codeHint"
           :describedby="sentMessage ? sentMessageId : undefined"
           autocomplete="one-time-code"
           inputmode="numeric"
@@ -282,7 +289,7 @@ const handleReset = async () => {
           label="New password"
           type="password"
           autocomplete="new-password"
-          hint="8 to 128 characters."
+          :hint="passwordHint"
           :error="resetErrors.newPassword"
           required
           @blur="leaveReset('newPassword')"
