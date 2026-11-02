@@ -53,6 +53,17 @@ npm run lint         # fixes what it can
 npm run lint:check   # report only, as CI runs it
 ```
 
+## Calling the API
+
+The site talks to [vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api) at `VITE_API_BASE_URL`. Every call goes through the same pieces:
+
+- `src/constants/endpoints.ts`: `Endpoints`, one entry per method and path, written like the API's Express routes (`"/paste/:id"`). Each entry also records whether it sends the session cookie.
+- `src/types/api/`: the request bodies, queries and responses. Each endpoint carries its own, so a wrong body, a missing `:param` or a misread response is a compile error.
+- `src/scripts/api/client.ts`: `apiRequest(Endpoints.Pastebin.get, { params: { id }, failure })` never throws. It returns `{ ok: true, data }` or `{ ok: false, status, error }`, with the error ready to show. `apiUrl` builds hrefs for browser navigations.
+- `src/constants/messages.ts`, `limits.ts` and `http.ts`: the site's own texts, the API limits checked before sending, and the HTTP methods and statuses.
+
+Calls still being moved over (#101 to #104) use `fetch` with the derived URLs in `src/constants/api.ts`, which goes away after that.
+
 ## Docker
 
 The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
