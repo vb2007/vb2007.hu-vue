@@ -1,4 +1,8 @@
-import { UserManagement } from "@/constants/api";
+import { LoginStatus } from "@/constants/auth";
+import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
+import { Messages } from "@/constants/messages";
+import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
   emailVerified,
   githubLinked,
@@ -13,6 +17,7 @@ import {
 } from "@/scripts/authentication/authState";
 import { ref } from "vue";
 
+/** A `LoginStatus`, or the API's message when logging in failed. */
 export const loginStatus = ref("");
 
 /**
@@ -20,31 +25,27 @@ export const loginStatus = ref("");
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
 export const fetchUserDetails = async () => {
-  try {
-    const response = await fetch(UserManagement.Actions.user, {
-      method: "GET",
-      credentials: "include"
-    });
+  const result = await apiRequest(Endpoints.User.get, {
+    failure: Messages.Auth.userFailed,
+    // A visitor who isn't logged in: the usual answer, not a fault.
+    quietStatuses: [HttpStatus.Unauthorized]
+  });
 
-    if (!response.ok) {
-      return false;
-    }
-
-    const data = await response.json();
-    userEmail.value = data.email;
-    username.value = data.username ?? "";
-    isSuperuser.value = data.isSuperuser === true;
-    githubLinked.value = Boolean(data.githubId);
-    githubLogin.value = data.githubLogin ?? "";
-    hasPassword.value = data.hasPassword === true;
-    pendingEmail.value = data.pendingEmail ?? "";
-    emailVerified.value = data.emailVerified === true;
-    isLoggedIn.value = true;
-    return true;
-  } catch (error) {
-    console.error("Error fetching user details:", error);
+  if (!result.ok) {
     return false;
   }
+
+  const { data } = result;
+  userEmail.value = data.email;
+  username.value = data.username ?? "";
+  isSuperuser.value = data.isSuperuser === true;
+  githubLinked.value = Boolean(data.githubId);
+  githubLogin.value = data.githubLogin ?? "";
+  hasPassword.value = data.hasPassword === true;
+  pendingEmail.value = data.pendingEmail ?? "";
+  emailVerified.value = data.emailVerified === true;
+  isLoggedIn.value = true;
+  return true;
 };
 
 let sessionRestore: Promise<void> | undefined;
@@ -58,46 +59,20 @@ export const restoreSession = () => {
 };
 
 export const login = async (email: string, password: string) => {
-  try {
-    const response = await fetch(UserManagement.Authentication.login, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email: email,
-        password: password
-      }),
-      credentials: "include"
-    });
+  const result = await apiRequest(Endpoints.Auth.login, {
+    body: { email, password },
+    failure: Messages.Auth.loginFailed
+  });
 
-    if (!response.ok) {
-      let errorMessage = "unknown-error";
-
-      try {
-        const data = await response.json();
-        if (data.error) {
-          errorMessage = data.error;
-        }
-      } catch (jsonError) {
-        console.error("Error parsing JSON response:", jsonError);
-      }
-
-      loginStatus.value = errorMessage;
-      return;
-    }
-
-    // The API answered 200, but only a working session cookie makes the login real.
-    if (await fetchUserDetails()) {
-      loginStatus.value = "success";
-    } else {
-      loginStatus.value =
-        "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
-    }
-  } catch (error) {
-    console.error("Error while trying to log in user:", error);
-    loginStatus.value = "unknown-error";
+  if (!result.ok) {
+    loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
+    return;
   }
+
+  // The API answered 200, but only a working session cookie makes the login real.
+  loginStatus.value = (await fetchUserDetails())
+    ? LoginStatus.Success
+    : Messages.Auth.sessionNotKept;
 };
 
 /** Forgets the logged-in user locally; the API ends the session itself. */
@@ -114,16 +89,8 @@ export const clearSession = () => {
 };
 
 export const logout = async () => {
-  // The cookie is HttpOnly, so only the API can clear it.
-  try {
-    await fetch(UserManagement.Authentication.logout, {
-      method: "POST",
-      credentials: "include",
-      redirect: "manual"
-    });
-  } catch (error) {
-    console.error("Error while trying to log out user:", error);
-  }
+  // The cookie is HttpOnly, so only the API can clear it; a failure still logs out here.
+  await apiRequest(Endpoints.Auth.logout, { failure: Messages.Auth.logoutFailed });
 
   clearSession();
 };

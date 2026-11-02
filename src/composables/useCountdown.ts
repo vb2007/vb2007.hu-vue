@@ -1,4 +1,5 @@
 import { computed, onScopeDispose, ref } from "vue";
+import { Limits } from "@/constants/limits";
 
 /** What a countdown with a storage key keeps in sessionStorage: who it's for and when it ends. */
 interface SavedCountdown {
@@ -97,7 +98,7 @@ export const useCountdown = (storageKey?: string) => {
  * The seconds to wait after a 429. The resend cooldown sends them as `retryAfter` in the body;
  * the rate limiters don't, and the Retry-After header isn't exposed to the page, hence `fallback`.
  */
-export const retryAfterFrom = (body: unknown, fallback = 60): number => {
+export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
   const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
 
   return typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0

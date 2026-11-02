@@ -1,6 +1,16 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type QueryValues } from "@/scripts/api/endpoint";
 import type {
+  EmailBody,
+  LoginBody,
+  PasswordResetConfirmBody,
+  RegisterBody,
+  RegisterVerifyBody,
+  UsernameAvailableQuery,
+  UsernameAvailableResponse
+} from "@/types/api/auth";
+import type { MessageResponse } from "@/types/api/common";
+import type {
   CreatePasteBody,
   PasteDeletedResponse,
   PasteListQuery,
@@ -9,6 +19,7 @@ import type {
   PastesResponse,
   UpdatePasteBody
 } from "@/types/api/pastebin";
+import type { UserDetails } from "@/types/api/user";
 
 /** Baked in at build time; tests pin it to `https://api.test`. */
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
@@ -25,60 +36,67 @@ const untyped = defineEndpoint<unknown, unknown, QueryValues>;
  */
 export class Endpoints {
   static readonly Auth = class {
-    static readonly register = untyped()({
+    static readonly register = defineEndpoint<RegisterBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/auth/register",
       credentials: false
     });
     /** Sends the registration code again (vb2007/vb2007.hu-api#30). */
-    static readonly registerResend = untyped()({
+    static readonly registerResend = defineEndpoint<EmailBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/auth/register/resend",
       credentials: false
     });
     /** The e-mailed code finishes registering and starts a session (vb2007/vb2007.hu-api#28). */
-    static readonly registerVerify = untyped()({
+    static readonly registerVerify = defineEndpoint<RegisterVerifyBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/auth/register/verify",
       credentials: true
     });
     /** `?username=` says whether a username is free (vb2007/vb2007.hu-api#233). */
-    static readonly usernameAvailable = untyped()({
+    static readonly usernameAvailable = defineEndpoint<
+      undefined,
+      UsernameAvailableResponse,
+      UsernameAvailableQuery
+    >()({
       method: HttpMethod.Get,
       path: "/auth/username-available",
       credentials: false
     });
-    static readonly login = untyped()({
+    static readonly login = defineEndpoint<LoginBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/auth/login",
       credentials: true
     });
-    static readonly logout = untyped()({
+    static readonly logout = defineEndpoint<undefined, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/auth/logout",
       credentials: true,
       redirect: "manual"
     });
     /** E-mails a password reset code (vb2007/vb2007.hu-api#163). */
-    static readonly passwordReset = untyped()({
+    static readonly passwordReset = defineEndpoint<EmailBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/auth/password-reset",
       credentials: false
     });
     /** The code with the new password (vb2007/vb2007.hu-api#163). */
-    static readonly passwordResetConfirm = untyped()({
+    static readonly passwordResetConfirm = defineEndpoint<
+      PasswordResetConfirmBody,
+      MessageResponse
+    >()({
       method: HttpMethod.Post,
       path: "/auth/password-reset/confirm",
       credentials: false
     });
     /** GitHub login (vb2007/vb2007.hu-api#128): a browser navigation, not a fetch call. */
-    static readonly github = untyped()({
+    static readonly github = defineEndpoint()({
       method: HttpMethod.Get,
       path: "/auth/github",
       credentials: false
     });
     /** Links GitHub to the logged-in account: a browser navigation, not a fetch call. */
-    static readonly githubLink = untyped()({
+    static readonly githubLink = defineEndpoint()({
       method: HttpMethod.Get,
       path: "/auth/github/link",
       credentials: true
@@ -92,7 +110,11 @@ export class Endpoints {
   };
 
   static readonly User = class {
-    static readonly get = untyped()({ method: HttpMethod.Get, path: "/user", credentials: true });
+    static readonly get = defineEndpoint<undefined, UserDetails>()({
+      method: HttpMethod.Get,
+      path: "/user",
+      credentials: true
+    });
     /** Deletes the account (vb2007/vb2007.hu-api#164). */
     static readonly remove = untyped()({
       method: HttpMethod.Delete,

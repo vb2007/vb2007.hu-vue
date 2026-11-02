@@ -137,6 +137,7 @@ describe("restoreSession", () => {
 
     expect(isLoggedIn.value).toBe(false);
     expect(isSessionChecked.value).toBe(true);
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("stays logged out when the API is unreachable", async () => {

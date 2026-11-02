@@ -10,6 +10,8 @@ import {
   useTemplateRef
 } from "vue";
 import { RouterLink } from "vue-router";
+import { RegisterStatus } from "@/constants/auth";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
   checkUsername,
@@ -150,8 +152,10 @@ const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 /** A problem that isn't about one field, shown above the Register key. */
 const formError = computed(() => {
   const status = registerStatus.value;
-  if (!status || status === "success" || status === "no-session") return "";
-  return status === "error" ? "Registration failed. Please try again." : status;
+  if (!status || status === RegisterStatus.Success || status === RegisterStatus.NoSession) {
+    return "";
+  }
+  return status === RegisterStatus.Error ? Messages.Auth.registerUnknownError : status;
 });
 
 /** Shows the API's refusal under the field it's about, or above the key otherwise. */
@@ -260,7 +264,8 @@ const handleCode = async () => {
       leave();
       cooldown.stop();
       clearForm();
-      registerStatus.value = result === "logged-in" ? "success" : "no-session";
+      registerStatus.value =
+        result === "logged-in" ? RegisterStatus.Success : RegisterStatus.NoSession;
       await nextTick();
       doneMessage.value?.$el.focus();
       break;
@@ -321,7 +326,7 @@ onMounted(async () => {
   registerStatus.value = "";
   await restoreSession();
   if (isLoggedIn.value) {
-    registerStatus.value = "success";
+    registerStatus.value = RegisterStatus.Success;
   }
 });
 
@@ -335,14 +340,14 @@ watch(isLoggedIn, (newVal) => {
 
 <template>
   <StationBoard title="Register" as="h1">
-    <div v-if="registerStatus === 'success'" class="form">
+    <div v-if="registerStatus === RegisterStatus.Success" class="form">
       <StatusMessage ref="doneMessage" class="done" tone="success" tabindex="-1">
         Registration successful!
       </StatusMessage>
       <BaseButton to="/shorten">Go to Shorten</BaseButton>
     </div>
 
-    <div v-else-if="registerStatus === 'no-session'" class="form">
+    <div v-else-if="registerStatus === RegisterStatus.NoSession" class="form">
       <StatusMessage ref="doneMessage" class="done" tone="error" tabindex="-1">
         Your account was created, but your browser didn't keep the session. Please check that
         cookies are enabled, then log in.

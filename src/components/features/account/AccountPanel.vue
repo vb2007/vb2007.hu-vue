@@ -14,6 +14,7 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { UserManagement } from "@/constants/api";
+import { OauthQuery } from "@/constants/oauth";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
@@ -29,7 +30,7 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
 // without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183).
-const githubReturned = ref(useQueryNotice("github") === "linked");
+const githubReturned = ref(useQueryNotice(OauthQuery.github) === OauthQuery.githubLinked);
 const notice = ref("");
 const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;

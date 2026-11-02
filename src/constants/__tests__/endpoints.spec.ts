@@ -53,10 +53,8 @@ describe("Endpoints", () => {
 
 describe("legacy URLs", () => {
   it("derives the not yet migrated URLs from Endpoints", () => {
-    expect(UserManagement.Authentication.register).toBe("https://api.test/auth/register");
-    expect(UserManagement.Authentication.usernameAvailable).toBe(
-      "https://api.test/auth/username-available"
-    );
+    expect(UserManagement.Authentication.githubLink).toBe("https://api.test/auth/github/link");
+    expect(UserManagement.Actions.user).toBe("https://api.test/user");
     expect(UserManagement.Actions.userPassword).toBe("https://api.test/user/password");
     expect(UrlShortening.redirect).toBe("https://api.test/r/");
     expect(UrlShortening.lookup).toBe("https://api.test/shortenUrl/:shortenedUrl");

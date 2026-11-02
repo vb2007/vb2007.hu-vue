@@ -1,12 +1,15 @@
 import { computed, ref, watch } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { apiRequest } from "@/scripts/api/client";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
-import { errorFrom } from "@/scripts/api/client";
 
 /** The API sends at most one code a minute per address. */
-export const RESEND_COOLDOWN_SECONDS = 60;
+export const RESEND_COOLDOWN_SECONDS = Limits.Code.cooldownSeconds;
 
 /** Where the resend countdown is kept, so a reload doesn't forget it (one address at a time). */
 export const COOLDOWN_STORAGE_KEY = "register-cooldown";
@@ -34,18 +37,6 @@ export type CodeNotice =
   | "recent"
   /** A resend replaced the code but couldn't mail the new one. */
   | "lost";
-
-/** The body of a failed resend, which also carries a 429's `retryAfter`. */
-const readBody = async (
-  response: Response
-): Promise<{ error?: unknown; retryAfter?: unknown } | undefined> => {
-  try {
-    return await response.json();
-  } catch {
-    // Not JSON (e.g. a bare 500).
-    return undefined;
-  }
-};
 
 /**
  * The register form's second step (vb2007/vb2007.hu-api#28): the code mailed after
@@ -121,106 +112,63 @@ export const useRegisterCode = () => {
       showCodeProblem(problem);
       return "failed";
     }
-    const digits = code.replace(/\s/g, "");
+    isVerifying.value = true;
+    showError("");
 
-    let result: RegisterCodeResult = "failed";
+    const result = await apiRequest(Endpoints.Auth.registerVerify, {
+      body: { email: email.value, code: code.replace(/\s/g, "") },
+      failure: Messages.EmailCode.confirmFailed
+    });
 
-    try {
-      isVerifying.value = true;
-      showError("");
-
-      const response = await fetch(UserManagement.Authentication.registerVerify, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email: email.value, code: digits }),
-        credentials: "include"
-      });
-
-      if (response.status === 201) {
-        // The response set the session cookie; only the API can tell whether the browser kept it.
-        result = (await fetchUserDetails()) ? "logged-in" : "created";
-      } else {
-        // 400 (wrong, expired or used code), 409 (taken meanwhile) and 429 are the user's to fix.
-        const message = await errorFrom(response, "Failed to confirm the code");
-        if (response.status === 400) {
-          showCodeProblem(message);
-        } else {
-          showError(message);
-        }
-        if (response.status === 409) {
-          result = "taken";
-        }
-        if (response.status >= 500) {
-          console.error("Failed to confirm the registration code: ", response.status);
-        }
+    let outcome: RegisterCodeResult = "failed";
+    if (result.ok) {
+      // The 201 set the session cookie; only the API can tell whether the browser kept it.
+      outcome = (await fetchUserDetails()) ? "logged-in" : "created";
+    } else if (result.status === HttpStatus.BadRequest) {
+      // A wrong, expired or used code.
+      showCodeProblem(result.error);
+    } else {
+      // 409 (taken meanwhile), 429, the server or the network.
+      showError(result.error);
+      if (result.status === HttpStatus.Conflict) {
+        outcome = "taken";
       }
-    } catch (error) {
-      showError("Error connecting to server");
-      console.error("Error confirming the registration code: ", error);
-    } finally {
-      isVerifying.value = false;
     }
+    isVerifying.value = false;
 
-    return result;
+    return outcome;
   };
 
   /** Mails a new code, which replaces the old one. Returns whether it worked. */
   const resend = async () => {
-    let sent = false;
+    isResending.value = true;
+    showError("");
 
-    try {
-      isResending.value = true;
-      showError("");
+    const result = await apiRequest(Endpoints.Auth.registerResend, {
+      body: { email: email.value },
+      failure: Messages.EmailCode.resendFailed
+    });
 
-      const response = await fetch(UserManagement.Authentication.registerResend, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email: email.value })
-      });
-
-      if (response.ok) {
-        notice.value = "resent";
-        holdResend(RESEND_COOLDOWN_SECONDS);
-        sent = true;
-      } else {
-        const body = await readBody(response);
-        const apiError =
-          typeof body?.error === "string" && body.error
-            ? body.error
-            : `Failed to send a new code: ${response.statusText || response.status}`;
-
-        if (response.status === 429) {
-          holdResend(retryAfterFrom(body));
-          // The cooldown's own message names its seconds, which would freeze next to the countdown.
-          showError(
-            typeof body?.retryAfter === "number"
-              ? "A code was sent just now. You can send another once the countdown ends."
-              : apiError,
-            true
-          );
-        } else {
-          showError(apiError);
-          if (response.status === 503) {
-            // The API replaced the code before the e-mail failed, so the old one is gone too.
-            notice.value = "lost";
-          }
-          if (response.status >= 500) {
-            console.error("Failed to resend the registration code: ", response.status);
-          }
-        }
+    if (result.ok) {
+      notice.value = "resent";
+      holdResend(RESEND_COOLDOWN_SECONDS);
+    } else if (result.status === HttpStatus.TooManyRequests) {
+      holdResend(retryAfterFrom(result.body));
+      // The cooldown's own message names its seconds, which would freeze next to the countdown.
+      showError(
+        typeof result.body?.retryAfter === "number" ? Messages.EmailCode.cooldown : result.error,
+        true
+      );
+    } else {
+      showError(result.error);
+      if (result.status === HttpStatus.ServiceUnavailable) {
+        // The API replaced the code before the e-mail failed, so the old one is gone too.
+        notice.value = "lost";
       }
-    } catch (error) {
-      showError("Error connecting to server");
-      console.error("Error resending the registration code: ", error);
-    } finally {
-      isResending.value = false;
     }
+    isResending.value = false;
 
-    return sent;
+    return result.ok;
   };
 
   return {

@@ -59,8 +59,8 @@ The site talks to [vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api) at `V
 
 - `src/constants/endpoints.ts`: `Endpoints`, one entry per method and path, written like the API's Express routes (`"/paste/:id"`). Each entry also records whether it sends the session cookie.
 - `src/types/api/`: the request bodies, queries and responses. Each endpoint carries its own, so a wrong body, a missing `:param` or a misread response is a compile error.
-- `src/scripts/api/client.ts`: `apiRequest(Endpoints.Pastebin.get, { params: { id }, failure })` never throws. It returns `{ ok: true, data }` or `{ ok: false, status, error }`, with the error ready to show. `apiUrl` builds hrefs for browser navigations.
-- `src/constants/messages.ts`, `limits.ts` and `http.ts`: the site's own texts, the API limits checked before sending, and the HTTP methods and statuses.
+- `src/scripts/api/client.ts`: `apiRequest(Endpoints.Pastebin.get, { params: { id }, failure })` never throws. It returns `{ ok: true, data }` or `{ ok: false, status, error }`, with the error ready to show. It logs a failure once, except a request its caller aborted through `signal` (e.g. a username check that newer typing replaced), which comes back as `{ ok: false, kind: "aborted" }`. `apiErrorOf` gives the API's own message when a caller has its own fallback. `apiUrl` builds hrefs for browser navigations.
+- `src/constants/messages.ts`, `limits.ts` and `http.ts`: the site's own texts, the API limits checked before sending, and the HTTP methods and statuses. `oauth.ts` holds the GitHub redirects' `?oauthError=` codes (mirroring the API's `Responses.GithubOauth`), and `auth.ts` the login and register status values.
 
 Calls still being moved over (#101 to #104) use `fetch` with the derived URLs in `src/constants/api.ts`, which goes away after that.
 
