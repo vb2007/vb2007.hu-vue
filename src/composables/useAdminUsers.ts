@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, watch } from "vue";
 import { Admin } from "@/constants/api";
-import { errorFrom, type Pagination } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
+import type { Pagination } from "@/types/api/common";
 import type { AdminUser, AdminUserSortBy, SortOrder } from "@/scripts/admin/adminUser";
 
 export const USERS_PER_PAGE = 20;

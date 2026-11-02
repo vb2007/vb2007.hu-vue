@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, watch } from "vue";
 import { UserUploads } from "@/constants/api";
-import { errorFrom, type Pagination } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
+import type { Pagination } from "@/types/api/common";
 import type { SortOrder, Upload, UploadSortBy, UploadVisibility } from "@/scripts/uploads/upload";
 
 export const UPLOADS_PER_PAGE = 10;

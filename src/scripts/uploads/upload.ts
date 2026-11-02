@@ -1,6 +1,6 @@
 import { UserUploads } from "@/constants/api";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
-import type { SortOrder } from "@/scripts/pastebin/paste";
+import type { SortOrder } from "@/types/api/common";
 
 export type UploadVisibility = "public" | "private";
 export type UploadCategory = "image" | "video" | "audio" | "document" | "archive";

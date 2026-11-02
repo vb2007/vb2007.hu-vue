@@ -1,64 +1,50 @@
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL, Endpoints } from "@/constants/endpoints";
+import { apiUrl } from "@/scripts/api/client";
+
+/**
+ * @deprecated The URLs of the calls not yet moved to `apiRequest`, derived from `Endpoints` so no
+ * path is written twice. Each group goes once its calls move (#101 to #103); the file goes with #104.
+ */
+const legacy = (path: string) => `${API_BASE_URL}${path}`;
 
 export class UserManagement {
   static Authentication = class {
-    static register: string = `${API_BASE_URL}/auth/register`;
-    static login: string = `${API_BASE_URL}/auth/login`;
-    static logout: string = `${API_BASE_URL}/auth/logout`;
-    /** GitHub login (vb2007/vb2007.hu-api#128): browser navigations, not fetch calls. */
-    static github: string = `${API_BASE_URL}/auth/github`;
-    /** Also `DELETE` (a fetch call) to unlink GitHub (vb2007/vb2007.hu-api#134). */
-    static githubLink: string = `${API_BASE_URL}/auth/github/link`;
-    /** `POST` the e-mailed code to finish registering (vb2007/vb2007.hu-api#28). */
-    static registerVerify: string = `${API_BASE_URL}/auth/register/verify`;
-    /** `POST` to send the registration code again (vb2007/vb2007.hu-api#30). */
-    static registerResend: string = `${API_BASE_URL}/auth/register/resend`;
-    /** `GET ?username=` says whether a username is free (vb2007/vb2007.hu-api#233). */
-    static usernameAvailable: string = `${API_BASE_URL}/auth/username-available`;
-    /** `POST` to e-mail a password reset code (vb2007/vb2007.hu-api#163). */
-    static passwordReset: string = `${API_BASE_URL}/auth/password-reset`;
-    /** `POST` the code with the new password (vb2007/vb2007.hu-api#163). */
-    static passwordResetConfirm: string = `${API_BASE_URL}/auth/password-reset/confirm`;
+    static register: string = legacy(Endpoints.Auth.register.path);
+    static login: string = legacy(Endpoints.Auth.login.path);
+    static logout: string = legacy(Endpoints.Auth.logout.path);
+    static github: string = legacy(Endpoints.Auth.github.path);
+    static githubLink: string = legacy(Endpoints.Auth.githubLink.path);
+    static registerVerify: string = legacy(Endpoints.Auth.registerVerify.path);
+    static registerResend: string = legacy(Endpoints.Auth.registerResend.path);
+    static usernameAvailable: string = legacy(Endpoints.Auth.usernameAvailable.path);
+    static passwordReset: string = legacy(Endpoints.Auth.passwordReset.path);
+    static passwordResetConfirm: string = legacy(Endpoints.Auth.passwordResetConfirm.path);
   };
 
   static Actions = class {
-    /** Also `DELETE` to delete the account (vb2007/vb2007.hu-api#164). */
-    static user: string = `${API_BASE_URL}/user`;
-    /** `PATCH` with the new address and the current password (vb2007/vb2007.hu-api#162). */
-    static userEmail: string = `${API_BASE_URL}/user/email`;
-    /** `PATCH` changes the password (vb2007/vb2007.hu-api#161). */
-    static userPassword: string = `${API_BASE_URL}/user/password`;
-    /** `POST` the code sent to the new address to switch to it (vb2007/vb2007.hu-api#215). */
-    static userEmailConfirm: string = `${API_BASE_URL}/user/email/confirm`;
+    static user: string = legacy(Endpoints.User.get.path);
+    static userEmail: string = legacy(Endpoints.User.changeEmail.path);
+    static userPassword: string = legacy(Endpoints.User.changePassword.path);
+    static userEmailConfirm: string = legacy(Endpoints.User.confirmEmail.path);
   };
 }
 
 export class UrlShortening {
-  /** The API's own redirect, still used as a fallback by the site's /r/:code page. */
-  static redirect: string = `${API_BASE_URL}/r/`;
-  /** Resolves a short code to its target as JSON (vb2007/vb2007.hu-api#75). */
-  static lookup: string = `${API_BASE_URL}/shortenUrl/:shortenedUrl`;
-  // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
-  static shortenUrl: string = `${API_BASE_URL}/shortenUrl/create`;
+  /** Followed by the encoded code. */
+  static redirect: string = apiUrl(Endpoints.ShortUrl.redirect, { params: { shortenedUrl: "" } });
+  static lookup: string = legacy(Endpoints.ShortUrl.lookup.path);
+  static shortenUrl: string = legacy(Endpoints.ShortUrl.create.path);
 }
 
-export class Pastebin {
-  static paste: string = `${API_BASE_URL}/paste`;
-  static pasteWithId: string = `${API_BASE_URL}/paste/:id`;
-  static pastesByUsername: string = `${API_BASE_URL}/pastes/:username`;
-}
-
-/** The logged-in user's file uploads (vb2007/vb2007.hu-api#81 to #87). */
 export class UserUploads {
-  static uploads: string = `${API_BASE_URL}/uploads`;
-  static usage: string = `${API_BASE_URL}/uploads/usage`;
-  static upload: string = `${API_BASE_URL}/upload`;
-  static uploadWithId: string = `${API_BASE_URL}/upload/:id`;
+  static uploads: string = legacy(Endpoints.Uploads.list.path);
+  static usage: string = legacy(Endpoints.Uploads.usage.path);
+  static upload: string = legacy(Endpoints.Uploads.upload.path);
+  static uploadWithId: string = legacy(Endpoints.Uploads.update.path);
 }
 
-/** The superuser's admin endpoints (vb2007/vb2007.hu-api#120 to #122). */
 export class Admin {
-  static users: string = `${API_BASE_URL}/admin/users`;
-  static uploadQuota: string = `${API_BASE_URL}/admin/users/:id/upload-quota`;
-  static userUploads: string = `${API_BASE_URL}/admin/users/:id/uploads`;
+  static users: string = legacy(Endpoints.Admin.users.path);
+  static uploadQuota: string = legacy(Endpoints.Admin.setUploadQuota.path);
+  static userUploads: string = legacy(Endpoints.Admin.userUploads.path);
 }

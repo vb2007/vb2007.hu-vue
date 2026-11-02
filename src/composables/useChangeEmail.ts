@@ -4,7 +4,7 @@ import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 /** The API mails at most one code a minute, per account (vb2007/vb2007.hu-api#215). */
 export const CODE_COOLDOWN_SECONDS = 60;

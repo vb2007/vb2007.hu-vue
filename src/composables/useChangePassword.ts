@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 /** Changes the logged-in user's password (vb2007/vb2007.hu-api#161); the API renews the session cookie. */
 export const useChangePassword = () => {

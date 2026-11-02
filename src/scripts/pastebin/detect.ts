@@ -1,6 +1,6 @@
 import { hljs } from "./highlight";
 import { MARKDOWN, PASTE_LANGUAGES, PLAINTEXT, isKnownLanguage } from "./languages";
-import type { Paste } from "./paste";
+import type { Paste } from "@/types/api/pastebin";
 
 /** Below this it's a guess: prose scores 0 to 5, code 8 and up, or 6 with a single fingerprint. */
 const MIN_SCORE = 6;

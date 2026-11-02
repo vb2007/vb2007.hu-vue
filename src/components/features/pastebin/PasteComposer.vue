@@ -2,7 +2,9 @@
 import { computed, useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { PASTE_LANGUAGES, languageLabel } from "@/scripts/pastebin/languages";
-import { PASTE_MAX_LENGTH, pasteLink, validatePaste, type Paste } from "@/scripts/pastebin/paste";
+import { Limits } from "@/constants/limits";
+import { pasteLink, validatePaste } from "@/scripts/pastebin/paste";
+import type { Paste } from "@/types/api/pastebin";
 import { displayLink } from "@/scripts/utility/text";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { AUTO_LANGUAGE, useNewPaste } from "@/composables/useNewPaste";
@@ -39,7 +41,7 @@ const {
   content: {
     value: content,
     check: () => validatePaste(content.value),
-    early: () => (content.value.length > PASTE_MAX_LENGTH ? validatePaste(content.value) : "")
+    early: () => (content.value.length > Limits.Paste.maxLength ? validatePaste(content.value) : "")
   }
 });
 
@@ -66,7 +68,7 @@ watch(createdPaste, (paste) => {
         hint="Anyone with the link can read a paste."
         mono
         required
-        :max-count="PASTE_MAX_LENGTH"
+        :max-count="Limits.Paste.maxLength"
         :error="errors.content || errorMessage"
         @blur="leave('content')"
       />

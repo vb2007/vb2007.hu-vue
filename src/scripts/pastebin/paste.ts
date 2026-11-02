@@ -1,27 +1,5 @@
-/** The API's paste length limits, checked here before sending. */
-export const PASTE_MIN_LENGTH = 2;
-export const PASTE_MAX_LENGTH = 10000;
-
-export type SortOrder = "asc" | "desc";
-
-export interface Paste {
-  _id: string;
-  content: string;
-  /** Only the listing populates the author; a single paste carries just the user ID. */
-  addedBy: string | { _id: string; username: string };
-  addedOn: string;
-  /** A PASTE_LANGUAGES id (vb2007/vb2007.hu-api#123); pastes from before it have none. */
-  language?: string;
-}
-
-export interface Pagination {
-  limit: number;
-  page: number;
-  total: number;
-  pages: number;
-  sortBy: string;
-  sortOrder: SortOrder;
-}
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 
 /** A paste's shareable page on this site (not the API). */
 export const pasteLink = (id: string) => `${window.location.origin}/pastebin/${id}`;
@@ -38,24 +16,11 @@ export const pasteSize = (content: string) => {
 
 /** Returns why a paste can't be sent, or "" when it can. */
 export const validatePaste = (content: string) => {
-  if (content.trim().length < PASTE_MIN_LENGTH) {
-    return `A paste needs at least ${PASTE_MIN_LENGTH} characters.`;
+  if (content.trim().length < Limits.Paste.minLength) {
+    return Messages.Pastebin.tooShort(Limits.Paste.minLength);
   }
-  if (content.length > PASTE_MAX_LENGTH) {
-    return `A paste can be at most ${PASTE_MAX_LENGTH} characters.`;
+  if (content.length > Limits.Paste.maxLength) {
+    return Messages.Pastebin.tooLong(Limits.Paste.maxLength);
   }
   return "";
-};
-
-/** The API's `{ error }` message when it sent one, otherwise `fallback` with the status text. */
-export const errorFrom = async (response: Response, fallback: string) => {
-  try {
-    const data = await response.json();
-    if (data.error) {
-      return data.error as string;
-    }
-  } catch {
-    // Not JSON (e.g. a bare 500); the status text below is all there is.
-  }
-  return `${fallback}: ${response.statusText || response.status}`;
 };

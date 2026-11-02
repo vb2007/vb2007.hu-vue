@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { UserUploads } from "@/constants/api";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 import type { UploadUsage } from "@/scripts/uploads/upload";
 
 /** How much of their quota the user has used, and the upload rules the API enforces. */
