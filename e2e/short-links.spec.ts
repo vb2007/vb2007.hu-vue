@@ -59,9 +59,20 @@ test("an unknown short link explains itself", async ({ page }) => {
 
 test("falls back to the API's redirect when the lookup endpoint isn't deployed", async ({
   page,
-  api
+  api,
+  baseURL
 }) => {
-  api.hasShortLink("old123", TARGET);
+  // Playwright only routes the first request of a redirect chain (see `page.route`), so the API's
+  // 302 must lead to a host that really answers: the preview server, not the routed TARGET. Some
+  // Chromium builds route the second hop anyway, but Playwright's headless shell doesn't.
+  const target = `${baseURL}/shorten`;
+  api.hasShortLink("old123", target);
+  const viaApi = page.waitForRequest(
+    (request) =>
+      request.isNavigationRequest() &&
+      !request.url().startsWith(baseURL!) &&
+      new URL(request.url()).pathname === "/r/old123"
+  );
   // What an API without the lookup endpoint answers: Express's default HTML 404.
   await page.route("**/shortenUrl/old123", (route) =>
     route.fulfill({
@@ -74,5 +85,6 @@ test("falls back to the API's redirect when the lookup endpoint isn't deployed",
 
   await page.goto("/r/old123");
 
-  await expect(page).toHaveURL(TARGET);
+  await viaApi;
+  await expect(page).toHaveURL(target);
 });
