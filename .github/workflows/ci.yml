@@ -6,7 +6,9 @@ name: PR Tests
 # further jobs. typecheck, lint, build and unit-tests have no interdependency
 # between them, so they run in parallel across the self-hosted runners. Those
 # runners share one host, so no job may use a fixed port or a fixed /tmp path:
-# logs go to the job's own $RUNNER_TEMP, and e2e picks a free port. e2e
+# logs go to the job's own $RUNNER_TEMP, and e2e picks a free port. e2e is
+# the heavy stage, so it only runs on the runner labelled `e2e`: one e2e job
+# at a time, at full speed, instead of four starving each other of CPU. e2e
 # depends on build so it tests the exact bundle the build stage produced
 # instead of building its own.
 on:
@@ -331,7 +333,10 @@ jobs:
   e2e:
     name: E2E tests
     needs: [build]
-    runs-on: [self-hosted, Linux, X64]
+    # Only the runner labelled `e2e` takes this job, so e2e jobs queue for it
+    # one at a time: four at once saturated the shared host and timed out.
+    # Without a runner carrying the label, this job waits in the queue.
+    runs-on: [self-hosted, Linux, X64, e2e]
     steps:
       - uses: actions/checkout@v7
 

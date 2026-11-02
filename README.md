@@ -156,7 +156,7 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
 `.github/workflows/ci.yml` runs on every PR into `main` or `dev`, on the self-hosted runners. It can also be started from the Actions tab via "Run workflow" on any branch.
 
-The runners share one host, so jobs from different runs can overlap on it. A job therefore never uses a fixed port or a fixed `/tmp` path: stage logs go to the job's own `$RUNNER_TEMP`, and E2E serves the build on a free port that it picks (`E2E_PORT`; 4173 when unset, as locally). E2E also uses a quarter of the host's cores (`E2E_WORKERS` overrides it), so four parallel E2E jobs don't run two browsers per core and time out.
+The runners share one host, so jobs from different runs can overlap on it. A job therefore never uses a fixed port or a fixed `/tmp` path: stage logs go to the job's own `$RUNNER_TEMP`, and E2E serves the build on a free port that it picks (`E2E_PORT`; 4173 when unset, as locally). E2E is the heavy stage: it only runs on the runner labelled `e2e`, so E2E jobs queue for that runner one at a time and use Playwright's default workers (half the cores; `E2E_WORKERS` overrides it). Four at once saturated the host and timed out. The lighter stages spread over all runners. Exactly one runner needs the `e2e` label (repository Settings → Actions → Runners); without one, E2E jobs wait in the queue.
 
 | Stage | What it checks |
 |---|---|

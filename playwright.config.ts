@@ -15,9 +15,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  // Four runners share the CI host, so each e2e job takes a quarter of its cores; at Playwright's
-  // default (half), four parallel jobs would run two browsers per core and time out.
-  workers: process.env.E2E_WORKERS || (isCI ? "25%" : undefined),
+  // Playwright's default (half the cores). In CI, e2e jobs run one at a time on the runner labelled
+  // `e2e` (see ci.yml), so they don't share the host with each other; E2E_WORKERS overrides it.
+  workers: process.env.E2E_WORKERS || undefined,
   reporter: [
     ["list"],
     ...(process.env.E2E_JUNIT
