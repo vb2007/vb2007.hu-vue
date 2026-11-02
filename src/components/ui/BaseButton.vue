@@ -10,6 +10,11 @@ withDefaults(
     type?: "button" | "submit";
     loading?: boolean;
     disabled?: boolean;
+    /**
+     * Looks disabled but stays focusable and clickable, e.g. a submit key while the form has a
+     * problem: pressing it shows what's missing, which a disabled key couldn't.
+     */
+    blocked?: boolean;
     error?: boolean;
     block?: boolean;
   }>(),
@@ -25,8 +30,14 @@ withDefaults(
     :class="[
       `btn--${variant}`,
       `btn--${size}`,
-      { 'btn--block': block, 'btn--loading': loading, 'btn--error': error }
+      {
+        'btn--block': block,
+        'btn--blocked': blocked,
+        'btn--loading': loading,
+        'btn--error': error
+      }
     ]"
+    :aria-disabled="(blocked && !to && !href) || undefined"
     :aria-busy="loading || undefined"
   >
     <span class="btn__label"><slot /></span>
@@ -93,27 +104,28 @@ withDefaults(
   box-shadow: none;
 }
 
-.btn:hover:not(:disabled) {
+.btn:hover:not(:disabled, .btn--blocked) {
   transform: translateY(-2px);
   box-shadow: 0 calc(var(--lift) + 2px) 0 var(--btn-depth);
 }
 
-.btn--ghost:hover:not(:disabled) {
+.btn--ghost:hover:not(:disabled, .btn--blocked) {
   transform: none;
   background: var(--c-field-deep);
 }
 
-.btn:active:not(:disabled) {
+.btn:active:not(:disabled, .btn--blocked) {
   transform: translateY(var(--lift));
   box-shadow: 0 0 0 var(--btn-depth);
   transition-duration: 60ms;
 }
 
-.btn--ghost:active:not(:disabled) {
+.btn--ghost:active:not(:disabled, .btn--blocked) {
   transform: translateY(1px);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn--blocked {
   --btn-bg: var(--c-panel-sunk);
   --btn-fg: var(--c-ink-soft);
   --btn-depth: var(--c-hairline);

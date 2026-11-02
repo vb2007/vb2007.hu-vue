@@ -63,4 +63,20 @@ describe("ShortenPanel", () => {
     expect(wrapper.find(".field__error").text()).toBe("Invalid URL / URI format.");
     vi.restoreAllMocks();
   });
+
+  it("checks the URL once it's left", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+    const input = wrapper.find("input");
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+
+    await input.setValue("fos.hu");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    await input.trigger("blur");
+    expect(wrapper.find(".field__error").text()).toBe("Invalid URL / URI format.");
+
+    await input.setValue("https://fos.hu");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBeUndefined();
+  });
 });

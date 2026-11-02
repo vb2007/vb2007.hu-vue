@@ -49,6 +49,63 @@ describe("LoginForm", () => {
     expect(wrapper.find('button[type="submit"]').text()).toBe("Log in");
   });
 
+  it("checks a field once it's left, and keeps the key looking disabled until both are right", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    const key = wrapper.find('button[type="submit"]');
+    expect(key.attributes("aria-disabled")).toBe("true");
+
+    await email.setValue("me");
+    await email.trigger("blur");
+    await password.setValue("x");
+    await password.setValue("");
+    await password.trigger("blur");
+
+    expect(wrapper.findAll(".field__error").map((error) => error.text())).toEqual([
+      "Enter a valid e-mail address.",
+      "Enter your password."
+    ]);
+
+    // An address from before today's rules still gets in.
+    await email.setValue("old@localhost");
+    await password.setValue("secret");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(key.attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("shows what's missing instead of logging in, and flashes the key", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(login).not.toHaveBeenCalled();
+    expect(wrapper.findAll(".field__error")).toHaveLength(2);
+    expect(document.activeElement).toBe(wrapper.find("input").element);
+    expect(wrapper.find('button[type="submit"]').classes()).toContain("btn--error");
+
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(wrapper.find('button[type="submit"]').classes()).not.toContain("btn--error");
+    vi.useRealTimers();
+    wrapper.unmount();
+  });
+
+  it("forgets the shown problems after logging out", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.findAll(".field__error")).toHaveLength(2);
+
+    isLoggedIn.value = true;
+    await flushPromises();
+    isLoggedIn.value = false;
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+  });
+
   it("shows nothing before an attempt, or after a successful one", async () => {
     const { wrapper } = await mountWithRouter(LoginForm);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);

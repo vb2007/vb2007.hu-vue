@@ -1,7 +1,7 @@
 import { computed, ref, watch } from "vue";
 import { UserManagement } from "@/constants/api";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
-import { normalizeEmail } from "@/scripts/authentication/register";
+import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 import { errorFrom } from "@/scripts/pastebin/paste";
 
@@ -10,9 +10,6 @@ export const RESEND_COOLDOWN_SECONDS = 60;
 
 /** Where the resend countdown is kept, so a reload doesn't forget it (one address at a time). */
 export const COOLDOWN_STORAGE_KEY = "register-cooldown";
-
-/** The API's codes are 6 digits; it ignores spaces in them. */
-const CODE_PATTERN = /^\d{6}$/;
 
 /** What confirming the code led to. */
 export type RegisterCodeResult =
@@ -119,11 +116,12 @@ export const useRegisterCode = () => {
   };
 
   const verify = async (code: string): Promise<RegisterCodeResult> => {
-    const digits = code.replace(/\s/g, "");
-    if (!CODE_PATTERN.test(digits)) {
-      showCodeProblem("Enter the 6-digit code from the e-mail.");
+    const problem = confirmationCodeError(code);
+    if (problem) {
+      showCodeProblem(problem);
       return "failed";
     }
+    const digits = code.replace(/\s/g, "");
 
     let result: RegisterCodeResult = "failed";
 

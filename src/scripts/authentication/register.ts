@@ -40,48 +40,98 @@ export const passwordLengthError = (password: string) => {
   return;
 };
 
-export const validateRegisterData = (
-  username: string,
-  email: string,
-  password: string,
-  confirmPassword: string
-) => {
-  if (!isValidEmail(email)) {
-    return hasEmailFormat(email) ? "email-too-long" : "invalid-email";
-  }
-
-  const usernameError = usernameLengthError(username);
-  if (usernameError) {
-    return usernameError;
-  }
-
-  const passwordError = passwordLengthError(password);
-  if (passwordError) {
-    return passwordError;
-  }
-
-  if (password !== confirmPassword) {
-    return "unmatched-passwords";
-  }
-
-  return;
+/** The e-mail field's problem, or "" when the address is fine: the API's format and length rule. */
+export const emailError = (email: string) => {
+  if (isValidEmail(email)) return "";
+  return hasEmailFormat(email)
+    ? "Your e-mail address can't be longer than 254 characters."
+    : "Enter a valid e-mail address.";
 };
+
+/**
+ * Only the shape of an address (something@something), for logging in and resetting a password: an
+ * account made before today's address rules still gets in.
+ */
+export const emailShapeError = (email: string) =>
+  /^[^\s@]+@[^\s@]+$/.test(email.trim()) ? "" : "Enter a valid e-mail address.";
+
+export const usernameError = (username: string) => usernameLengthError(username) ?? "";
+
+/** Only a too long username: typing more can't fix that one, so it shows while typing. */
+export const usernameEarlyError = (username: string) =>
+  username.trim().length > 16 ? usernameError(username) : "";
+
+export const passwordError = (password: string) => passwordLengthError(password) ?? "";
+
+/** Only a too long password, which shows while typing. */
+export const passwordEarlyError = (password: string) =>
+  [...password].length > 128 ? passwordError(password) : "";
+
+export const passwordMatchError = (password: string, confirmPassword: string) =>
+  password === confirmPassword ? "" : "The two passwords don't match.";
+
+/**
+ * A confirmation that already differs from the password where it's as long: typing more can't
+ * fix it, so it shows while typing.
+ */
+export const passwordMatchEarlyError = (password: string, confirmPassword: string) =>
+  [...confirmPassword].length >= [...password].length
+    ? passwordMatchError(password, confirmPassword)
+    : "";
+
+/** `message` for an empty field, "" otherwise. */
+export const requiredError = (value: string, message: string) => (value ? "" : message);
+
+const CODE_MESSAGE = "Enter the 6-digit code from the e-mail.";
+
+/** The mailed codes are 6 digits; the API ignores spaces in them. */
+export const confirmationCodeError = (code: string) =>
+  /^\d{6}$/.test(code.replace(/\s/g, "")) ? "" : CODE_MESSAGE;
+
+/** Anything but digits and spaces, or more than 6 digits, which shows while typing. */
+export const confirmationCodeEarlyError = (code: string) =>
+  /[^\d\s]/.test(code) || code.replace(/\s/g, "").length > 6 ? CODE_MESSAGE : "";
 
 /** The register form's fields, for an error about one of them. */
 export type RegisterField = "email" | "username" | "password" | "confirmPassword";
 
 /**
- * The field a problem is about: validateRegisterData's codes and messages, or the API's 400 and
- * 409 messages (taken, disposable or undeliverable address, the length rules). Undefined when it
- * isn't about one field.
+ * The field an API refusal is about: its 400 and 409 messages (taken, disposable or undeliverable
+ * address, the length rules). Undefined when it isn't about one field.
  */
 export const registerFieldOf = (problem: string): RegisterField | undefined => {
-  if (problem === "invalid-email" || problem === "email-too-long") return "email";
-  if (problem === "unmatched-passwords") return "confirmPassword";
   if (/username/i.test(problem)) return "username";
   if (/password/i.test(problem)) return "password";
   if (/e-?mail/i.test(problem)) return "email";
   return undefined;
+};
+
+/** How long typing has to pause before the register form checks the username with the API. */
+export const USERNAME_CHECK_DELAY = 400;
+
+/** Whether a username is free; "unknown" when the API couldn't say, which register's 409 covers. */
+export type UsernameAvailability = "free" | "taken" | "unknown";
+
+/**
+ * Asks the API whether `username` is free (vb2007/vb2007.hu-api#233), sent as register sends it.
+ * A failure, a 429 or an API without the endpoint yet is "unknown", never a problem to show.
+ */
+export const checkUsername = async (
+  username: string,
+  signal?: AbortSignal
+): Promise<UsernameAvailability> => {
+  try {
+    const query = new URLSearchParams({ username });
+    const response = await fetch(`${UserManagement.Authentication.usernameAvailable}?${query}`, {
+      signal
+    });
+    if (!response.ok) return "unknown";
+    const data = await response.json();
+    if (typeof data?.available !== "boolean") return "unknown";
+    return data.available ? "free" : "taken";
+  } catch {
+    return "unknown";
+  }
 };
 
 /** What POST /auth/register led to. */

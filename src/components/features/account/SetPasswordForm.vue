@@ -3,10 +3,16 @@
  * Sets a first password on an account made with GitHub; the API may want GitHub to confirm it's
  * them first. It hides itself once the account has a password but stays mounted to tell the panel.
  */
-import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
+import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
-import { passwordLengthError } from "@/scripts/authentication/register";
+import {
+  passwordEarlyError,
+  passwordError,
+  passwordMatchEarlyError,
+  passwordMatchError
+} from "@/scripts/authentication/register";
+import { useFormValidation } from "@/composables/useFormValidation";
 import { useSetPassword } from "@/composables/useSetPassword";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -17,23 +23,26 @@ const emit = defineEmits<{ set: [] }>();
 
 const password = ref("");
 const confirmPassword = ref("");
-const passwordError = ref("");
-const confirmError = ref("");
 const errorId = useId();
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
 const { isSetting, setError, needsGithub, setPassword } = useSetPassword();
 
-watch(password, () => {
-  passwordError.value = "";
-  confirmError.value = "";
+const form = useTemplateRef("form");
+const { errors, isValid, leave, validate } = useFormValidation({
+  password: {
+    value: password,
+    check: () => passwordError(password.value),
+    early: () => passwordEarlyError(password.value)
+  },
+  confirmPassword: {
+    value: confirmPassword,
+    check: () => passwordMatchError(password.value, confirmPassword.value),
+    early: () => passwordMatchEarlyError(password.value, confirmPassword.value)
+  }
 });
-watch(confirmPassword, () => (confirmError.value = ""));
 
 const onSubmit = async () => {
-  passwordError.value = passwordLengthError(password.value) ?? "";
-  confirmError.value =
-    confirmPassword.value === password.value ? "" : "The two passwords don't match.";
-  if (passwordError.value || confirmError.value) return;
+  if (!(await validate(form.value))) return;
 
   if (await setPassword(password.value)) {
     emit("set");
@@ -52,7 +61,7 @@ const onSubmit = async () => {
       e-mail address, and to be able to unlink GitHub. If you logged in more than 10 minutes ago,
       GitHub confirms it's you first.
     </p>
-    <form class="password__form" novalidate @submit.prevent="onSubmit">
+    <form ref="form" class="password__form" novalidate @submit.prevent="onSubmit">
       <!-- Tells password managers which account the new password belongs to. -->
       <input
         class="visually-hidden"
@@ -69,16 +78,18 @@ const onSubmit = async () => {
         type="password"
         autocomplete="new-password"
         hint="8 to 128 characters."
-        :error="passwordError"
+        :error="errors.password"
         required
+        @blur="leave('password')"
       />
       <BaseInput
         v-model="confirmPassword"
         label="Confirm password"
         type="password"
         autocomplete="new-password"
-        :error="confirmError"
+        :error="errors.confirmPassword"
         required
+        @blur="leave('confirmPassword')"
       />
       <StatusMessage v-if="setError" :id="errorId" :tone="needsGithub ? 'info' : 'error'">{{
         setError
@@ -93,7 +104,13 @@ const onSubmit = async () => {
         <AppIcon name="github" :size="20" />
         Confirm with GitHub
       </BaseButton>
-      <BaseButton v-else class="password__key" type="submit" :loading="isSetting">
+      <BaseButton
+        v-else
+        class="password__key"
+        type="submit"
+        :loading="isSetting"
+        :blocked="!isValid"
+      >
         {{ isSetting ? "Setting password" : "Set password" }}
       </BaseButton>
     </form>

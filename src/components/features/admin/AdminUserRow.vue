@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from "vue";
+import { computed, ref, useId, useTemplateRef, watch } from "vue";
 import {
   QUOTA_UNITS,
   quotaBytesFrom,
@@ -7,6 +7,7 @@ import {
   type AdminUser,
   type QuotaUnit
 } from "@/scripts/admin/adminUser";
+import { useFormValidation } from "@/composables/useFormValidation";
 import { formatDate } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -40,11 +41,14 @@ const UNIT_OPTIONS = (Object.keys(QUOTA_UNITS) as QuotaUnit[]).map((unit) => ({
 /* The editor starts from the current quota and follows it after each save. */
 const amount = ref("");
 const unit = ref<QuotaUnit>("GB");
-const amountError = ref("");
 const saved = ref("");
+const form = useTemplateRef("form");
+const { errors, isValid, leave, validate, reset } = useFormValidation({
+  amount: { value: amount, check: () => draft.value.error }
+});
 const resetDraft = () => {
   ({ amount: amount.value, unit: unit.value } = quotaParts(usage.value.quotaBytes));
-  amountError.value = "";
+  reset();
 };
 watch(() => usage.value.quotaBytes, resetDraft, { immediate: true });
 
@@ -59,8 +63,7 @@ const belowUsageHint = computed(() =>
 
 const save = async () => {
   saved.value = "";
-  amountError.value = draft.value.error;
-  if (draft.value.bytes === null || isUnchanged.value) return;
+  if (!(await validate(form.value)) || isUnchanged.value) return;
   if (await props.setQuota(props.user.id, draft.value.bytes)) {
     saved.value = `Quota set to ${formatBytes(usage.value.quotaBytes)}.`;
   }
@@ -156,7 +159,7 @@ const useDefault = async () => {
         </BaseButton>
       </div>
 
-      <form class="quota" novalidate @submit.prevent="save">
+      <form ref="form" class="quota" novalidate @submit.prevent="save">
         <div class="quota__fields">
           <BaseInput
             v-model="amount"
@@ -164,13 +167,20 @@ const useDefault = async () => {
             label="New quota"
             inputmode="decimal"
             :hint="belowUsageHint"
-            :error="amountError"
+            :error="errors.amount"
             @update:model-value="saved = ''"
+            @blur="leave('amount')"
           />
           <BaseSelect v-model="unit" label="Unit" :options="UNIT_OPTIONS" />
         </div>
         <div class="quota__actions">
-          <BaseButton type="submit" size="sm" :loading="saving" :disabled="isUnchanged">
+          <BaseButton
+            type="submit"
+            size="sm"
+            :loading="saving"
+            :disabled="isUnchanged"
+            :blocked="!isValid"
+          >
             {{ saving ? "Saving" : "Save quota" }}
           </BaseButton>
           <BaseButton
