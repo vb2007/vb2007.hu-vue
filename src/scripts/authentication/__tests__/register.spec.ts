@@ -180,6 +180,7 @@ describe("checkUsername", () => {
 
   beforeEach(() => {
     fetchMock = mockFetch();
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   it.each([
@@ -193,7 +194,7 @@ describe("checkUsername", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/auth/username-available?username=Anna+B",
-      { signal }
+      { method: "GET", signal }
     );
   });
 
@@ -207,9 +208,20 @@ describe("checkUsername", () => {
     await expect(checkUsername("anna")).resolves.toBe("unknown");
   });
 
-  it("can't tell when the request fails or is aborted", async () => {
-    fetchMock.mockRejectedValueOnce(new DOMException("Aborted", "AbortError"));
+  it("can't tell when the request fails", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await expect(checkUsername("anna")).resolves.toBe("unknown");
+  });
+
+  it("can't tell when newer typing aborted it, and doesn't log that", async () => {
+    const request = new AbortController();
+    fetchMock.mockImplementationOnce(() => {
+      request.abort();
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    });
+
+    await expect(checkUsername("anna", request.signal)).resolves.toBe("unknown");
+    expect(console.error).not.toHaveBeenCalled();
   });
 });
 

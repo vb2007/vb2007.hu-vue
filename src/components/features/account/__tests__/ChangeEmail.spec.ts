@@ -178,7 +178,10 @@ describe("ChangeEmail", () => {
     [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one."],
     [503, "The e-mail couldn't be sent: please try again later."]
   ])("shows the API's %i and keeps what was typed", async (status, error) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(status, { error }))
+      // A 503 looks the account up again, which finds no session.
+      .mockResolvedValueOnce(jsonResponse(401));
     await openForm();
     await fill("new@example.com", "wrong-password");
     (inputs()[1].element as HTMLInputElement).focus();

@@ -3,8 +3,17 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpMethod } from "@/constants/http";
 import { Messages } from "@/constants/messages";
-import { apiRequest, apiUrl, errorFrom, errorMessageFrom, readJson } from "@/scripts/api/client";
+import {
+  apiErrorOf,
+  apiRequest,
+  apiUrl,
+  errorFrom,
+  errorMessageFrom,
+  readJson,
+  type ApiFailure
+} from "@/scripts/api/client";
 import { defineEndpoint } from "@/scripts/api/endpoint";
+import type { ApiErrorBody } from "@/types/api/common";
 
 const failure = "Failed to do it";
 
@@ -75,6 +84,30 @@ describe("errorMessageFrom", () => {
     [null, "", 500, `${failure}: 500`]
   ])("falls back to the status for %j", (body, statusText, status, message) => {
     expect(errorMessageFrom(body, status, statusText, failure)).toBe(message);
+  });
+});
+
+describe("apiErrorOf", () => {
+  const http = (body: unknown): ApiFailure => ({
+    ok: false,
+    kind: "http",
+    status: 400,
+    error: failure,
+    body: body as ApiErrorBody | null
+  });
+
+  it("is the API's own message", () => {
+    expect(apiErrorOf(http({ error: "Wrong password." }))).toBe("Wrong password.");
+  });
+
+  it.each([[{}], [{ error: "" }], [{ error: 42 }], [null]])("is undefined for %j", (body) => {
+    expect(apiErrorOf(http(body))).toBeUndefined();
+  });
+
+  it("is undefined when the API never answered", () => {
+    expect(
+      apiErrorOf({ ok: false, kind: "network", status: 0, error: Messages.connectionError })
+    ).toBeUndefined();
   });
 });
 
@@ -212,6 +245,64 @@ describe("apiRequest", () => {
       error: Messages.connectionError
     });
     expect(console.error).toHaveBeenCalledWith(`${failure}: `, error);
+  });
+
+  it("doesn't log a request its caller aborted", async () => {
+    const request = new AbortController();
+    fetchMock.mockImplementationOnce(() => {
+      request.abort();
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    });
+
+    const result = await apiRequest(Endpoints.Auth.usernameAvailable, {
+      query: { username: "anna" },
+      signal: request.signal,
+      failure
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      kind: "aborted",
+      status: 0,
+      error: Messages.requestAborted
+    });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("doesn't log a request aborted while its body was read", async () => {
+    const request = new AbortController();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: "",
+      json: () => {
+        request.abort();
+        return Promise.reject(new DOMException("Aborted", "AbortError"));
+      }
+    } as unknown as Response);
+
+    const result = await apiRequest(Endpoints.Auth.usernameAvailable, {
+      query: { username: "anna" },
+      signal: request.signal,
+      failure
+    });
+
+    expect(result).toMatchObject({ ok: false, kind: "aborted" });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("still logs a failure when the signal wasn't aborted", async () => {
+    const { signal } = new AbortController();
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const result = await apiRequest(Endpoints.Auth.usernameAvailable, {
+      query: { username: "anna" },
+      signal,
+      failure
+    });
+
+    expect(result).toMatchObject({ ok: false, kind: "network" });
+    expect(console.error).toHaveBeenCalledOnce();
   });
 
   it("rejects a wrong body at compile time", async () => {
