@@ -4,7 +4,7 @@ import { nextTick } from "vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
 import { SEARCH_DELAY_MS } from "@/composables/useAdminUsers";
-import type { AdminUser } from "@/scripts/admin/adminUser";
+import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { createTestRouter } from "@/__tests__/helpers/mount";

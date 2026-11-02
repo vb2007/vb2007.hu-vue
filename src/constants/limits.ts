@@ -27,4 +27,12 @@ export class Limits {
     /** The API mails at most one code a minute per address or account. */
     static readonly cooldownSeconds: number = 60;
   };
+
+  /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */
+  static readonly FileName = class {
+    static readonly minLength: number = 1;
+    static readonly maxLength: number = 255;
+    /** Slashes and control characters. */
+    static readonly forbiddenCharacters: RegExp = /[/\\\u0000-\u001f\u007f]/;
+  };
 }

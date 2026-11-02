@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
-import { QUOTA_UNITS, type AdminUser } from "@/scripts/admin/adminUser";
+import { QUOTA_UNITS } from "@/scripts/admin/adminUser";
+import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
 import { createTestRouter } from "@/__tests__/helpers/mount";
 

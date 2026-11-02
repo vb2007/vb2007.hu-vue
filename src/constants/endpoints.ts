@@ -1,6 +1,12 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type QueryValues } from "@/scripts/api/endpoint";
 import type {
+  AdminUserListQuery,
+  AdminUsersResponse,
+  SetUploadQuotaBody,
+  UploadQuotaResponse
+} from "@/types/api/admin";
+import type {
   EmailBody,
   LoginBody,
   PasswordResetConfirmBody,
@@ -19,6 +25,15 @@ import type {
   PastesResponse,
   UpdatePasteBody
 } from "@/types/api/pastebin";
+import type {
+  UpdateUploadBody,
+  UploadDeletedResponse,
+  UploadFileFields,
+  UploadListQuery,
+  UploadSavedResponse,
+  UploadsResponse,
+  UploadUsage
+} from "@/types/api/uploads";
 import type {
   ChangeEmailBody,
   ChangePasswordBody,
@@ -206,28 +221,28 @@ export class Endpoints {
 
   /** The logged-in user's file uploads (vb2007/vb2007.hu-api#81 to #87). */
   static readonly Uploads = class {
-    static readonly list = untyped()({
+    static readonly list = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/uploads",
       credentials: true
     });
-    static readonly usage = untyped()({
+    static readonly usage = defineEndpoint<undefined, UploadUsage>()({
       method: HttpMethod.Get,
       path: "/uploads/usage",
       credentials: true
     });
-    /** Multipart; sent with XMLHttpRequest for its progress events. */
-    static readonly upload = untyped()({
+    /** Multipart form fields; sent with XMLHttpRequest for its progress events, not `apiRequest`. */
+    static readonly upload = defineEndpoint<UploadFileFields, UploadSavedResponse>()({
       method: HttpMethod.Post,
       path: "/upload",
       credentials: true
     });
-    static readonly update = untyped()({
+    static readonly update = defineEndpoint<UpdateUploadBody, UploadSavedResponse>()({
       method: HttpMethod.Patch,
       path: "/upload/:id",
       credentials: true
     });
-    static readonly remove = untyped()({
+    static readonly remove = defineEndpoint<undefined, UploadDeletedResponse>()({
       method: HttpMethod.Delete,
       path: "/upload/:id",
       credentials: true
@@ -236,17 +251,18 @@ export class Endpoints {
 
   /** The superuser's admin routes (vb2007/vb2007.hu-api#120 to #122). */
   static readonly Admin = class {
-    static readonly users = untyped()({
+    static readonly users = defineEndpoint<undefined, AdminUsersResponse, AdminUserListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users",
       credentials: true
     });
-    static readonly setUploadQuota = untyped()({
+    static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({
       method: HttpMethod.Patch,
       path: "/admin/users/:id/upload-quota",
       credentials: true
     });
-    static readonly userUploads = untyped()({
+    /** Answers like `Uploads.list`, plus whose uploads they are. */
+    static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
       credentials: true

@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { SEARCH_DELAY_MS, useUploads } from "@/composables/useUploads";
+import { Endpoints } from "@/constants/endpoints";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { anUpload } from "@/__tests__/helpers/uploads";
-import type { Upload } from "@/scripts/uploads/upload";
+import type { Upload } from "@/types/api/uploads";
 
 const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.length } = {}) =>
   jsonResponse(200, {
@@ -56,7 +57,7 @@ describe("useUploads", () => {
       })
     );
     const { api } = mountComposable(() =>
-      useUploads(10, "https://api.test/admin/users/u9/uploads")
+      useUploads(10, { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } })
     );
     expect(api.owner.value).toBeNull();
 

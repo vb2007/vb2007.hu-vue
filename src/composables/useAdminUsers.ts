@@ -1,8 +1,9 @@
 import { onBeforeUnmount, ref, watch } from "vue";
-import { Admin } from "@/constants/api";
-import { errorFrom } from "@/scripts/api/client";
-import type { Pagination } from "@/types/api/common";
-import type { AdminUser, AdminUserSortBy, SortOrder } from "@/scripts/admin/adminUser";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
+import type { AdminUser, AdminUserSortBy } from "@/types/api/admin";
+import type { Pagination, SortOrder } from "@/types/api/common";
 
 export const USERS_PER_PAGE = 20;
 export const SEARCH_DELAY_MS = 300;
@@ -10,7 +11,7 @@ export const SEARCH_DELAY_MS = 300;
 /** Every user with their upload usage, a page at a time, for the superuser to set quotas. */
 export const useAdminUsers = (limit = USERS_PER_PAGE) => {
   const users = ref<AdminUser[]>([]);
-  const pagination = ref<Pagination | null>(null);
+  const pagination = ref<Pagination<AdminUserSortBy> | null>(null);
   const page = ref(1);
   const sortBy = ref<AdminUserSortBy>("usedBytes");
   const sortOrder = ref<SortOrder>("desc");
@@ -26,39 +27,30 @@ export const useAdminUsers = (limit = USERS_PER_PAGE) => {
   let loadedSearch = "";
 
   const load = async () => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      page: String(page.value),
-      sortBy: sortBy.value,
-      sortOrder: sortOrder.value
-    });
     const search = query.value.trim();
-    if (search) params.set("q", search);
     loadedSearch = search;
 
-    try {
-      isLoading.value = true;
-      errorMessage.value = "";
+    isLoading.value = true;
+    errorMessage.value = "";
 
-      const response = await fetch(`${Admin.users}?${params}`, {
-        method: "GET",
-        credentials: "include"
-      });
+    const result = await apiRequest(Endpoints.Admin.users, {
+      query: {
+        limit,
+        page: page.value,
+        sortBy: sortBy.value,
+        sortOrder: sortOrder.value,
+        q: search || undefined
+      },
+      failure: Messages.Admin.usersFailed
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        users.value = data.users;
-        pagination.value = data.pagination;
-      } else {
-        errorMessage.value = await errorFrom(response, "Failed to load the users");
-        console.error("Failed to load users: ", response.status);
-      }
-    } catch (error) {
-      errorMessage.value = "Error connecting to server";
-      console.error("Error loading users: ", error);
-    } finally {
-      isLoading.value = false;
+    if (result.ok) {
+      users.value = result.data.users;
+      pagination.value = result.data.pagination;
+    } else {
+      errorMessage.value = result.error;
     }
+    isLoading.value = false;
   };
 
   const goToPage = (target: number) => {
@@ -84,32 +76,23 @@ export const useAdminUsers = (limit = USERS_PER_PAGE) => {
 
   /** Sets a user's quota in bytes, or `null` for the default. Returns whether it worked. */
   const setQuota = async (id: string, quotaBytes: number | null) => {
-    const failure = "Failed to change the quota";
-    try {
-      savingId.value = id;
-      rowError.value = { id: "", message: "" };
+    savingId.value = id;
+    rowError.value = { id: "", message: "" };
 
-      const response = await fetch(Admin.uploadQuota.replace(":id", encodeURIComponent(id)), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quotaBytes }),
-        credentials: "include"
-      });
+    const result = await apiRequest(Endpoints.Admin.setUploadQuota, {
+      params: { id },
+      body: { quotaBytes },
+      failure: Messages.Admin.quotaFailed
+    });
 
-      if (response.ok) {
-        const { user } = (await response.json()) as { user: AdminUser };
-        users.value = users.value.map((item) => (item.id === id ? user : item));
-        return true;
-      }
-      rowError.value = { id, message: await errorFrom(response, failure) };
-      console.error(`${failure}: `, response.status);
-    } catch (error) {
-      rowError.value = { id, message: "Error connecting to server" };
-      console.error(`${failure}: `, error);
-    } finally {
-      savingId.value = "";
+    if (result.ok) {
+      const { user } = result.data;
+      users.value = users.value.map((item) => (item.id === id ? user : item));
+    } else {
+      rowError.value = { id, message: result.error };
     }
-    return false;
+    savingId.value = "";
+    return result.ok;
   };
 
   return {

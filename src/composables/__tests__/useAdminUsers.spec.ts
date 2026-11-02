@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { SEARCH_DELAY_MS, useAdminUsers } from "@/composables/useAdminUsers";
-import type { AdminUser } from "@/scripts/admin/adminUser";
+import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";

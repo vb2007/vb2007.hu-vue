@@ -1,7 +1,8 @@
 import { ref } from "vue";
-import { UserUploads } from "@/constants/api";
-import { errorFrom } from "@/scripts/api/client";
-import type { UploadUsage } from "@/scripts/uploads/upload";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
+import type { UploadUsage } from "@/types/api/uploads";
 
 /** How much of their quota the user has used, and the upload rules the API enforces. */
 export const useUploadUsage = () => {
@@ -10,24 +11,19 @@ export const useUploadUsage = () => {
   const errorMessage = ref("");
 
   const load = async () => {
-    try {
-      isLoading.value = true;
-      errorMessage.value = "";
+    isLoading.value = true;
+    errorMessage.value = "";
 
-      const response = await fetch(UserUploads.usage, { method: "GET", credentials: "include" });
+    const result = await apiRequest(Endpoints.Uploads.usage, {
+      failure: Messages.Uploads.usageFailed
+    });
 
-      if (response.ok) {
-        usage.value = await response.json();
-      } else {
-        errorMessage.value = await errorFrom(response, "Failed to load your storage");
-        console.error("Failed to load upload usage: ", response.status);
-      }
-    } catch (error) {
-      errorMessage.value = "Error connecting to server";
-      console.error("Error loading upload usage: ", error);
-    } finally {
-      isLoading.value = false;
+    if (result.ok) {
+      usage.value = result.data;
+    } else {
+      errorMessage.value = result.error;
     }
+    isLoading.value = false;
   };
 
   return { usage, isLoading, errorMessage, load };

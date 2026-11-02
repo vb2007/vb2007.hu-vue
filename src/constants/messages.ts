@@ -93,4 +93,32 @@ export class Messages {
       return `${address} wasn't confirmed. ${error}`;
     }
   };
+
+  static readonly Uploads = class {
+    static readonly listFailed: string = "Failed to load your uploads";
+    static readonly usageFailed: string = "Failed to load your storage";
+    static readonly renameFailed: string = "Failed to rename upload";
+    static readonly visibilityFailed: string = "Failed to change visibility";
+    static readonly deleteFailed: string = "Failed to delete upload";
+    static readonly uploadFailed: string = "Upload failed";
+    /** The user stopped the upload; not shown as an error. */
+    static readonly cancelled: string = "Cancelled";
+    static readonly emptyFile: string = "This file is empty.";
+    static readonly unsupportedType: string = "This file type isn't supported.";
+    static readonly quotaExceeded: string = "This upload would go over your storage quota.";
+    /** `limit` is already formatted, e.g. "10 MB". */
+    static tooLarge(limit: string): string {
+      return `The file is larger than the ${limit} limit.`;
+    }
+    static invalidFileName(min: number, max: number): string {
+      return `File names must be ${min}–${max} characters, without slashes or control characters.`;
+    }
+  };
+
+  static readonly Admin = class {
+    static readonly usersFailed: string = "Failed to load the users";
+    static readonly quotaFailed: string = "Failed to change the quota";
+    static readonly invalidQuota: string = "Enter a size of 0 or more.";
+    static readonly quotaTooLarge: string = "That's more than the API can store.";
+  };
 }

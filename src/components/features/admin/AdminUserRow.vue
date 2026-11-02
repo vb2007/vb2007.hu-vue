@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, useTemplateRef, watch } from "vue";
-import {
-  QUOTA_UNITS,
-  quotaBytesFrom,
-  quotaParts,
-  type AdminUser,
-  type QuotaUnit
-} from "@/scripts/admin/adminUser";
+import { QUOTA_UNITS, quotaBytesFrom, quotaParts, type QuotaUnit } from "@/scripts/admin/adminUser";
+import type { AdminUser } from "@/types/api/admin";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { formatDate } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";

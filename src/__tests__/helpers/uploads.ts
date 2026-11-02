@@ -1,4 +1,4 @@
-import type { Upload, UploadUsage } from "@/scripts/uploads/upload";
+import type { Upload, UploadUsage } from "@/types/api/uploads";
 
 /** An upload as the API returns it; override what a test cares about. */
 export const anUpload = (id: string, overrides: Partial<Upload> = {}): Upload => ({

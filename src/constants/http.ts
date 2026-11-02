@@ -30,3 +30,6 @@ export class Header {
 export class ContentType {
   static readonly Json = "application/json";
 }
+
+/** Whether a status is a success (2xx), like `Response.ok`; for XMLHttpRequest, which has no `ok`. */
+export const isSuccessStatus = (status: number): boolean => status >= 200 && status < 300;

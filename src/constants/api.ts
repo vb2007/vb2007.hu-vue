@@ -13,16 +13,3 @@ export class UrlShortening {
   static lookup: string = legacy(Endpoints.ShortUrl.lookup.path);
   static shortenUrl: string = legacy(Endpoints.ShortUrl.create.path);
 }
-
-export class UserUploads {
-  static uploads: string = legacy(Endpoints.Uploads.list.path);
-  static usage: string = legacy(Endpoints.Uploads.usage.path);
-  static upload: string = legacy(Endpoints.Uploads.upload.path);
-  static uploadWithId: string = legacy(Endpoints.Uploads.update.path);
-}
-
-export class Admin {
-  static users: string = legacy(Endpoints.Admin.users.path);
-  static uploadQuota: string = legacy(Endpoints.Admin.setUploadQuota.path);
-  static userUploads: string = legacy(Endpoints.Admin.userUploads.path);
-}

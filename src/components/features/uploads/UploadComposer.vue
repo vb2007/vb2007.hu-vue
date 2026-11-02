@@ -2,7 +2,8 @@
 import { computed, toRef } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useUploadQueue } from "@/composables/useUploadQueue";
-import { acceptFor, type Upload, type UploadUsage } from "@/scripts/uploads/upload";
+import { acceptFor } from "@/scripts/uploads/upload";
+import type { Upload, UploadUsage } from "@/types/api/uploads";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
