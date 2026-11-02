@@ -13,8 +13,9 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
 import { OauthQuery } from "@/constants/oauth";
+import { apiUrl } from "@/scripts/api/client";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
@@ -31,6 +32,7 @@ const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
 // without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183).
 const githubReturned = ref(useQueryNotice(OauthQuery.github) === OauthQuery.githubLinked);
+const githubLink = apiUrl(Endpoints.Auth.githubLink);
 const notice = ref("");
 const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
@@ -158,12 +160,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
               >Link it to log in with GitHub instead of typing your password.</template
             >
           </p>
-          <BaseButton
-            v-if="!githubLinked"
-            class="login__action"
-            size="sm"
-            :href="UserManagement.Authentication.githubLink"
-          >
+          <BaseButton v-if="!githubLinked" class="login__action" size="sm" :href="githubLink">
             Link GitHub
           </BaseButton>
           <!-- Secondary at rest so its edge lines up with the note; armed, it turns solid red. -->

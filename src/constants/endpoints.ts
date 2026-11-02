@@ -19,7 +19,14 @@ import type {
   PastesResponse,
   UpdatePasteBody
 } from "@/types/api/pastebin";
-import type { UserDetails } from "@/types/api/user";
+import type {
+  ChangeEmailBody,
+  ChangePasswordBody,
+  ConfirmEmailBody,
+  DeleteUserBody,
+  SetPasswordBody,
+  UserDetails
+} from "@/types/api/user";
 
 /** Baked in at build time; tests pin it to `https://api.test`. */
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
@@ -102,7 +109,7 @@ export class Endpoints {
       credentials: true
     });
     /** Unlinks GitHub (vb2007/vb2007.hu-api#134). */
-    static readonly githubUnlink = untyped()({
+    static readonly githubUnlink = defineEndpoint<undefined, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/auth/github/link",
       credentials: true
@@ -116,31 +123,31 @@ export class Endpoints {
       credentials: true
     });
     /** Deletes the account (vb2007/vb2007.hu-api#164). */
-    static readonly remove = untyped()({
+    static readonly remove = defineEndpoint<DeleteUserBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/user",
       credentials: true
     });
     /** Sets a password on an account that has none. */
-    static readonly setPassword = untyped()({
+    static readonly setPassword = defineEndpoint<SetPasswordBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/user/password",
       credentials: true
     });
     /** Changes the password (vb2007/vb2007.hu-api#161). */
-    static readonly changePassword = untyped()({
+    static readonly changePassword = defineEndpoint<ChangePasswordBody, MessageResponse>()({
       method: HttpMethod.Patch,
       path: "/user/password",
       credentials: true
     });
     /** The new address with the current password (vb2007/vb2007.hu-api#162). */
-    static readonly changeEmail = untyped()({
+    static readonly changeEmail = defineEndpoint<ChangeEmailBody, MessageResponse>()({
       method: HttpMethod.Patch,
       path: "/user/email",
       credentials: true
     });
     /** The code sent to the new address switches to it (vb2007/vb2007.hu-api#215). */
-    static readonly confirmEmail = untyped()({
+    static readonly confirmEmail = defineEndpoint<ConfirmEmailBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/user/email/confirm",
       credentials: true

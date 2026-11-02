@@ -69,4 +69,28 @@ export class Messages {
       return `Enter the ${digits}-digit code from the e-mail.`;
     }
   };
+
+  /** The logged-in user's account: password, e-mail, GitHub and deleting it. */
+  static readonly Account = class {
+    static readonly changePasswordFailed: string = "Failed to change password";
+    static readonly setPasswordFailed: string = "Failed to set the password";
+    /** How the API's 403 starts when GitHub has to confirm it's the user first (vb2007/vb2007.hu-api#183). */
+    static readonly githubReauthPrefix: string = "Confirm it's you first";
+    static readonly changeEmailFailed: string = "Failed to change e-mail";
+    static readonly confirmEmailFailed: string = "Failed to confirm e-mail";
+    /** A rate limiter's 429 without the API's message. */
+    static readonly tooManyRequests: string = "Too many requests: try again later.";
+    /** Shown when the API's success has no message of its own. */
+    static readonly emailUpdated: string = "E-mail address updated.";
+    static readonly deleteFailed: string = "Failed to delete the account";
+    static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
+    /** A 400 that took the waiting change away: its code expired. */
+    static codeExpired(address: string): string {
+      return `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`;
+    }
+    /** Any other refusal that took the waiting change away. */
+    static notConfirmed(address: string, error: string): string {
+      return `${address} wasn't confirmed. ${error}`;
+    }
+  };
 }

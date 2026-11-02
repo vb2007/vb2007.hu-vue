@@ -4,7 +4,8 @@
  * them first. It hides itself once the account has a password but stays mounted to tell the panel.
  */
 import { nextTick, ref, useId, useTemplateRef } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import {
   passwordEarlyError,
@@ -25,6 +26,7 @@ const password = ref("");
 const confirmPassword = ref("");
 const errorId = useId();
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
+const githubLink = apiUrl(Endpoints.Auth.githubLink);
 const { isSetting, setError, needsGithub, setPassword } = useSetPassword();
 
 const form = useTemplateRef("form");
@@ -99,7 +101,7 @@ const onSubmit = async () => {
         ref="githubKey"
         class="password__key"
         :aria-describedby="errorId"
-        :href="UserManagement.Authentication.githubLink"
+        :href="githubLink"
       >
         <AppIcon name="github" :size="20" />
         Confirm with GitHub

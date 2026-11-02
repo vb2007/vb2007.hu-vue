@@ -7,22 +7,6 @@ import { apiUrl } from "@/scripts/api/client";
  */
 const legacy = (path: string) => `${API_BASE_URL}${path}`;
 
-export class UserManagement {
-  /** Only the GitHub links and unlinking are left, which move with the account calls (#102). */
-  static Authentication = class {
-    static github: string = legacy(Endpoints.Auth.github.path);
-    static githubLink: string = legacy(Endpoints.Auth.githubLink.path);
-  };
-
-  static Actions = class {
-    /** Only deleting the account still uses it (#102). */
-    static user: string = legacy(Endpoints.User.remove.path);
-    static userEmail: string = legacy(Endpoints.User.changeEmail.path);
-    static userPassword: string = legacy(Endpoints.User.changePassword.path);
-    static userEmailConfirm: string = legacy(Endpoints.User.confirmEmail.path);
-  };
-}
-
 export class UrlShortening {
   /** Followed by the encoded code. */
   static redirect: string = apiUrl(Endpoints.ShortUrl.redirect, { params: { shortenedUrl: "" } });
