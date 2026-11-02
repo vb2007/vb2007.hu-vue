@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { CATEGORY_LABELS, type UploadUsage } from "@/scripts/uploads/upload";
+import { CATEGORY_LABELS } from "@/scripts/uploads/upload";
+import type { UploadUsage } from "@/types/api/uploads";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";

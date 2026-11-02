@@ -3,13 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from 
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
 import { useFormValidation } from "@/composables/useFormValidation";
-import {
-  categoryOf,
-  typeLabel,
-  validateFileName,
-  type Upload,
-  type UploadVisibility
-} from "@/scripts/uploads/upload";
+import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
+import type { Upload, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";

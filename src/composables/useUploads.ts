@@ -1,27 +1,49 @@
 import { onBeforeUnmount, ref, watch } from "vue";
-import { UserUploads } from "@/constants/api";
-import { errorFrom } from "@/scripts/api/client";
-import type { Pagination } from "@/types/api/common";
-import type { SortOrder, Upload, UploadSortBy, UploadVisibility } from "@/scripts/uploads/upload";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest, type ApiResult } from "@/scripts/api/client";
+import type { ParamsOf } from "@/scripts/api/endpoint";
+import type { Pagination, SortOrder } from "@/types/api/common";
+import type {
+  UpdateUploadBody,
+  Upload,
+  UploadListQuery,
+  UploadOwner,
+  UploadSortBy,
+  UploadVisibility
+} from "@/types/api/uploads";
 
 export const UPLOADS_PER_PAGE = 10;
 export const SEARCH_DELAY_MS = 300;
 
 export type UploadAction = "rename" | "visibility" | "delete";
 
-/** Whose uploads an admin listing shows (vb2007/vb2007.hu-api#122). */
-export interface UploadOwner {
-  id: string;
-  username: string;
-}
+/**
+ * Where a list of uploads loads from: the logged-in user's own, or one user's for the admin
+ * (vb2007/vb2007.hu-api#122). Both answer with an `UploadsResponse`.
+ */
+export type UploadListing =
+  | { endpoint: typeof Endpoints.Uploads.list }
+  | {
+      endpoint: typeof Endpoints.Admin.userUploads;
+      params: ParamsOf<typeof Endpoints.Admin.userUploads>;
+    };
+
+const OWN_UPLOADS: UploadListing = { endpoint: Endpoints.Uploads.list };
+
+const EDIT_FAILURES: Record<UploadAction, string> = {
+  rename: Messages.Uploads.renameFailed,
+  visibility: Messages.Uploads.visibilityFailed,
+  delete: Messages.Uploads.deleteFailed
+};
 
 /**
  * A page of uploads at a time, with search, filter, sort and edits. By default the logged-in
- * user's own; `listUrl` points it at another listing, e.g. one user's uploads for the admin.
+ * user's own; `listing` points it at another one, e.g. one user's uploads for the admin.
  */
-export const useUploads = (limit = UPLOADS_PER_PAGE, listUrl = UserUploads.uploads) => {
+export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OWN_UPLOADS) => {
   const uploads = ref<Upload[]>([]);
-  const pagination = ref<Pagination | null>(null);
+  const pagination = ref<Pagination<UploadSortBy> | null>(null);
   /** Set when the listing says whose uploads they are; the user's own listing doesn't. */
   const owner = ref<UploadOwner | null>(null);
   const page = ref(1);
@@ -40,42 +62,37 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listUrl = UserUploads.uploa
   /** The search the list was last loaded with. */
   let loadedSearch = "";
 
+  const fetchListing = (listQuery: UploadListQuery) => {
+    const failure = Messages.Uploads.listFailed;
+    return "params" in listing
+      ? apiRequest(listing.endpoint, { params: listing.params, query: listQuery, failure })
+      : apiRequest(listing.endpoint, { query: listQuery, failure });
+  };
+
   const load = async () => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      page: String(page.value),
-      sortBy: sortBy.value,
-      sortOrder: sortOrder.value
-    });
-    if (visibilityFilter.value) params.set("visibility", visibilityFilter.value);
     const search = query.value.trim();
-    if (search) params.set("q", search);
     loadedSearch = search;
 
-    try {
-      isLoading.value = true;
-      errorMessage.value = "";
+    isLoading.value = true;
+    errorMessage.value = "";
 
-      const response = await fetch(`${listUrl}?${params}`, {
-        method: "GET",
-        credentials: "include"
-      });
+    const result = await fetchListing({
+      limit,
+      page: page.value,
+      sortBy: sortBy.value,
+      sortOrder: sortOrder.value,
+      visibility: visibilityFilter.value || undefined,
+      q: search || undefined
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        uploads.value = data.uploads;
-        pagination.value = data.pagination;
-        owner.value = data.user ?? null;
-      } else {
-        errorMessage.value = await errorFrom(response, "Failed to load your uploads");
-        console.error("Failed to load uploads: ", response.status);
-      }
-    } catch (error) {
-      errorMessage.value = "Error connecting to server";
-      console.error("Error loading uploads: ", error);
-    } finally {
-      isLoading.value = false;
+    if (result.ok) {
+      uploads.value = result.data.uploads;
+      pagination.value = result.data.pagination;
+      owner.value = result.data.user ?? null;
+    } else {
+      errorMessage.value = result.error;
     }
+    isLoading.value = false;
   };
 
   const goToPage = (target: number) => {
@@ -106,57 +123,34 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listUrl = UserUploads.uploa
   onBeforeUnmount(() => clearTimeout(searchTimer));
 
   /** Runs one edit on a row, keeping `busyId`/`rowError` in step. Returns whether it worked. */
-  const edit = async (
+  const edit = async <Data>(
     id: string,
     action: UploadAction,
-    init: RequestInit,
-    onDone: (response: Response) => Promise<void>
+    request: (failure: string) => Promise<ApiResult<Data>>,
+    onDone: (data: Data) => Promise<void> | void
   ) => {
-    const failure = {
-      rename: "Failed to rename upload",
-      visibility: "Failed to change visibility",
-      delete: "Failed to delete upload"
-    }[action];
-    try {
-      busyId.value = id;
-      busyAction.value = action;
-      rowError.value = { id: "", message: "" };
+    busyId.value = id;
+    busyAction.value = action;
+    rowError.value = { id: "", message: "" };
 
-      const response = await fetch(
-        UserUploads.uploadWithId.replace(":id", encodeURIComponent(id)),
-        {
-          ...init,
-          credentials: "include"
-        }
-      );
+    const result = await request(EDIT_FAILURES[action]);
 
-      if (response.ok) {
-        await onDone(response);
-        return true;
-      }
-      rowError.value = { id, message: await errorFrom(response, failure) };
-      console.error(`${failure}: `, response.status);
-    } catch (error) {
-      rowError.value = { id, message: "Error connecting to server" };
-      console.error(`${failure}: `, error);
-    } finally {
-      busyId.value = "";
-      busyAction.value = "";
+    if (result.ok) {
+      await onDone(result.data);
+    } else {
+      rowError.value = { id, message: result.error };
     }
-    return false;
+    busyId.value = "";
+    busyAction.value = "";
+    return result.ok;
   };
 
-  const patch = (id: string, action: UploadAction, changes: Partial<Upload>) =>
+  const patch = (id: string, action: UploadAction, changes: UpdateUploadBody) =>
     edit(
       id,
       action,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changes)
-      },
-      async (response) => {
-        const { upload } = (await response.json()) as { upload: Upload };
+      (failure) => apiRequest(Endpoints.Uploads.update, { params: { id }, body: changes, failure }),
+      async ({ upload }) => {
         // A filtered list may no longer include it, so ask again; otherwise swap it in place.
         if (visibilityFilter.value && upload.visibility !== visibilityFilter.value) {
           await load();
@@ -173,13 +167,18 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listUrl = UserUploads.uploa
     patch(id, "visibility", { visibility });
 
   const remove = (id: string) =>
-    edit(id, "delete", { method: "DELETE" }, async () => {
-      // Deleting the last upload on a page would leave it empty, so step back one.
-      if (uploads.value.length === 1 && page.value > 1) {
-        page.value -= 1;
+    edit(
+      id,
+      "delete",
+      (failure) => apiRequest(Endpoints.Uploads.remove, { params: { id }, failure }),
+      async () => {
+        // Deleting the last upload on a page would leave it empty, so step back one.
+        if (uploads.value.length === 1 && page.value > 1) {
+          page.value -= 1;
+        }
+        await load();
       }
-      await load();
-    });
+    );
 
   return {
     uploads,

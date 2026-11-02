@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Admin } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import type { UploadListing } from "@/composables/useUploads";
 import { isSuperuser } from "@/scripts/authentication/authState";
 import PageSection from "@/components/layout/PageSection.vue";
 import AdminGate from "@/components/features/admin/AdminGate.vue";
@@ -9,7 +10,10 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 
 const props = defineProps<{ id: string }>();
 
-const listUrl = computed(() => Admin.userUploads.replace(":id", encodeURIComponent(props.id)));
+const listing = computed<UploadListing>(() => ({
+  endpoint: Endpoints.Admin.userUploads,
+  params: { id: props.id }
+}));
 </script>
 
 <template>
@@ -19,8 +23,8 @@ const listUrl = computed(() => Admin.userUploads.replace(":id", encodeURICompone
         <BaseButton class="moderate__back" size="sm" variant="ghost" to="/admin">
           All users
         </BaseButton>
-        <!-- A new list per user, so its listing endpoint is fixed for its lifetime. -->
-        <UploadList :key="listUrl" :list-url="listUrl" as="h1" />
+        <!-- A new list per user, so its listing is fixed for its lifetime. -->
+        <UploadList :key="id" :listing="listing" as="h1" />
       </div>
     </AdminGate>
   </PageSection>
