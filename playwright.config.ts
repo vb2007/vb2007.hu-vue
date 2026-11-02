@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 4173;
+// CI picks a free port per job (E2E_PORT): several runners share one host, and a fixed port would
+// let two e2e jobs collide.
+const PORT = Number(process.env.E2E_PORT) || 4173;
 const isCI = !!process.env.CI;
 
 // In CI the build job's dist/ artifact is served as-is (built against the real API URL, which the
@@ -13,6 +15,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
+  // Four runners share the CI host, so each e2e job takes a quarter of its cores; at Playwright's
+  // default (half), four parallel jobs would run two browsers per core and time out.
+  workers: process.env.E2E_WORKERS || (isCI ? "25%" : undefined),
   reporter: [
     ["list"],
     ...(process.env.E2E_JUNIT

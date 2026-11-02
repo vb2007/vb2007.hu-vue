@@ -4,10 +4,11 @@ name: PR Tests
 # (workflow_dispatch: pick any branch under "Run workflow"). Six stages feed a
 # shared JUnit -> HTML/ODS report pipeline, aggregated and published by two
 # further jobs. typecheck, lint, build and unit-tests have no interdependency
-# between them - on this single self-hosted runner they still queue one after
-# another, but this keeps each stage's pass/fail visible on its own and keeps
-# the door open for more runners later. e2e depends on build so it tests the
-# exact bundle the build stage produced instead of building its own.
+# between them, so they run in parallel across the self-hosted runners. Those
+# runners share one host, so no job may use a fixed port or a fixed /tmp path:
+# logs go to the job's own $RUNNER_TEMP, and e2e picks a free port. e2e
+# depends on build so it tests the exact bundle the build stage produced
+# instead of building its own.
 on:
   pull_request:
     branches: [main, dev]
@@ -45,11 +46,11 @@ jobs:
         run: |
           SECONDS=0
           set +e
-          npm run type-check > /tmp/vb2007-hu-typecheck.log 2>&1
+          npm run type-check > "$RUNNER_TEMP/typecheck.log" 2>&1
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
           set -e
-          cat /tmp/vb2007-hu-typecheck.log
+          cat "$RUNNER_TEMP/typecheck.log"
 
       # vue-tsc doesn't emit JUnit XML, so this stage's report is a small
       # hand-written one (a single synthetic case) - it still flows through
@@ -117,11 +118,11 @@ jobs:
         run: |
           SECONDS=0
           set +e
-          npm run lint:check > /tmp/vb2007-hu-lint.log 2>&1
+          npm run lint:check > "$RUNNER_TEMP/lint.log" 2>&1
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
           set -e
-          cat /tmp/vb2007-hu-lint.log
+          cat "$RUNNER_TEMP/lint.log"
 
       # Same hand-written single-case report as the typecheck stage above.
       - name: Write JUnit report
@@ -190,11 +191,11 @@ jobs:
         run: |
           SECONDS=0
           set +e
-          npm run build-only > /tmp/vb2007-hu-build.log 2>&1
+          npm run build-only > "$RUNNER_TEMP/build.log" 2>&1
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
           set -e
-          cat /tmp/vb2007-hu-build.log
+          cat "$RUNNER_TEMP/build.log"
 
       # Same hand-written single-case report as the typecheck stage above.
       - name: Write JUnit report
@@ -375,6 +376,15 @@ jobs:
             echo "::error title=No launchable Chromium on this runner::Install one on the runner host (e.g. 'sudo apt-get install -y chromium'; this job then picks it up from PATH), or its shared libraries ('sudo npx playwright install-deps chromium')."
             exit 1
           }
+
+      # The runners share one host, so a fixed port would collide with another
+      # job's e2e. The OS hands out a free one; vite preview's --strictPort
+      # fails loudly in the unlikely case it's taken again before the server binds.
+      - name: Pick a free port for vite preview
+        run: |
+          port=$(node -e "const s = require('net').createServer().listen(0, '127.0.0.1', () => { console.log(s.address().port); s.close(); })")
+          echo "E2E_PORT=$port" >> "$GITHUB_ENV"
+          echo "vite preview will listen on port $port"
 
       - name: Run e2e tests
         run: npx playwright test
