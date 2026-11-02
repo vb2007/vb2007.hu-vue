@@ -174,6 +174,19 @@ describe("apiRequest", () => {
     );
   });
 
+  it("doesn't log a status the caller expects", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: "Not logged in." }));
+
+    const result = await apiRequest(Endpoints.Pastebin.get, {
+      params: { id: "a" },
+      failure,
+      quietStatuses: [401]
+    });
+
+    expect(result).toMatchObject({ ok: false, kind: "http", status: 401, error: "Not logged in." });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
   it("passes the endpoint's redirect mode", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "bye" }));
 

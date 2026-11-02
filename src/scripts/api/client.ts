@@ -26,6 +26,8 @@ export type RequestOptions<E> = UrlOptions<E> &
     /** Shown, followed by the status, when the API fails without an `{ error }` message. */
     failure: string;
     signal?: AbortSignal;
+    /** Statuses that are an expected answer rather than a fault, so they aren't logged. */
+    quietStatuses?: readonly number[];
   };
 
 export interface ApiSuccess<Data> {
@@ -171,7 +173,9 @@ export const apiRequest = async <E extends Endpoint>(
     return aborted;
   }
 
-  console.error(`${options.failure}: `, response.status);
+  if (!options.quietStatuses?.includes(response.status)) {
+    console.error(`${options.failure}: `, response.status);
+  }
   return {
     ok: false,
     kind: "http",

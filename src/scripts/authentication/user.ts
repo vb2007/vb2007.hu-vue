@@ -1,5 +1,6 @@
 import { LoginStatus } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
@@ -24,7 +25,11 @@ export const loginStatus = ref("");
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
 export const fetchUserDetails = async () => {
-  const result = await apiRequest(Endpoints.User.get, { failure: Messages.Auth.userFailed });
+  const result = await apiRequest(Endpoints.User.get, {
+    failure: Messages.Auth.userFailed,
+    // A visitor who isn't logged in: the usual answer, not a fault.
+    quietStatuses: [HttpStatus.Unauthorized]
+  });
 
   if (!result.ok) {
     return false;
