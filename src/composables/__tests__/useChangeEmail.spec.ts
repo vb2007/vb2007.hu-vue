@@ -2,11 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
-import {
-  COOLDOWN_MESSAGE,
-  COOLDOWN_STORAGE_KEY,
-  useChangeEmail
-} from "@/composables/useChangeEmail";
+import { COOLDOWN_STORAGE_KEY, useChangeEmail } from "@/composables/useChangeEmail";
+import { Messages } from "@/constants/messages";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 
 /** `GET /user` while a change waits for its code, shaped like the API's answer. */
@@ -128,7 +125,7 @@ describe("useChangeEmail", () => {
 
     it("falls back to its own message when the API sends none", async () => {
       fetchMock
-        .mockResolvedValueOnce(jsonResponse(200))
+        .mockResolvedValueOnce(jsonResponse(200, {}))
         .mockResolvedValueOnce(jsonResponse(200, { email: "new@example.com" }));
       const email = useEmail();
 
@@ -209,7 +206,7 @@ describe("useChangeEmail", () => {
         credentials: "include"
       });
       expect(pendingEmail.value).toBe("new@example.com");
-      expect(email.changeError.value).toBe(COOLDOWN_MESSAGE);
+      expect(email.changeError.value).toBe(Messages.EmailCode.cooldown);
       expect(email.cooldown.remaining.value).toBe(42);
       expect(savedCooldown()).toEqual({ id: "old@example.com", deadline: Date.now() + 42_000 });
       vi.advanceTimersByTime(42_000);
@@ -322,7 +319,9 @@ describe("useChangeEmail", () => {
     });
 
     it("switches to the address itself when the refresh fails", async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(200)).mockResolvedValueOnce(jsonResponse(500));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, {}))
+        .mockResolvedValueOnce(jsonResponse(500));
       const email = useEmail();
 
       expect(await email.confirm("123456")).toBe(true);
@@ -431,7 +430,9 @@ describe("useChangeEmail", () => {
     });
 
     it("still ends the countdown when the browser's storage is off", async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(200)).mockResolvedValueOnce(jsonResponse(500));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, {}))
+        .mockResolvedValueOnce(jsonResponse(500));
       const email = useWaitingEmail();
       vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
         throw new DOMException("Storage is disabled", "SecurityError");

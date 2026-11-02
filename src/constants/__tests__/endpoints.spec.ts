@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Admin, UrlShortening, UserManagement, UserUploads } from "@/constants/api";
+import { Admin, UrlShortening, UserUploads } from "@/constants/api";
 import { API_BASE_URL, Endpoints } from "@/constants/endpoints";
 
 describe("Endpoints", () => {
@@ -53,9 +53,6 @@ describe("Endpoints", () => {
 
 describe("legacy URLs", () => {
   it("derives the not yet migrated URLs from Endpoints", () => {
-    expect(UserManagement.Authentication.githubLink).toBe("https://api.test/auth/github/link");
-    expect(UserManagement.Actions.user).toBe("https://api.test/user");
-    expect(UserManagement.Actions.userPassword).toBe("https://api.test/user/password");
     expect(UrlShortening.redirect).toBe("https://api.test/r/");
     expect(UrlShortening.lookup).toBe("https://api.test/shortenUrl/:shortenedUrl");
     expect(UserUploads.uploadWithId).toBe("https://api.test/upload/:id");
