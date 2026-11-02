@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
 import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 /** Unlinks the logged-in user's GitHub account (vb2007/vb2007.hu-api#134). */
 export const useGithubUnlink = () => {

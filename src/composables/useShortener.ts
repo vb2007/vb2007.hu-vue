@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { validateUrl } from "@/scripts/utility/text";
 import { UrlShortening } from "@/constants/api";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 export const INVALID_URL = "Invalid URL / URI format.";
 

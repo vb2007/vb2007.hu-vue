@@ -2,7 +2,7 @@ import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword } from "@/scripts/authentication/authState";
 import { fetchUserDetails } from "@/scripts/authentication/user";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 /** How the API's 403 starts when GitHub has to confirm it's the user first (vb2007/vb2007.hu-api#183). */
 const GITHUB_REAUTH = "Confirm it's you first";

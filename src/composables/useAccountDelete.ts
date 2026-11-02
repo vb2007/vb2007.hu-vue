@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { UserManagement } from "@/constants/api";
 import { hasPassword } from "@/scripts/authentication/authState";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 /**
  * Deletes the logged-in account with its pastes, short links and uploads (vb2007/vb2007.hu-api#164).

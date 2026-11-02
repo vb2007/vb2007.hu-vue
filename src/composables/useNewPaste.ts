@@ -1,8 +1,11 @@
 import { computed, ref, watch } from "vue";
-import { Pastebin } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
 import { detectLanguage } from "@/scripts/pastebin/detect";
 import { PLAINTEXT } from "@/scripts/pastebin/languages";
-import { errorFrom, validatePaste, type Paste } from "@/scripts/pastebin/paste";
+import { validatePaste } from "@/scripts/pastebin/paste";
+import type { Paste } from "@/types/api/pastebin";
 
 /** The composer's language choice when the user hasn't picked one: follow the detection. */
 export const AUTO_LANGUAGE = "auto";
@@ -39,37 +42,22 @@ export const useNewPaste = () => {
       detected.value = detectLanguage(content.value);
     }
 
-    try {
-      isLoading.value = true;
-      errorMessage.value = "";
+    isLoading.value = true;
+    errorMessage.value = "";
 
-      const response = await fetch(Pastebin.paste, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          paste: content.value,
-          language: resolvedLanguage.value
-        }),
-        credentials: "include"
-      });
+    const result = await apiRequest(Endpoints.Pastebin.create, {
+      body: { paste: content.value, language: resolvedLanguage.value },
+      failure: Messages.Pastebin.createFailed
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        createdPaste.value = data.paste;
-        content.value = "";
-        language.value = AUTO_LANGUAGE;
-      } else {
-        errorMessage.value = await errorFrom(response, "Failed to create paste");
-        console.error("Failed to create paste: ", response.status);
-      }
-    } catch (error) {
-      errorMessage.value = "Error connecting to server";
-      console.error("Error creating paste: ", error);
-    } finally {
-      isLoading.value = false;
+    if (result.ok) {
+      createdPaste.value = result.data.paste;
+      content.value = "";
+      language.value = AUTO_LANGUAGE;
+    } else {
+      errorMessage.value = result.error;
     }
+    isLoading.value = false;
   };
 
   const reset = () => {

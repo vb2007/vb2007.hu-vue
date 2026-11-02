@@ -1,4 +1,4 @@
-import type { SortOrder } from "@/scripts/pastebin/paste";
+import type { SortOrder } from "@/types/api/common";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 

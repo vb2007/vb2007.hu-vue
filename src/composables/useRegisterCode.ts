@@ -3,7 +3,7 @@ import { UserManagement } from "@/constants/api";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { errorFrom } from "@/scripts/api/client";
 
 /** The API sends at most one code a minute per address. */
 export const RESEND_COOLDOWN_SECONDS = 60;
