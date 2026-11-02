@@ -1,4 +1,4 @@
-import type { AdminUser } from "@/scripts/admin/adminUser";
+import type { AdminUser } from "@/types/api/admin";
 
 const GB = 1024 ** 3;
 

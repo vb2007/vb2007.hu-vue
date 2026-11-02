@@ -26,8 +26,8 @@ describe("apiUrl", () => {
     expect(apiUrl(Endpoints.Pastebin.get, { params: { id: "a b/c" } })).toBe(
       "https://api.test/paste/a%20b%2Fc"
     );
-    expect(apiUrl(Endpoints.Admin.userUploads, { params: { id: "u 9" } })).toBe(
-      "https://api.test/admin/users/u%209/uploads"
+    expect(apiUrl(Endpoints.Admin.setUploadQuota, { params: { id: "u 9" } })).toBe(
+      "https://api.test/admin/users/u%209/upload-quota"
     );
   });
 
@@ -47,7 +47,13 @@ describe("apiUrl", () => {
   });
 
   it("leaves out the question mark when the query is empty", () => {
-    expect(apiUrl(Endpoints.Uploads.list, { query: {} })).toBe("https://api.test/uploads");
+    const list = defineEndpoint<undefined, unknown, { q?: string }>()({
+      method: HttpMethod.Get,
+      path: "/uploads",
+      credentials: true
+    });
+
+    expect(apiUrl(list, { query: {} })).toBe("https://api.test/uploads");
   });
 
   it("rejects missing or misspelled params at compile time", () => {

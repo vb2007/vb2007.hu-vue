@@ -4,7 +4,8 @@ import { nextTick } from "vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
 import { SEARCH_DELAY_MS } from "@/composables/useUploads";
-import type { Upload } from "@/scripts/uploads/upload";
+import { Endpoints } from "@/constants/endpoints";
+import type { Upload } from "@/types/api/uploads";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { anUpload } from "@/__tests__/helpers/uploads";
 
@@ -56,7 +57,7 @@ describe("UploadList", () => {
     let respond!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
     const wrapper = mount(UploadList, {
-      props: { listUrl: "https://api.test/admin/users/u9/uploads", as: "h1" }
+      props: { listing: { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } }, as: "h1" }
     });
     await flushPromises();
     expect(lastUrl(fetchMock)).toMatch(/^https:\/\/api\.test\/admin\/users\/u9\/uploads\?/);
@@ -98,7 +99,7 @@ describe("UploadList", () => {
       })
     );
     const wrapper = mount(UploadList, {
-      props: { listUrl: "https://api.test/admin/users/u9/uploads" }
+      props: { listing: { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } } }
     });
     await flushPromises();
 

@@ -4,7 +4,7 @@ import UploadRow from "@/components/features/uploads/UploadRow.vue";
 import UploadLink from "@/components/features/uploads/UploadLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
-import type { Upload } from "@/scripts/uploads/upload";
+import type { Upload } from "@/types/api/uploads";
 import { anUpload } from "@/__tests__/helpers/uploads";
 
 const buttonNamed = (wrapper: VueWrapper, name: string) =>
