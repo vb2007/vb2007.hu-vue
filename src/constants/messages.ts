@@ -9,6 +9,13 @@ export class Messages {
   /** The caller aborted the request, e.g. a check that newer typing replaced; never shown. */
   static readonly requestAborted: string = "The request was aborted";
 
+  static readonly ShortUrl = class {
+    static readonly invalidUrl: string = "Invalid URL / URI format.";
+    static readonly shortenFailed: string = "Failed to shorten URL";
+    /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
+    static readonly lookupFailed: string = "Failed to resolve short link";
+  };
+
   static readonly Pastebin = class {
     static readonly loadFailed: string = "Failed to load paste";
     static readonly invalidLink: string = "That isn't a valid paste link.";
