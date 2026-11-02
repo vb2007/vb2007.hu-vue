@@ -154,7 +154,9 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every PR into `main` or `dev`, on the self-hosted runner. It can also be started from the Actions tab via "Run workflow" on any branch.
+`.github/workflows/ci.yml` runs on every PR into `main` or `dev`, on the self-hosted runners. It can also be started from the Actions tab via "Run workflow" on any branch.
+
+The runners share one host, so jobs from different runs can overlap on it. A job therefore never uses a fixed port or a fixed `/tmp` path: stage logs go to the job's own `$RUNNER_TEMP`, and E2E serves the build on a free port that it picks (`E2E_PORT`; 4173 when unset, as locally). E2E also uses a quarter of the host's cores (`E2E_WORKERS` overrides it), so four parallel E2E jobs don't run two browsers per core and time out.
 
 | Stage | What it checks |
 |---|---|

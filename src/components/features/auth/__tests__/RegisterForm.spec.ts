@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises } from "@vue/test-utils";
+import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
@@ -22,6 +22,10 @@ vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   restoreSession: vi.fn(() => Promise.resolve()),
   fetchUserDetails: vi.fn()
 }));
+
+// Unmounting runs the form's own cleanup: a username check still waiting on its real timer would
+// otherwise fire in a later test, which a busy runner host makes late enough to break it.
+enableAutoUnmount(afterEach);
 
 const mountForm = async () => {
   // Attached, so the tests can see where focus goes.
