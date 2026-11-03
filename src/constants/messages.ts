@@ -87,7 +87,10 @@ export class Messages {
   static readonly Account = class {
     static readonly changePasswordFailed: string = "Failed to change password";
     static readonly setPasswordFailed: string = "Failed to set the password";
-    /** How the API's 403 starts when GitHub has to confirm it's the user first (vb2007/vb2007.hu-api#183). */
+    /**
+     * How the API's 403 starts when GitHub has to confirm it's the user first: before setting a
+     * password (vb2007/vb2007.hu-api#183) or deleting an account without one (vb2007/vb2007.hu-api#245).
+     */
     static readonly githubReauthPrefix: string = "Confirm it's you first";
     static readonly changeEmailFailed: string = "Failed to change e-mail";
     static readonly confirmEmailFailed: string = "Failed to confirm e-mail";
@@ -95,6 +98,25 @@ export class Messages {
     static readonly tooManyRequests: string = "Too many requests: try again later.";
     /** Shown when the API's success has no message of its own. */
     static readonly emailUpdated: string = "E-mail address updated.";
+    /** Back from linking GitHub to an account with a password (vb2007/vb2007.hu-api#132). */
+    static readonly githubLinked: string = "GitHub is linked. You can log in with it from now on.";
+    static readonly githubUnlinked: string =
+      "GitHub is unlinked. Log in with your password from now on.";
+    /** Once an account made with GitHub has set its first password (vb2007/vb2007.hu-api#155). */
+    static readonly passwordSet: string =
+      "Your password is set. You can log in with it from now on.";
+    /** Why GitHub may come first, for an account without a password. */
+    static githubReauthNote(minutes: number): string {
+      return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;
+    }
+    /** Back from GitHub, which confirmed it's the user, before setting the password. */
+    static passwordGithubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Set your password within ${minutes} minutes.`;
+    }
+    /** Back from GitHub, which confirmed it's the user asking to delete (vb2007/vb2007.hu-api#245). */
+    static deleteGithubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Delete the account within ${minutes} minutes.`;
+    }
     static readonly deleteFailed: string = "Failed to delete the account";
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
     static readonly githubLinkFailed: string = "Failed to start linking GitHub";

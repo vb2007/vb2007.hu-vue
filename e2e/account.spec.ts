@@ -752,21 +752,150 @@ test("an account is deleted with its password and the visitor lands home logged 
   await expect(page.getByText("Log in to see your account.")).toBeVisible();
 });
 
-test("an account made with GitHub is deleted by typing its username", async ({ page, api }) => {
+test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({
+  page,
+  api
+}) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
   await page.goto("/account");
+  const deletion = page.getByRole("region", { name: "Delete account" });
 
-  await page.getByRole("button", { name: "Delete account" }).click();
-  await expect(page.getByText("Type “me” to confirm.")).toBeVisible();
-  const confirm = page.getByRole("button", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await expect(deletion.getByText("Type “me” to confirm.")).toBeVisible();
+  const username = deletion.getByLabel("Username");
+  const confirm = deletion.getByRole("button", { name: "Delete account" });
 
-  await expect(page.getByLabel("Username")).toHaveJSProperty("spellcheck", false);
-  await page.getByLabel("Username").fill("m");
+  await expect(username).toHaveJSProperty("spellcheck", false);
+  await username.fill("m");
   await expect(confirm).toBeDisabled();
-  await page.getByLabel("Username").fill("me");
+  await username.fill("me");
+  await confirm.click();
+
+  // The API wants GitHub to confirm it's them first: an expected step, not a fault.
+  await expect(deletion.getByRole("status")).toHaveText(
+    "Confirm it's you first: log in with GitHub again (or relink it), then delete the account within 10 minutes."
+  );
+  await expect(deletion.getByRole("alert")).toHaveCount(0);
+  await expect(confirm).toHaveCount(0);
+  const github = deletion.getByRole("link", { name: "Confirm with GitHub" });
+  await expect(github).toBeFocused();
+  await github.click();
+
+  // Back from GitHub, the form is open again and says so where the focus lands, once.
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("status")).toHaveText([
+    "GitHub confirmed it's you. Delete the account within 10 minutes."
+  ]);
+  await expect(deletion.getByRole("status")).toBeInViewport();
+  await expect(username).toBeFocused();
+  await expect(username).toHaveValue("");
+  await username.fill("me");
   await confirm.click();
 
   await expect(page).toHaveURL("/");
+  await page.goto("/account");
+  await expect(page.getByText("Log in to see your account.")).toBeVisible();
+});
+
+test("a wrong username is refused without sending the user to GitHub", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  // The username the page knows can be out of date, e.g. renamed elsewhere since it loaded.
+  await page.route("**/user", (route) =>
+    route.request().method() === "DELETE"
+      ? route.fulfill({
+          status: 403,
+          json: { error: "The provided username doesn't match this account." }
+        })
+      : route.fallback()
+  );
+  await page.goto("/account");
+  const deletion = page.getByRole("region", { name: "Delete account" });
+
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await deletion.getByLabel("Username").fill("me");
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+
+  await expect(deletion.getByRole("alert")).toHaveText(
+    "The provided username doesn't match this account."
+  );
+  await expect(deletion.getByRole("link", { name: "Confirm with GitHub" })).toHaveCount(0);
+  await expect(deletion.getByRole("button", { name: "Delete account" })).toBeVisible();
+  await expect(deletion.getByLabel("Username")).toBeFocused();
+});
+
+test("coming back from GitHub without a delete under way is about the password", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account?github=linked");
+
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Set your password within 10 minutes."
+  );
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await expect(deletion.getByLabel("Username")).toHaveCount(0);
+  await expect(deletion.getByRole("button", { name: "Delete account" })).toBeVisible();
+});
+
+test("a delete cancelled after going to GitHub doesn't open again on the way back", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await deletion.getByLabel("Username").fill("me");
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+
+  // Opened in another tab, the link leaves this one here.
+  const github = deletion.getByRole("link", { name: "Confirm with GitHub" });
+  await github.evaluate((link) =>
+    link.addEventListener("click", (event: Event) => event.preventDefault())
+  );
+  await github.click();
+  await page.keyboard.press("Escape");
+  await expect(deletion.getByLabel("Username")).toHaveCount(0);
+
+  await page.goto("/account?github=linked");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Set your password within 10 minutes."
+  );
+  await expect(deletion.getByLabel("Username")).toHaveCount(0);
+});
+
+test("a delete left on GitHub doesn't take over the password's own GitHub confirmation", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await deletion.getByLabel("Username").fill("me");
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+
+  // Like Back from GitHub restoring the page as it was: the delete is still remembered.
+  const github = deletion.getByRole("link", { name: "Confirm with GitHub" });
+  await github.evaluate((link) =>
+    link.addEventListener("click", (event: Event) => event.preventDefault())
+  );
+  await github.click();
+
+  await page.getByLabel("New password").fill("correct horse battery");
+  await page.getByLabel("Confirm password").fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await page
+    .getByRole("region", { name: "Password", exact: true })
+    .getByRole("link", { name: "Confirm with GitHub" })
+    .click();
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Set your password within 10 minutes."
+  );
+  await expect(deletion.getByLabel("Username")).toHaveCount(0);
 });
 
 test("a username typed to delete is forgotten once a password is set", async ({ page, api }) => {

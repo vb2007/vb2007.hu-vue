@@ -16,8 +16,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
- * which also confirms the user for setting a password, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
- * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
+ * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
+ * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
@@ -794,8 +794,18 @@ export class MockApi {
           body: { error: "The provided username doesn't match this account." }
         };
       }
+      if (!this.githubConfirmed) {
+        return {
+          status: 403,
+          body: {
+            error:
+              "Confirm it's you first: log in with GitHub again (or relink it), then delete the account within 10 minutes."
+          }
+        };
+      }
     }
     this.user = null;
+    this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
   }
 

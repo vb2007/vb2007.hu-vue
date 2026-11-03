@@ -2,6 +2,7 @@
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
 import { computed, nextTick, ref, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import {
   emailVerified,
   githubLinked,
@@ -15,6 +16,7 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { OauthQuery } from "@/constants/oauth";
+import { takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import ChangePassword from "@/components/features/account/ChangePassword.vue";
@@ -29,14 +31,23 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
-// without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183).
+// without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183),
+// or before deleting it, if the delete form sent them (vb2007/vb2007.hu-api#245).
 const githubReturned = ref(useQueryNotice(OauthQuery.github) === OauthQuery.githubLinked);
+// Read once on every visit, so a delete abandoned on GitHub doesn't open the form on a later relink.
+const deleteIntent = takeDeleteIntent();
+const deleteReturned = computed(
+  () =>
+    githubReturned.value && !hasPassword.value && !!deleteIntent && deleteIntent === username.value
+);
 const notice = ref("");
 const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
-  return hasPassword.value
-    ? "GitHub is linked. You can log in with it from now on."
-    : `GitHub confirmed it's you. Set your password within ${Limits.Github.reauthMinutes} minutes.`;
+  if (hasPassword.value) return Messages.Account.githubLinked;
+  // Back to delete, the delete form says so itself, where the focus lands.
+  return deleteReturned.value
+    ? ""
+    : Messages.Account.passwordGithubConfirmed(Limits.Github.reauthMinutes);
 });
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const clearNotice = () => {
@@ -51,8 +62,8 @@ const announce = async (message: string) => {
   await nextTick();
   noticeMessage.value?.$el.focus();
 };
-const onPasswordSet = () => announce("Your password is set. You can log in with it from now on.");
-const onUnlinked = () => announce("GitHub is unlinked. Log in with your password from now on.");
+const onPasswordSet = () => announce(Messages.Account.passwordSet);
+const onUnlinked = () => announce(Messages.Account.githubUnlinked);
 </script>
 
 <template>
@@ -148,7 +159,7 @@ const onUnlinked = () => announce("GitHub is unlinked. Log in with your password
 
     <SetPasswordForm @set="onPasswordSet" />
 
-    <DeleteAccount />
+    <DeleteAccount :reopen="deleteReturned" />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">

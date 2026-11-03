@@ -58,6 +58,62 @@ describe("useAccountDelete", () => {
     expect(account.isDeleting.value).toBe(false);
   });
 
+  const REAUTH =
+    "Confirm it's you first: log in with GitHub again (or relink it), then delete the account within 10 minutes.";
+
+  it("asks an account made with GitHub to confirm it with GitHub first", async () => {
+    hasPassword.value = false;
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
+    const account = useAccountDelete();
+
+    expect(await account.deleteAccount("me")).toBe(false);
+
+    expect(sentBody()).toEqual({ username: "me" });
+    expect(account.needsGithub.value).toBe(true);
+    expect(account.deleteError.value).toBe(REAUTH);
+    expect(isLoggedIn.value).toBe(true);
+  });
+
+  it.each([
+    ["a wrong username", false, "The provided username doesn't match this account."],
+    ["an ended session", false, "You must be logged in to perform this action."],
+    ["an account with a password", true, REAUTH]
+  ])("keeps any other 403 an error: %s", async (_name, withPassword, error) => {
+    hasPassword.value = withPassword;
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error }));
+    const account = useAccountDelete();
+
+    expect(await account.deleteAccount("me")).toBe(false);
+
+    expect(account.needsGithub.value).toBe(false);
+    expect(account.deleteError.value).toBe(error);
+  });
+
+  it("doesn't take the confirmation's text from another status for one", async () => {
+    hasPassword.value = false;
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: REAUTH }));
+    const account = useAccountDelete();
+
+    await account.deleteAccount("me");
+
+    expect(account.needsGithub.value).toBe(false);
+  });
+
+  it("asks again with each try", async () => {
+    hasPassword.value = false;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }))
+      .mockResolvedValueOnce(jsonResponse(200, { message: "User deleted successfully." }));
+    const account = useAccountDelete();
+    await account.deleteAccount("me");
+
+    const pending = account.deleteAccount("me");
+    expect(account.needsGithub.value).toBe(false);
+
+    expect(await pending).toBe(true);
+    expect(account.deleteError.value).toBe("");
+  });
+
   it("falls back to the status for a bare server error", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Internal Server Error"));
     const account = useAccountDelete();
