@@ -1,17 +1,17 @@
 name: Open Dev to Main PR
 
 # "Run workflow" on the Actions tab opens the dev -> main PR as
-# "Merge dev To main", assigned to the owner, listing the PRs merged into dev
-# that main doesn't have yet and the issues each one resolves
-# (.github/scripts/dev-to-main-body.mjs). The issues close when the PR is
-# merged, because main is the default branch. If package.json's version on
-# dev still equals main's, it comments on the PR that merging releases a patch
-# version (.github/scripts/version-bump-warning.mjs).
+# "Merge dev To main", assigned to the owner and labelled "production",
+# listing the PRs merged into dev that main doesn't have yet and the issues
+# each one resolves (.github/scripts/dev-to-main-body.mjs). The issues close
+# when the PR is merged, because main is the default branch. If package.json's
+# version on dev still equals main's, it comments on the PR that merging
+# releases a patch version (.github/scripts/version-bump-warning.mjs).
 #
 # Every push to dev (and a manual run while the PR is open) rewrites the open
-# PR's description, so PRs merged after it was opened show up too, and syncs
-# the version warning: it goes away once the version is bumped. A push never
-# opens the PR.
+# PR's description, so PRs merged after it was opened show up too, re-applies
+# the label, and syncs the version warning: it goes away once the version is
+# bumped. A push never opens the PR.
 #
 # A PR opened with the default GITHUB_TOKEN doesn't trigger other workflows, so
 # PR Tests wouldn't run on it. Add a PR_TOKEN secret (a fine-grained PAT for
@@ -34,6 +34,7 @@ permissions:
 env:
   NODE_VERSION: "22"
   ASSIGNEE: vb2007
+  LABEL: production
 
 jobs:
   open-pr:
@@ -76,6 +77,8 @@ jobs:
         run: |
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
             -F "body=@${{ steps.body.outputs.body_file }}" --silent
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" \
+            -f "labels[]=$LABEL" --silent
           echo "::notice::Refreshed the description of $PR_URL."
 
       - name: Open the PR
@@ -91,7 +94,7 @@ jobs:
           output=$(gh pr create --base main --head dev \
             --title "Merge dev To main" \
             --body-file "${{ steps.body.outputs.body_file }}" \
-            --assignee "$ASSIGNEE" 2>&1) || status=$?
+            --assignee "$ASSIGNEE" --label "$LABEL" 2>&1) || status=$?
           echo "$output"
           if [ "$status" -eq 0 ]; then
             echo "url=$(tail -n 1 <<< "$output")" >> "$GITHUB_OUTPUT"
