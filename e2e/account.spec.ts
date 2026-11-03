@@ -1,4 +1,4 @@
-import { expect, MOCK_EMAIL_CODE, MOCK_PASSWORD, test } from "./fixtures";
+import { expect, MOCK_EMAIL_CODE, MOCK_PASSWORD, type MockApi, test } from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
@@ -53,35 +53,148 @@ test("the navbar e-mail opens the account, which offers to link GitHub", async (
   await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
   await expect(page.getByText("me", { exact: true })).toBeVisible();
   await expect(page.getByText("Not linked")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Link GitHub" })).toHaveAttribute(
-    "href",
-    /\/auth\/github\/link$/
-  );
+  await expect(page.getByRole("button", { name: "Link GitHub", exact: true })).toBeVisible();
 });
 
-test("a linked GitHub account shows its login and unlinks on the second click", async ({
+test("linking GitHub takes the password, then comes back linked", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const github = page.getByRole("region", { name: "Linked accounts" });
+
+  await github.getByRole("button", { name: "Link GitHub", exact: true }).click();
+  const password = github.getByLabel("Password");
+  await expect(password).toBeFocused();
+  await password.fill(MOCK_PASSWORD);
+  await github.getByRole("button", { name: "Continue to GitHub" }).click();
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub is linked. You can log in with it from now on."
+  );
+  await expect(page.getByText("You can log in with GitHub as @e2e-octocat.")).toBeVisible();
+  await expect(github.getByRole("button", { name: "Unlink GitHub" })).toBeVisible();
+});
+
+test("a wrong password doesn't start the GitHub link", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const github = page.getByRole("region", { name: "Linked accounts" });
+
+  await github.getByRole("button", { name: "Link GitHub", exact: true }).click();
+  await github.getByLabel("Password").fill("not-the-password");
+  await github.getByRole("button", { name: "Continue to GitHub" }).click();
+
+  await expect(github.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(github.getByLabel("Password")).toBeFocused();
+  await expect(github.getByLabel("Password")).toHaveValue("not-the-password");
+  await expect(page.getByText("Not linked")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(github.getByLabel("Password")).toHaveCount(0);
+  await expect(github.getByRole("button", { name: "Link GitHub", exact: true })).toBeFocused();
+});
+
+for (const [what, arrange, error] of [
+  [
+    "too many failed tries",
+    (api: MockApi) => api.limitsPasswordChecks(),
+    "Too many failed attempts: try again later."
+  ],
+  [
+    "an API without GitHub",
+    (api: MockApi) => api.githubIsNotConfigured(),
+    "GitHub login isn't available right now."
+  ]
+] as const) {
+  test(`a GitHub link refused for ${what} says why`, async ({ page, api }) => {
+    api.loggedInAs("me@example.com", "me");
+    arrange(api);
+    await page.goto("/account");
+    const github = page.getByRole("region", { name: "Linked accounts" });
+
+    await github.getByRole("button", { name: "Link GitHub", exact: true }).click();
+    await github.getByLabel("Password").fill(MOCK_PASSWORD);
+    await github.getByRole("button", { name: "Continue to GitHub" }).click();
+
+    await expect(github.getByRole("alert")).toHaveText(error);
+    await expect(page).toHaveURL("/account");
+  });
+}
+
+test("a GitHub link started without the password is explained", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  await expect(page.getByText("Not linked")).toBeVisible();
+
+  // An old bookmark or a hand-typed URL: a password account can't link through a plain visit.
+  await page.goto(`${api.apiOrigin}/auth/github/link`);
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Linking GitHub takes your password. Press Link GitHub on this page and enter it there."
+  );
+  await expect(page.getByText("Not linked")).toBeVisible();
+});
+
+test("an account made with GitHub links again without a password", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { password: false });
+  await page.goto("/account");
+  const github = page.getByRole("region", { name: "Linked accounts" });
+
+  await github.getByRole("button", { name: "Link GitHub", exact: true }).click();
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Set your password within 10 minutes."
+  );
+  await expect(page.getByText("You can log in with GitHub as @e2e-octocat.")).toBeVisible();
+});
+
+test("a linked GitHub account shows its login and unlinks with the password", async ({
   page,
   api
 }) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true });
   await page.goto("/account");
+  const github = page.getByRole("region", { name: "Linked accounts" });
 
   await expect(page.getByText("Linked", { exact: true })).toBeVisible();
   await expect(page.getByText("You can log in with GitHub as @e2e-octocat.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Link GitHub" })).toHaveCount(0);
+  await expect(github.getByRole("button", { name: "Link GitHub", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Unlink GitHub" }).click();
-  await page.getByRole("button", { name: "Confirm unlink" }).click();
+  await github.getByRole("button", { name: "Unlink GitHub" }).click();
+  await expect(github.getByLabel("Password")).toBeFocused();
+  await github.getByLabel("Password").fill(MOCK_PASSWORD);
+  await github.getByRole("button", { name: "Unlink GitHub" }).click();
 
   await expect(page.getByRole("status")).toHaveText(
     "GitHub is unlinked. Log in with your password from now on."
   );
+  await expect(page.getByRole("status")).toBeFocused();
   await expect(page.getByText("Not linked")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Link GitHub" })).toBeVisible();
+  await expect(github.getByRole("button", { name: "Link GitHub", exact: true })).toBeVisible();
 
   // The API forgot the link too, so it stays unlinked after a reload.
   await page.reload();
   await expect(page.getByText("Not linked")).toBeVisible();
+});
+
+test("a wrong password keeps GitHub linked", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true });
+  await page.goto("/account");
+  const github = page.getByRole("region", { name: "Linked accounts" });
+
+  await github.getByRole("button", { name: "Unlink GitHub" }).click();
+  await github.getByLabel("Password").fill("not-the-password");
+  await github.getByRole("button", { name: "Unlink GitHub" }).click();
+
+  await expect(github.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(github.getByLabel("Password")).toBeFocused();
+
+  await github.getByRole("button", { name: "Cancel" }).click();
+  await expect(github.getByRole("button", { name: "Unlink GitHub" })).toBeFocused();
+  await page.reload();
+  await expect(page.getByText("Linked", { exact: true })).toBeVisible();
 });
 
 test("an account made with GitHub can't unlink it", async ({ page, api }) => {
