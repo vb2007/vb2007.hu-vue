@@ -4,7 +4,7 @@
  * place (vb2007/vb2007.hu-api#243). An account made with GitHub has no password: it links without
  * one, and gets no key once linked, since GitHub is then its only way to log in.
  */
-import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, onUpdated, ref, useId, useTemplateRef, watch } from "vue";
 import { Messages } from "@/constants/messages";
 import { githubLinked, hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { requiredError } from "@/scripts/authentication/register";
@@ -40,8 +40,10 @@ const { errors, isValid, leave, validate, reset } = useFormValidation({
 
 /** The confirm key waits on a request, or on the browser leaving for GitHub. */
 const isBusy = computed(() => isLinking.value || isUnlinking.value);
+/** A start that hasn't stalled: one that should have left by now may be given up on. */
+const isLeaving = computed(() => isLinking.value && !isStalled.value);
 /** Cancel waits too, but not on a navigation that should have happened by now. */
-const isCancelBlocked = computed(() => isUnlinking.value || (isLinking.value && !isStalled.value));
+const isCancelBlocked = computed(() => isUnlinking.value || isLeaving.value);
 const confirmError = computed(() => (githubLinked.value ? unlinkError.value : linkError.value));
 
 const focusField = () => field.value?.$el.querySelector("input").focus();
@@ -51,6 +53,8 @@ const start = async () => {
   if (!hasPassword.value) {
     // Defensive: an account made with GitHub can't unlink it, so it's only unlinked if the API
     // dropped the link itself. Nothing to confirm with: GitHub itself confirms it's them.
+    // A start that stalled is given up on first, so this one can begin.
+    stop();
     if (await link()) return;
     // The key disabled while it worked, which dropped the focus.
     await nextTick();
@@ -81,6 +85,28 @@ const cancel = async () => {
   await nextTick();
   opener.value?.$el.focus();
 };
+
+/*
+ * GitHub linked or unlinked from elsewhere (e.g. in another tab, seen once Back restores this page
+ * and reloads the account) would turn an open form into the other one by itself, so it closes.
+ * Sync, so an unlink's own change is still seen as its own: that one closes the form itself.
+ * Focus in the form goes to the key once it's drawn again.
+ */
+let refocusOpener = false;
+watch(
+  githubLinked,
+  () => {
+    if (!open.value || isUnlinking.value) return;
+    refocusOpener = Boolean(form.value?.contains(document.activeElement));
+    close();
+  },
+  { flush: "sync" }
+);
+onUpdated(() => {
+  if (!refocusOpener) return;
+  refocusOpener = false;
+  opener.value?.$el.focus();
+});
 
 const submit = async () => {
   if (!(await validate(form.value))) return;
@@ -154,11 +180,11 @@ const submit = async () => {
     class="github__key"
     size="sm"
     :variant="githubLinked ? 'secondary' : 'primary'"
-    :loading="isLinking"
+    :loading="isLeaving"
     @click="start"
   >
     <template v-if="githubLinked">Unlink GitHub</template>
-    <template v-else>{{ isLinking ? "Opening GitHub" : "Link GitHub" }}</template>
+    <template v-else>{{ isLeaving ? "Opening GitHub" : "Link GitHub" }}</template>
   </BaseButton>
 </template>
 

@@ -284,6 +284,29 @@ describe("GithubLink", () => {
       wrapper.unmount();
     });
 
+    it("can be pressed again once a navigation never left", async () => {
+      vi.useFakeTimers();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }))
+        .mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }));
+      const { wrapper } = await mountKey();
+
+      await opener(wrapper).trigger("click");
+      await flushPromises();
+      expect(opener(wrapper).attributes("disabled")).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(LEAVING_GRACE_MS);
+      expect(opener(wrapper).attributes("disabled")).toBeUndefined();
+      expect(opener(wrapper).text()).toBe("Link GitHub");
+
+      await opener(wrapper).trigger("click");
+      await flushPromises();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(assign).toHaveBeenCalledTimes(2);
+      expect(opener(wrapper).text()).toBe("Opening GitHub");
+      wrapper.unmount();
+    });
+
     it("shows why it couldn't start above the key, until it's pressed again", async () => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse(503, { error: "notConfigured" }))
@@ -310,6 +333,40 @@ describe("GithubLink", () => {
       expect(wrapper.find("button").exists()).toBe(false);
       wrapper.unmount();
     });
+  });
+
+  it.each([
+    ["linked elsewhere", false, "Unlink GitHub"],
+    ["unlinked elsewhere", true, "Link GitHub"]
+  ])("closes an open form once GitHub is %s", async (_what, linked, key) => {
+    githubLinked.value = linked;
+    const { wrapper } = await mountKey();
+    await open(wrapper);
+    await passwordInput(wrapper).setValue("hunter22");
+
+    githubLinked.value = !linked;
+    await flushPromises();
+
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(opener(wrapper).text()).toBe(key);
+    expect(document.activeElement).toBe(opener(wrapper).element);
+
+    await open(wrapper);
+    expect(passwordInput(wrapper).element.value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("leaves the focus alone when it wasn't in the form", async () => {
+    const { wrapper } = await mountKey();
+    await open(wrapper);
+    (document.activeElement as HTMLElement).blur();
+
+    githubLinked.value = true;
+    await flushPromises();
+
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
+    wrapper.unmount();
   });
 
   describe("unlinking", () => {
