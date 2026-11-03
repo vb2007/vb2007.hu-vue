@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
+import { useFormValidation } from "@/composables/useFormValidation";
 import { useShortener } from "@/composables/useShortener";
-import { displayLink } from "@/scripts/utility/text";
+import { Messages } from "@/constants/messages";
+import { displayLink, validateUrl } from "@/scripts/utility/text";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -12,11 +15,34 @@ withDefaults(defineProps<{ as?: "h1" | "h2" }>(), { as: "h2" });
 
 const { originalUrl, shortenedCode, shortenedLink, isLoading, errorMessage, shorten, reset } =
   useShortener();
+
+const form = useTemplateRef("form");
+const {
+  errors,
+  isValid,
+  leave,
+  validate,
+  reset: resetChecks
+} = useFormValidation({
+  url: {
+    value: originalUrl,
+    check: () => (validateUrl(originalUrl.value) ? "" : Messages.ShortUrl.invalidUrl)
+  }
+});
+
+const submit = async () => {
+  if (await validate(form.value)) await shorten();
+};
+
+// The shortened URL is gone from the field; that's not a problem to show.
+watch(shortenedCode, (code) => {
+  if (code) resetChecks();
+});
 </script>
 
 <template>
   <StationBoard title="Shorten" :as="as">
-    <form v-if="isLoggedIn" class="form" novalidate @submit.prevent="shorten">
+    <form v-if="isLoggedIn" ref="form" class="form" novalidate @submit.prevent="submit">
       <BaseInput
         v-model="originalUrl"
         label="URL"
@@ -25,9 +51,10 @@ const { originalUrl, shortenedCode, shortenedLink, isLoading, errorMessage, shor
         autocomplete="off"
         mono
         required
-        :error="errorMessage"
+        :error="errors.url || errorMessage"
+        @blur="leave('url')"
       />
-      <BaseButton type="submit" block :loading="isLoading">
+      <BaseButton type="submit" block :loading="isLoading" :blocked="!isValid">
         {{ isLoading ? "Shortening" : "Shorten" }}
       </BaseButton>
     </form>

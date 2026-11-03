@@ -138,6 +138,15 @@ describe("useShortLink", () => {
     expect(navigate).toHaveBeenCalledWith("https://api.test/r/abc123");
   });
 
+  it("also falls back when the lookup succeeds without a JSON body", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200));
+    const link = useShortLink(navigate);
+
+    await link.resolve("abc123");
+
+    expect(navigate).toHaveBeenCalledWith("https://api.test/r/abc123");
+  });
+
   it("reports an unreachable server", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const link = useShortLink(navigate);

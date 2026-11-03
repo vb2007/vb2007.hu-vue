@@ -144,6 +144,16 @@ describe("sendUpload", () => {
     await expect(second).rejects.toThrow("Upload failed: 500");
   });
 
+  it("fails a success that comes without a JSON body, like apiRequest", async () => {
+    const requests = mockXhr();
+    const onProgress = vi.fn();
+    const sent = sendUpload(aFile("a.png"), "private", onProgress);
+    requests[0].respond(201, "", "Created");
+
+    await expect(sent).rejects.toThrow("Upload failed: Created");
+    expect(onProgress).not.toHaveBeenCalled();
+  });
+
   it("rejects when the connection fails", async () => {
     const requests = mockXhr();
     const sent = sendUpload(aFile("a.png"), "private", vi.fn());

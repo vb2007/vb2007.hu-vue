@@ -103,11 +103,38 @@ describe("ChangeEmail", () => {
     expect(document.activeElement).toBe(inputs()[0].element);
   });
 
-  it("clears a field's error as soon as it's typed in", async () => {
+  it("checks a field once it's left, and refuses the current address", async () => {
+    userEmail.value = "me@example.com";
+    await openForm();
+    expect(button("Send code").attributes("aria-disabled")).toBe("true");
+
+    await fill(" ME@example.com ", "x");
+    await inputs()[1].setValue("");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    await inputs()[0].trigger("blur");
+    await inputs()[1].trigger("blur");
+
+    expect(wrapper.findAll(".field__error").map((error) => error.text())).toEqual([
+      "That's already your e-mail address.",
+      "Enter your current password."
+    ]);
+
+    await fill("new@example.com", "secret");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(button("Send code").attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("checks a shown field again with every change", async () => {
     await openForm();
     await wrapper.find("form").trigger("submit");
 
     await inputs()[0].setValue("n");
+    expect(wrapper.findAll(".field__error").map((error) => error.text())).toEqual([
+      "Enter a valid e-mail address.",
+      "Enter your current password."
+    ]);
+
+    await inputs()[0].setValue("new@example.com");
     expect(wrapper.findAll(".field__error").map((error) => error.text())).toEqual([
       "Enter your current password."
     ]);
@@ -151,7 +178,10 @@ describe("ChangeEmail", () => {
     [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one."],
     [503, "The e-mail couldn't be sent: please try again later."]
   ])("shows the API's %i and keeps what was typed", async (status, error) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(status, { error }))
+      // A 503 looks the account up again, which finds no session.
+      .mockResolvedValueOnce(jsonResponse(401));
     await openForm();
     await fill("new@example.com", "wrong-password");
     (inputs()[1].element as HTMLInputElement).focus();
@@ -174,8 +204,8 @@ describe("ChangeEmail", () => {
     await openForm();
     await fill("taken@example.com", "secret-password");
 
+    // The click submits the form, as in the browser.
     await button("Send code").trigger("click");
-    await wrapper.find("form").trigger("submit");
     // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
     (document.activeElement as HTMLElement).blur();
     answer(jsonResponse(409, { error: "An account with this E-mail address already exists." }));
@@ -283,6 +313,20 @@ describe("ChangeEmail", () => {
       await flushPromises();
     };
 
+    it("checks the code once it's left, and a letter in it while typing", async () => {
+      await remount();
+
+      await codeInput().setValue("12");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
+      await codeInput().trigger("blur");
+      expect(wrapper.find(".field__error").text()).toBe("Enter the 6-digit code from the e-mail.");
+
+      await remount();
+      await codeInput().setValue("12a");
+      expect(wrapper.find(".field__error").text()).toBe("Enter the 6-digit code from the e-mail.");
+      expect(button("Confirm code").attributes("aria-disabled")).toBe("true");
+    });
+
     it("asks for the code after the API mailed it, and puts the cursor there", async () => {
       await sendCode();
 
@@ -373,7 +417,9 @@ describe("ChangeEmail", () => {
       expect(codeInput().attributes("aria-invalid")).toBe("true");
       expect(document.activeElement).toBe(codeInput().element);
 
-      await codeInput().setValue("1");
+      await codeInput().setValue("12345");
+      expect(wrapper.find(".field__error").exists()).toBe(true);
+      await codeInput().setValue("123456");
       expect(wrapper.find(".field__error").exists()).toBe(false);
     });
 
@@ -402,8 +448,8 @@ describe("ChangeEmail", () => {
       fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
       await codeInput().setValue("000000");
 
+      // The click submits the form, as in the browser.
       await button("Confirm code").trigger("click");
-      await wrapper.find("form").trigger("submit");
       // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
       (document.activeElement as HTMLElement).blur();
       answer(jsonResponse(429, { error: "Too many failed attempts: try again later." }));
@@ -439,7 +485,10 @@ describe("ChangeEmail", () => {
     it("doesn't trip over focus when it's gone before the code is checked", async () => {
       await remount();
       let answer!: (response: Response) => void;
-      fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+      fetchMock
+        .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
+        // A 400 may mean the change expired, so the user is looked up again.
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await codeInput().setValue("000000");
       await wrapper.find("form").trigger("submit");
 

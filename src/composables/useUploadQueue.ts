@@ -1,12 +1,6 @@
 import { computed, onBeforeUnmount, ref, type Ref } from "vue";
-import {
-  sendUpload,
-  UploadError,
-  validateFile,
-  type Upload,
-  type UploadUsage,
-  type UploadVisibility
-} from "@/scripts/uploads/upload";
+import { sendUpload, UploadError, validateFile } from "@/scripts/uploads/upload";
+import type { Upload, UploadUsage, UploadVisibility } from "@/types/api/uploads";
 
 export const PARALLEL_UPLOADS = 2;
 

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
-import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useTemplateRef } from "vue";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import {
   emailVerified,
   githubLinked,
@@ -13,14 +15,15 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { UserManagement } from "@/constants/api";
-import { useGithubUnlink } from "@/composables/useGithubUnlink";
+import { OauthQuery } from "@/constants/oauth";
+import { takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import ChangePassword from "@/components/features/account/ChangePassword.vue";
 import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
+import GithubLink from "@/components/features/account/GithubLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -28,53 +31,44 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
-// without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183).
-const githubReturned = ref(useQueryNotice("github") === "linked");
+// without a password relinks only to confirm it's them before setting one (vb2007/vb2007.hu-api#183),
+// or before deleting it, if the delete form sent them (vb2007/vb2007.hu-api#245).
+const githubReturned = ref(useQueryNotice(OauthQuery.github) === OauthQuery.githubLinked);
+// Read once on every visit, so a delete abandoned on GitHub doesn't open the form on a later relink.
+const deleteIntent = takeDeleteIntent();
+const deleteReturned = computed(
+  () =>
+    githubReturned.value && !hasPassword.value && !!deleteIntent && deleteIntent === username.value
+);
 const notice = ref("");
 const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
-  return hasPassword.value
-    ? "GitHub is linked. You can log in with it from now on."
-    : "GitHub confirmed it's you. Set your password within 10 minutes.";
+  if (hasPassword.value) return Messages.Account.githubLinked;
+  // Back to delete, the delete form says so itself, where the focus lands.
+  return deleteReturned.value
+    ? ""
+    : Messages.Account.passwordGithubConfirmed(Limits.Github.reauthMinutes);
 });
-const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const clearNotice = () => {
   oauthError.value = "";
-  unlinkError.value = "";
   githubReturned.value = false;
   notice.value = "";
 };
-const onPasswordSet = async () => {
+/** Shows an outcome at the top of the board and moves focus there, as the key it came from is gone. */
+const announce = async (message: string) => {
   clearNotice();
-  notice.value = "Your password is set. You can log in with it from now on.";
+  notice.value = message;
   await nextTick();
   noticeMessage.value?.$el.focus();
 };
-
-/** Unlinking takes two clicks, like deleting an upload; the armed state wears off. */
-const confirming = ref(false);
-let confirmTimer: ReturnType<typeof setTimeout> | undefined;
-const onUnlink = async () => {
-  clearTimeout(confirmTimer);
-  if (!confirming.value) {
-    confirming.value = true;
-    confirmTimer = setTimeout(() => (confirming.value = false), 4000);
-    return;
-  }
-  confirming.value = false;
-  clearNotice();
-  if (await unlink()) {
-    notice.value = "GitHub is unlinked. Log in with your password from now on.";
-  }
-};
-onBeforeUnmount(() => clearTimeout(confirmTimer));
+const onPasswordSet = () => announce(Messages.Account.passwordSet);
+const onUnlinked = () => announce(Messages.Account.githubUnlinked);
 </script>
 
 <template>
   <StationBoard v-if="isLoggedIn" title="Your account" as="h1">
     <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
-    <StatusMessage v-if="unlinkError" tone="error">{{ unlinkError }}</StatusMessage>
     <StatusMessage
       v-if="shownNotice"
       ref="noticeMessage"
@@ -153,37 +147,19 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
                 It stays linked while it's your only way to log in.
               </template>
             </template>
-            <template v-else
+            <template v-else-if="hasPassword"
               >Link it to log in with GitHub instead of typing your password.</template
             >
+            <template v-else>Link it to log in with GitHub.</template>
           </p>
-          <BaseButton
-            v-if="!githubLinked"
-            class="login__action"
-            size="sm"
-            :href="UserManagement.Authentication.githubLink"
-          >
-            Link GitHub
-          </BaseButton>
-          <!-- Secondary at rest so its edge lines up with the note; armed, it turns solid red. -->
-          <BaseButton
-            v-else-if="hasPassword"
-            class="login__action"
-            size="sm"
-            :variant="confirming ? 'primary' : 'secondary'"
-            :error="confirming"
-            :loading="isUnlinking"
-            @click="onUnlink"
-          >
-            {{ isUnlinking ? "Unlinking" : confirming ? "Confirm unlink" : "Unlink GitHub" }}
-          </BaseButton>
+          <GithubLink @start="clearNotice" @unlinked="onUnlinked" />
         </div>
       </div>
     </section>
 
     <SetPasswordForm @set="onPasswordSet" />
 
-    <DeleteAccount />
+    <DeleteAccount :reopen="deleteReturned" />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
@@ -298,10 +274,6 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   color: var(--c-ink);
   font-weight: 600;
   overflow-wrap: anywhere;
-}
-
-.login__action {
-  margin-top: var(--sp-2);
 }
 
 .badge {

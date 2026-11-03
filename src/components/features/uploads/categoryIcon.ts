@@ -1,5 +1,5 @@
 import type { IconName } from "@/components/ui/AppIcon.vue";
-import type { UploadCategory } from "@/scripts/uploads/upload";
+import type { UploadCategory } from "@/types/api/uploads";
 
 /** The icon each upload category is drawn with. */
 export const CATEGORY_ICONS: Record<UploadCategory, IconName> = {

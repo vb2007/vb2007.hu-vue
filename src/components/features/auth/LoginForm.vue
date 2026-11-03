@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, computed } from "vue";
+import { onMounted, ref, watch, computed, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
+import { LoginStatus } from "@/constants/auth";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
+import { emailShapeError, requiredError } from "@/scripts/authentication/register";
 import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
+import { useFormValidation } from "@/composables/useFormValidation";
 import { useOauthError } from "@/composables/useOauthError";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -14,13 +18,34 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 const email = ref("");
 const password = ref("");
 const isLoading = ref(false);
+const isButtonError = ref(false);
+const form = useTemplateRef("form");
+const { errors, isValid, leave, validate, reset } = useFormValidation({
+  email: { value: email, check: () => emailShapeError(email.value) },
+  password: {
+    value: password,
+    check: () => requiredError(password.value, Messages.Auth.passwordMissing)
+  }
+});
 const oauthError = useOauthError();
 // Shown once: a reset sends the user here with the API's message. It's about the session at the
 // time of the reset, so logging in here drops it.
 const resetNotice = ref(passwordResetNotice.value);
 passwordResetNotice.value = "";
 
+let flagTimer: ReturnType<typeof setTimeout> | undefined;
+/** Flashes the submit key red for a second. */
+const flagError = () => {
+  clearTimeout(flagTimer);
+  isButtonError.value = true;
+  flagTimer = setTimeout(() => (isButtonError.value = false), 1000);
+};
+
 const handleSubmit = async () => {
+  if (!(await validate(form.value))) {
+    flagError();
+    return;
+  }
   resetNotice.value = "";
   isLoading.value = true;
   try {
@@ -31,9 +56,9 @@ const handleSubmit = async () => {
 };
 
 const failure = computed(() => {
-  if (!loginStatus.value || loginStatus.value === "success") return "";
-  if (loginStatus.value === "unknown-error") {
-    return "An unknown error occurred. Please try again later.";
+  if (!loginStatus.value || loginStatus.value === LoginStatus.Success) return "";
+  if (loginStatus.value === LoginStatus.UnknownError) {
+    return Messages.Auth.loginUnknownError;
   }
   return loginStatus.value;
 });
@@ -45,6 +70,7 @@ onMounted(() => {
 watch(isLoggedIn, (newVal) => {
   if (!newVal) {
     loginStatus.value = "";
+    reset();
   }
 });
 </script>
@@ -52,22 +78,38 @@ watch(isLoggedIn, (newVal) => {
 <template>
   <StationBoard title="Log in" as="h1">
     <template v-if="!isLoggedIn">
-      <form class="form" @submit.prevent="handleSubmit">
+      <form ref="form" class="form" novalidate @submit.prevent="handleSubmit">
         <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
         <StatusMessage v-if="resetNotice" tone="success">{{ resetNotice }}</StatusMessage>
-        <BaseInput v-model="email" label="E-mail" type="email" autocomplete="email" required />
+        <BaseInput
+          v-model="email"
+          label="E-mail"
+          type="email"
+          autocomplete="email"
+          :error="errors.email"
+          required
+          @blur="leave('email')"
+        />
         <div class="password">
           <BaseInput
             v-model="password"
             label="Password"
             type="password"
             autocomplete="current-password"
+            :error="errors.password"
             required
+            @blur="leave('password')"
           />
           <RouterLink class="forgot" to="/reset-password">Forgot password?</RouterLink>
         </div>
         <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
-        <BaseButton type="submit" block :loading="isLoading">
+        <BaseButton
+          type="submit"
+          block
+          :loading="isLoading"
+          :blocked="!isValid"
+          :error="isButtonError"
+        >
           {{ isLoading ? "Logging in" : "Log in" }}
         </BaseButton>
       </form>

@@ -28,6 +28,7 @@ import UploadComposer from "@/components/features/uploads/UploadComposer.vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
+import { Endpoints } from "@/constants/endpoints";
 import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn, isSessionChecked, isSuperuser } from "@/scripts/authentication/authState";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
@@ -215,7 +216,7 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All users");
     expect(wrapper.findComponent(UploadList).props()).toMatchObject({
-      listUrl: "https://api.test/admin/users/u%209/uploads",
+      listing: { endpoint: Endpoints.Admin.userUploads, params: { id: "u 9" } },
       as: "h1"
     });
     expect(String(fetchMock.mock.calls[0][0])).toMatch(

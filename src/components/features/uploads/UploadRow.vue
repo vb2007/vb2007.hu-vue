@@ -2,13 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
-import {
-  categoryOf,
-  typeLabel,
-  validateFileName,
-  type Upload,
-  type UploadVisibility
-} from "@/scripts/uploads/upload";
+import { useFormValidation } from "@/composables/useFormValidation";
+import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
+import type { Upload, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -58,14 +54,28 @@ const copyLabel = computed(() =>
 /* Rename: the name turns into a field; Enter saves, Escape puts it back. */
 const renaming = ref(false);
 const draftName = ref("");
-const nameError = ref("");
 const renameField = useTemplateRef("renameField");
+const renameForm = useTemplateRef("renameForm");
+const {
+  errors: renameErrors,
+  isValid: isNameValid,
+  leave: leaveName,
+  validate: validateName,
+  reset: resetName
+} = useFormValidation({
+  name: {
+    value: draftName,
+    check: () => validateFileName(draftName.value),
+    // Only an empty name can be fixed by typing more; a slash or too many characters can't.
+    early: () => (draftName.value.trim() ? validateFileName(draftName.value) : "")
+  }
+});
 
 const startRename = async () => {
   expanded.value = true;
   renaming.value = true;
   draftName.value = props.upload.originalFileName;
-  nameError.value = "";
+  resetName();
   await nextTick();
   const input: HTMLInputElement = renameField.value!.$el.querySelector("input");
   input.focus();
@@ -74,12 +84,11 @@ const startRename = async () => {
 
 const stopRename = () => {
   renaming.value = false;
-  nameError.value = "";
+  resetName();
 };
 
 const saveRename = async () => {
-  nameError.value = validateFileName(draftName.value);
-  if (nameError.value) return;
+  if (!(await validateName(renameForm.value))) return;
   if (draftName.value.trim() === props.upload.originalFileName) return stopRename();
   if (await props.rename(props.upload.id, draftName.value)) stopRename();
 };
@@ -208,6 +217,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
 
       <form
         v-if="renaming"
+        ref="renameForm"
         class="rename"
         novalidate
         @submit.prevent="saveRename"
@@ -218,11 +228,12 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           v-model="draftName"
           label="New name"
           hint="The link stays the same."
-          :error="nameError"
+          :error="renameErrors.name"
           required
+          @blur="leaveName('name')"
         />
         <div class="rename__actions">
-          <BaseButton type="submit" size="sm" :loading="busy === 'rename'">
+          <BaseButton type="submit" size="sm" :loading="busy === 'rename'" :blocked="!isNameValid">
             {{ busy === "rename" ? "Saving" : "Save name" }}
           </BaseButton>
           <BaseButton size="sm" variant="ghost" @click="stopRename">Cancel</BaseButton>

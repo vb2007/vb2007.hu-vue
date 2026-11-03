@@ -77,6 +77,27 @@ describe("PasteComposer", () => {
     expect(wrapper.emitted("created")).toBeUndefined();
   });
 
+  it("checks the text once it's left, and a too long one while typing", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(PasteComposer);
+    const textarea = wrapper.find("textarea");
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+
+    await textarea.setValue("a");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    await textarea.trigger("blur");
+    expect(wrapper.find(".field__error").text()).toBe("A paste needs at least 2 characters.");
+
+    await textarea.setValue("ab");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBeUndefined();
+
+    wrapper.unmount();
+    const { wrapper: fresh } = await mountWithRouter(PasteComposer);
+    await fresh.find("textarea").setValue("a".repeat(10001));
+    expect(fresh.find(".field__error").text()).toBe("A paste can be at most 10000 characters.");
+  });
+
   it("offers the detected language, and sends the user's pick instead when there is one", async () => {
     vi.useFakeTimers();
     isLoggedIn.value = true;

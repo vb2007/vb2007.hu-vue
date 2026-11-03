@@ -1,44 +1,17 @@
-import { UserUploads } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { isSuccessStatus } from "@/constants/http";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
+import { apiUrl, errorMessageFrom } from "@/scripts/api/client";
+import type { BodyOf, ResponseOf } from "@/scripts/api/endpoint";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
-import type { SortOrder } from "@/scripts/pastebin/paste";
-
-export type UploadVisibility = "public" | "private";
-export type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
-export type UploadSortBy = "uploadedOn" | "originalFileName" | "fileSize";
-
-/** An upload as the API returns it (vb2007/vb2007.hu-api#81). */
-export interface Upload {
-  id: string;
-  originalFileName: string;
-  /** With the dot, e.g. ".png"; taken from the file's detected type. */
-  extension: string;
-  mimeType: string;
-  /** Bytes. */
-  fileSize: number;
-  visibility: UploadVisibility;
-  /** `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`; private ones only open for the owner. */
-  url: string;
-  uploadedOn: string;
-  updatedOn: string;
-}
-
-export interface AllowedUploadType {
-  mimeType: string;
-  extension: string;
-  category: UploadCategory;
-}
-
-/** The user's storage and the upload rules (vb2007/vb2007.hu-api#86). */
-export interface UploadUsage {
-  usedBytes: number;
-  quotaBytes: number;
-  count: number;
-  maxFileSizeBytes: number;
-  allowedTypes: AllowedUploadType[];
-  byCategory: { category: UploadCategory; bytes: number; count: number }[];
-}
-
-export type { SortOrder };
+import type {
+  AllowedUploadType,
+  Upload,
+  UploadCategory,
+  UploadUsage,
+  UploadVisibility
+} from "@/types/api/uploads";
 
 /** Plural labels, in the order the API lists categories. */
 export const CATEGORY_LABELS: Record<UploadCategory, string> = {
@@ -92,7 +65,7 @@ const extensionOf = (name: string) => {
  */
 export const validateFile = (file: File, usage: UploadUsage | null, pendingBytes = 0) => {
   if (file.size === 0) {
-    return "This file is empty.";
+    return Messages.Uploads.emptyFile;
   }
   if (!usage) {
     return "";
@@ -106,13 +79,13 @@ export const validateFile = (file: File, usage: UploadUsage | null, pendingBytes
       (extension === ".jpeg" && type.extension === ".jpg")
   );
   if (!known) {
-    return "This file type isn't supported.";
+    return Messages.Uploads.unsupportedType;
   }
   if (file.size > usage.maxFileSizeBytes) {
-    return `The file is larger than the ${formatBytes(usage.maxFileSizeBytes)} limit.`;
+    return Messages.Uploads.tooLarge(formatBytes(usage.maxFileSizeBytes));
   }
   if (usage.usedBytes + pendingBytes + file.size > usage.quotaBytes) {
-    return "This upload would go over your storage quota.";
+    return Messages.Uploads.quotaExceeded;
   }
   return "";
 };
@@ -126,14 +99,13 @@ export class UploadError extends Error {
   }
 }
 
-const messageFrom = (request: XMLHttpRequest) => {
+/** `readJson` for an XMLHttpRequest: the parsed body, or null when there's none. */
+const readXhrJson = (request: XMLHttpRequest): unknown => {
   try {
-    const data = JSON.parse(request.responseText);
-    if (data.error) return data.error as string;
+    return JSON.parse(request.responseText);
   } catch {
-    // Not JSON; fall back to the status below.
+    return null;
   }
-  return `Upload failed: ${request.statusText || request.status}`;
 };
 
 /**
@@ -147,43 +119,55 @@ export const sendUpload = (
   signal?: AbortSignal
 ) =>
   new Promise<Upload>((resolve, reject) => {
+    const endpoint = Endpoints.Uploads.upload;
     const request = new XMLHttpRequest();
-    request.open("POST", UserUploads.upload);
-    request.withCredentials = true;
+    request.open(endpoint.method, apiUrl(endpoint));
+    request.withCredentials = endpoint.credentials;
 
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
     request.onload = () => {
-      if (request.status >= 200 && request.status < 300) {
+      const body = readXhrJson(request);
+      // Like `apiRequest`, a success without a JSON body counts as a failure.
+      if (isSuccessStatus(request.status) && body !== null) {
         onProgress(1);
-        resolve(JSON.parse(request.responseText).upload as Upload);
+        resolve((body as ResponseOf<typeof endpoint>).upload);
       } else {
-        reject(new UploadError(messageFrom(request)));
+        reject(
+          new UploadError(
+            errorMessageFrom(
+              body,
+              request.status,
+              request.statusText,
+              Messages.Uploads.uploadFailed
+            )
+          )
+        );
       }
     };
-    request.onerror = () => reject(new UploadError("Error connecting to server"));
-    request.onabort = () => reject(new UploadError("Cancelled", true));
+    request.onerror = () => reject(new UploadError(Messages.connectionError));
+    request.onabort = () => reject(new UploadError(Messages.Uploads.cancelled, true));
     signal?.addEventListener("abort", () => request.abort(), { once: true });
 
     // The API reads `visibility` while the file streams in, so it has to come first.
+    const fields: BodyOf<typeof endpoint> = { visibility, file };
     const body = new FormData();
-    body.append("visibility", visibility);
-    body.append("file", file);
+    body.append("visibility", fields.visibility);
+    body.append("file", fields.file);
     request.send(body);
   });
 
-export const FILE_NAME_MAX_LENGTH = 255;
-
 /** Why a new display name is rejected, or "" when it's fine; the same rules as the API. */
 export const validateFileName = (name: string) => {
+  const { minLength, maxLength, forbiddenCharacters } = Limits.FileName;
   const trimmed = name.trim();
   if (
-    !trimmed ||
-    trimmed.length > FILE_NAME_MAX_LENGTH ||
-    /[/\\\u0000-\u001f\u007f]/.test(trimmed)
+    trimmed.length < minLength ||
+    trimmed.length > maxLength ||
+    forbiddenCharacters.test(trimmed)
   ) {
-    return `File names must be 1–${FILE_NAME_MAX_LENGTH} characters, without slashes or control characters.`;
+    return Messages.Uploads.invalidFileName(minLength, maxLength);
   }
   return "";
 };

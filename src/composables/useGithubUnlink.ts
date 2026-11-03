@@ -1,42 +1,39 @@
 import { ref } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
+import { Messages } from "@/constants/messages";
+import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
-import { errorFrom } from "@/scripts/pastebin/paste";
 
-/** Unlinks the logged-in user's GitHub account (vb2007/vb2007.hu-api#134). */
+/**
+ * Unlinks the logged-in user's GitHub account (vb2007/vb2007.hu-api#134), confirmed with the
+ * account's password (vb2007/vb2007.hu-api#243).
+ */
 export const useGithubUnlink = () => {
   const isUnlinking = ref(false);
   const unlinkError = ref("");
 
   /** Returns whether it worked. */
-  const unlink = async () => {
-    let unlinked = false;
+  const unlink = async (password: string) => {
+    isUnlinking.value = true;
+    unlinkError.value = "";
 
-    try {
-      isUnlinking.value = true;
-      unlinkError.value = "";
+    const result = await apiRequest(Endpoints.Auth.githubUnlink, {
+      body: { password },
+      failure: Messages.Account.githubUnlinkFailed
+    });
 
-      const response = await fetch(UserManagement.Authentication.githubLink, {
-        method: "DELETE",
-        credentials: "include"
-      });
-
-      if (response.ok) {
-        githubLinked.value = false;
-        githubLogin.value = "";
-        unlinked = true;
-      } else {
-        unlinkError.value = await errorFrom(response, "Failed to unlink GitHub");
-        console.error("Failed to unlink GitHub: ", response.status);
-      }
-    } catch (error) {
-      unlinkError.value = "Error connecting to server";
-      console.error("Error unlinking GitHub: ", error);
-    } finally {
-      isUnlinking.value = false;
+    if (result.ok) {
+      githubLinked.value = false;
+      githubLogin.value = "";
+    } else if (result.status === HttpStatus.TooManyRequests) {
+      unlinkError.value = apiErrorOf(result) ?? Messages.Account.tooManyRequests;
+    } else {
+      unlinkError.value = result.error;
     }
+    isUnlinking.value = false;
 
-    return unlinked;
+    return result.ok;
   };
 
   return { isUnlinking, unlinkError, unlink };

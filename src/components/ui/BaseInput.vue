@@ -17,6 +17,8 @@ const props = defineProps<{
 }>();
 
 const model = defineModel<string>({ default: "" });
+/** Leaving the field, which is when its problem starts to show (see useFormValidation). */
+defineEmits<{ blur: [] }>();
 
 const id = useId();
 const describedBy = computed(() => {
@@ -44,6 +46,7 @@ const describedBy = computed(() => {
       :required="required"
       :aria-invalid="error ? true : undefined"
       :aria-describedby="describedBy"
+      @blur="$emit('blur')"
     />
     <p v-if="hint" :id="`${id}-hint`" class="field__hint">{{ hint }}</p>
     <p v-if="error" :id="`${id}-error`" class="field__error">{{ error }}</p>

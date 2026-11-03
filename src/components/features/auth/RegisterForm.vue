@@ -1,16 +1,37 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, computed, nextTick, useId, useTemplateRef } from "vue";
+import {
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  computed,
+  nextTick,
+  useId,
+  useTemplateRef
+} from "vue";
 import { RouterLink } from "vue-router";
+import { RegisterStatus } from "@/constants/auth";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
-  isValidEmail,
+  checkUsername,
+  confirmationCodeEarlyError,
+  confirmationCodeError,
+  emailError,
+  passwordEarlyError,
+  passwordError,
+  passwordMatchEarlyError,
+  passwordMatchError,
   register,
   registerFieldOf,
   registerStatus,
-  validateRegisterData,
-  type RegisterField
+  USERNAME_CHECK_DELAY,
+  usernameEarlyError,
+  usernameError
 } from "@/scripts/authentication/register";
 import { restoreSession } from "@/scripts/authentication/user";
+import { useFormValidation } from "@/composables/useFormValidation";
 import {
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode,
@@ -22,6 +43,8 @@ import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
+const USERNAME_TAKEN = "That username is taken.";
+
 const username = ref("");
 const email = ref("");
 const password = ref("");
@@ -29,8 +52,48 @@ const confirmPassword = ref("");
 const code = ref("");
 const isLoading = ref(false);
 const isButtonError = ref(false);
-/** The field the shown problem is about; it shows under that field instead of above the key. */
-const errorField = ref<RegisterField>();
+/** Set once the API said the typed username is taken; cleared by the next edit. */
+const usernameTaken = ref(false);
+
+const {
+  errors,
+  isValid,
+  leave: leaveField,
+  validate,
+  setError,
+  reset: resetChecks
+} = useFormValidation({
+  email: { value: email, check: () => emailError(email.value) },
+  username: {
+    value: username,
+    check: () => usernameError(username.value) || (usernameTaken.value ? USERNAME_TAKEN : ""),
+    early: () => (usernameTaken.value ? USERNAME_TAKEN : usernameEarlyError(username.value))
+  },
+  password: {
+    value: password,
+    check: () => passwordError(password.value),
+    early: () => passwordEarlyError(password.value)
+  },
+  confirmPassword: {
+    value: confirmPassword,
+    check: () => passwordMatchError(password.value, confirmPassword.value),
+    early: () => passwordMatchEarlyError(password.value, confirmPassword.value)
+  }
+});
+
+const {
+  errors: codeErrors,
+  isValid: isCodeValid,
+  leave: leaveCode,
+  validate: validateCode,
+  reset: resetCode
+} = useFormValidation({
+  code: {
+    value: code,
+    check: () => confirmationCodeError(code.value),
+    early: () => confirmationCodeEarlyError(code.value)
+  }
+});
 
 const {
   email: codeEmail,
@@ -53,20 +116,7 @@ const noticeId = useId();
 /** The step on screen (form or code), to move focus into it when it changes. */
 const step = useTemplateRef<HTMLFormElement>("step");
 const doneMessage = useTemplateRef("doneMessage");
-const fieldRefs: Record<RegisterField, Readonly<{ value: { $el: HTMLElement } | null }>> = {
-  email: useTemplateRef("emailField"),
-  username: useTemplateRef("usernameField"),
-  password: useTemplateRef("passwordField"),
-  confirmPassword: useTemplateRef("confirmField")
-};
-
-const MESSAGES: Record<string, string> = {
-  "missing-fields": "Please fill out all required input fields.",
-  "invalid-email": "Please enter a valid e-mail address.",
-  "email-too-long": "Your e-mail address can't be longer than 254 characters.",
-  "unmatched-passwords": "The two passwords don't match.",
-  error: "Registration failed. Please try again."
-};
+const emailField = useTemplateRef("emailField");
 
 /**
  * The code step's notice, around the address: the text before it, the punctuation kept with it,
@@ -74,15 +124,15 @@ const MESSAGES: Record<string, string> = {
  */
 const NOTICES: Record<CodeNotice, [string, string, string]> = {
   sent: [
-    "A 6-digit code is on its way to",
+    `A ${Limits.Code.digits}-digit code is on its way to`,
     ".",
-    "Enter it to finish registering; it works for 15 minutes."
+    `Enter it to finish registering; it works for ${Limits.Code.registerValidMinutes} minutes.`
   ],
   resent: ["A new code is on its way to", ".", "The previous one no longer works."],
   earlier: [
     "Enter the code that was mailed to",
     ".",
-    "It works for 15 minutes after sending, and keeps the username and password you registered with then."
+    `It works for ${Limits.Code.registerValidMinutes} minutes after sending, and keeps the username and password you registered with then.`
   ],
   recent: [
     "Less than a minute ago, a code went to",
@@ -100,24 +150,32 @@ const noticeText = computed(() => NOTICES[notice.value]);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
-const failure = computed(() => {
+/** A problem that isn't about one field, shown above the Register key. */
+const formError = computed(() => {
   const status = registerStatus.value;
-  if (!status || status === "success") return "";
-  return MESSAGES[status] ?? status;
+  if (!status || status === RegisterStatus.Success || status === RegisterStatus.NoSession) {
+    return "";
+  }
+  return status === RegisterStatus.Error ? Messages.Auth.registerUnknownError : status;
 });
-/** The problem, under its field when it's about one, or above the key otherwise. */
-const fieldError = (field: RegisterField) => (errorField.value === field ? failure.value : "");
-const formError = computed(() => (errorField.value ? "" : failure.value));
 
-const showProblem = (status: string, field?: RegisterField) => {
-  registerStatus.value = status;
-  errorField.value = field;
+/** Shows the API's refusal under the field it's about, or above the key otherwise. */
+const showProblem = (message: string) => {
+  const field = registerFieldOf(message);
+  if (field) {
+    registerStatus.value = "";
+    setError(field, message);
+  } else {
+    registerStatus.value = message;
+  }
 };
 
 /** Forgets what was typed, e.g. once the account exists: nothing, least of all the password, stays. */
 const clearForm = () => {
   email.value = username.value = password.value = confirmPassword.value = code.value = "";
-  showProblem("");
+  registerStatus.value = "";
+  resetChecks();
+  resetCode();
 };
 
 let flagTimer: ReturnType<typeof setTimeout> | undefined;
@@ -137,36 +195,28 @@ const focusStep = async () => {
 };
 
 /**
- * After a problem the focused key may have been disabled while it loaded, which drops focus:
- * it goes to the field the problem is about, or back to the key.
+ * After the API's refusal the focused key may have been disabled while it loaded, which drops
+ * focus: it goes to the field the refusal is about, or back to the key.
  */
 const focusProblem = async () => {
   await nextTick();
-  const field = errorField.value && fieldRefs[errorField.value].value;
-  const target = field
-    ? field.$el.querySelector("input")
-    : step.value?.querySelector<HTMLButtonElement>("button[type=submit]");
+  const target =
+    step.value?.querySelector<HTMLElement>("[aria-invalid='true']") ??
+    step.value?.querySelector<HTMLButtonElement>("button[type=submit]");
   target?.focus();
 };
 
 const openCodeStep = async (kind: CodeNotice, waitSeconds?: number) => {
-  showProblem("");
+  registerStatus.value = "";
   code.value = "";
+  resetCode();
   open(email.value, kind, waitSeconds);
   await focusStep();
 };
 
 const handleSubmit = async () => {
-  const problem = validateRegisterData(
-    username.value,
-    email.value,
-    password.value,
-    confirmPassword.value
-  );
-  if (problem) {
-    showProblem(problem, registerFieldOf(problem));
+  if (!(await validate(step.value))) {
     flagError();
-    await focusProblem();
     return;
   }
 
@@ -184,7 +234,10 @@ const handleSubmit = async () => {
     // A code went to this address moments ago and still works.
     await openCodeStep("recent", answer.retryAfter);
   } else {
-    errorField.value = answer.field;
+    if (answer.field) {
+      setError(answer.field, registerStatus.value);
+      registerStatus.value = "";
+    }
     flagError();
     await focusProblem();
   }
@@ -192,17 +245,18 @@ const handleSubmit = async () => {
 
 /** For a code that already arrived, e.g. after a reload: nothing is sent. */
 const enterCode = async () => {
-  if (!isValidEmail(email.value)) {
-    // The address is what's missing, not a failed registration, so the Register key stays calm.
-    showProblem("invalid-email", "email");
-    await focusProblem();
-    return;
+  // The address is what's missing, not a failed registration, so the Register key stays calm.
+  if (await validate(emailField.value?.$el, ["email"])) {
+    await openCodeStep("earlier");
   }
-
-  await openCodeStep("earlier");
 };
 
 const handleCode = async () => {
+  if (!(await validateCode(step.value))) {
+    flagError();
+    return;
+  }
+
   const result = await verify(code.value);
   switch (result) {
     case "logged-in":
@@ -211,7 +265,8 @@ const handleCode = async () => {
       leave();
       cooldown.stop();
       clearForm();
-      registerStatus.value = result === "logged-in" ? "success" : "no-session";
+      registerStatus.value =
+        result === "logged-in" ? RegisterStatus.Success : RegisterStatus.NoSession;
       await nextTick();
       doneMessage.value?.$el.focus();
       break;
@@ -219,7 +274,7 @@ const handleCode = async () => {
       // The waiting registration is gone, so only the form can go on from here.
       const error = codeError.value;
       leave();
-      showProblem(error, registerFieldOf(error));
+      showProblem(error);
       flagError();
       await focusProblem();
       break;
@@ -238,7 +293,7 @@ const sendAgain = async () => {
 };
 
 const changeAddress = async () => {
-  showProblem("");
+  registerStatus.value = "";
   leave();
   await focusStep();
 };
@@ -248,20 +303,31 @@ watch(code, () => {
   codeError.value = codeFieldError.value = "";
 });
 
-// Likewise for a field's own error once that field is edited.
-watch([email, username, password, confirmPassword], (now, before) => {
-  const fields: RegisterField[] = ["email", "username", "password", "confirmPassword"];
-  const edited = fields.filter((_, index) => now[index] !== before[index]);
-  if (errorField.value && edited.includes(errorField.value)) {
-    showProblem("");
-  }
+/* The username is checked with the API once typing pauses and its length is right. */
+let usernameTimer: ReturnType<typeof setTimeout> | undefined;
+let usernameRequest: AbortController | undefined;
+const stopUsernameCheck = () => {
+  clearTimeout(usernameTimer);
+  usernameRequest?.abort();
+};
+watch(username, (name) => {
+  stopUsernameCheck();
+  usernameTaken.value = false;
+  if (usernameError(name)) return;
+  usernameTimer = setTimeout(async () => {
+    const request = new AbortController();
+    usernameRequest = request;
+    const availability = await checkUsername(name, request.signal);
+    if (!request.signal.aborted) usernameTaken.value = availability === "taken";
+  }, USERNAME_CHECK_DELAY);
 });
+onBeforeUnmount(stopUsernameCheck);
 
 onMounted(async () => {
   registerStatus.value = "";
   await restoreSession();
   if (isLoggedIn.value) {
-    registerStatus.value = "success";
+    registerStatus.value = RegisterStatus.Success;
   }
 });
 
@@ -275,14 +341,14 @@ watch(isLoggedIn, (newVal) => {
 
 <template>
   <StationBoard title="Register" as="h1">
-    <div v-if="registerStatus === 'success'" class="form">
+    <div v-if="registerStatus === RegisterStatus.Success" class="form">
       <StatusMessage ref="doneMessage" class="done" tone="success" tabindex="-1">
         Registration successful!
       </StatusMessage>
       <BaseButton to="/shorten">Go to Shorten</BaseButton>
     </div>
 
-    <div v-else-if="registerStatus === 'no-session'" class="form">
+    <div v-else-if="registerStatus === RegisterStatus.NoSession" class="form">
       <StatusMessage ref="doneMessage" class="done" tone="error" tabindex="-1">
         Your account was created, but your browser didn't keep the session. Please check that
         cookies are enabled, then log in.
@@ -310,12 +376,19 @@ watch(isLoggedIn, (newVal) => {
         autocomplete="one-time-code"
         hint="Nothing yet? Check your spam folder, or send a new code below."
         :describedby="noticeId"
-        :error="codeFieldError"
+        :error="codeErrors.code || codeFieldError"
         mono
         required
+        @blur="leaveCode('code')"
       />
       <StatusMessage v-if="codeError" tone="error">{{ codeError }}</StatusMessage>
-      <BaseButton type="submit" block :loading="isVerifying" :error="isButtonError">
+      <BaseButton
+        type="submit"
+        block
+        :loading="isVerifying"
+        :blocked="!isCodeValid"
+        :error="isButtonError"
+      >
         {{ isVerifying ? "Confirming" : "Confirm code" }}
       </BaseButton>
       <div class="code-actions">
@@ -340,37 +413,44 @@ watch(isLoggedIn, (newVal) => {
           label="E-mail"
           type="email"
           autocomplete="email"
-          :error="fieldError('email')"
+          :error="errors.email"
           required
+          @blur="leaveField('email')"
         />
         <BaseInput
-          ref="usernameField"
           v-model="username"
           label="Username"
           autocomplete="username"
-          :error="fieldError('username')"
+          :error="errors.username"
           required
+          @blur="leaveField('username')"
         />
         <BaseInput
-          ref="passwordField"
           v-model="password"
           label="Password"
           type="password"
           autocomplete="new-password"
-          :error="fieldError('password')"
+          :error="errors.password"
           required
+          @blur="leaveField('password')"
         />
         <BaseInput
-          ref="confirmField"
           v-model="confirmPassword"
           label="Confirm password"
           type="password"
           autocomplete="new-password"
-          :error="fieldError('confirmPassword')"
+          :error="errors.confirmPassword"
           required
+          @blur="leaveField('confirmPassword')"
         />
         <StatusMessage v-if="formError" tone="error">{{ formError }}</StatusMessage>
-        <BaseButton type="submit" block :loading="isLoading" :error="isButtonError">
+        <BaseButton
+          type="submit"
+          block
+          :loading="isLoading"
+          :blocked="!isValid"
+          :error="isButtonError"
+        >
           {{ isLoading ? "Registering" : "Register" }}
         </BaseButton>
       </form>

@@ -1,24 +1,4 @@
-import type { SortOrder } from "@/scripts/pastebin/paste";
-
-export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
-
-/** A user as the admin list returns it (vb2007/vb2007.hu-api#120). */
-export interface AdminUser {
-  id: string;
-  username: string;
-  email: string;
-  createdAt: string;
-  isSuperuser: boolean;
-  uploads: {
-    usedBytes: number;
-    count: number;
-    quotaBytes: number;
-    /** False while the user is on the default quota. */
-    hasCustomQuota: boolean;
-  };
-}
-
-export type { SortOrder };
+import { Messages } from "@/constants/messages";
 
 export type QuotaUnit = "MB" | "GB" | "TB";
 
@@ -46,11 +26,11 @@ export const quotaBytesFrom = (
 ): { bytes: number; error: "" } | { bytes: null; error: string } => {
   const value = Number(amount.trim().replace(",", "."));
   if (!amount.trim() || !Number.isFinite(value) || value < 0) {
-    return { bytes: null, error: "Enter a size of 0 or more." };
+    return { bytes: null, error: Messages.Admin.invalidQuota };
   }
   const bytes = Math.round(value * QUOTA_UNITS[unit]);
   if (bytes > Number.MAX_SAFE_INTEGER) {
-    return { bytes: null, error: "That's more than the API can store." };
+    return { bytes: null, error: Messages.Admin.quotaTooLarge };
   }
   return { bytes, error: "" };
 };

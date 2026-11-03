@@ -68,6 +68,31 @@ describe("ChangePassword", () => {
     expect(document.activeElement).toBe(inputs()[0].element);
   });
 
+  it("checks each field once it's left, and a confirmation that already differs while typing", async () => {
+    await open();
+    const saveKey = () => buttons()[0];
+    expect(saveKey().attributes("aria-disabled")).toBe("true");
+
+    await inputs()[0].setValue("x");
+    await inputs()[0].setValue("");
+    await inputs()[0].trigger("blur");
+    await inputs()[1].setValue("short");
+    await inputs()[1].trigger("blur");
+    expect(errors()).toEqual(["Enter your current password.", TOO_SHORT]);
+
+    await inputs()[2].setValue("shorx");
+    expect(errors()).toEqual([
+      "Enter your current password.",
+      TOO_SHORT,
+      "The two passwords don't match."
+    ]);
+    await inputs()[2].trigger("blur");
+
+    await fill("old-password", "new-password");
+    expect(errors()).toEqual([]);
+    expect(saveKey().attributes("aria-disabled")).toBeUndefined();
+  });
+
   it("asks for the missing fields without calling the API", async () => {
     await open();
     inputs()[0].element.blur();

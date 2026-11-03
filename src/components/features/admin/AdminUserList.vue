@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { useAdminUsers } from "@/composables/useAdminUsers";
-import type { AdminUserSortBy, SortOrder } from "@/scripts/admin/adminUser";
+import type { AdminUserSortBy } from "@/types/api/admin";
+import type { SortOrder } from "@/types/api/common";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import BaseSelect from "@/components/ui/BaseSelect.vue";

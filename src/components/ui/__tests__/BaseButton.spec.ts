@@ -41,6 +41,23 @@ describe("BaseButton", () => {
     expect(wrapper.attributes("aria-busy")).toBeUndefined();
   });
 
+  it("looks disabled when blocked, but stays focusable and clickable", async () => {
+    const wrapper = mount(BaseButton, { props: { blocked: true, type: "submit" } });
+
+    expect(wrapper.attributes("disabled")).toBeUndefined();
+    expect(wrapper.attributes("aria-disabled")).toBe("true");
+    expect(wrapper.classes()).toContain("btn--blocked");
+
+    await wrapper.trigger("click");
+    expect(wrapper.emitted("click")).toHaveLength(1);
+  });
+
+  it("only blocks buttons, not links", () => {
+    const wrapper = mount(BaseButton, { props: { blocked: true, href: "https://example.com" } });
+
+    expect(wrapper.attributes("aria-disabled")).toBeUndefined();
+  });
+
   it("renders a router link when given a destination", async () => {
     const { wrapper } = await mountWithRouter(BaseButton, {
       props: { to: "/login" },

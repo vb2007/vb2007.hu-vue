@@ -90,4 +90,12 @@ describe("BaseInput", () => {
 
     expect(wrapper.props("modelValue")).toBe("new");
   });
+
+  it("says when the field is left", async () => {
+    const wrapper = mount(BaseInput, { props: { label: "Name" } });
+
+    await wrapper.find("input").trigger("blur");
+
+    expect(wrapper.emitted("blur")).toHaveLength(1);
+  });
 });

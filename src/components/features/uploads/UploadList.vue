@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
-import { useUploads } from "@/composables/useUploads";
-import type { SortOrder, UploadSortBy, UploadVisibility } from "@/scripts/uploads/upload";
+import { useUploads, type UploadListing } from "@/composables/useUploads";
+import type { SortOrder } from "@/types/api/common";
+import type { UploadSortBy, UploadVisibility } from "@/types/api/uploads";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import BaseSelect from "@/components/ui/BaseSelect.vue";
@@ -13,10 +14,10 @@ import UploadRow from "./UploadRow.vue";
 const props = withDefaults(
   defineProps<{
     /** Another listing than the user's own, e.g. one user's uploads for the admin. */
-    listUrl?: string;
+    listing?: UploadListing;
     as?: "h1" | "h2";
   }>(),
-  { listUrl: undefined, as: "h2" }
+  { listing: undefined, as: "h2" }
 );
 const emit = defineEmits<{ changed: [] }>();
 
@@ -41,10 +42,10 @@ const {
   rename,
   setVisibility,
   remove
-} = useUploads(undefined, props.listUrl);
+} = useUploads(undefined, props.listing);
 
 /** Someone else's uploads read differently from your own. */
-const isOthers = computed(() => Boolean(props.listUrl));
+const isOthers = computed(() => Boolean(props.listing));
 const title = computed(() => {
   if (!isOthers.value) return "Your uploads";
   return owner.value ? `${owner.value.username}'s uploads` : "Uploads";

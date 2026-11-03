@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 import { flushPromises } from "@vue/test-utils";
 import { PARALLEL_UPLOADS, useUploadQueue } from "@/composables/useUploadQueue";
-import type { UploadUsage } from "@/scripts/uploads/upload";
+import type { UploadUsage } from "@/types/api/uploads";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { aFile, anUpload, someUsage } from "@/__tests__/helpers/uploads";
 import { mockXhr, type FakeXhr } from "@/__tests__/helpers/xhr";

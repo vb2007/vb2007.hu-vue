@@ -1,21 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises } from "@vue/test-utils";
+import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { register, registerStatus, type RegisterAnswer } from "@/scripts/authentication/register";
+import {
+  checkUsername,
+  register,
+  registerStatus,
+  type RegisterAnswer
+} from "@/scripts/authentication/register";
 import { fetchUserDetails, restoreSession } from "@/scripts/authentication/user";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/register", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/register")>()),
-  register: vi.fn()
+  register: vi.fn(),
+  checkUsername: vi.fn()
 }));
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
   restoreSession: vi.fn(() => Promise.resolve()),
   fetchUserDetails: vi.fn()
 }));
+
+// Unmounting runs the form's own cleanup: a username check still waiting on its real timer would
+// otherwise fire in a later test, which a busy runner host makes late enough to break it.
+enableAutoUnmount(afterEach);
 
 const mountForm = async () => {
   // Attached, so the tests can see where focus goes.
@@ -61,6 +71,7 @@ const errorUnder = (wrapper: Wrapper, selector: string) =>
 describe("RegisterForm", () => {
   beforeEach(() => {
     vi.mocked(register).mockReset();
+    vi.mocked(checkUsername).mockReset().mockResolvedValue("unknown");
   });
 
   afterEach(() => {
@@ -99,7 +110,7 @@ describe("RegisterForm", () => {
   });
 
   it.each([
-    [{ email: "nope" }, "Please enter a valid e-mail address.", 0],
+    [{ email: "nope" }, "Enter a valid e-mail address.", 0],
     [
       { email: `${"a".repeat(243)}@example.com` },
       "Your e-mail address can't be longer than 254 characters.",
@@ -181,6 +192,94 @@ describe("RegisterForm", () => {
     expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
   });
 
+  it("shows a field's problem once it's left, and looks disabled until the form is right", async () => {
+    const wrapper = await mountForm();
+    const usernameInput = wrapper.find(FIELDS.username);
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBe("true");
+
+    await usernameInput.setValue("v");
+    expect(errorUnder(wrapper, FIELDS.username)).toBeUndefined();
+    await usernameInput.trigger("blur");
+    expect(errorUnder(wrapper, FIELDS.username)).toBe(
+      "The username's too short: it must be between 2 and 16 characters."
+    );
+
+    // Every field is checked once it's left.
+    await fill(wrapper, { email: "nope", password: "short", confirm: "other" });
+    for (const input of wrapper.findAll("input")) await input.trigger("blur");
+    expect(wrapper.findAll(".field__error").map((error) => error.text())).toEqual([
+      "Enter a valid e-mail address.",
+      "The password's too short: it must be between 8 and 128 characters.",
+      "The two passwords don't match."
+    ]);
+
+    await fill(wrapper);
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("says a username is taken once typing pauses, and only asks about the latest", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.mocked(checkUsername).mockImplementation(async (name) =>
+      name === "anna" ? "taken" : "free"
+    );
+    const wrapper = await mountForm();
+    await fill(wrapper, { username: "ann" });
+    await wrapper.find(FIELDS.username).setValue("anna");
+
+    vi.advanceTimersByTime(399);
+    await flushPromises();
+    expect(checkUsername).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    await flushPromises();
+    expect(checkUsername).toHaveBeenCalledOnce();
+    expect(checkUsername).toHaveBeenCalledWith("anna", expect.any(AbortSignal));
+    expect(errorUnder(wrapper, FIELDS.username)).toBe("That username is taken.");
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBe("true");
+
+    await wrapper.find(FIELDS.username).setValue("anna2");
+    expect(errorUnder(wrapper, FIELDS.username)).toBeUndefined();
+    vi.advanceTimersByTime(400);
+    await flushPromises();
+    expect(errorUnder(wrapper, FIELDS.username)).toBeUndefined();
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it("drops an answer about a username that was edited meanwhile", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let answer!: (availability: "taken") => void;
+    vi.mocked(checkUsername).mockImplementationOnce(
+      () => new Promise((resolve) => (answer = resolve))
+    );
+    const wrapper = await mountForm();
+    await wrapper.find(FIELDS.username).setValue("anna");
+    vi.advanceTimersByTime(400);
+
+    // Too short to ask about, so nothing new is asked.
+    await wrapper.find(FIELDS.username).setValue("a");
+    answer("taken");
+    await flushPromises();
+
+    expect(checkUsername).toHaveBeenCalledOnce();
+    expect(vi.mocked(checkUsername).mock.calls[0][1]!.aborted).toBe(true);
+    expect(errorUnder(wrapper, FIELDS.username)).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it("stops waiting to check the username when it's gone", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const wrapper = await mountForm();
+    await wrapper.find(FIELDS.username).setValue("anna");
+
+    wrapper.unmount();
+    vi.advanceTimersByTime(400);
+
+    expect(checkUsername).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it.each([
     [
       "email",
@@ -209,7 +308,7 @@ describe("RegisterForm", () => {
       expect(submitButton(wrapper).text()).toBe("Register");
 
       // Editing that field drops its error.
-      await wrapper.find(selector).setValue("changed@example.com");
+      await wrapper.find(selector).setValue(field === "username" ? "vb2" : "changed@example.com");
       expect(errorUnder(wrapper, selector)).toBeUndefined();
     }
   );
@@ -295,7 +394,7 @@ describe("RegisterForm", () => {
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
 
-    expect(errorUnder(wrapper, FIELDS.email)).toBe("Please enter a valid e-mail address.");
+    expect(errorUnder(wrapper, FIELDS.email)).toBe("Enter a valid e-mail address.");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     // Not a failed registration: the Register key doesn't flash.
     expect(submitButton(wrapper).classes()).not.toContain("btn--error");
@@ -423,8 +522,12 @@ describe("RegisterForm", () => {
       expect(submitButton(wrapper).classes()).toContain("btn--error");
       expect(document.activeElement).toBe(input.element);
 
-      // Typing a new code drops it.
+      // Typing a new code drops it once it's 6 digits.
       await input.setValue("1");
+      expect(errorUnder(wrapper, 'input[autocomplete="one-time-code"]')).toBe(
+        "Enter the 6-digit code from the e-mail."
+      );
+      await input.setValue("123456");
       expect(input.attributes("aria-invalid")).toBeUndefined();
     });
 
@@ -481,6 +584,30 @@ describe("RegisterForm", () => {
         expect(document.activeElement).toBe(wrapper.find(field).element);
       }
     );
+
+    it("goes back to the form with a refusal that names no field above the key", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: "Already registered." }));
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper);
+
+      expect(wrapper.find('[role="alert"]').text()).toBe("Already registered.");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
+      expect(document.activeElement).toBe(submitButton(wrapper).element);
+    });
+
+    it("checks the code once it's left", async () => {
+      const wrapper = await atCodeStep();
+      const input = wrapper.find("input");
+
+      await input.setValue("12");
+      expect(input.attributes("aria-invalid")).toBeUndefined();
+      await input.trigger("blur");
+
+      expect(errorUnder(wrapper, 'input[autocomplete="one-time-code"]')).toBe(
+        "Enter the 6-digit code from the e-mail."
+      );
+    });
 
     it("drops an error once the user types a new code", async () => {
       const error = "The code is wrong, expired or already used: check it or request a new one.";

@@ -73,4 +73,12 @@ describe("BaseTextarea", () => {
     expect(count().text()).toBe("6 / 5");
     expect(count().classes()).toContain("field__count--over");
   });
+
+  it("says when the field is left", async () => {
+    const wrapper = mount(BaseTextarea, { props: { label: "Name" } });
+
+    await wrapper.find("textarea").trigger("blur");
+
+    expect(wrapper.emitted("blur")).toHaveLength(1);
+  });
 });

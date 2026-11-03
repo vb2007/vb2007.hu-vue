@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, useTemplateRef } from "vue";
-import type { UploadVisibility } from "@/scripts/uploads/upload";
+import type { UploadVisibility } from "@/types/api/uploads";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import SegmentedControl, { type Segment } from "@/components/ui/SegmentedControl.vue";

@@ -1,33 +1,78 @@
 <script setup lang="ts">
-/** Deletes the account once the user confirms with their password, or their username if it has none. */
-import { computed, nextTick, ref, useId, useTemplateRef, watch } from "vue";
+/**
+ * Deletes the account once the user confirms with their password, or their username if it has none.
+ * Without a password the API may want GitHub to confirm it's them first; the form opens again when
+ * they come back from GitHub, with the username to type again.
+ */
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useId,
+  useTemplateRef,
+  watch
+} from "vue";
 import { useRouter } from "vue-router";
+import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
+import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, username } from "@/scripts/authentication/authState";
+import { clearDeleteIntent, saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { clearSession } from "@/scripts/authentication/user";
 import { useAccountDelete } from "@/composables/useAccountDelete";
+import { useFormValidation } from "@/composables/useFormValidation";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
+const props = defineProps<{
+  /** Opens the form on arrival: the user is back from GitHub, which confirmed it's them. */
+  reopen?: boolean;
+}>();
+
 const router = useRouter();
-const { isDeleting, deleteError, deleteAccount } = useAccountDelete();
+const { isDeleting, deleteError, needsGithub, deleteAccount } = useAccountDelete();
 
 const confirming = ref(false);
 const confirmation = ref("");
 const errorId = useId();
+/** Back from GitHub: says how long its confirmation lasts, until the next try or Cancel. */
+const githubConfirmed = ref(false);
+const confirmedId = useId();
 const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
+const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
+const githubLink = apiUrl(Endpoints.Auth.githubLink);
+const describedBy = computed(
+  () =>
+    [githubConfirmed.value && confirmedId, deleteError.value && errorId]
+      .filter(Boolean)
+      .join(" ") || undefined
+);
+
+/** The password typed, or the username matched exactly; until then the key looks disabled. */
+const { errors, isValid, leave, validate, reset } = useFormValidation({
+  confirmation: {
+    value: confirmation,
+    check: () => {
+      if (hasPassword.value) return confirmation.value ? "" : Messages.Auth.passwordMissing;
+      return confirmation.value === username.value ? "" : `That doesn't match “${username.value}”.`;
+    }
+  }
+});
 
 watch(hasPassword, () => {
   confirmation.value = "";
   deleteError.value = "";
+  needsGithub.value = false;
+  githubConfirmed.value = false;
+  reset();
 });
-
-const ready = computed(() =>
-  hasPassword.value ? confirmation.value !== "" : confirmation.value === username.value
-);
 
 const focusField = () => field.value?.$el.querySelector("input").focus();
 
@@ -42,19 +87,49 @@ const cancel = async () => {
   confirming.value = false;
   confirmation.value = "";
   deleteError.value = "";
+  needsGithub.value = false;
+  githubConfirmed.value = false;
+  clearDeleteIntent();
+  reset();
   await nextTick();
   opener.value!.$el.focus();
 };
 
+/** Remembers the delete for the way back, before the link leaves for GitHub. */
+const confirmWithGithub = () => saveDeleteIntent(username.value);
+
 const submit = async () => {
-  if (!ready.value) return;
+  if (!(await validate(form.value))) return;
+  githubConfirmed.value = false;
   if (!(await deleteAccount(confirmation.value))) {
-    if (!form.value?.contains(document.activeElement)) focusField();
+    if (needsGithub.value) {
+      await nextTick();
+      githubKey.value?.$el.focus();
+    } else if (!form.value?.contains(document.activeElement)) {
+      focusField();
+    }
     return;
   }
   await router.push("/");
   clearSession();
 };
+
+/**
+ * Back from GitHub with the browser's Back key, the page can come back as it was without loading
+ * again: the delete wasn't confirmed, so it's forgotten rather than reopened by a later relink.
+ */
+const onPageShow = (event: PageTransitionEvent) => {
+  if (event.persisted) clearDeleteIntent();
+};
+
+onMounted(() => {
+  window.addEventListener("pageshow", onPageShow);
+  if (props.reopen) {
+    githubConfirmed.value = true;
+    open();
+  }
+});
+onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
 </script>
 
 <template>
@@ -62,6 +137,9 @@ const submit = async () => {
     <h2 id="delete-title" class="delete__title">Delete account</h2>
     <p class="delete__note">
       Deleting your account also deletes your pastes, short links and uploads. It can't be undone.
+      <template v-if="!hasPassword">{{
+        Messages.Account.githubReauthNote(Limits.Github.reauthMinutes)
+      }}</template>
     </p>
 
     <form
@@ -72,6 +150,9 @@ const submit = async () => {
       @submit.prevent="submit"
       @keydown.esc="cancel"
     >
+      <StatusMessage v-if="githubConfirmed" :id="confirmedId" tone="info">{{
+        Messages.Account.deleteGithubConfirmed(Limits.Github.reauthMinutes)
+      }}</StatusMessage>
       <BaseInput
         v-if="hasPassword"
         ref="field"
@@ -79,8 +160,10 @@ const submit = async () => {
         label="Password"
         type="password"
         autocomplete="current-password"
-        :describedby="deleteError ? errorId : undefined"
+        :describedby="describedBy"
+        :error="errors.confirmation"
         required
+        @blur="leave('confirmation')"
       />
       <BaseInput
         v-else
@@ -88,15 +171,37 @@ const submit = async () => {
         v-model="confirmation"
         label="Username"
         :hint="`Type “${username}” to confirm.`"
-        :describedby="deleteError ? errorId : undefined"
+        :describedby="describedBy"
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
+        :error="errors.confirmation"
         required
+        @blur="leave('confirmation')"
       />
-      <StatusMessage v-if="deleteError" :id="errorId" tone="error">{{ deleteError }}</StatusMessage>
+      <StatusMessage v-if="deleteError" :id="errorId" :tone="needsGithub ? 'info' : 'error'">{{
+        deleteError
+      }}</StatusMessage>
       <div class="confirm__actions">
-        <BaseButton type="submit" size="sm" :error="ready" :disabled="!ready" :loading="isDeleting">
+        <BaseButton
+          v-if="needsGithub"
+          ref="githubKey"
+          size="sm"
+          :aria-describedby="errorId"
+          :href="githubLink"
+          @click="confirmWithGithub"
+        >
+          <AppIcon name="github" :size="16" />
+          Confirm with GitHub
+        </BaseButton>
+        <BaseButton
+          v-else
+          type="submit"
+          size="sm"
+          :error="isValid"
+          :blocked="!isValid"
+          :loading="isDeleting"
+        >
           {{ isDeleting ? "Deleting" : "Delete account" }}
         </BaseButton>
         <BaseButton size="sm" variant="ghost" :disabled="isDeleting" @click="cancel">

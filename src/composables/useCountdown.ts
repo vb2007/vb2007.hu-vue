@@ -1,28 +1,6 @@
 import { computed, onScopeDispose, ref } from "vue";
-
-/** What a countdown with a storage key keeps in sessionStorage: who it's for and when it ends. */
-interface SavedCountdown {
-  id: string;
-  deadline: number;
-}
-
-/** The saved countdown, or null when there's none, it can't be read or storage is off. */
-const readSaved = (storageKey: string): SavedCountdown | null => {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null");
-    return typeof saved?.id === "string" && Number.isFinite(saved.deadline) ? saved : null;
-  } catch {
-    return null;
-  }
-};
-
-const save = (storageKey: string, saved: SavedCountdown) => {
-  try {
-    sessionStorage.setItem(storageKey, JSON.stringify(saved));
-  } catch {
-    // Storage is off or full: the countdown still runs, it just won't survive a reload.
-  }
-};
+import { Limits } from "@/constants/limits";
+import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
  * Counts whole seconds down to 0, e.g. the cooldown before a code can be sent again. It counts
@@ -69,7 +47,7 @@ export const useCountdown = (storageKey?: string) => {
 
     runUntil(Date.now() + seconds * 1000);
     if (storageKey && id !== undefined) {
-      save(storageKey, { id, deadline });
+      writeSaved(storageKey, { id, deadline });
     }
   };
 
@@ -97,7 +75,7 @@ export const useCountdown = (storageKey?: string) => {
  * The seconds to wait after a 429. The resend cooldown sends them as `retryAfter` in the body;
  * the rate limiters don't, and the Retry-After header isn't exposed to the page, hence `fallback`.
  */
-export const retryAfterFrom = (body: unknown, fallback = 60): number => {
+export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
   const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
 
   return typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0

@@ -1,50 +1,44 @@
 import { ref } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
 import { hasPassword } from "@/scripts/authentication/authState";
-import { errorFrom } from "@/scripts/pastebin/paste";
 
 /**
  * Deletes the logged-in account with its pastes, short links and uploads (vb2007/vb2007.hu-api#164).
- * An account with a password confirms with it; one made with GitHub confirms with its username.
+ * An account with a password confirms with it; one made with GitHub confirms with its username,
+ * after a GitHub login or relink in the last minutes (vb2007/vb2007.hu-api#245).
  */
 export const useAccountDelete = () => {
   const isDeleting = ref(false);
   const deleteError = ref("");
+  /** The API wants a fresh GitHub login or relink before it deletes an account without a password. */
+  const needsGithub = ref(false);
 
   /** Returns whether it worked; the API has then ended the session, so the caller clears it. */
   const deleteAccount = async (confirmation: string) => {
-    let deleted = false;
+    const withPassword = hasPassword.value;
+    isDeleting.value = true;
+    deleteError.value = "";
+    needsGithub.value = false;
 
-    try {
-      isDeleting.value = true;
-      deleteError.value = "";
+    const result = await apiRequest(Endpoints.User.remove, {
+      body: withPassword ? { password: confirmation } : { username: confirmation },
+      failure: Messages.Account.deleteFailed
+    });
 
-      const response = await fetch(UserManagement.Actions.user, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(
-          hasPassword.value ? { password: confirmation } : { username: confirmation }
-        ),
-        credentials: "include"
-      });
-
-      if (response.ok) {
-        deleted = true;
-      } else {
-        deleteError.value = await errorFrom(response, "Failed to delete the account");
-        console.error("Failed to delete the account: ", response.status);
-      }
-    } catch (error) {
-      deleteError.value = "Error connecting to server";
-      console.error("Error deleting the account: ", error);
-    } finally {
-      isDeleting.value = false;
+    if (!result.ok) {
+      deleteError.value = result.error;
+      needsGithub.value =
+        !withPassword &&
+        result.status === HttpStatus.Forbidden &&
+        result.error.startsWith(Messages.Account.githubReauthPrefix);
     }
+    isDeleting.value = false;
 
-    return deleted;
+    return result.ok;
   };
 
-  return { isDeleting, deleteError, deleteAccount };
+  return { isDeleting, deleteError, needsGithub, deleteAccount };
 };

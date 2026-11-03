@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
-import { QUOTA_UNITS, type AdminUser } from "@/scripts/admin/adminUser";
+import { QUOTA_UNITS } from "@/scripts/admin/adminUser";
+import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
 import { createTestRouter } from "@/__tests__/helpers/mount";
 
@@ -145,6 +146,21 @@ describe("AdminUserRow", () => {
 
     expect(setQuota).not.toHaveBeenCalled();
     expect(wrapper.find(".field__error").text()).toBe("Enter a size of 0 or more.");
+  });
+
+  it("checks the quota once it's left", async () => {
+    const { wrapper } = mountRow(anAdminUser("a"));
+    await open(wrapper);
+    const input = wrapper.find("input");
+
+    await input.setValue("-1");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+    await input.trigger("blur");
+    expect(wrapper.find(".field__error").text()).toBe("Enter a size of 0 or more.");
+
+    await input.setValue("3");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
   });
 
   it("doesn't save a quota that didn't change, so the default stays the default", async () => {

@@ -42,7 +42,7 @@ describe("requestPasswordReset", () => {
   });
 
   it("returns an empty message when the API sent none", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
 
     await expect(requestPasswordReset("me@example.com")).resolves.toEqual({ message: "" });
   });
@@ -125,7 +125,7 @@ describe("confirmPasswordReset", () => {
   });
 
   it("keeps an empty notice when the API sent no message", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
 
     await expect(confirmPasswordReset("me@example.com", "123456", "new password")).resolves.toEqual(
       { message: "" }

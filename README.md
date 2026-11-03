@@ -53,6 +53,17 @@ npm run lint         # fixes what it can
 npm run lint:check   # report only, as CI runs it
 ```
 
+## Calling the API
+
+The site talks to [vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api) at `VITE_API_BASE_URL`. Every call goes through the same pieces:
+
+- `src/constants/endpoints.ts`: `Endpoints`, one entry per method and path, written like the API's Express routes (`"/paste/:id"`). Each entry also records whether it sends the session cookie.
+- `src/types/api/`: the request bodies, queries and responses. Each endpoint carries its own, so a wrong body, a missing `:param` or a misread response is a compile error.
+- `src/scripts/api/client.ts`: `apiRequest(Endpoints.Pastebin.get, { params: { id }, failure })` never throws. It returns `{ ok: true, data }` or `{ ok: false, status, error }`, with the error ready to show. It logs a failure once, except a request its caller aborted through `signal` (e.g. a username check that newer typing replaced), which comes back as `{ ok: false, kind: "aborted" }`. `apiErrorOf` gives the API's own message when a caller has its own fallback. `apiUrl` builds hrefs for browser navigations.
+- `src/constants/messages.ts`, `limits.ts` and `http.ts`: the site's own texts, the API limits checked before sending, and the HTTP methods and statuses. `oauth.ts` holds the GitHub redirects' `?oauthError=` codes (mirroring the API's `Responses.GithubOauth`), and `auth.ts` the login and register status values.
+
+Nothing else may call the API: ESLint rejects `fetch` and `XMLHttpRequest` outside `src/scripts/api/`, apart from the upload, which needs XHR's progress events (`src/scripts/uploads/upload.ts`, still built from `apiUrl` and `errorMessageFrom`).
+
 ## Docker
 
 The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
@@ -93,7 +104,7 @@ docker compose down                # stop and remove the containers
 
 ## Releases & deployment
 
-`.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runner, which lives on the production host. It can also be started from the Actions tab.
+`.github/workflows/release.yml` runs on every push to `main` (a merged PR). Every job runs only on the self-hosted runner labelled `prod`, which lives on the production host (vbServer); the PR runners (`pr-worker`) never release. It can also be started from the Actions tab.
 
 | Job | What it does |
 |---|---|
@@ -114,7 +125,7 @@ Each release has auto-generated notes, the image digest, the test summary of the
 
 ### One-time host setup
 
-The runner needs Docker access and a deploy directory holding the tunnel token. The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
+The `prod` runner needs Docker access and a deploy directory holding the tunnel token. The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
 
 ```sh
 mkdir -p /mnt/raid1/vb2007.hu
@@ -143,7 +154,9 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every PR into `main` or `dev`, on the self-hosted runner. It can also be started from the Actions tab via "Run workflow" on any branch.
+`.github/workflows/ci.yml` runs on every PR into `main` or `dev`, only on the self-hosted runners labelled `pr-worker`, never on the production host. It can also be started from the Actions tab via "Run workflow" on any branch. `dev-to-main-pr.yml` runs there too.
+
+The `pr-worker` runners share one 4-core host (an Optiplex, which also runs the API repo's runners), so jobs from different runs overlap on it. A job therefore never uses a fixed port or a fixed `/tmp` path: stage logs go to the job's own `$RUNNER_TEMP`, and E2E serves the build on a free port that it picks (`E2E_PORT`; 4173 when unset, as locally). Any runner takes E2E, so several E2E jobs can run at once. They trade speed for reliability instead of timing out: with `CI` set, Playwright allows 120 s per test, 20 s per assertion and two retries, and Vitest 30 s per test. E2E keeps Playwright's default workers (half the cores; `E2E_WORKERS` overrides it). On the Optiplex one E2E job takes about 3 min alone, and six at once took about 16 min each, all passing. Locally the defaults stay, so a real hang still shows up quickly. The host needs a system Chromium (`apt-get install chromium`) for E2E and `gh` for `dev-to-main-pr.yml`.
 
 | Stage | What it checks |
 |---|---|
@@ -157,6 +170,6 @@ Each stage uploads a JUnit file. `Aggregate reports` turns them into HTML, ODS, 
 
 ## Opening the dev → main PR
 
-`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner, whose description lists every PR merged into `dev` that `main` doesn't have yet, stacked PRs included, with the issues each one resolves (`.github/scripts/dev-to-main-body.mjs` reads them from the `Resolves: #<issue>` lines). Merging that PR closes those issues. If `package.json`'s version on `dev` still equals `main`'s, it comments on the PR and warns that merging releases a patch version (`.github/scripts/version-bump-warning.mjs`), so bump it on `dev` first for a minor or major release. It does nothing if there's nothing new. While the PR is open, every push to `dev` (and a manual run) rewrites its description, so PRs merged after it was opened show up too; a push never opens the PR. Each refresh also checks the version again: the warning comment is updated rather than repeated, and deleted once the version is bumped on `dev`, whether by a PR or a direct push.
+`.github/workflows/dev-to-main-pr.yml` is started by hand from the Actions tab ("Run workflow"). It opens a PR from `dev` to `main` titled `Merge dev To main`, assigned to the owner and labelled `production`, whose description lists every PR merged into `dev` that `main` doesn't have yet, stacked PRs included, with the issues each one resolves (`.github/scripts/dev-to-main-body.mjs` reads them from the `Resolves: #<issue>` lines). Merging that PR closes those issues. If `package.json`'s version on `dev` still equals `main`'s, it comments on the PR and warns that merging releases a patch version (`.github/scripts/version-bump-warning.mjs`), so bump it on `dev` first for a minor or major release. It does nothing if there's nothing new. While the PR is open, every push to `dev` (and a manual run) rewrites its description, so PRs merged after it was opened show up too, and re-applies the `production` label; a push never opens the PR. Each refresh also checks the version again: the warning comment is updated rather than repeated, and deleted once the version is bumped on `dev`, whether by a PR or a direct push.
 
 The workflow only shows up in the Actions tab once it is on `main`. A PR opened with the default `GITHUB_TOKEN` doesn't trigger PR Tests; to get the checks, add a `PR_TOKEN` secret (a fine-grained PAT for this repo with Pull requests: read/write and Contents: read), which the workflow prefers. Without `PR_TOKEN`, the repo setting "Allow GitHub Actions to create and approve pull requests" (Settings → Actions → General) must be on. If neither is in place, the run fails with "GitHub Actions is not permitted to create or approve pull requests" and an error naming both fixes.

@@ -9,7 +9,11 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("a new short link lives on the site and leads to its target", async ({ page, api }) => {
+test("a new short link lives on the site and leads to its target", async ({
+  page,
+  api,
+  baseURL
+}) => {
   api.loggedInAs();
   api.shortenReturns("abc123");
   await page.goto("/shorten");
@@ -17,8 +21,10 @@ test("a new short link lives on the site and leads to its target", async ({ page
   await page.getByLabel("URL").fill(TARGET);
   await page.getByRole("button", { name: "Shorten", exact: true }).click();
 
-  const shortLink = page.getByRole("link", { name: "localhost:4173/r/abc123" });
-  await expect(shortLink).toHaveAttribute("href", "http://localhost:4173/r/abc123");
+  // CI serves on a port of its own (E2E_PORT), so the link is built from the base URL.
+  const link = `${baseURL}/r/abc123`;
+  const shortLink = page.getByRole("link", { name: link.replace(/^https?:\/\//, "") });
+  await expect(shortLink).toHaveAttribute("href", link);
 
   await page.goto("/r/abc123");
   await expect(page).toHaveURL(TARGET);
@@ -53,9 +59,20 @@ test("an unknown short link explains itself", async ({ page }) => {
 
 test("falls back to the API's redirect when the lookup endpoint isn't deployed", async ({
   page,
-  api
+  api,
+  baseURL
 }) => {
-  api.hasShortLink("old123", TARGET);
+  // Playwright only routes the first request of a redirect chain (see `page.route`), so the API's
+  // 302 must lead to a host that really answers: the preview server, not the routed TARGET. Some
+  // Chromium builds route the second hop anyway, but Playwright's headless shell doesn't.
+  const target = `${baseURL}/shorten`;
+  api.hasShortLink("old123", target);
+  const viaApi = page.waitForRequest(
+    (request) =>
+      request.isNavigationRequest() &&
+      !request.url().startsWith(baseURL!) &&
+      new URL(request.url()).pathname === "/r/old123"
+  );
   // What an API without the lookup endpoint answers: Express's default HTML 404.
   await page.route("**/shortenUrl/old123", (route) =>
     route.fulfill({
@@ -68,5 +85,6 @@ test("falls back to the API's redirect when the lookup endpoint isn't deployed",
 
   await page.goto("/r/old123");
 
-  await expect(page).toHaveURL(TARGET);
+  await viaApi;
+  await expect(page).toHaveURL(target);
 });

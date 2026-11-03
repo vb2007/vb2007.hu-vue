@@ -4,7 +4,7 @@ import UploadRow from "@/components/features/uploads/UploadRow.vue";
 import UploadLink from "@/components/features/uploads/UploadLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
-import type { Upload } from "@/scripts/uploads/upload";
+import type { Upload } from "@/types/api/uploads";
 import { anUpload } from "@/__tests__/helpers/uploads";
 
 const buttonNamed = (wrapper: VueWrapper, name: string) =>
@@ -168,6 +168,28 @@ describe("UploadRow", () => {
     await flushPromises();
     expect(rename).toHaveBeenCalledWith("u1", "holiday.png");
     expect(wrapper.find(".rename").exists()).toBe(false);
+  });
+
+  it("says what's wrong with a name while it's typed, and an empty one once it's left", async () => {
+    const wrapper = mountRow();
+    await wrapper.find(".row__name").trigger("click");
+    await buttonNamed(wrapper, "Rename")!.trigger("click");
+    await flushPromises();
+    const input = wrapper.find(".rename input");
+    const saveKey = () => wrapper.find('.rename button[type="submit"]');
+
+    await input.setValue("bad/");
+    expect(wrapper.find(".rename .field__error").text()).toContain("without slashes");
+    expect(saveKey().attributes("aria-disabled")).toBe("true");
+
+    await input.setValue("");
+    expect(wrapper.find(".rename .field__error").exists()).toBe(false);
+    await input.trigger("blur");
+    expect(wrapper.find(".rename .field__error").text()).toContain("1–255 characters");
+
+    await input.setValue("ok.png");
+    expect(wrapper.find(".rename .field__error").exists()).toBe(false);
+    expect(saveKey().attributes("aria-disabled")).toBeUndefined();
   });
 
   it("keeps the field open when renaming fails, and closes it on Escape or Cancel", async () => {

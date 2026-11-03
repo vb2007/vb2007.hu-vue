@@ -1,6 +1,7 @@
 import { ref } from "vue";
-import { UserManagement } from "@/constants/api";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
 
 /** Changes the logged-in user's password (vb2007/vb2007.hu-api#161); the API renews the session cookie. */
 export const useChangePassword = () => {
@@ -10,35 +11,23 @@ export const useChangePassword = () => {
 
   /** Returns whether it worked. */
   const change = async (currentPassword: string, newPassword: string) => {
-    let succeeded = false;
+    isChanging.value = true;
+    changeError.value = "";
+    changed.value = "";
 
-    try {
-      isChanging.value = true;
-      changeError.value = "";
-      changed.value = "";
+    const result = await apiRequest(Endpoints.User.changePassword, {
+      body: { currentPassword, newPassword },
+      failure: Messages.Account.changePasswordFailed
+    });
 
-      const response = await fetch(UserManagement.Actions.userPassword, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ currentPassword, newPassword })
-      });
-
-      if (response.ok) {
-        changed.value = (await response.json()).message;
-        succeeded = true;
-      } else {
-        changeError.value = await errorFrom(response, "Failed to change password");
-        console.error("Failed to change password: ", response.status);
-      }
-    } catch (error) {
-      changeError.value = "Error connecting to server";
-      console.error("Error changing password: ", error);
-    } finally {
-      isChanging.value = false;
+    if (result.ok) {
+      changed.value = result.data.message;
+    } else {
+      changeError.value = result.error;
     }
+    isChanging.value = false;
 
-    return succeeded;
+    return result.ok;
   };
 
   return { isChanging, changeError, changed, change };

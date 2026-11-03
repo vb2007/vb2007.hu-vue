@@ -1,18 +1,19 @@
 import { ref, watch } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
+import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
-import { errorFrom } from "@/scripts/pastebin/paste";
+import { removeSaved } from "@/scripts/utility/savedForOwner";
 
 /** The API mails at most one code a minute, per account (vb2007/vb2007.hu-api#215). */
-export const CODE_COOLDOWN_SECONDS = 60;
+export const CODE_COOLDOWN_SECONDS = Limits.Code.cooldownSeconds;
 /** Where the countdown to the next code is kept, so a reload doesn't spend a try on a 429. */
 export const COOLDOWN_STORAGE_KEY = "email-change-cooldown";
-/** The cooldown's 429 counts its wait down on the key, so its message has no number to go stale. */
-export const COOLDOWN_MESSAGE =
-  "A code was sent just now. You can send another once the countdown ends.";
 
 /**
  * Changes the logged-in user's e-mail address (vb2007/vb2007.hu-api#162). The API mails a code to
@@ -36,16 +37,13 @@ export const useChangeEmail = () => {
   /** Once the waiting change is gone, the API takes a new address straight away. */
   const endCooldown = () => {
     cooldown.stop();
-    try {
-      sessionStorage.removeItem(COOLDOWN_STORAGE_KEY);
-    } catch {
-      // Storage is off: nothing was kept to resume.
-    }
+    removeSaved(COOLDOWN_STORAGE_KEY);
   };
 
+  // The cooldown's 429 counts its wait down on the key, so its message has no number to go stale.
   // A rate limiter's 429 has no wait to count down, so its message stays when the key comes back.
   watch(cooldown.active, (waiting) => {
-    if (!waiting && changeError.value === COOLDOWN_MESSAGE) changeError.value = "";
+    if (!waiting && changeError.value === Messages.EmailCode.cooldown) changeError.value = "";
   });
 
   /**
@@ -53,59 +51,44 @@ export const useChangeEmail = () => {
    * was already the current one. The user is refreshed either way.
    */
   const change = async (email: string, password: string) => {
-    let changed = false;
+    isChanging.value = true;
+    changeError.value = "";
+    changeMessage.value = "";
+    confirmError.value = "";
 
-    try {
-      isChanging.value = true;
-      changeError.value = "";
-      changeMessage.value = "";
-      confirmError.value = "";
+    const result = await apiRequest(Endpoints.User.changeEmail, {
+      body: { email, password },
+      failure: Messages.Account.changeEmailFailed
+    });
 
-      const response = await fetch(UserManagement.Actions.userEmail, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-        credentials: "include"
-      });
-
-      if (response.status === 202) {
-        // The API's message is written for API clients; the pending address tells the page's user.
-        if (!(await fetchUserDetails())) {
-          pendingEmail.value = normalizeEmail(email);
-        }
-        cooldown.start(CODE_COOLDOWN_SECONDS, account());
-        changed = true;
-      } else if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        changeMessage.value = data.message ?? "E-mail address updated.";
-        if (!(await fetchUserDetails())) {
-          userEmail.value = normalizeEmail(email);
-        }
-        changed = true;
-      } else if (response.status === 429) {
-        // Only the one-code-a-minute cooldown sends retryAfter; the rate limiters send an error alone.
-        const data = await response.json().catch(() => null);
-        const isCooldown = typeof data?.retryAfter === "number";
-        changeError.value = isCooldown
-          ? COOLDOWN_MESSAGE
-          : (data?.error ?? "Too many requests: try again later.");
-        cooldown.start(retryAfterFrom(data), account());
-        // The code it waits for may have been asked for elsewhere, e.g. in another tab.
-        if (isCooldown) await fetchUserDetails();
-      } else {
-        changeError.value = await errorFrom(response, "Failed to change e-mail");
-        console.error("Failed to change e-mail: ", response.status);
-        // The API keeps the new change even when its mail fails, so show what it has now.
-        if (response.status === 503) await fetchUserDetails();
+    if (result.ok && result.status === HttpStatus.Accepted) {
+      // The API's message is written for API clients; the pending address tells the page's user.
+      if (!(await fetchUserDetails())) {
+        pendingEmail.value = normalizeEmail(email);
       }
-    } catch (error) {
-      changeError.value = "Error connecting to server";
-      console.error("Error changing e-mail: ", error);
-    } finally {
-      isChanging.value = false;
+      cooldown.start(CODE_COOLDOWN_SECONDS, account());
+    } else if (result.ok) {
+      changeMessage.value = result.data.message ?? Messages.Account.emailUpdated;
+      if (!(await fetchUserDetails())) {
+        userEmail.value = normalizeEmail(email);
+      }
+    } else if (result.status === HttpStatus.TooManyRequests) {
+      // Only the one-code-a-minute cooldown sends retryAfter; the rate limiters send an error alone.
+      const isCooldown = typeof result.body?.retryAfter === "number";
+      changeError.value = isCooldown
+        ? Messages.EmailCode.cooldown
+        : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
+      cooldown.start(retryAfterFrom(result.body), account());
+      // The code it waits for may have been asked for elsewhere, e.g. in another tab.
+      if (isCooldown) await fetchUserDetails();
+    } else {
+      changeError.value = result.error;
+      // The API keeps the new change even when its mail fails, so show what it has now.
+      if (result.status === HttpStatus.ServiceUnavailable) await fetchUserDetails();
     }
+    isChanging.value = false;
 
-    return changed;
+    return result.ok;
   };
 
   /**
@@ -113,65 +96,54 @@ export const useChangeEmail = () => {
    * refreshes the user: a 403 or 409 drops the waiting change, and a 400 may mean it expired.
    */
   const confirm = async (code: string) => {
-    let confirmed = false;
     const address = pendingEmail.value;
+    isConfirming.value = true;
+    codeError.value = "";
+    confirmError.value = "";
+    changeMessage.value = "";
 
-    try {
-      isConfirming.value = true;
-      codeError.value = "";
-      confirmError.value = "";
-      changeMessage.value = "";
+    const result = await apiRequest(Endpoints.User.confirmEmail, {
+      body: { code },
+      failure: Messages.Account.confirmEmailFailed
+    });
 
-      const response = await fetch(UserManagement.Actions.userEmailConfirm, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-        credentials: "include"
-      });
-
-      if (response.ok) {
-        const data = await response.json().catch(() => ({}));
-        if (!(await fetchUserDetails())) {
-          userEmail.value = pendingEmail.value;
-          pendingEmail.value = "";
-          emailVerified.value = true;
-        }
-        endCooldown();
-        // Only now, so it doesn't sit next to the waiting address it replaces.
-        changeMessage.value = data.message ?? "E-mail address updated.";
-        confirmed = true;
-      } else {
-        const error = await errorFrom(response, "Failed to confirm e-mail");
-        console.error("Failed to confirm e-mail: ", response.status);
-        const dropped = response.status === 403 || response.status === 409;
-        if (dropped || response.status === 400) {
-          // GET /user leaves out an expired change, so a 400 for one takes the code step away too.
-          const refreshed = await fetchUserDetails();
-          if (dropped && !refreshed) pendingEmail.value = "";
-        }
-
-        if (!pendingEmail.value) {
-          // Its code step is gone with it, so the message names the address it was about. A 400
-          // means the code expired, and the API's "check it" no longer fits without the field.
-          endCooldown();
-          confirmError.value =
-            response.status === 400
-              ? `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`
-              : `${address} wasn't confirmed. ${error}`;
-        } else if (response.status === 400) {
-          codeError.value = error;
-        } else {
-          confirmError.value = error;
-        }
+    if (result.ok) {
+      if (!(await fetchUserDetails())) {
+        userEmail.value = pendingEmail.value;
+        pendingEmail.value = "";
+        emailVerified.value = true;
       }
-    } catch (error) {
-      confirmError.value = "Error connecting to server";
-      console.error("Error confirming e-mail: ", error);
-    } finally {
-      isConfirming.value = false;
-    }
+      endCooldown();
+      // Only now, so it doesn't sit next to the waiting address it replaces.
+      changeMessage.value = result.data.message ?? Messages.Account.emailUpdated;
+    } else if (result.kind !== "http") {
+      confirmError.value = result.error;
+    } else {
+      const dropped =
+        result.status === HttpStatus.Forbidden || result.status === HttpStatus.Conflict;
+      if (dropped || result.status === HttpStatus.BadRequest) {
+        // GET /user leaves out an expired change, so a 400 for one takes the code step away too.
+        const refreshed = await fetchUserDetails();
+        if (dropped && !refreshed) pendingEmail.value = "";
+      }
 
-    return confirmed;
+      if (!pendingEmail.value) {
+        // Its code step is gone with it, so the message names the address it was about. A 400
+        // means the code expired, and the API's "check it" no longer fits without the field.
+        endCooldown();
+        confirmError.value =
+          result.status === HttpStatus.BadRequest
+            ? Messages.Account.codeExpired(address)
+            : Messages.Account.notConfirmed(address, result.error);
+      } else if (result.status === HttpStatus.BadRequest) {
+        codeError.value = result.error;
+      } else {
+        confirmError.value = result.error;
+      }
+    }
+    isConfirming.value = false;
+
+    return result.ok;
   };
 
   return {

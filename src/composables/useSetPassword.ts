@@ -1,11 +1,10 @@
 import { ref } from "vue";
-import { UserManagement } from "@/constants/api";
+import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
+import { Messages } from "@/constants/messages";
+import { apiRequest } from "@/scripts/api/client";
 import { hasPassword } from "@/scripts/authentication/authState";
 import { fetchUserDetails } from "@/scripts/authentication/user";
-import { errorFrom } from "@/scripts/pastebin/paste";
-
-/** How the API's 403 starts when GitHub has to confirm it's the user first (vb2007/vb2007.hu-api#183). */
-const GITHUB_REAUTH = "Confirm it's you first";
 
 /** Sets a password on an account made with GitHub (vb2007/vb2007.hu-api#155). */
 export const useSetPassword = () => {
@@ -16,38 +15,30 @@ export const useSetPassword = () => {
 
   /** Returns whether the account has a password now; a 409 means it had one already. */
   const setPassword = async (password: string) => {
+    isSetting.value = true;
+    setError.value = "";
+    needsGithub.value = false;
+
+    const result = await apiRequest(Endpoints.User.setPassword, {
+      body: { password },
+      failure: Messages.Account.setPasswordFailed
+    });
+
     let set = false;
-
-    try {
-      isSetting.value = true;
-      setError.value = "";
-      needsGithub.value = false;
-
-      const response = await fetch(UserManagement.Actions.userPassword, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-        credentials: "include"
-      });
-
-      if (response.ok) {
-        hasPassword.value = true;
-        await fetchUserDetails();
-        set = true;
-      } else {
-        setError.value = await errorFrom(response, "Failed to set the password");
-        needsGithub.value = response.status === 403 && setError.value.startsWith(GITHUB_REAUTH);
-        console.error("Failed to set the password: ", response.status);
-        if (response.status === 409) {
-          set = (await fetchUserDetails()) && hasPassword.value;
-        }
+    if (result.ok) {
+      hasPassword.value = true;
+      await fetchUserDetails();
+      set = true;
+    } else {
+      setError.value = result.error;
+      needsGithub.value =
+        result.status === HttpStatus.Forbidden &&
+        result.error.startsWith(Messages.Account.githubReauthPrefix);
+      if (result.status === HttpStatus.Conflict) {
+        set = (await fetchUserDetails()) && hasPassword.value;
       }
-    } catch (error) {
-      setError.value = "Error connecting to server";
-      console.error("Error setting the password: ", error);
-    } finally {
-      isSetting.value = false;
     }
+    isSetting.value = false;
 
     return set;
   };

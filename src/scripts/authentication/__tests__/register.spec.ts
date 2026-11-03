@@ -1,12 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import {
+  checkUsername,
+  confirmationCodeEarlyError,
+  confirmationCodeError,
+  emailError,
+  emailShapeError,
+  passwordEarlyError,
+  passwordError,
   passwordLengthError,
+  passwordMatchEarlyError,
+  passwordMatchError,
   register,
   registerFieldOf,
   registerStatus,
-  usernameLengthError,
-  validateRegisterData
+  requiredError,
+  usernameEarlyError,
+  usernameError,
+  usernameLengthError
 } from "@/scripts/authentication/register";
 
 afterEach(() => {
@@ -46,9 +57,6 @@ describe("passwordLengthError", () => {
 
 describe("registerFieldOf", () => {
   it.each([
-    ["invalid-email", "email"],
-    ["email-too-long", "email"],
-    ["unmatched-passwords", "confirmPassword"],
     [USERNAME_TOO_SHORT, "username"],
     [TOO_LONG, "password"],
     ["This username is already taken.", "username"],
@@ -61,68 +69,159 @@ describe("registerFieldOf", () => {
   });
 });
 
-describe("validateRegisterData", () => {
-  it("accepts valid data", () => {
-    expect(validateRegisterData("vb", "me@example.com", "secret12", "secret12")).toBeUndefined();
-  });
+const INVALID_EMAIL = "Enter a valid e-mail address.";
+const EMAIL_TOO_LONG = "Your e-mail address can't be longer than 254 characters.";
+const CODE = "Enter the 6-digit code from the e-mail.";
 
+describe("emailError", () => {
   it.each([
-    ["a 254 character email", `${"a".repeat(242)}@example.com`],
-    ["a subdomain email", "me@mail.example.co.uk"],
-    ["an email the API trims", "  Me@Example.com "],
-    ["a 254 character email with padding the API trims", `  ${"a".repeat(242)}@example.com  `]
+    ["an address", "me@example.com"],
+    ["a 254 character address", `${"a".repeat(242)}@example.com`],
+    ["a subdomain address", "me@mail.example.co.uk"],
+    ["an address the API trims", "  Me@Example.com "],
+    ["a 254 character address with padding the API trims", `  ${"a".repeat(242)}@example.com  `]
   ])("accepts %s", (_case, email) => {
-    expect(validateRegisterData("vb", email, "secret12", "secret12")).toBeUndefined();
+    expect(emailError(email)).toBe("");
   });
 
   it.each([
-    ["an invalid email", ["vb", "not-an-email", "secret12", "secret12"], "invalid-email"],
+    ["an empty field", "", INVALID_EMAIL],
+    ["an invalid address", "not-an-email", INVALID_EMAIL],
+    ["an address without a dot in the domain", "a@b", INVALID_EMAIL],
+    ["an address with an empty domain label", "a@b..c", INVALID_EMAIL],
+    ["an address with a leading domain dot", "a@.b.c", INVALID_EMAIL],
+    ["an address with a trailing domain dot", "a@b.c.", INVALID_EMAIL],
+    ["a long malformed address", "a".repeat(300), INVALID_EMAIL],
+    ["a 255 character address", `${"a".repeat(243)}@example.com`, EMAIL_TOO_LONG],
     [
-      "an email without a dot in the domain",
-      ["vb", "a@b", "secret12", "secret12"],
-      "invalid-email"
-    ],
-    [
-      "an email with an empty domain label",
-      ["vb", "a@b..c", "secret12", "secret12"],
-      "invalid-email"
-    ],
-    [
-      "an email with a leading domain dot",
-      ["vb", "a@.b.c", "secret12", "secret12"],
-      "invalid-email"
-    ],
-    [
-      "an email with a trailing domain dot",
-      ["vb", "a@b.c.", "secret12", "secret12"],
-      "invalid-email"
-    ],
-    [
-      "a 255 character email",
-      ["vb", `${"a".repeat(243)}@example.com`, "secret12", "secret12"],
-      "email-too-long"
-    ],
-    [
-      "an email that only grows past 254 characters when lowercased",
-      ["vb", `İ${"a".repeat(241)}@example.com`, "secret12", "secret12"],
-      "email-too-long"
-    ],
-    ["a long malformed email", ["vb", "a".repeat(300), "secret12", "secret12"], "invalid-email"],
-    ["a too short username", [" v ", "me@example.com", "secret12", "secret12"], USERNAME_TOO_SHORT],
-    [
-      "a too long username",
-      ["v".repeat(17), "me@example.com", "secret12", "secret12"],
-      USERNAME_TOO_LONG
-    ],
-    ["a too short password", ["vb", "me@example.com", "1234567", "1234567"], TOO_SHORT],
-    ["a too long password", ["vb", "me@example.com", "p".repeat(129), "p".repeat(129)], TOO_LONG],
-    [
-      "mismatched passwords",
-      ["vb", "me@example.com", "secret12", "secret123"],
-      "unmatched-passwords"
+      "an address that only grows past 254 characters when lowercased",
+      `İ${"a".repeat(241)}@example.com`,
+      EMAIL_TOO_LONG
     ]
-  ] as const)("rejects %s", (_case, [username, email, password, confirm], expected) => {
-    expect(validateRegisterData(username, email, password, confirm)).toBe(expected);
+  ])("rejects %s", (_case, email, expected) => {
+    expect(emailError(email)).toBe(expected);
+  });
+});
+
+describe("emailShapeError", () => {
+  it.each([
+    ["me@example.com", ""],
+    [" a@b ", ""],
+    ["", INVALID_EMAIL],
+    ["me", INVALID_EMAIL],
+    ["me@", INVALID_EMAIL],
+    ["m e@example.com", INVALID_EMAIL]
+  ])("checks %j", (email, expected) => {
+    expect(emailShapeError(email)).toBe(expected);
+  });
+});
+
+describe("the username checks", () => {
+  it.each([
+    ["vb", "", ""],
+    [" v ", USERNAME_TOO_SHORT, ""],
+    ["v".repeat(17), USERNAME_TOO_LONG, USERNAME_TOO_LONG]
+  ])("check %j", (username, full, early) => {
+    expect(usernameError(username)).toBe(full);
+    expect(usernameEarlyError(username)).toBe(early);
+  });
+});
+
+describe("the password checks", () => {
+  it.each([
+    ["secret12", "", ""],
+    ["1234567", TOO_SHORT, ""],
+    ["p".repeat(129), TOO_LONG, TOO_LONG],
+    ["🔑".repeat(128), "", ""]
+  ])("check %j", (password, full, early) => {
+    expect(passwordError(password)).toBe(full);
+    expect(passwordEarlyError(password)).toBe(early);
+  });
+});
+
+describe("the password match checks", () => {
+  const UNMATCHED = "The two passwords don't match.";
+
+  it.each([
+    ["secret12", "secret12", "", ""],
+    ["secret12", "secret1", UNMATCHED, ""],
+    ["secret12", "secret13", UNMATCHED, UNMATCHED],
+    ["secret12", "secret123", UNMATCHED, UNMATCHED],
+    ["🔑🔑", "🔑a", UNMATCHED, UNMATCHED]
+  ])("check %j against %j", (password, confirm, full, early) => {
+    expect(passwordMatchError(password, confirm)).toBe(full);
+    expect(passwordMatchEarlyError(password, confirm)).toBe(early);
+  });
+});
+
+describe("requiredError", () => {
+  it("only complains about an empty value", () => {
+    expect(requiredError("", "Enter it.")).toBe("Enter it.");
+    expect(requiredError("x", "Enter it.")).toBe("");
+  });
+});
+
+describe("the confirmation code checks", () => {
+  it.each([
+    ["123456", "", ""],
+    ["123 456", "", ""],
+    ["", CODE, ""],
+    ["12345", CODE, ""],
+    ["12345a", CODE, CODE],
+    ["1234567", CODE, CODE]
+  ])("check %j", (code, full, early) => {
+    expect(confirmationCodeError(code)).toBe(full);
+    expect(confirmationCodeEarlyError(code)).toBe(early);
+  });
+});
+
+describe("checkUsername", () => {
+  let fetchMock: ReturnType<typeof mockFetch>;
+
+  beforeEach(() => {
+    fetchMock = mockFetch();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it.each([
+    [true, "free"],
+    [false, "taken"]
+  ])("asks the API, which answers available: %s", async (available, expected) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { available }));
+    const { signal } = new AbortController();
+
+    await expect(checkUsername("Anna B", signal)).resolves.toBe(expected);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.test/auth/username-available?username=Anna+B",
+      { method: "GET", signal }
+    );
+  });
+
+  it.each([
+    ["a 404 from an API without the endpoint", () => jsonResponse(404, { error: "Not found" })],
+    ["a 429", () => jsonResponse(429, { error: "Too many requests" })],
+    ["an answer without a verdict", () => jsonResponse(200, {})],
+    ["a body that isn't JSON", () => jsonResponse(200)]
+  ])("can't tell after %s", async (_case, response) => {
+    fetchMock.mockResolvedValueOnce(response());
+    await expect(checkUsername("anna")).resolves.toBe("unknown");
+  });
+
+  it("can't tell when the request fails", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await expect(checkUsername("anna")).resolves.toBe("unknown");
+  });
+
+  it("can't tell when newer typing aborted it, and doesn't log that", async () => {
+    const request = new AbortController();
+    fetchMock.mockImplementationOnce(() => {
+      request.abort();
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    });
+
+    await expect(checkUsername("anna", request.signal)).resolves.toBe("unknown");
+    expect(console.error).not.toHaveBeenCalled();
   });
 });
 

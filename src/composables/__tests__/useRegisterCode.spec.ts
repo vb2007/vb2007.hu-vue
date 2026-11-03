@@ -187,7 +187,7 @@ describe("useRegisterCode", () => {
       [400, invalidCode, "codeFieldError"],
       [429, "Too many failed attempts: try again later.", "codeError"]
     ] as const)(
-      "shows the API's message for a %i response as %s, without logging it",
+      "shows the API's message for a %i response as %s",
       async (status, error, shownAs) => {
         fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
         const step = openStep();
@@ -198,7 +198,7 @@ describe("useRegisterCode", () => {
         expect(step[shownAs].value).toBe(error);
         expect(step[shownAs === "codeError" ? "codeFieldError" : "codeError"].value).toBe("");
         expect(fetchUserDetails).not.toHaveBeenCalled();
-        expect(console.error).not.toHaveBeenCalled();
+        expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", status);
         expect(step.isVerifying.value).toBe(false);
       }
     );
@@ -219,7 +219,7 @@ describe("useRegisterCode", () => {
 
       expect(await step.verify("123456")).toBe("failed");
       expect(step.codeError.value).toBe("Failed to confirm the code: Internal Server Error");
-      expect(console.error).toHaveBeenCalledWith("Failed to confirm the registration code: ", 500);
+      expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", 500);
     });
 
     it("reports an unreachable server", async () => {
@@ -276,7 +276,6 @@ describe("useRegisterCode", () => {
       );
       expect(step.cooldown.remaining.value).toBe(42);
       expect(step.notice.value).toBe("sent");
-      expect(console.error).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(42_000);
       await nextTick();
@@ -319,7 +318,7 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("The e-mail couldn't be sent: please try again later.");
       expect(step.notice.value).toBe("lost");
       expect(step.resendWaiting.value).toBe(false);
-      expect(console.error).toHaveBeenCalledWith("Failed to resend the registration code: ", 503);
+      expect(console.error).toHaveBeenCalledWith("Failed to send a new code: ", 503);
     });
 
     it.each([
@@ -335,14 +334,13 @@ describe("useRegisterCode", () => {
       expect(step.notice.value).toBe("sent");
     });
 
-    it("falls back to the status code without a status text, and doesn't log a 4xx", async () => {
+    it("falls back to the status code without a status text", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(400));
       const step = openStep();
 
       await step.resend();
 
       expect(step.codeError.value).toBe("Failed to send a new code: 400");
-      expect(console.error).not.toHaveBeenCalled();
     });
 
     it("reports an unreachable server", async () => {

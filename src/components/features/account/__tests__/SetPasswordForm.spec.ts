@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
+import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 const REAUTH =
@@ -24,6 +25,15 @@ describe("SetPasswordForm", () => {
     fetchMock = mockFetch();
     vi.spyOn(console, "error").mockImplementation(() => {});
     userEmail.value = "me@example.com";
+    sessionStorage.clear();
+  });
+
+  it("says why to set one, and that GitHub may confirm it's them first", () => {
+    const wrapper = mount(SetPasswordForm);
+
+    expect(wrapper.find(".password__note").text().replace(/\s+/g, " ")).toBe(
+      "This account has no password yet: you log in with GitHub. Set one to also log in with your e-mail address, and to be able to unlink GitHub. If you logged in more than 10 minutes ago, GitHub confirms it's you first."
+    );
   });
 
   it("asks for a new password twice, for the account's e-mail", () => {
@@ -90,7 +100,35 @@ describe("SetPasswordForm", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it("wants the same password twice, and only checks again on the next submit", async () => {
+  it("shows a field's problem once it's left, then follows the typing", async () => {
+    const wrapper = mount(SetPasswordForm);
+    const [first, second] = wrapper.findAll('input[type="password"]');
+    const key = wrapper.find('button[type="submit"]');
+    expect(key.attributes("aria-disabled")).toBe("true");
+
+    await first.setValue("short");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    await first.trigger("blur");
+    expect(wrapper.find(".field__error").text()).toBe(
+      "The password's too short: it must be between 8 and 128 characters."
+    );
+
+    await first.setValue("correct horse");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+
+    // A confirmation as long as the password that already differs shows while typing.
+    await second.setValue("correct");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    await second.setValue("correct hose!");
+    expect(wrapper.find(".field__error").text()).toBe("The two passwords don't match.");
+    await second.trigger("blur");
+
+    await second.setValue("correct horse");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(key.attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("wants the same password twice, and checks it again with every change", async () => {
     const wrapper = mount(SetPasswordForm);
     await fill(wrapper, "correct horse", "correct hose");
 
@@ -99,24 +137,19 @@ describe("SetPasswordForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     await wrapper.findAll('input[type="password"]')[1].setValue("correct");
-    expect(wrapper.find(".field__error").exists()).toBe(false);
-  });
+    expect(wrapper.find(".field__error").text()).toBe("The two passwords don't match.");
 
-  it("drops both field errors once the password itself changes", async () => {
-    const wrapper = mount(SetPasswordForm);
-    await fill(wrapper, "short", "shorter");
-
-    await wrapper.find("form").trigger("submit");
-    expect(wrapper.findAll(".field__error")).toHaveLength(2);
-
-    await wrapper.findAll('input[type="password"]')[0].setValue("shorter");
-    expect(wrapper.findAll(".field__error")).toHaveLength(0);
+    await wrapper.findAll('input[type="password"]')[0].setValue("correct");
+    expect(wrapper.findAll(".field__error").map((error) => error.text())).toEqual([
+      "The password's too short: it must be between 8 and 128 characters."
+    ]);
   });
 
   it("shows the API's error", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(409, { error: "This account already has a password." })
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
+      // The 409 looks the account up again, which finds no session.
+      .mockResolvedValueOnce(jsonResponse(401));
     const wrapper = mount(SetPasswordForm);
     await fill(wrapper, "correct horse");
 
@@ -146,6 +179,23 @@ describe("SetPasswordForm", () => {
       wrapper.find('[role="status"]').attributes("id")
     );
     expect(confirm.attributes("aria-describedby")).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("forgets a delete left unconfirmed, so coming back from GitHub is about the password", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
+    const wrapper = mount(SetPasswordForm, { attachTo: document.body });
+    await fill(wrapper, "correct horse");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    saveDeleteIntent("me");
+    const confirm = wrapper.find('a[href="https://api.test/auth/github/link"]');
+    // jsdom can't leave the page; the click is what counts.
+    confirm.element.addEventListener("click", (event) => event.preventDefault());
+
+    await confirm.trigger("click");
+
+    expect(takeDeleteIntent()).toBe("");
     wrapper.unmount();
   });
 });
