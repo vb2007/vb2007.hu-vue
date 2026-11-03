@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { StorageKeys } from "@/constants/storage";
 import {
+  DELETE_INTENT_STORAGE_KEY,
   clearDeleteIntent,
   saveDeleteIntent,
   takeDeleteIntent
@@ -14,8 +14,8 @@ describe("deleteIntent", () => {
 
     saveDeleteIntent("me");
 
-    expect(JSON.parse(sessionStorage.getItem(StorageKeys.deleteIntent)!)).toEqual({
-      username: "me",
+    expect(JSON.parse(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)!)).toEqual({
+      id: "me",
       deadline: new Date("2026-11-03T12:10:00Z").getTime()
     });
   });
@@ -24,7 +24,7 @@ describe("deleteIntent", () => {
     saveDeleteIntent("me");
 
     expect(takeDeleteIntent()).toBe("me");
-    expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+    expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
     expect(takeDeleteIntent()).toBe("");
   });
 
@@ -35,7 +35,7 @@ describe("deleteIntent", () => {
     vi.setSystemTime(Date.now() + 10 * 60 * 1000);
 
     expect(takeDeleteIntent()).toBe("");
-    expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+    expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
   });
 
   it("still takes it just before then", () => {
@@ -59,13 +59,13 @@ describe("deleteIntent", () => {
     ["nothing kept", null],
     ["unreadable", "{"],
     ["no username", JSON.stringify({ deadline: Date.now() + 60_000 })],
-    ["no deadline", JSON.stringify({ username: "me" })],
-    ["a deadline that isn't a time", JSON.stringify({ username: "me", deadline: "soon" })]
+    ["no deadline", JSON.stringify({ id: "me" })],
+    ["a deadline that isn't a time", JSON.stringify({ id: "me", deadline: "soon" })]
   ])("ignores what can't be a delete intent: %s", (_name, stored) => {
-    if (stored !== null) sessionStorage.setItem(StorageKeys.deleteIntent, stored);
+    if (stored !== null) sessionStorage.setItem(DELETE_INTENT_STORAGE_KEY, stored);
 
     expect(takeDeleteIntent()).toBe("");
-    expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+    expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
   });
 
   it("gets by without storage", () => {

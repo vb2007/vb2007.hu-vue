@@ -8,7 +8,7 @@ import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 type Wrapper = Awaited<ReturnType<typeof mountWithRouter>>["wrapper"];
 
-const mountPanel = (props: { reopen?: boolean; noticeId?: string } = {}) =>
+const mountPanel = (props: { reopen?: boolean } = {}) =>
   mountWithRouter(DeleteAccount, { attachTo: document.body, props }, "/account");
 
 const REAUTH =
@@ -399,19 +399,26 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
-  it("opens again for a user back from GitHub, with the username to type again", async () => {
+  const CONFIRMED = "GitHub confirmed it's you. Delete the account within 10 minutes.";
+
+  it("opens again for a user back from GitHub, saying so where the focus lands", async () => {
     hasPassword.value = false;
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "User deleted successfully." }));
-    const { wrapper, router } = await mountPanel({ reopen: true, noticeId: "notice" });
+    const { wrapper, router } = await mountPanel({ reopen: true });
     await flushPromises();
 
     const input = wrapper.find("input");
     expect(wrapper.find("form").exists()).toBe(true);
+    const confirmed = wrapper.find('form [role="status"]');
+    expect(confirmed.text()).toBe(CONFIRMED);
+    expect(confirmed.classes()).toContain("status--info");
+    // Above the field, so it's on screen with it.
+    expect(wrapper.find("form").element.firstElementChild).toBe(confirmed.element);
     expect(wrapper.find("label").text()).toBe("Username");
     expect(input.element.value).toBe("");
     expect(document.activeElement).toBe(input.element);
     const hintId = wrapper.find(".field__hint").attributes("id");
-    expect(input.attributes("aria-describedby")).toBe(`notice ${hintId}`);
+    expect(input.attributes("aria-describedby")).toBe(`${confirmed.attributes("id")} ${hintId}`);
     expect(deleteKey(wrapper).attributes("aria-disabled")).toBe("true");
 
     await input.setValue("me");
@@ -423,21 +430,84 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
-  it("describes the field by both the notice and a refusal after coming back", async () => {
+  it("drops the confirmation once the delete is tried again, leaving the refusal", async () => {
     hasPassword.value = false;
     fetchMock.mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }));
-    const { wrapper } = await mountPanel({ reopen: true, noticeId: "notice" });
+    const { wrapper } = await mountPanel({ reopen: true });
     await flushPromises();
 
     await wrapper.find("input").setValue("me");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     const alertId = wrapper.find('[role="alert"]').attributes("id");
     const hintId = wrapper.find(".field__hint").attributes("id");
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(`${alertId} ${hintId}`);
+    wrapper.unmount();
+  });
+
+  it("drops the confirmation on Cancel", async () => {
+    hasPassword.value = false;
+    const { wrapper } = await mountPanel({ reopen: true });
+    await flushPromises();
+
+    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    await open(wrapper);
+
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(wrapper.find("input").attributes("aria-describedby")).toBe(
-      `${alertId} notice ${hintId}`
+      wrapper.find(".field__hint").attributes("id")
     );
     wrapper.unmount();
+  });
+
+  it("drops the confirmation once the account sets a password", async () => {
+    hasPassword.value = false;
+    const { wrapper } = await mountPanel({ reopen: true });
+    await flushPromises();
+
+    hasPassword.value = true;
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("warns an account made with GitHub that GitHub may confirm it's them first", async () => {
+    hasPassword.value = false;
+    const { wrapper } = await mountPanel();
+
+    expect(wrapper.find(".delete__note").text()).toBe(
+      "Deleting your account also deletes your pastes, short links and uploads. It can't be undone. If you logged in more than 10 minutes ago, GitHub confirms it's you first."
+    );
+    wrapper.unmount();
+  });
+
+  /** A `pageshow`, as when the browser's Back key brings the page back from GitHub. */
+  const pageShow = (persisted: boolean) =>
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted }));
+
+  it("forgets a delete when the page comes back from GitHub without loading again", async () => {
+    const { wrapper } = await mountPanel();
+    saveDeleteIntent("me");
+
+    pageShow(false);
+    expect(sessionStorage.length).toBe(1);
+    pageShow(true);
+
+    expect(takeDeleteIntent()).toBe("");
+    wrapper.unmount();
+  });
+
+  it("stops listening for the page coming back once it's gone", async () => {
+    const { wrapper } = await mountPanel();
+    wrapper.unmount();
+    saveDeleteIntent("me");
+
+    pageShow(true);
+
+    expect(takeDeleteIntent()).toBe("me");
   });
 });

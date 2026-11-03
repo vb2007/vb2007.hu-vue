@@ -781,11 +781,12 @@ test("an account made with GitHub is deleted by typing its username, once GitHub
   await expect(github).toBeFocused();
   await github.click();
 
-  // Back from GitHub, the form is open again, and the username is typed again.
+  // Back from GitHub, the form is open again and says so where the focus lands, once.
   await expect(page).toHaveURL("/account");
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.getByRole("status")).toHaveText([
     "GitHub confirmed it's you. Delete the account within 10 minutes."
-  );
+  ]);
+  await expect(deletion.getByRole("status")).toBeInViewport();
   await expect(username).toBeFocused();
   await expect(username).toHaveValue("");
   await username.fill("me");
@@ -858,6 +859,39 @@ test("a delete cancelled after going to GitHub doesn't open again on the way bac
   await expect(deletion.getByLabel("Username")).toHaveCount(0);
 
   await page.goto("/account?github=linked");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Set your password within 10 minutes."
+  );
+  await expect(deletion.getByLabel("Username")).toHaveCount(0);
+});
+
+test("a delete left on GitHub doesn't take over the password's own GitHub confirmation", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await deletion.getByLabel("Username").fill("me");
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+
+  // Like Back from GitHub restoring the page as it was: the delete is still remembered.
+  const github = deletion.getByRole("link", { name: "Confirm with GitHub" });
+  await github.evaluate((link) =>
+    link.addEventListener("click", (event: Event) => event.preventDefault())
+  );
+  await github.click();
+
+  await page.getByLabel("New password").fill("correct horse battery");
+  await page.getByLabel("Confirm password").fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await page
+    .getByRole("region", { name: "Password", exact: true })
+    .getByRole("link", { name: "Confirm with GitHub" })
+    .click();
+
+  await expect(page).toHaveURL("/account");
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Set your password within 10 minutes."
   );

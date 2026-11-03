@@ -13,8 +13,7 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
-import { StorageKeys } from "@/constants/storage";
+import { DELETE_INTENT_STORAGE_KEY, saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -522,46 +521,34 @@ describe("AccountPanel", () => {
       return mounted;
     };
 
-    it("opens the delete form again, with the username to type again", async () => {
+    it("opens the delete form again, which says so itself, with the username to type again", async () => {
       linkGithub("octocat", false);
       saveDeleteIntent("vb");
       const { wrapper, router } = await comeBack();
 
-      const notice = wrapper.find(".notice");
-      expect(notice.text()).toBe(
+      // Said once, in the delete form where the focus lands, not again at the top of the board.
+      expect(wrapper.find(".notice").exists()).toBe(false);
+      expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
         "GitHub confirmed it's you. Delete the account within 10 minutes."
-      );
+      ]);
       expect(router.currentRoute.value.fullPath).toBe("/account");
       const field = deleteField(wrapper);
       expect(field.element.value).toBe("");
       expect(document.activeElement).toBe(field.element);
-      expect(field.attributes("aria-describedby")?.split(" ")).toContain(notice.attributes("id"));
-      expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+      expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
       wrapper.unmount();
     });
 
-    it("stops describing the field by the notice once it's gone", async () => {
+    it("leaves nothing about the delete on screen once it's cancelled", async () => {
       linkGithub("octocat", false);
       saveDeleteIntent("vb");
       const { wrapper } = await comeBack();
-      mockFetch()
-        .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
-        .mockResolvedValueOnce(
-          jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
-        );
 
-      for (const input of wrapper.findAll(
-        '[aria-labelledby="password-title"] input[type="password"]'
-      )) {
-        await input.setValue("correct horse");
-      }
-      await wrapper.find('[aria-labelledby="password-title"] form').trigger("submit");
+      await deleteField(wrapper).trigger("keydown", { key: "Escape" });
       await flushPromises();
 
-      expect(wrapper.find(".notice").text()).toBe(
-        "Your password is set. You can log in with it from now on."
-      );
-      expect(deleteField(wrapper).attributes("aria-describedby")).toBeUndefined();
+      expect(deleteField(wrapper).exists()).toBe(false);
+      expect(wrapper.find('[role="status"]').exists()).toBe(false);
       wrapper.unmount();
     });
 
@@ -576,7 +563,7 @@ describe("AccountPanel", () => {
         "GitHub confirmed it's you. Set your password within 10 minutes."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
-      expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+      expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
       wrapper.unmount();
     });
 
@@ -602,7 +589,7 @@ describe("AccountPanel", () => {
       );
       expect(wrapper.find(".notice").exists()).toBe(false);
       expect(deleteField(wrapper).exists()).toBe(false);
-      expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+      expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
       wrapper.unmount();
     });
 

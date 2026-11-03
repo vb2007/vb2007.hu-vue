@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
+import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 const REAUTH =
@@ -24,6 +25,15 @@ describe("SetPasswordForm", () => {
     fetchMock = mockFetch();
     vi.spyOn(console, "error").mockImplementation(() => {});
     userEmail.value = "me@example.com";
+    sessionStorage.clear();
+  });
+
+  it("says why to set one, and that GitHub may confirm it's them first", () => {
+    const wrapper = mount(SetPasswordForm);
+
+    expect(wrapper.find(".password__note").text().replace(/\s+/g, " ")).toBe(
+      "This account has no password yet: you log in with GitHub. Set one to also log in with your e-mail address, and to be able to unlink GitHub. If you logged in more than 10 minutes ago, GitHub confirms it's you first."
+    );
   });
 
   it("asks for a new password twice, for the account's e-mail", () => {
@@ -169,6 +179,23 @@ describe("SetPasswordForm", () => {
       wrapper.find('[role="status"]').attributes("id")
     );
     expect(confirm.attributes("aria-describedby")).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("forgets a delete left unconfirmed, so coming back from GitHub is about the password", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
+    const wrapper = mount(SetPasswordForm, { attachTo: document.body });
+    await fill(wrapper, "correct horse");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    saveDeleteIntent("me");
+    const confirm = wrapper.find('a[href="https://api.test/auth/github/link"]');
+    // jsdom can't leave the page; the click is what counts.
+    confirm.element.addEventListener("click", (event) => event.preventDefault());
+
+    await confirm.trigger("click");
+
+    expect(takeDeleteIntent()).toBe("");
     wrapper.unmount();
   });
 });
