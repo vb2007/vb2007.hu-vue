@@ -3,7 +3,9 @@ name: Release & Deploy
 # Runs on every push to main (a merged, already-CI-tested PR) and on demand.
 # Builds the image and pushes it to GHCR, cuts a GitHub release with a new
 # version, then deploys that exact image to the self-hosted host (vbServer),
-# where the runner lives next to the compose stack in DEPLOY_DIR.
+# where the runner lives next to the compose stack in DEPLOY_DIR. Every job runs
+# only on the runner labelled `prod` (vbServer): the deploy needs DEPLOY_DIR and
+# the host's Docker, and the PR runners (`pr-worker`) must never release.
 #
 # Version rule (.github/scripts/next-version.mjs): the package.json version if
 # it is newer than the latest v* tag (bump it in a PR for a minor/major),
@@ -34,7 +36,7 @@ jobs:
   # ---------------------------------------------------------------------------
   version:
     name: Determine version
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, prod]
     outputs:
       version: ${{ steps.next.outputs.version }}
       is_release: ${{ steps.next.outputs.is_release }}
@@ -57,7 +59,7 @@ jobs:
   build-push:
     name: Build & push image
     needs: [version]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, prod]
     permissions:
       contents: read
       packages: write
@@ -120,7 +122,7 @@ jobs:
     name: Cut release
     needs: [version, build-push]
     if: needs.version.outputs.is_release == 'true'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, prod]
     # A job-level block replaces the workflow-level one: packages: read to pull
     # the image for its dist/, actions + pull-requests: read for the CI reports.
     permissions:
@@ -278,7 +280,7 @@ jobs:
     name: Deploy
     needs: [version, build-push, release]
     if: always() && needs.build-push.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, prod]
     permissions:
       contents: read
       packages: read
