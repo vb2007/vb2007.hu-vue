@@ -2,6 +2,7 @@
 /** Deletes the account once the user confirms with their password, or their username if it has none. */
 import { nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { useRouter } from "vue-router";
+import { Messages } from "@/constants/messages";
 import { hasPassword, username } from "@/scripts/authentication/authState";
 import { clearSession } from "@/scripts/authentication/user";
 import { useAccountDelete } from "@/composables/useAccountDelete";
@@ -26,7 +27,7 @@ const { errors, isValid, leave, validate, reset } = useFormValidation({
   confirmation: {
     value: confirmation,
     check: () => {
-      if (hasPassword.value) return confirmation.value ? "" : "Enter your password.";
+      if (hasPassword.value) return confirmation.value ? "" : Messages.Auth.passwordMissing;
       return confirmation.value === username.value ? "" : `That doesn't match “${username.value}”.`;
     }
   }

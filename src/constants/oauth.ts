@@ -12,6 +12,8 @@ export class OauthError {
   static readonly githubAlreadyLinked = "githubAlreadyLinked";
   static readonly githubOtherLinked = "githubOtherLinked";
   static readonly notLoggedIn = "notLoggedIn";
+  /** A link started through `GET /auth/github/link` by an account with a password (vb2007/vb2007.hu-api#243). */
+  static readonly passwordRequired = "passwordRequired";
 }
 
 export type OauthErrorCode = (typeof OauthError)[Exclude<keyof typeof OauthError, "prototype">];

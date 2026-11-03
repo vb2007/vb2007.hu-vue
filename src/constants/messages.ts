@@ -48,6 +48,8 @@ export class Messages {
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
     static readonly invalidEmail: string = "Enter a valid e-mail address.";
+    /** An account's own password left out where it's asked for: logging in, or confirming it's them. */
+    static readonly passwordMissing: string = "Enter your password.";
     static emailTooLong(max: number): string {
       return `Your e-mail address can't be longer than ${max} characters.`;
     }
@@ -95,6 +97,7 @@ export class Messages {
     static readonly emailUpdated: string = "E-mail address updated.";
     static readonly deleteFailed: string = "Failed to delete the account";
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
+    static readonly githubLinkFailed: string = "Failed to start linking GitHub";
     /** A 400 that took the waiting change away: its code expired. */
     static codeExpired(address: string): string {
       return `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`;

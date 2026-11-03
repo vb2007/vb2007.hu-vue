@@ -1,5 +1,5 @@
 import { HttpMethod } from "@/constants/http";
-import { defineEndpoint } from "@/scripts/api/endpoint";
+import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
   AdminUserListQuery,
   AdminUsersResponse,
@@ -8,6 +8,8 @@ import type {
 } from "@/types/api/admin";
 import type {
   EmailBody,
+  GithubLinkResponse,
+  GithubPasswordBody,
   LoginBody,
   PasswordResetConfirmBody,
   RegisterBody,
@@ -116,14 +118,30 @@ export class Endpoints {
       path: "/auth/github",
       credentials: false
     });
-    /** Links GitHub to the logged-in account: a browser navigation, not a fetch call. */
+    /**
+     * Relinks GitHub on an account without a password, so GitHub confirms it's them before they set
+     * one (vb2007/vb2007.hu-api#183): a browser navigation, not a fetch call. An account with a
+     * password comes back with `?oauthError=passwordRequired` (#243) and links with `githubStartLink`.
+     */
     static readonly githubLink = defineEndpoint()({
       method: HttpMethod.Get,
       path: "/auth/github/link",
       credentials: true
     });
-    /** Unlinks GitHub (vb2007/vb2007.hu-api#134). */
-    static readonly githubUnlink = defineEndpoint<undefined, MessageResponse>()({
+    /**
+     * Starts linking GitHub (vb2007/vb2007.hu-api#243): an account with a password sends it, and
+     * gets back the GitHub URL to navigate to.
+     */
+    static readonly githubStartLink = defineEndpoint<
+      GithubPasswordBody | NoBody,
+      GithubLinkResponse
+    >()({
+      method: HttpMethod.Post,
+      path: "/auth/github/link",
+      credentials: true
+    });
+    /** Unlinks GitHub (vb2007/vb2007.hu-api#134), confirmed with the password (#243). */
+    static readonly githubUnlink = defineEndpoint<GithubPasswordBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/auth/github/link",
       credentials: true

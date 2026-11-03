@@ -13,7 +13,10 @@ import { test as base, expect, type Route } from "@playwright/test";
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
  * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
- * Linking GitHub (`GET /auth/github/link`) skips GitHub: it links @e2e-octocat and comes straight back to `/account?github=linked`, which also confirms the user for setting a password.
+ * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
+ * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
+ * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
+ * which also confirms the user for setting a password, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account.
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
@@ -147,6 +150,11 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
+  /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
+  private githubLinkStarted = false;
+  private githubUnconfigured = false;
+  /** The API host the app was built against, known once the app has called it. */
+  apiOrigin = "";
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
@@ -246,6 +254,11 @@ export class MockApi {
     this.passwordChecksLimited = true;
   }
 
+  /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
+  githubIsNotConfigured() {
+    this.githubUnconfigured = true;
+  }
+
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
   }
@@ -273,6 +286,7 @@ export class MockApi {
     }
 
     const url = new URL(request.url());
+    if (url.origin !== this.cdnOrigin) this.apiOrigin = url.origin;
     if (url.origin === this.cdnOrigin && url.pathname.startsWith("/useruploads/")) {
       return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL });
     }
@@ -416,22 +430,38 @@ export class MockApi {
         if (!this.user) {
           return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
         }
-        this.user.githubId = "583231";
-        this.user.githubLogin = "e2e-octocat";
-        this.githubConfirmed = true;
-        return { status: 302, location: `${this.appOrigin}/account?github=linked` };
+        // Only an account without a password may link through a plain navigation (vb2007/vb2007.hu-api#243).
+        if (this.user.hasPassword) {
+          return {
+            status: 302,
+            location: `${this.appOrigin}/account?oauthError=passwordRequired`
+          };
+        }
+        return this.linkGithub();
+      case "POST /auth/github/link":
+        return this.startGithubLink(body?.password);
+      case "GET /e2e-github/authorize":
+        // Stands in for GitHub's authorize page, which approves at once and returns to the API's callback.
+        if (!this.githubLinkStarted) {
+          return { status: 302, location: `${this.appOrigin}/account?oauthError=invalidState` };
+        }
+        this.githubLinkStarted = false;
+        return this.linkGithub();
       case "POST /user/password":
         return this.setPassword(body?.password);
-      case "DELETE /auth/github/link":
+      case "DELETE /auth/github/link": {
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         if (!this.user.githubId)
           return { status: 404, body: { error: "No GitHub account is linked." } };
         if (!this.user.hasPassword) {
           return { status: 403, body: { error: "This account has no password." } };
         }
+        const refusal = this.checkGithubPassword(body?.password);
+        if (refusal) return refusal;
         delete this.user.githubId;
         delete this.user.githubLogin;
         return { status: 200, body: { message: "GitHub account unlinked successfully." } };
+      }
       case "PATCH /user/email":
         return this.changeEmail(body?.email, body?.password);
       case "POST /user/email/confirm":
@@ -539,6 +569,42 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  /** Links @e2e-octocat and comes back to the account page, which also confirms the user. */
+  private linkGithub(): MockResponse {
+    this.user!.githubId = "583231";
+    this.user!.githubLogin = "e2e-octocat";
+    this.githubConfirmed = true;
+    return { status: 302, location: `${this.appOrigin}/account?github=linked` };
+  }
+
+  /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
+  private checkGithubPassword(password?: string): MockResponse | undefined {
+    if (this.passwordChecksLimited) {
+      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+    }
+    if (!password) {
+      return {
+        status: 400,
+        body: { error: "You must provide your password to link or unlink GitHub." }
+      };
+    }
+    if (password !== this.password) {
+      return { status: 403, body: { error: "The provided password is incorrect." } };
+    }
+  }
+
+  /** `POST /auth/github/link`: answers where GitHub's authorize page is, here on the mock API. */
+  private startGithubLink(password?: string): MockResponse {
+    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (this.githubUnconfigured) return { status: 503, body: { error: "notConfigured" } };
+    if (this.user.hasPassword) {
+      const refusal = this.checkGithubPassword(password);
+      if (refusal) return refusal;
+    }
+    this.githubLinkStarted = true;
+    return { status: 200, body: { url: `${this.apiOrigin}/e2e-github/authorize?state=e2e` } };
   }
 
   /**

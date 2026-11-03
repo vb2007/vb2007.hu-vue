@@ -22,7 +22,10 @@ const isButtonError = ref(false);
 const form = useTemplateRef("form");
 const { errors, isValid, leave, validate, reset } = useFormValidation({
   email: { value: email, check: () => emailShapeError(email.value) },
-  password: { value: password, check: () => requiredError(password.value, "Enter your password.") }
+  password: {
+    value: password,
+    check: () => requiredError(password.value, Messages.Auth.passwordMissing)
+  }
 });
 const oauthError = useOauthError();
 // Shown once: a reset sends the user here with the API's message. It's about the session at the

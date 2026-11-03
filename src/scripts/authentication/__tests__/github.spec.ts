@@ -4,7 +4,10 @@ import { oauthErrorMessage } from "@/scripts/authentication/github";
 describe("oauthErrorMessage", () => {
   it.each([
     ["accessDenied", "GitHub login was cancelled, so nothing changed."],
-    ["invalidState", "The GitHub login took too long or was started elsewhere. Please try again."],
+    [
+      "invalidState",
+      "The GitHub login or link took too long, was started elsewhere, or was replaced by a newer one. Please try again."
+    ],
     ["githubError", "GitHub couldn't finish the login. Please try again in a moment."],
     [
       "noVerifiedEmail",
@@ -23,7 +26,11 @@ describe("oauthErrorMessage", () => {
       "notLoggedIn",
       "Your session ended before GitHub could be linked. Log in, then link GitHub again."
     ],
-    ["notConfigured", "GitHub login isn't available right now."]
+    ["notConfigured", "GitHub login isn't available right now."],
+    [
+      "passwordRequired",
+      "Linking GitHub takes your password. Press Link GitHub on this page and enter it there."
+    ]
   ])("explains %s", (code, message) => {
     expect(oauthErrorMessage(code)).toBe(message);
   });
