@@ -14,6 +14,10 @@ export default mergeConfig(
         VITE_API_BASE_URL: 'https://api.test',
       },
       setupFiles: ['src/__tests__/setup.ts'],
+      // CI runs several jobs at once on a shared 4-core host, so a test can take several times longer
+      // there than locally. Locally the defaults (5 s, 10 s) still catch a hang quickly.
+      testTimeout: process.env.CI ? 30_000 : 5_000,
+      hookTimeout: process.env.CI ? 60_000 : 10_000,
       coverage: {
         provider: 'v8',
         // Every source file counts, tested or not (vitest's coverage.all is on by default),
