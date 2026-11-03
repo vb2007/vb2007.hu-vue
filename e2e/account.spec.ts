@@ -136,6 +136,21 @@ test("a GitHub link started without the password is explained", async ({ page, a
   await expect(page.getByText("Not linked")).toBeVisible();
 });
 
+test("a GitHub link that wasn't started here is turned away", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  await expect(page.getByText("Not linked")).toBeVisible();
+
+  // GitHub's approval without this session's start, e.g. one a second start replaced.
+  await page.goto(`${api.apiOrigin}/e2e-github/authorize?state=stale`);
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("alert")).toHaveText(
+    "The GitHub login or link took too long, was started elsewhere, or was replaced by a newer one. Please try again."
+  );
+  await expect(page.getByText("Not linked")).toBeVisible();
+});
+
 test("an account made with GitHub links again without a password", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me", { password: false });
   await page.goto("/account");
