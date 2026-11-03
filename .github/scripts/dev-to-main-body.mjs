@@ -20,8 +20,8 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 const CLOSING_KEYWORD = /^\s*(?:[-*]\s+)?(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)\b/gim;
 
-// pulls: the closed PRs into dev, as the REST API lists them. commits: the SHAs
-// in origin/main..origin/dev.
+// pulls: the closed PRs into dev, as the REST API lists them (trimmed to the
+// fields below by PR_FIELDS). commits: the SHAs in origin/main..origin/dev.
 export const unreleasedPrs = (pulls, commits) => {
   const unreleased = new Set(commits);
   return pulls
@@ -42,6 +42,10 @@ export const buildBody = (repoUrl, prs) =>
     )
     .join("\n");
 
+// Only what unreleasedPrs and resolvedIssues read. A page of 100 full PR objects
+// is over 1 MiB, execFileSync's default output buffer, and fails with ENOBUFS.
+const PR_FIELDS = "[.[] | {number, body, merged_at, merge_commit_sha, head: {sha: .head.sha}}]";
+
 const run = (cmd, ...args) => execFileSync(cmd, args, { encoding: "utf-8" }).trim();
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -55,7 +59,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const pulls = [];
   for (let page = 1; ; page++) {
     const batch = JSON.parse(
-      run("gh", "api", `repos/${repo}/pulls?state=closed&base=dev&per_page=100&page=${page}`)
+      run(
+        "gh",
+        "api",
+        `repos/${repo}/pulls?state=closed&base=dev&per_page=100&page=${page}`,
+        "--jq",
+        PR_FIELDS
+      )
     );
     pulls.push(...batch);
     if (batch.length < 100) break;
