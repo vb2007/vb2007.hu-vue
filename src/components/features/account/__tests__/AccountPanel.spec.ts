@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import {
@@ -13,6 +13,8 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
+import { saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { StorageKeys } from "@/constants/storage";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -28,6 +30,8 @@ const githubKey = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper
   wrapper.find('[aria-labelledby="logins-title"] button.github__key');
 
 describe("AccountPanel", () => {
+  beforeEach(() => sessionStorage.clear());
+
   it("shows nothing until the session is known", async () => {
     const { wrapper } = await mountWithRouter(AccountPanel);
 
@@ -507,5 +511,111 @@ describe("AccountPanel", () => {
 
     expect(emailRow(wrapper).find(".login__note").text()).toBe(note);
     expect(emailRow(wrapper).find("button").exists()).toBe(false);
+  });
+  describe("back from GitHub, which the delete form sent the user to", () => {
+    const deleteField = (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
+      wrapper.find<HTMLInputElement>('[aria-labelledby="delete-title"] input');
+
+    const comeBack = async (path = "/account?github=linked") => {
+      const mounted = await mountWithRouter(AccountPanel, { attachTo: document.body }, path);
+      await flushPromises();
+      return mounted;
+    };
+
+    it("opens the delete form again, with the username to type again", async () => {
+      linkGithub("octocat", false);
+      saveDeleteIntent("vb");
+      const { wrapper, router } = await comeBack();
+
+      const notice = wrapper.find(".notice");
+      expect(notice.text()).toBe(
+        "GitHub confirmed it's you. Delete the account within 10 minutes."
+      );
+      expect(router.currentRoute.value.fullPath).toBe("/account");
+      const field = deleteField(wrapper);
+      expect(field.element.value).toBe("");
+      expect(document.activeElement).toBe(field.element);
+      expect(field.attributes("aria-describedby")?.split(" ")).toContain(notice.attributes("id"));
+      expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+      wrapper.unmount();
+    });
+
+    it("stops describing the field by the notice once it's gone", async () => {
+      linkGithub("octocat", false);
+      saveDeleteIntent("vb");
+      const { wrapper } = await comeBack();
+      mockFetch()
+        .mockResolvedValueOnce(jsonResponse(200, { message: "Password set successfully." }))
+        .mockResolvedValueOnce(
+          jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+        );
+
+      for (const input of wrapper.findAll(
+        '[aria-labelledby="password-title"] input[type="password"]'
+      )) {
+        await input.setValue("correct horse");
+      }
+      await wrapper.find('[aria-labelledby="password-title"] form').trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find(".notice").text()).toBe(
+        "Your password is set. You can log in with it from now on."
+      );
+      expect(deleteField(wrapper).attributes("aria-describedby")).toBeUndefined();
+      wrapper.unmount();
+    });
+
+    it("takes a delete sent to GitHub too long ago as a confirmation for the password", async () => {
+      linkGithub("octocat", false);
+      saveDeleteIntent("vb");
+      const now = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(now + 10 * 60 * 1000);
+      const { wrapper } = await comeBack();
+
+      expect(wrapper.find(".notice").text()).toBe(
+        "GitHub confirmed it's you. Set your password within 10 minutes."
+      );
+      expect(deleteField(wrapper).exists()).toBe(false);
+      expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+      wrapper.unmount();
+    });
+
+    it("doesn't open another account's delete form", async () => {
+      linkGithub("octocat", false);
+      saveDeleteIntent("someone-else");
+      const { wrapper } = await comeBack();
+
+      expect(wrapper.find(".notice").text()).toBe(
+        "GitHub confirmed it's you. Set your password within 10 minutes."
+      );
+      expect(deleteField(wrapper).exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("forgets a delete when GitHub didn't confirm it", async () => {
+      linkGithub("octocat", false);
+      saveDeleteIntent("vb");
+      const { wrapper } = await comeBack("/account?oauthError=accessDenied");
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        "GitHub login was cancelled, so nothing changed."
+      );
+      expect(wrapper.find(".notice").exists()).toBe(false);
+      expect(deleteField(wrapper).exists()).toBe(false);
+      expect(sessionStorage.getItem(StorageKeys.deleteIntent)).toBeNull();
+      wrapper.unmount();
+    });
+
+    it("leaves an account that has a password meanwhile to its own delete", async () => {
+      linkGithub("octocat", true);
+      saveDeleteIntent("vb");
+      const { wrapper } = await comeBack();
+
+      expect(wrapper.find(".notice").text()).toBe(
+        "GitHub is linked. You can log in with it from now on."
+      );
+      expect(deleteField(wrapper).exists()).toBe(false);
+      wrapper.unmount();
+    });
   });
 });

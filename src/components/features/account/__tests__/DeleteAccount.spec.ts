@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import { hasPassword, isLoggedIn, username } from "@/scripts/authentication/authState";
+import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 type Wrapper = Awaited<ReturnType<typeof mountWithRouter>>["wrapper"];
 
-const mountPanel = () => mountWithRouter(DeleteAccount, { attachTo: document.body }, "/account");
+const mountPanel = (props: { reopen?: boolean; noticeId?: string } = {}) =>
+  mountWithRouter(DeleteAccount, { attachTo: document.body, props }, "/account");
+
+const REAUTH =
+  "Confirm it's you first: log in with GitHub again (or relink it), then delete the account within 10 minutes.";
+
+const githubKey = (wrapper: Wrapper) => wrapper.find('a[href="https://api.test/auth/github/link"]');
 
 const deleteKey = (wrapper: Wrapper) => wrapper.find('button[type="submit"]');
 
@@ -25,6 +32,7 @@ describe("DeleteAccount", () => {
     isLoggedIn.value = true;
     username.value = "me";
     hasPassword.value = true;
+    sessionStorage.clear();
   });
 
   it("says what goes with the account and asks before deleting it", async () => {
@@ -269,6 +277,167 @@ describe("DeleteAccount", () => {
     await wrapper.find("form").trigger("keydown", { key: "Escape" });
     await flushPromises();
     expect(wrapper.find("form").exists()).toBe(false);
+    wrapper.unmount();
+  });
+  /** Opens the form of an account made with GitHub and sends its username, which the API answers with `status`. */
+  const sendUsername = async (status: number, error: string) => {
+    hasPassword.value = false;
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    const mounted = await mountPanel();
+    await open(mounted.wrapper);
+    await mounted.wrapper.find("input").setValue("me");
+    await mounted.wrapper.find("form").trigger("submit");
+    await flushPromises();
+    return mounted;
+  };
+
+  it("sends an account made with GitHub to confirm it's them first", async () => {
+    const { wrapper, router } = await sendUsername(403, REAUTH);
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ username: "me" });
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    const info = wrapper.find('[role="status"]');
+    expect(info.text()).toBe(REAUTH);
+    expect(info.classes()).toContain("status--info");
+    expect(deleteKey(wrapper).exists()).toBe(false);
+    const confirm = githubKey(wrapper);
+    expect(confirm.text()).toBe("Confirm with GitHub");
+    expect(confirm.classes()).toContain("btn--primary");
+    expect(document.activeElement).toBe(confirm.element);
+    expect(confirm.attributes("aria-describedby")).toBe(info.attributes("id"));
+    expect(confirm.attributes("aria-describedby")).toBeTruthy();
+    const hintId = wrapper.find(".field__hint").attributes("id");
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(
+      `${info.attributes("id")} ${hintId}`
+    );
+    expect(wrapper.findAll("button").map((button) => button.text())).toEqual(["Cancel"]);
+    expect(isLoggedIn.value).toBe(true);
+    expect(router.currentRoute.value.fullPath).toBe("/account");
+    wrapper.unmount();
+  });
+
+  it("remembers the delete for the way back when GitHub is opened", async () => {
+    const { wrapper } = await sendUsername(403, REAUTH);
+    expect(sessionStorage.length).toBe(0);
+    // jsdom can't leave the page; the click is what counts.
+    githubKey(wrapper).element.addEventListener("click", (event) => event.preventDefault());
+
+    await githubKey(wrapper).trigger("click");
+
+    expect(takeDeleteIntent()).toBe("me");
+    wrapper.unmount();
+  });
+
+  it("keeps the GitHub key while the username is edited, since GitHub still has to confirm", async () => {
+    const { wrapper } = await sendUsername(403, REAUTH);
+
+    await wrapper.find("input").setValue("m");
+    await wrapper.find("input").setValue("me");
+
+    expect(githubKey(wrapper).exists()).toBe(true);
+    expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
+    wrapper.unmount();
+  });
+
+  it("asks again when the username is sent again", async () => {
+    const { wrapper } = await sendUsername(403, REAUTH);
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
+    (document.activeElement as HTMLElement).blur();
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(githubKey(wrapper).element);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ["Cancel", (wrapper: Wrapper) => wrapper.find("button").trigger("click")],
+    ["Escape", (wrapper: Wrapper) => githubKey(wrapper).trigger("keydown", { key: "Escape" })]
+  ])("forgets the GitHub step and the remembered delete on %s", async (_name, close) => {
+    const { wrapper } = await sendUsername(403, REAUTH);
+    saveDeleteIntent("me");
+
+    await close(wrapper);
+    await flushPromises();
+
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find("button").element);
+    expect(takeDeleteIntent()).toBe("");
+
+    await open(wrapper);
+    expect(githubKey(wrapper).exists()).toBe(false);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(deleteKey(wrapper).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("drops the GitHub step once the account sets a password", async () => {
+    const { wrapper } = await sendUsername(403, REAUTH);
+
+    hasPassword.value = true;
+    await flushPromises();
+
+    expect(githubKey(wrapper).exists()).toBe(false);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.find("label").text()).toBe("Password");
+    expect(deleteKey(wrapper).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it.each([
+    "The provided username doesn't match this account.",
+    "You must be logged in to perform this action."
+  ])("keeps another 403 an error, with the delete key: %s", async (error) => {
+    const { wrapper } = await sendUsername(403, error);
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(githubKey(wrapper).exists()).toBe(false);
+    expect(deleteKey(wrapper).exists()).toBe(true);
+    expect(document.activeElement).toBe(wrapper.find("input").element);
+    wrapper.unmount();
+  });
+
+  it("opens again for a user back from GitHub, with the username to type again", async () => {
+    hasPassword.value = false;
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "User deleted successfully." }));
+    const { wrapper, router } = await mountPanel({ reopen: true, noticeId: "notice" });
+    await flushPromises();
+
+    const input = wrapper.find("input");
+    expect(wrapper.find("form").exists()).toBe(true);
+    expect(wrapper.find("label").text()).toBe("Username");
+    expect(input.element.value).toBe("");
+    expect(document.activeElement).toBe(input.element);
+    const hintId = wrapper.find(".field__hint").attributes("id");
+    expect(input.attributes("aria-describedby")).toBe(`notice ${hintId}`);
+    expect(deleteKey(wrapper).attributes("aria-disabled")).toBe("true");
+
+    await input.setValue("me");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ username: "me" });
+    expect(router.currentRoute.value.fullPath).toBe("/");
+    wrapper.unmount();
+  });
+
+  it("describes the field by both the notice and a refusal after coming back", async () => {
+    hasPassword.value = false;
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }));
+    const { wrapper } = await mountPanel({ reopen: true, noticeId: "notice" });
+    await flushPromises();
+
+    await wrapper.find("input").setValue("me");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    const alertId = wrapper.find('[role="alert"]').attributes("id");
+    const hintId = wrapper.find(".field__hint").attributes("id");
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(
+      `${alertId} notice ${hintId}`
+    );
     wrapper.unmount();
   });
 });
