@@ -100,6 +100,11 @@ export class Messages {
     static readonly emailUpdated: string = "E-mail address updated.";
     /** Back from linking GitHub to an account with a password (vb2007/vb2007.hu-api#132). */
     static readonly githubLinked: string = "GitHub is linked. You can log in with it from now on.";
+    static readonly githubUnlinked: string =
+      "GitHub is unlinked. Log in with your password from now on.";
+    /** Once an account made with GitHub has set its first password (vb2007/vb2007.hu-api#155). */
+    static readonly passwordSet: string =
+      "Your password is set. You can log in with it from now on.";
     /** Why GitHub may come first, for an account without a password. */
     static githubReauthNote(minutes: number): string {
       return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;

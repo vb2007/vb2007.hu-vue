@@ -62,8 +62,8 @@ const announce = async (message: string) => {
   await nextTick();
   noticeMessage.value?.$el.focus();
 };
-const onPasswordSet = () => announce("Your password is set. You can log in with it from now on.");
-const onUnlinked = () => announce("GitHub is unlinked. Log in with your password from now on.");
+const onPasswordSet = () => announce(Messages.Account.passwordSet);
+const onUnlinked = () => announce(Messages.Account.githubUnlinked);
 </script>
 
 <template>
