@@ -98,7 +98,17 @@ export class Messages {
     static readonly tooManyRequests: string = "Too many requests: try again later.";
     /** Shown when the API's success has no message of its own. */
     static readonly emailUpdated: string = "E-mail address updated.";
-    /** Shown back from GitHub, which confirmed it's the user asking to delete (vb2007/vb2007.hu-api#245). */
+    /** Back from linking GitHub to an account with a password (vb2007/vb2007.hu-api#132). */
+    static readonly githubLinked: string = "GitHub is linked. You can log in with it from now on.";
+    /** Why GitHub may come first, for an account without a password. */
+    static githubReauthNote(minutes: number): string {
+      return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;
+    }
+    /** Back from GitHub, which confirmed it's the user, before setting the password. */
+    static passwordGithubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Set your password within ${minutes} minutes.`;
+    }
+    /** Back from GitHub, which confirmed it's the user asking to delete (vb2007/vb2007.hu-api#245). */
     static deleteGithubConfirmed(minutes: number): string {
       return `GitHub confirmed it's you. Delete the account within ${minutes} minutes.`;
     }

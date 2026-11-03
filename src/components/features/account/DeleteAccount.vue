@@ -4,9 +4,19 @@
  * Without a password the API may want GitHub to confirm it's them first; the form opens again when
  * they come back from GitHub, with the username to type again.
  */
-import { computed, nextTick, onMounted, ref, useId, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useId,
+  useTemplateRef,
+  watch
+} from "vue";
 import { useRouter } from "vue-router";
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, username } from "@/scripts/authentication/authState";
@@ -22,8 +32,6 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 const props = defineProps<{
   /** Opens the form on arrival: the user is back from GitHub, which confirmed it's them. */
   reopen?: boolean;
-  /** The id of the message that says so, which the field is described by too. */
-  noticeId?: string;
 }>();
 
 const router = useRouter();
@@ -32,13 +40,19 @@ const { isDeleting, deleteError, needsGithub, deleteAccount } = useAccountDelete
 const confirming = ref(false);
 const confirmation = ref("");
 const errorId = useId();
+/** Back from GitHub: says how long its confirmation lasts, until the next try or Cancel. */
+const githubConfirmed = ref(false);
+const confirmedId = useId();
 const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
 const githubLink = apiUrl(Endpoints.Auth.githubLink);
 const describedBy = computed(
-  () => [deleteError.value && errorId, props.noticeId].filter(Boolean).join(" ") || undefined
+  () =>
+    [githubConfirmed.value && confirmedId, deleteError.value && errorId]
+      .filter(Boolean)
+      .join(" ") || undefined
 );
 
 /** The password typed, or the username matched exactly; until then the key looks disabled. */
@@ -56,6 +70,7 @@ watch(hasPassword, () => {
   confirmation.value = "";
   deleteError.value = "";
   needsGithub.value = false;
+  githubConfirmed.value = false;
   reset();
 });
 
@@ -73,6 +88,7 @@ const cancel = async () => {
   confirmation.value = "";
   deleteError.value = "";
   needsGithub.value = false;
+  githubConfirmed.value = false;
   clearDeleteIntent();
   reset();
   await nextTick();
@@ -84,6 +100,7 @@ const confirmWithGithub = () => saveDeleteIntent(username.value);
 
 const submit = async () => {
   if (!(await validate(form.value))) return;
+  githubConfirmed.value = false;
   if (!(await deleteAccount(confirmation.value))) {
     if (needsGithub.value) {
       await nextTick();
@@ -97,9 +114,22 @@ const submit = async () => {
   clearSession();
 };
 
+/**
+ * Back from GitHub with the browser's Back key, the page can come back as it was without loading
+ * again: the delete wasn't confirmed, so it's forgotten rather than reopened by a later relink.
+ */
+const onPageShow = (event: PageTransitionEvent) => {
+  if (event.persisted) clearDeleteIntent();
+};
+
 onMounted(() => {
-  if (props.reopen) open();
+  window.addEventListener("pageshow", onPageShow);
+  if (props.reopen) {
+    githubConfirmed.value = true;
+    open();
+  }
 });
+onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
 </script>
 
 <template>
@@ -107,6 +137,9 @@ onMounted(() => {
     <h2 id="delete-title" class="delete__title">Delete account</h2>
     <p class="delete__note">
       Deleting your account also deletes your pastes, short links and uploads. It can't be undone.
+      <template v-if="!hasPassword">{{
+        Messages.Account.githubReauthNote(Limits.Github.reauthMinutes)
+      }}</template>
     </p>
 
     <form
@@ -117,6 +150,9 @@ onMounted(() => {
       @submit.prevent="submit"
       @keydown.esc="cancel"
     >
+      <StatusMessage v-if="githubConfirmed" :id="confirmedId" tone="info">{{
+        Messages.Account.deleteGithubConfirmed(Limits.Github.reauthMinutes)
+      }}</StatusMessage>
       <BaseInput
         v-if="hasPassword"
         ref="field"

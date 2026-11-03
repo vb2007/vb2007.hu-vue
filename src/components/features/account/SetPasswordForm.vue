@@ -9,6 +9,7 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
+import { clearDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import {
   passwordEarlyError,
   passwordError,
@@ -67,8 +68,8 @@ const onSubmit = async () => {
     <h2 id="password-title" class="password__title">Password</h2>
     <p class="password__note">
       This account has no password yet: you log in with GitHub. Set one to also log in with your
-      e-mail address, and to be able to unlink GitHub. If you logged in more than
-      {{ Limits.Github.reauthMinutes }} minutes ago, GitHub confirms it's you first.
+      e-mail address, and to be able to unlink GitHub.
+      {{ Messages.Account.githubReauthNote(Limits.Github.reauthMinutes) }}
     </p>
     <form ref="form" class="password__form" novalidate @submit.prevent="onSubmit">
       <!-- Tells password managers which account the new password belongs to. -->
@@ -109,6 +110,7 @@ const onSubmit = async () => {
         class="password__key"
         :aria-describedby="errorId"
         :href="githubLink"
+        @click="clearDeleteIntent"
       >
         <AppIcon name="github" :size="20" />
         Confirm with GitHub

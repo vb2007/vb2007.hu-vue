@@ -8,6 +8,7 @@ import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
+import { removeSaved } from "@/scripts/utility/savedForOwner";
 
 /** The API mails at most one code a minute, per account (vb2007/vb2007.hu-api#215). */
 export const CODE_COOLDOWN_SECONDS = Limits.Code.cooldownSeconds;
@@ -36,11 +37,7 @@ export const useChangeEmail = () => {
   /** Once the waiting change is gone, the API takes a new address straight away. */
   const endCooldown = () => {
     cooldown.stop();
-    try {
-      sessionStorage.removeItem(COOLDOWN_STORAGE_KEY);
-    } catch {
-      // Storage is off: nothing was kept to resume.
-    }
+    removeSaved(COOLDOWN_STORAGE_KEY);
   };
 
   // The cooldown's 429 counts its wait down on the key, so its message has no number to go stale.

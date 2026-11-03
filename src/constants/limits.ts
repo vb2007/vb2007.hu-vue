@@ -33,7 +33,11 @@ export class Limits {
   };
 
   static readonly Github = class {
-    /** Setting the first password needs a GitHub login at most this long ago. */
+    /**
+     * Setting the first password (vb2007/vb2007.hu-api#183) and deleting an account without one
+     * (vb2007/vb2007.hu-api#245) need a GitHub login or relink at most this long ago. A delete sent
+     * to GitHub to confirm is remembered for as long.
+     */
     static readonly reauthMinutes: number = 10;
   };
 

@@ -1,52 +1,29 @@
 import { Limits } from "@/constants/limits";
-import { StorageKeys } from "@/constants/storage";
+import { readSaved, removeSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
  * An account without a password confirms a delete with GitHub first (vb2007/vb2007.hu-api#245),
- * which leaves the page. What's kept meanwhile: whose account, and until when it still counts.
+ * which leaves the page. Meanwhile this keeps whose account it was, until when it still counts,
+ * so the delete form opens again on the way back.
  */
-interface SavedIntent {
-  username: string;
-  deadline: number;
-}
+export const DELETE_INTENT_STORAGE_KEY = "account-delete-intent";
 
 /** Keeps that `username` went to GitHub to confirm deleting their account. */
-export const saveDeleteIntent = (username: string) => {
-  const intent: SavedIntent = {
-    username,
+export const saveDeleteIntent = (username: string) =>
+  writeSaved(DELETE_INTENT_STORAGE_KEY, {
+    id: username,
     deadline: Date.now() + Limits.Github.reauthMinutes * 60 * 1000
-  };
-  try {
-    sessionStorage.setItem(StorageKeys.deleteIntent, JSON.stringify(intent));
-  } catch {
-    // Storage is off or full: the user comes back to the usual notice and opens the form again.
-  }
-};
+  });
 
-export const clearDeleteIntent = () => {
-  try {
-    sessionStorage.removeItem(StorageKeys.deleteIntent);
-  } catch {
-    // Storage is off: nothing was kept.
-  }
-};
+/** Forgets it: the delete was cancelled, or GitHub was opened for something else. */
+export const clearDeleteIntent = () => removeSaved(DELETE_INTENT_STORAGE_KEY);
 
 /**
  * The username a delete was being confirmed for, read once: it's cleared either way. Empty when
  * nothing was kept, it's older than the GitHub confirmation lasts, or it can't be read.
  */
 export const takeDeleteIntent = (): string => {
-  let saved: Partial<SavedIntent> | null = null;
-  try {
-    saved = JSON.parse(sessionStorage.getItem(StorageKeys.deleteIntent) ?? "null");
-  } catch {
-    // Unreadable, or storage is off.
-  }
+  const saved = readSaved(DELETE_INTENT_STORAGE_KEY);
   clearDeleteIntent();
-
-  return typeof saved?.username === "string" &&
-    typeof saved.deadline === "number" &&
-    saved.deadline > Date.now()
-    ? saved.username
-    : "";
+  return saved && saved.deadline > Date.now() ? saved.id : "";
 };

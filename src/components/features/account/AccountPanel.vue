@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
-import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import {
@@ -41,13 +41,13 @@ const deleteReturned = computed(
     githubReturned.value && !hasPassword.value && !!deleteIntent && deleteIntent === username.value
 );
 const notice = ref("");
-const noticeId = useId();
 const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
-  if (hasPassword.value) return "GitHub is linked. You can log in with it from now on.";
+  if (hasPassword.value) return Messages.Account.githubLinked;
+  // Back to delete, the delete form says so itself, where the focus lands.
   return deleteReturned.value
-    ? Messages.Account.deleteGithubConfirmed(Limits.Github.reauthMinutes)
-    : `GitHub confirmed it's you. Set your password within ${Limits.Github.reauthMinutes} minutes.`;
+    ? ""
+    : Messages.Account.passwordGithubConfirmed(Limits.Github.reauthMinutes);
 });
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const clearNotice = () => {
@@ -71,7 +71,6 @@ const onUnlinked = () => announce("GitHub is unlinked. Log in with your password
     <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
     <StatusMessage
       v-if="shownNotice"
-      :id="noticeId"
       ref="noticeMessage"
       class="notice"
       tone="success"
@@ -160,7 +159,7 @@ const onUnlinked = () => announce("GitHub is unlinked. Log in with your password
 
     <SetPasswordForm @set="onPasswordSet" />
 
-    <DeleteAccount :reopen="deleteReturned" :notice-id="deleteReturned ? noticeId : undefined" />
+    <DeleteAccount :reopen="deleteReturned" />
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
