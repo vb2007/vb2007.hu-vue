@@ -38,3 +38,21 @@ export interface PasswordResetConfirmBody {
   code: string;
   newPassword: string;
 }
+
+/**
+ * `POST /auth/github/link` (vb2007/vb2007.hu-api#243): an account with a password confirms with it;
+ * a GitHub-only account sends none.
+ */
+export interface GithubLinkBody {
+  password?: string;
+}
+
+/** `POST /auth/github/link`: where to send the browser to authorise the link on GitHub. */
+export interface GithubLinkResponse {
+  url: string;
+}
+
+/** `DELETE /auth/github/link` (vb2007/vb2007.hu-api#243) */
+export interface GithubUnlinkBody {
+  password: string;
+}

@@ -95,6 +95,7 @@ export class Messages {
     static readonly emailUpdated: string = "E-mail address updated.";
     static readonly deleteFailed: string = "Failed to delete the account";
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
+    static readonly githubLinkFailed: string = "Failed to start linking GitHub";
     /** A 400 that took the waiting change away: its code expired. */
     static codeExpired(address: string): string {
       return `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`;

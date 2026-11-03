@@ -13,19 +13,21 @@ describe("useGithubUnlink", () => {
     githubLogin.value = "octocat";
   });
 
-  it("unlinks GitHub and forgets the login", async () => {
+  it("unlinks GitHub with the password and forgets the login", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, { message: "GitHub account unlinked successfully." })
     );
     const github = useGithubUnlink();
 
-    const pending = github.unlink();
+    const pending = github.unlink("hunter22");
     expect(github.isUnlinking.value).toBe(true);
 
     expect(await pending).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/github/link", {
       method: "DELETE",
-      credentials: "include"
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "hunter22" })
     });
     expect(githubLinked.value).toBe(false);
     expect(githubLogin.value).toBe("");
@@ -33,23 +35,38 @@ describe("useGithubUnlink", () => {
     expect(github.isUnlinking.value).toBe(false);
   });
 
-  it("shows the API's refusal and keeps GitHub linked", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "This account has no password." }));
+  it.each([
+    [400, "You must provide your password to link or unlink GitHub."],
+    [403, "The provided password is incorrect."],
+    [403, "This account has no password."],
+    [404, "No GitHub account is linked."],
+    [429, "Too many failed attempts: try again later."]
+  ])("shows the API's %i and keeps GitHub linked", async (status, error) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
     const github = useGithubUnlink();
 
-    expect(await github.unlink()).toBe(false);
+    expect(await github.unlink("hunter22")).toBe(false);
 
-    expect(github.unlinkError.value).toBe("This account has no password.");
+    expect(github.unlinkError.value).toBe(error);
     expect(githubLinked.value).toBe(true);
     expect(githubLogin.value).toBe("octocat");
     expect(github.isUnlinking.value).toBe(false);
+  });
+
+  it("says to wait when a rate limiter answers without a message", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(429));
+    const github = useGithubUnlink();
+
+    expect(await github.unlink("hunter22")).toBe(false);
+
+    expect(github.unlinkError.value).toBe("Too many requests: try again later.");
   });
 
   it("reports an unreachable server", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const github = useGithubUnlink();
 
-    expect(await github.unlink()).toBe(false);
+    expect(await github.unlink("hunter22")).toBe(false);
 
     expect(github.unlinkError.value).toBe("Error connecting to server");
     expect(githubLinked.value).toBe(true);

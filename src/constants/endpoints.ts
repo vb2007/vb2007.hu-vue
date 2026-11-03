@@ -1,5 +1,5 @@
 import { HttpMethod } from "@/constants/http";
-import { defineEndpoint } from "@/scripts/api/endpoint";
+import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
   AdminUserListQuery,
   AdminUsersResponse,
@@ -8,6 +8,9 @@ import type {
 } from "@/types/api/admin";
 import type {
   EmailBody,
+  GithubLinkBody,
+  GithubLinkResponse,
+  GithubUnlinkBody,
   LoginBody,
   PasswordResetConfirmBody,
   RegisterBody,
@@ -122,8 +125,19 @@ export class Endpoints {
       path: "/auth/github/link",
       credentials: true
     });
-    /** Unlinks GitHub (vb2007/vb2007.hu-api#134). */
-    static readonly githubUnlink = defineEndpoint<undefined, MessageResponse>()({
+    /**
+     * Starts linking GitHub (vb2007/vb2007.hu-api#243): an account with a password sends it, and
+     * gets back the GitHub URL to navigate to.
+     */
+    static readonly githubStartLink = defineEndpoint<GithubLinkBody | NoBody, GithubLinkResponse>()(
+      {
+        method: HttpMethod.Post,
+        path: "/auth/github/link",
+        credentials: true
+      }
+    );
+    /** Unlinks GitHub (vb2007/vb2007.hu-api#134), confirmed with the password (#243). */
+    static readonly githubUnlink = defineEndpoint<GithubUnlinkBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/auth/github/link",
       credentials: true
