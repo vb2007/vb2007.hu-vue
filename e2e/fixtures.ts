@@ -119,6 +119,8 @@ export class MockApi {
   } | null = null;
   /** A new address waiting for `MOCK_EMAIL_CODE`, and when its code was sent. */
   private emailChange: { email: string; sentAt: number } | null = null;
+  /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
+  private emailCooldownOnSend: number | null = null;
   private shortCode = "e2e123";
   /** Short code -> link, filled by shortening and by `hasShortLink`. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -244,9 +246,20 @@ export class MockApi {
     return upload;
   }
 
-  /** A change to `email` that waits for its code, mailed `sentSecondsAgo`. */
-  hasPendingEmail(email: string, { sentSecondsAgo = 120 } = {}) {
+  /**
+   * A change to `email` that waits for its code, mailed `sentSecondsAgo`. With `cooldownLeftOnSend`, the next
+   * request for a code finds exactly that many seconds of the API's cooldown left, however long the page took to
+   * get there: a slow CI host can't run a short cooldown out before the test reaches "Send code".
+   */
+  hasPendingEmail(
+    email: string,
+    {
+      sentSecondsAgo = 120,
+      cooldownLeftOnSend
+    }: { sentSecondsAgo?: number; cooldownLeftOnSend?: number } = {}
+  ) {
     this.emailChange = { email, sentAt: Date.now() - sentSecondsAgo * 1000 };
+    this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -651,6 +664,10 @@ export class MockApi {
         status: 409,
         body: { error: "An account with this E-mail address already exists." }
       };
+    }
+    if (this.emailChange && this.emailCooldownOnSend !== null) {
+      this.emailChange.sentAt = Date.now() - (60 - this.emailCooldownOnSend) * 1000;
+      this.emailCooldownOnSend = null;
     }
     const retryAfter = Math.ceil(((this.emailChange?.sentAt ?? 0) + 60_000 - Date.now()) / 1000);
     if (retryAfter > 0) {

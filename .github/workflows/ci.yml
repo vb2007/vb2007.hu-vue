@@ -4,11 +4,14 @@ name: PR Tests
 # (workflow_dispatch: pick any branch under "Run workflow"). Six stages feed a
 # shared JUnit -> HTML/ODS report pipeline, aggregated and published by two
 # further jobs. typecheck, lint, build and unit-tests have no interdependency
-# between them, so they run in parallel across the self-hosted runners. Those
-# runners share one host, so no job may use a fixed port or a fixed /tmp path:
-# logs go to the job's own $RUNNER_TEMP, and e2e picks a free port. e2e is
-# the heavy stage, so it only runs on the runner labelled `e2e`: one e2e job
-# at a time, at full speed, instead of four starving each other of CPU. e2e
+# between them, so they run in parallel across the self-hosted runners. Every
+# job runs only on the runners labelled `pr-worker`, never on the production
+# host (`prod`, which only releases). Those runners share one 4-core host with
+# each other and with the API repo's runners, so no job may use a fixed port or
+# a fixed /tmp path: logs go to the job's own $RUNNER_TEMP, and e2e picks a free
+# port. e2e jobs from different runs may overlap there, so they trade speed for
+# reliability: longer CI timeouts and retries (see playwright.config.ts) let
+# them pass slowly instead of timing out. e2e
 # depends on build so it tests the exact bundle the build stage produced
 # instead of building its own.
 on:
@@ -32,7 +35,7 @@ jobs:
   # ---------------------------------------------------------------------------
   typecheck:
     name: Typecheck
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, pr-worker]
     steps:
       - uses: actions/checkout@v7
 
@@ -104,7 +107,7 @@ jobs:
   # ---------------------------------------------------------------------------
   lint:
     name: Lint
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, pr-worker]
     steps:
       - uses: actions/checkout@v7
 
@@ -172,7 +175,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build:
     name: Build
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, pr-worker]
     steps:
       - uses: actions/checkout@v7
 
@@ -256,7 +259,7 @@ jobs:
   # ---------------------------------------------------------------------------
   unit-tests:
     name: Unit tests
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, pr-worker]
     steps:
       - uses: actions/checkout@v7
 
@@ -333,10 +336,11 @@ jobs:
   e2e:
     name: E2E tests
     needs: [build]
-    # Only the runner labelled `e2e` takes this job, so e2e jobs queue for it
-    # one at a time: four at once saturated the shared host and timed out.
-    # Without a runner carrying the label, this job waits in the queue.
-    runs-on: [self-hosted, Linux, X64, e2e]
+    # Any pr-worker takes this job, so several e2e jobs can share the 4-core
+    # host at once. The Playwright config's CI timeouts absorb the slowdown;
+    # timeout-minutes only ends a job that really hangs.
+    runs-on: [self-hosted, Linux, X64, pr-worker]
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -427,7 +431,7 @@ jobs:
     name: Aggregate reports
     needs: [typecheck, lint, build, unit-tests, e2e]
     if: always()
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, pr-worker]
     steps:
       - uses: actions/checkout@v7
 
@@ -495,7 +499,7 @@ jobs:
     name: Publish summary
     needs: [reports]
     if: always()
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, pr-worker]
     permissions:
       contents: read
       pull-requests: write
