@@ -104,7 +104,7 @@ docker compose down                # stop and remove the containers
 
 ## Releases & deployment
 
-`.github/workflows/release.yml` runs on every push to `main` (a merged PR) on the self-hosted runner, which lives on the production host. It can also be started from the Actions tab.
+`.github/workflows/release.yml` runs on every push to `main` (a merged PR). Every job runs only on the self-hosted runner labelled `prod`, which lives on the production host (vbServer); the PR runners (`pr-worker`) never release. It can also be started from the Actions tab.
 
 | Job | What it does |
 |---|---|
@@ -125,7 +125,7 @@ Each release has auto-generated notes, the image digest, the test summary of the
 
 ### One-time host setup
 
-The runner needs Docker access and a deploy directory holding the tunnel token. The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
+The `prod` runner needs Docker access and a deploy directory holding the tunnel token. The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
 
 ```sh
 mkdir -p /mnt/raid1/vb2007.hu
@@ -154,9 +154,9 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every PR into `main` or `dev`, on the self-hosted runners. It can also be started from the Actions tab via "Run workflow" on any branch.
+`.github/workflows/ci.yml` runs on every PR into `main` or `dev`, only on the self-hosted runners labelled `pr-worker`, never on the production host. It can also be started from the Actions tab via "Run workflow" on any branch. `dev-to-main-pr.yml` runs there too.
 
-The runners share one host, so jobs from different runs can overlap on it. A job therefore never uses a fixed port or a fixed `/tmp` path: stage logs go to the job's own `$RUNNER_TEMP`, and E2E serves the build on a free port that it picks (`E2E_PORT`; 4173 when unset, as locally). E2E is the heavy stage: it only runs on the runner labelled `e2e`, so E2E jobs queue for that runner one at a time and use Playwright's default workers (half the cores; `E2E_WORKERS` overrides it). Four at once saturated the host and timed out. The lighter stages spread over all runners. Exactly one runner needs the `e2e` label (repository Settings → Actions → Runners); without one, E2E jobs wait in the queue.
+The `pr-worker` runners share one 4-core host (an Optiplex, which also runs the API repo's runners), so jobs from different runs overlap on it. A job therefore never uses a fixed port or a fixed `/tmp` path: stage logs go to the job's own `$RUNNER_TEMP`, and E2E serves the build on a free port that it picks (`E2E_PORT`; 4173 when unset, as locally). Any runner takes E2E, so several E2E jobs can run at once. They trade speed for reliability instead of timing out: with `CI` set, Playwright allows 120 s per test, 20 s per assertion and two retries, and Vitest 30 s per test. E2E keeps Playwright's default workers (half the cores; `E2E_WORKERS` overrides it). On the Optiplex one E2E job takes about 3 min alone, and six at once took about 16 min each, all passing. Locally the defaults stay, so a real hang still shows up quickly. The host needs a system Chromium (`apt-get install chromium`) for E2E and `gh` for `dev-to-main-pr.yml`.
 
 | Stage | What it checks |
 |---|---|
