@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from "vue";
+import { Limits } from "@/constants/limits";
 import {
   emailVerified,
   githubLinked,
@@ -38,7 +39,7 @@ const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
   return hasPassword.value
     ? "GitHub is linked. You can log in with it from now on."
-    : "GitHub confirmed it's you. Set your password within 10 minutes.";
+    : `GitHub confirmed it's you. Set your password within ${Limits.Github.reauthMinutes} minutes.`;
 });
 const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");

@@ -11,6 +11,7 @@ import {
 } from "vue";
 import { RouterLink } from "vue-router";
 import { RegisterStatus } from "@/constants/auth";
+import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
@@ -123,15 +124,15 @@ const emailField = useTemplateRef("emailField");
  */
 const NOTICES: Record<CodeNotice, [string, string, string]> = {
   sent: [
-    "A 6-digit code is on its way to",
+    `A ${Limits.Code.digits}-digit code is on its way to`,
     ".",
-    "Enter it to finish registering; it works for 15 minutes."
+    `Enter it to finish registering; it works for ${Limits.Code.registerValidMinutes} minutes.`
   ],
   resent: ["A new code is on its way to", ".", "The previous one no longer works."],
   earlier: [
     "Enter the code that was mailed to",
     ".",
-    "It works for 15 minutes after sending, and keeps the username and password you registered with then."
+    `It works for ${Limits.Code.registerValidMinutes} minutes after sending, and keeps the username and password you registered with then.`
   ],
   recent: [
     "Less than a minute ago, a code went to",

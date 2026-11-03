@@ -26,6 +26,15 @@ export class Limits {
     static readonly digits: number = 6;
     /** The API mails at most one code a minute per address or account. */
     static readonly cooldownSeconds: number = 60;
+    /** How long a code works after it's sent, by what it confirms. */
+    static readonly registerValidMinutes: number = 15;
+    static readonly emailChangeValidMinutes: number = 15;
+    static readonly passwordResetValidMinutes: number = 30;
+  };
+
+  static readonly Github = class {
+    /** Setting the first password needs a GitHub login at most this long ago. */
+    static readonly reauthMinutes: number = 10;
   };
 
   /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */
