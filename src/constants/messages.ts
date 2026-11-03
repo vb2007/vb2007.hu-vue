@@ -48,6 +48,8 @@ export class Messages {
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
     static readonly invalidEmail: string = "Enter a valid e-mail address.";
+    /** An account's own password left out where it's asked for: logging in, or confirming it's them. */
+    static readonly passwordMissing: string = "Enter your password.";
     static emailTooLong(max: number): string {
       return `Your e-mail address can't be longer than ${max} characters.`;
     }

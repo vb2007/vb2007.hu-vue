@@ -126,6 +126,17 @@ describe("AccountPanel", () => {
     expect(githubKey(wrapper).text()).toBe("Unlink GitHub");
   });
 
+  it.each([
+    [true, "Link it to log in with GitHub instead of typing your password."],
+    [false, "Link it to log in with GitHub."]
+  ])("says what linking GitHub is for (password: %s)", async (password, note) => {
+    logIn();
+    hasPassword.value = password;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    expect(githubNote(wrapper).text()).toBe(note);
+  });
+
   it("leaves the login out when the API doesn't know it yet", async () => {
     linkGithub("");
     const { wrapper } = await mountWithRouter(AccountPanel);

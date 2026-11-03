@@ -5,18 +5,23 @@
  * one, and gets no key once linked, since GitHub is then its only way to log in.
  */
 import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { Messages } from "@/constants/messages";
 import { githubLinked, hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { requiredError } from "@/scripts/authentication/register";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useGithubLink } from "@/composables/useGithubLink";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
+import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
+const LINK_HINT = "Confirms it's you. GitHub opens next, to approve the link.";
+const UNLINK_HINT = "Confirms it's you. Afterwards you log in with your password only.";
+
 const emit = defineEmits<{ start: []; unlinked: [] }>();
 
-const { isLinking, linkError, link } = useGithubLink();
+const { isLinking, isStalled, linkError, link, stop } = useGithubLink();
 const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
 
 const open = ref(false);
@@ -27,34 +32,51 @@ const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
 
 const { errors, isValid, leave, validate, reset } = useFormValidation({
-  password: { value: password, check: () => requiredError(password.value, "Enter your password.") }
+  password: {
+    value: password,
+    check: () => requiredError(password.value, Messages.Auth.passwordMissing)
+  }
 });
 
+/** The confirm key waits on a request, or on the browser leaving for GitHub. */
 const isBusy = computed(() => isLinking.value || isUnlinking.value);
+/** Cancel waits too, but not on a navigation that should have happened by now. */
+const isCancelBlocked = computed(() => isUnlinking.value || (isLinking.value && !isStalled.value));
 const confirmError = computed(() => (githubLinked.value ? unlinkError.value : linkError.value));
 
 const focusField = () => field.value?.$el.querySelector("input").focus();
 
 const start = async () => {
   emit("start");
-  // Nothing to confirm with: GitHub itself confirms it's them.
-  if (!hasPassword.value) return link();
+  if (!hasPassword.value) {
+    // Defensive: an account made with GitHub can't unlink it, so it's only unlinked if the API
+    // dropped the link itself. Nothing to confirm with: GitHub itself confirms it's them.
+    if (await link()) return;
+    // The key disabled while it worked, which dropped the focus.
+    await nextTick();
+    opener.value?.$el.focus();
+    return;
+  }
   linkError.value = unlinkError.value = "";
   open.value = true;
   await nextTick();
   focusField();
 };
 
-const close = () => {
-  open.value = false;
+const forgetPassword = () => {
   password.value = "";
   reset();
+};
+
+const close = () => {
+  open.value = false;
+  forgetPassword();
+  stop();
   linkError.value = unlinkError.value = "";
 };
 
-/** Not while a request is out, nor once GitHub is on its way. */
 const cancel = async () => {
-  if (isBusy.value) return;
+  if (isCancelBlocked.value) return;
   close();
   await nextTick();
   opener.value?.$el.focus();
@@ -69,7 +91,9 @@ const submit = async () => {
       return;
     }
   } else if (await link(password.value)) {
-    // The browser is leaving for GitHub; the form stays as it is, its keys disabled.
+    // The browser is leaving for GitHub. Coming back with Back may restore this page as it is,
+    // so the password goes now.
+    forgetPassword();
     return;
   }
   // The clicked key disabled while it worked, which dropped the focus.
@@ -97,7 +121,7 @@ const submit = async () => {
       label="Password"
       type="password"
       autocomplete="current-password"
-      :hint="githubLinked ? undefined : 'GitHub opens next, to approve the link.'"
+      :hint="githubLinked ? UNLINK_HINT : LINK_HINT"
       :describedby="confirmError ? errorId : undefined"
       :error="errors.password"
       required
@@ -113,9 +137,14 @@ const submit = async () => {
         :loading="isBusy"
       >
         <template v-if="githubLinked">{{ isUnlinking ? "Unlinking" : "Unlink GitHub" }}</template>
-        <template v-else>{{ isLinking ? "Opening GitHub" : "Continue to GitHub" }}</template>
+        <template v-else>
+          <AppIcon name="github" :size="16" />
+          {{ isLinking ? "Opening GitHub" : "Continue to GitHub" }}
+        </template>
       </BaseButton>
-      <BaseButton size="sm" variant="ghost" :disabled="isBusy" @click="cancel">Cancel</BaseButton>
+      <BaseButton size="sm" variant="ghost" :disabled="isCancelBlocked" @click="cancel">
+        Cancel
+      </BaseButton>
     </div>
   </form>
 

@@ -136,9 +136,10 @@ const onUnlinked = () => announce("GitHub is unlinked. Log in with your password
                 It stays linked while it's your only way to log in.
               </template>
             </template>
-            <template v-else
+            <template v-else-if="hasPassword"
               >Link it to log in with GitHub instead of typing your password.</template
             >
+            <template v-else>Link it to log in with GitHub.</template>
           </p>
           <GithubLink @start="clearNotice" @unlinked="onUnlinked" />
         </div>

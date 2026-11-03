@@ -8,6 +8,7 @@ import {
   isLoggedIn,
   userEmail
 } from "@/scripts/authentication/authState";
+import { LEAVING_GRACE_MS } from "@/composables/useGithubLink";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -70,12 +71,16 @@ describe("GithubLink", () => {
       expect(input.attributes("autocomplete")).toBe("current-password");
       expect(document.activeElement).toBe(input.element);
       expect(wrapper.find("label").text()).toBe("Password");
-      expect(wrapper.find(".field__hint").text()).toBe("GitHub opens next, to approve the link.");
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "Confirms it's you. GitHub opens next, to approve the link."
+      );
       // The account the password belongs to, for password managers.
       expect(wrapper.find<HTMLInputElement>('input[autocomplete="username"]').element.value).toBe(
         "vb@example.com"
       );
       expect(confirmKey(wrapper).text()).toBe("Continue to GitHub");
+      // Like every key that leaves for GitHub, it carries the GitHub mark.
+      expect(confirmKey(wrapper).find("svg").exists()).toBe(true);
       expect(confirmKey(wrapper).attributes("aria-disabled")).toBe("true");
       expect(confirmKey(wrapper).classes()).not.toContain("btn--error");
       expect(fetchMock).not.toHaveBeenCalled();
@@ -113,15 +118,47 @@ describe("GithubLink", () => {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "hunter22" })
+        body: JSON.stringify({ password: "hunter22" }),
+        signal: expect.any(AbortSignal)
       });
       expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
+      // Back may restore the page as it was left, so the password is gone already, quietly.
+      expect(passwordInput(wrapper).element.value).toBe("");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
       // A second start would replace this one's proof, so nothing can start one meanwhile.
       expect(confirmKey(wrapper).text()).toBe("Opening GitHub");
       expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
       expect(cancelKey(wrapper).attributes("disabled")).toBeDefined();
       await wrapper.find("form").trigger("keydown", { key: "Escape" });
       expect(wrapper.find("form").exists()).toBe(true);
+      wrapper.unmount();
+    });
+
+    it("lets a navigation that never left be given up on, keeping the key disabled", async () => {
+      vi.useFakeTimers();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }))
+        .mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }));
+      const { wrapper } = await mountKey();
+      await open(wrapper);
+      await confirmWith(wrapper, "hunter22");
+      await flushPromises();
+      expect(cancelKey(wrapper).attributes("disabled")).toBeDefined();
+
+      // Stopped, or blocked by an extension: the page is still here after a while.
+      await vi.advanceTimersByTimeAsync(LEAVING_GRACE_MS);
+      expect(cancelKey(wrapper).attributes("disabled")).toBeUndefined();
+      expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
+
+      await wrapper.find("form").trigger("keydown", { key: "Escape" });
+      await flushPromises();
+      expect(wrapper.find("form").exists()).toBe(false);
+      expect(document.activeElement).toBe(opener(wrapper).element);
+
+      await open(wrapper);
+      await confirmWith(wrapper, "hunter22");
+      await flushPromises();
+      expect(assign).toHaveBeenCalledTimes(2);
       wrapper.unmount();
     });
 
@@ -239,7 +276,8 @@ describe("GithubLink", () => {
 
       expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/github/link", {
         method: "POST",
-        credentials: "include"
+        credentials: "include",
+        signal: expect.any(AbortSignal)
       });
       expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
       expect(opener(wrapper).attributes("disabled")).toBeDefined();
@@ -256,6 +294,8 @@ describe("GithubLink", () => {
       await flushPromises();
       expect(wrapper.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
       expect(opener(wrapper).text()).toBe("Link GitHub");
+      // The key disabled while it worked; focus comes back to it.
+      expect(document.activeElement).toBe(opener(wrapper).element);
 
       await opener(wrapper).trigger("click");
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -287,7 +327,9 @@ describe("GithubLink", () => {
       await open(wrapper);
       expect(wrapper.emitted("start")).toHaveLength(1);
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
-      expect(wrapper.find(".field__hint").exists()).toBe(false);
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "Confirms it's you. Afterwards you log in with your password only."
+      );
       expect(confirmKey(wrapper).text()).toBe("Unlink GitHub");
       expect(confirmKey(wrapper).classes()).not.toContain("btn--error");
 
