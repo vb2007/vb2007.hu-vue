@@ -153,7 +153,7 @@ const useDefault = async () => {
         <BaseButton
           size="sm"
           variant="secondary"
-          :to="{ path: `/admin/users/${user.id}/uploads`, state: { username: user.username } }"
+          :to="{ path: `/admin/users/${user.id}/uploads`, state: { uploadsOwner: user.username } }"
         >
           Browse uploads
         </BaseButton>

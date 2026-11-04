@@ -27,8 +27,6 @@ export type UploadListing =
   | {
       endpoint: typeof Endpoints.Admin.userUploads;
       params: ParamsOf<typeof Endpoints.Admin.userUploads>;
-      /** What a failed load says, given the owner's name when it's known. */
-      failure: (ownerName?: string) => string;
       /** The owner's name before the first answer names them, e.g. from the link that led here. */
       ownerHint?: string;
     };
@@ -77,7 +75,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
         failure: Messages.Uploads.listFailed
       });
     }
-    const failure = listing.failure(ownerName.value);
+    const failure = Messages.Admin.userUploadsFailed(ownerName.value);
     return apiRequest(listing.endpoint, { params: listing.params, query: listQuery, failure });
   };
 

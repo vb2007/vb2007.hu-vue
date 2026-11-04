@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { SEARCH_DELAY_MS, useUploads, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
-import { Messages } from "@/constants/messages";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { anUpload } from "@/__tests__/helpers/uploads";
@@ -18,7 +17,6 @@ const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.lengt
 const usersUploads = (ownerHint?: string): UploadListing => ({
   endpoint: Endpoints.Admin.userUploads,
   params: { id: "u9" },
-  failure: (name) => Messages.Admin.userUploadsFailed(name),
   ownerHint
 });
 
@@ -86,7 +84,7 @@ describe("useUploads", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"));
     const unnamed = mountComposable(() => useUploads(10, usersUploads())).api;
     await unnamed.load();
-    expect(unnamed.errorMessage.value).toBe("Failed to load the user's uploads: Server Error");
+    expect(unnamed.errorMessage.value).toBe("Failed to load this user's uploads: Server Error");
 
     fetchMock
       .mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"))

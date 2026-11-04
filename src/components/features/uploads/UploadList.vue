@@ -53,7 +53,7 @@ const title = computed(() => {
 });
 const loadingNote = computed(() => {
   if (!isOthers.value) return "Loading your uploads…";
-  return ownerName.value ? `Loading ${ownerName.value}'s uploads…` : "Loading the user's uploads…";
+  return ownerName.value ? `Loading ${ownerName.value}'s uploads…` : "Loading this user's uploads…";
 });
 
 type SortKey = `${UploadSortBy}:${SortOrder}`;

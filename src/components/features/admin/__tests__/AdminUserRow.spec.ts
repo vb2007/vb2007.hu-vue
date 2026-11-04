@@ -90,7 +90,7 @@ describe("AdminUserRow", () => {
     // The name goes along, so the uploads page can say whose they are before they load.
     expect(wrapper.findComponent(RouterLink).props("to")).toEqual({
       path: "/admin/users/a/uploads",
-      state: { username: "user-a" }
+      state: { uploadsOwner: "user-a" }
     });
 
     await open(wrapper);

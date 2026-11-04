@@ -114,6 +114,6 @@ test("the admin's view of a user's uploads names them while loading and on failu
   // browser treats that as a reload, which keeps the history state.)
   await page.goto("/");
   await page.goto(`/admin/users/${api.users[0].id}/uploads`);
-  await expect(page.getByText(/^Failed to load the user's uploads: /)).toBeVisible();
+  await expect(page.getByText(/^Failed to load this user's uploads: /)).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Uploads" })).toBeVisible();
 });

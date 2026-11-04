@@ -5,7 +5,6 @@ import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
 import { SEARCH_DELAY_MS, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
-import { Messages } from "@/constants/messages";
 import type { Upload } from "@/types/api/uploads";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { anUpload } from "@/__tests__/helpers/uploads";
@@ -20,7 +19,6 @@ const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.lengt
 const usersUploads = (ownerHint?: string): UploadListing => ({
   endpoint: Endpoints.Admin.userUploads,
   params: { id: "u9" },
-  failure: (name) => Messages.Admin.userUploadsFailed(name),
   ownerHint
 });
 
@@ -71,7 +69,7 @@ describe("UploadList", () => {
     await flushPromises();
     expect(lastUrl(fetchMock)).toMatch(/^https:\/\/api\.test\/admin\/users\/u9\/uploads\?/);
     expect(wrapper.find("h1").text()).toBe("Uploads");
-    expect(wrapper.find(".note").text()).toBe("Loading the user's uploads…");
+    expect(wrapper.find(".note").text()).toBe("Loading this user's uploads…");
 
     respond(
       jsonResponse(200, {

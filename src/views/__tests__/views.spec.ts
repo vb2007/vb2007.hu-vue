@@ -245,17 +245,17 @@ describe("views", () => {
     };
 
     try {
-      const named = await hintFrom({ username: "anna" });
+      const named = await hintFrom({ uploadsOwner: "anna" });
       expect(named.hint).toBe("anna");
       expect(named.text).toContain("anna's uploads");
       expect(named.text).toContain("Failed to load anna's uploads: Server Error");
 
       // Only a name counts; anything else leaves the generic wording.
-      expect((await hintFrom({ username: "" })).hint).toBeUndefined();
-      expect((await hintFrom({ username: 7 })).hint).toBeUndefined();
+      expect((await hintFrom({ uploadsOwner: "" })).hint).toBeUndefined();
+      expect((await hintFrom({ uploadsOwner: 7 })).hint).toBeUndefined();
       const none = await hintFrom(null);
       expect(none.hint).toBeUndefined();
-      expect(none.text).toContain("Failed to load the user's uploads: Server Error");
+      expect(none.text).toContain("Failed to load this user's uploads: Server Error");
     } finally {
       window.history.replaceState(null, "");
     }
