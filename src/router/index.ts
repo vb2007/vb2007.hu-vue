@@ -70,6 +70,12 @@ export const routes: RouteRecordRaw[] = [
     path: "/reset-password",
     name: "reset-password",
     component: () => import("../views/PasswordResetView.vue")
+  },
+  // Any path no route above matches gets the not-found board (a catch-all ranks below them all).
+  {
+    path: "/:pathMatch(.*)*",
+    name: "not-found",
+    component: () => import("../views/NotFoundView.vue")
   }
 ];
 
