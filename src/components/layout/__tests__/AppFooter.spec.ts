@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import AppFooter from "@/components/layout/AppFooter.vue";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
+import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 
 describe("AppFooter", () => {
@@ -31,5 +32,15 @@ describe("AppFooter", () => {
       "/upload",
       "/account"
     ]);
+  });
+
+  it("doesn't link planned stops", async () => {
+    const planned = TOOLS_LINE.stops.filter((stop) => stop.status === "planned");
+    expect(planned.length).toBeGreaterThan(0);
+
+    const { wrapper } = await mountWithRouter(AppFooter);
+    const hrefs = wrapper.findAll(".foot__links a").map((link) => link.attributes("href"));
+
+    for (const stop of planned) expect(hrefs).not.toContain(stop.to);
   });
 });

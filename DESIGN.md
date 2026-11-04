@@ -351,7 +351,7 @@ The board ends with a "Delete account" heading (same style as "Linked accounts")
 Tinted 2px-bordered strip with icon: success (Confirm Wash, forest text), error (Fault Red wash and text), info (sunk enamel, soft ink). Arrives with a short 280ms drop-in.
 
 ### Footer
-Deep green band with a route line arriving from the left and ending in a terminus ring on the right edge, name in condensed uppercase, links in on-deep colour that brighten to bright route green on hover.
+Deep green band with a route line arriving from the left and ending in a terminus ring on the right edge, name in condensed uppercase, links in on-deep colour that brighten to bright route green on hover. The links are two groups, the open tools from `src/constants/stops.ts` and then the account links (Log in and Register, or Account), one right-aligned row on wide screens; when narrow they wrap between the groups, never inside one.
 
 ## Do's and Don'ts
 

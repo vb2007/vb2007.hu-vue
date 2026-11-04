@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { getCurrentYear } from "@/scripts/utility/dateUtil";
 
 const currentYear = getCurrentYear();
+
+// Only tools that exist today: the name already leads home, and planned stops have no page yet.
+const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.id !== "home");
 </script>
 
 <template>
@@ -14,14 +18,18 @@ const currentYear = getCurrentYear();
         <p class="foot__meta">Built by VB2007 &middot; 2023 &ndash; {{ currentYear }}</p>
       </div>
       <nav class="foot__links" aria-label="Footer">
-        <RouterLink to="/shorten">Shorten</RouterLink>
-        <RouterLink to="/pastebin">Paste</RouterLink>
-        <RouterLink to="/upload">Upload</RouterLink>
-        <RouterLink v-if="isLoggedIn" to="/account">Account</RouterLink>
-        <template v-else>
-          <RouterLink to="/login">Log in</RouterLink>
-          <RouterLink to="/register">Register</RouterLink>
-        </template>
+        <div class="foot__group">
+          <RouterLink v-for="stop in tools" :key="stop.id" :to="stop.to">{{
+            stop.label
+          }}</RouterLink>
+        </div>
+        <div class="foot__group">
+          <RouterLink v-if="isLoggedIn" to="/account">Account</RouterLink>
+          <template v-else>
+            <RouterLink to="/login">Log in</RouterLink>
+            <RouterLink to="/register">Register</RouterLink>
+          </template>
+        </div>
       </nav>
     </div>
   </footer>
@@ -92,7 +100,9 @@ const currentYear = getCurrentYear();
   opacity: 0.8;
 }
 
-.foot__links {
+/* Tools and account links are two groups, so a narrow footer wraps between them, never inside a group */
+.foot__links,
+.foot__group {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-5);
