@@ -12,6 +12,7 @@ import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
+import NotFoundView from "@/views/NotFoundView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
@@ -28,6 +29,7 @@ import UploadComposer from "@/components/features/uploads/UploadComposer.vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
+import StationBoard from "@/components/ui/StationBoard.vue";
 import { Endpoints } from "@/constants/endpoints";
 import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn, isSessionChecked, isSuperuser } from "@/scripts/authentication/authState";
@@ -285,5 +287,38 @@ describe("views", () => {
     });
 
     expect(wrapper.findComponent(ShortLinkResolver).props("preview")).toBe(true);
+  });
+
+  it("NotFoundView names the missing path and leads home and to the open tools", async () => {
+    const { wrapper } = await mountWithRouter(NotFoundView, {}, "/no/such/page?x=1");
+
+    expect(wrapper.findAllComponents(PageSection).map((section) => section.props("width"))).toEqual(
+      ["medium", "medium"]
+    );
+    expect(wrapper.findComponent(StationBoard).props()).toMatchObject({
+      title: "Page not found",
+      as: "h1"
+    });
+    expect(wrapper.find("h1").text()).toBe("Page not found");
+    expect(wrapper.find(".path").text()).toBe("/no/such/page");
+    const home = wrapper.findAll("a").find((link) => link.text() === "Back to home");
+    expect(home?.attributes("href")).toBe("/");
+    expect(wrapper.find("#not-found-tools-title").text()).toBe("Tools");
+    // Home has its own key and Contact is still planned, so neither is offered.
+    const stops = wrapper.findComponent(ToolDirectory).props("stops");
+    expect(stops.map((stop) => stop.id)).toEqual(["shorten", "paste", "upload"]);
+    expect(wrapper.find(".sign--planned").exists()).toBe(false);
+  });
+
+  it.each([
+    ["/%C3%A1rv%C3%ADz", "/árvíz"],
+    ["/a%E0b", "/a%E0b"],
+    ["/r/", "/r/"]
+  ])("NotFoundView shows %s decoded as %s", async (pushed, shown) => {
+    // Vue Router warns that it kept a malformed escape as typed.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { wrapper } = await mountWithRouter(NotFoundView, {}, pushed);
+
+    expect(wrapper.find(".path").text()).toBe(shown);
   });
 });

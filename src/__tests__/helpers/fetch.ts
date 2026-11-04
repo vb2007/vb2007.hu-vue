@@ -16,3 +16,27 @@ export const mockFetch = () => {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 };
+
+/**
+ * Holds the mock's next request until `respond` is called, so tests can answer requests out of
+ * order. Aborting its signal rejects it with an `AbortError`, like a real fetch; with `ignoreAbort`
+ * it waits for `respond` anyway, like an answer that was already being read when it was aborted.
+ */
+export const deferResponse = (
+  fetchMock: ReturnType<typeof mockFetch>,
+  { ignoreAbort = false } = {}
+) => {
+  let resolve!: (response: Response) => void;
+  fetchMock.mockImplementationOnce(
+    (_url, init) =>
+      new Promise<Response>((res, reject) => {
+        resolve = res;
+        if (!ignoreAbort) {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError"))
+          );
+        }
+      })
+  );
+  return { respond: (response: Response) => resolve(response) };
+};

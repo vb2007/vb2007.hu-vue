@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { apiRequest } from "@/scripts/api/client";
 import type { AdminUser, AdminUserSortBy } from "@/types/api/admin";
 import type { Pagination, SortOrder } from "@/types/api/common";
@@ -25,10 +26,12 @@ export const useAdminUsers = (limit = USERS_PER_PAGE) => {
 
   /** The search the list was last loaded with. */
   let loadedSearch = "";
+  const latest = useLatestRequest();
 
   const load = async () => {
     const search = query.value.trim();
     loadedSearch = search;
+    const signal = latest.next();
 
     isLoading.value = true;
     errorMessage.value = "";
@@ -41,8 +44,11 @@ export const useAdminUsers = (limit = USERS_PER_PAGE) => {
         sortOrder: sortOrder.value,
         q: search || undefined
       },
-      failure: Messages.Admin.usersFailed
+      failure: Messages.Admin.usersFailed,
+      signal
     });
+    // A newer load replaced this one, or the list is gone.
+    if (signal.aborted) return;
 
     if (result.ok) {
       users.value = result.data.users;

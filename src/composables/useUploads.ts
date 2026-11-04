@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import type { ParamsOf } from "@/scripts/api/endpoint";
 import type { Pagination, SortOrder } from "@/types/api/common";
@@ -67,33 +68,46 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
 
   /** The search the list was last loaded with. */
   let loadedSearch = "";
+  const latest = useLatestRequest();
 
-  const fetchListing = (listQuery: UploadListQuery) => {
+  const fetchListing = (listQuery: UploadListQuery, signal: AbortSignal) => {
     if (!("params" in listing)) {
       return apiRequest(listing.endpoint, {
         query: listQuery,
-        failure: Messages.Uploads.listFailed
+        failure: Messages.Uploads.listFailed,
+        signal
       });
     }
     const failure = Messages.Admin.userUploadsFailed(ownerName.value);
-    return apiRequest(listing.endpoint, { params: listing.params, query: listQuery, failure });
+    return apiRequest(listing.endpoint, {
+      params: listing.params,
+      query: listQuery,
+      failure,
+      signal
+    });
   };
 
   const load = async () => {
     const search = query.value.trim();
     loadedSearch = search;
+    const signal = latest.next();
 
     isLoading.value = true;
     errorMessage.value = "";
 
-    const result = await fetchListing({
-      limit,
-      page: page.value,
-      sortBy: sortBy.value,
-      sortOrder: sortOrder.value,
-      visibility: visibilityFilter.value || undefined,
-      q: search || undefined
-    });
+    const result = await fetchListing(
+      {
+        limit,
+        page: page.value,
+        sortBy: sortBy.value,
+        sortOrder: sortOrder.value,
+        visibility: visibilityFilter.value || undefined,
+        q: search || undefined
+      },
+      signal
+    );
+    // A newer load replaced this one, or the list is gone.
+    if (signal.aborted) return;
 
     if (result.ok) {
       uploads.value = result.data.uploads;
