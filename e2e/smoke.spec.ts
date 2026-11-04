@@ -16,10 +16,23 @@ test("home page renders the hero, the shortener gate and the tools directory", a
 
 test("a board header keeps its padding above the kerb hatch", async ({ page }) => {
   await page.goto("/login");
-  const head = page.getByRole("heading", { level: 1, name: "Log in" }).locator("..");
+  const head = page.locator("header", {
+    has: page.getByRole("heading", { level: 1, name: "Log in" })
+  });
 
-  // 0.75rem of padding plus the 0.4rem hatch, at the 16px root size.
-  await expect(head).toHaveCSS("padding-bottom", "18.4px");
+  // The bottom padding is the top padding plus the hatch's height, so the title stays centred above it.
+  const { top, bottom, hatch } = await head.evaluate((el) => {
+    // The e2e tsconfig has no DOM lib, so reach the page's window through the element.
+    const view = el.ownerDocument.defaultView!;
+    const style = view.getComputedStyle(el);
+    return {
+      top: parseFloat(style.paddingTop),
+      bottom: parseFloat(style.paddingBottom),
+      hatch: parseFloat(view.getComputedStyle(el, "::after").height)
+    };
+  });
+  expect(hatch).toBeGreaterThan(0);
+  expect(bottom).toBeCloseTo(top + hatch, 1);
 });
 
 test("footer links lead to each page", async ({ page }) => {
