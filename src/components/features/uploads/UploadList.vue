@@ -25,6 +25,7 @@ const {
   uploads,
   pagination,
   owner,
+  ownerName,
   page,
   sortBy,
   sortOrder,
@@ -48,7 +49,11 @@ const {
 const isOthers = computed(() => Boolean(props.listing));
 const title = computed(() => {
   if (!isOthers.value) return "Your uploads";
-  return owner.value ? `${owner.value.username}'s uploads` : "Uploads";
+  return ownerName.value ? `${ownerName.value}'s uploads` : "Uploads";
+});
+const loadingNote = computed(() => {
+  if (!isOthers.value) return "Loading your uploads…";
+  return ownerName.value ? `Loading ${ownerName.value}'s uploads…` : "Loading this user's uploads…";
 });
 
 type SortKey = `${UploadSortBy}:${SortOrder}`;
@@ -113,7 +118,7 @@ defineExpose({ refresh: () => goToPage(1) });
 
     <StatusMessage v-if="errorMessage" tone="error">{{ errorMessage }}</StatusMessage>
 
-    <p v-if="isLoading && !pagination" class="note">Loading your uploads…</p>
+    <p v-if="isLoading && !pagination" class="note">{{ loadingNote }}</p>
     <div v-else-if="pagination && pagination.total === 0" class="empty">
       <template v-if="isNarrowed">
         <p class="note">No uploads match. Try another name, or show all of them.</p>

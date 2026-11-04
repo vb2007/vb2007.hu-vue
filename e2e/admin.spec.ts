@@ -84,3 +84,36 @@ test("the superuser browses a user's uploads and moderates them", async ({ page,
   await page.getByRole("link", { name: "All users" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Upload quotas" })).toBeVisible();
 });
+
+test("the admin's view of a user's uploads names them while loading and on failure", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna", { usedBytes: 3 * GB, count: 1 });
+  api.hasUpload("flyer.pdf", { owner: "anna" });
+  const release = api.holdsUserUploads();
+
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "anna" }).click();
+  await page.getByRole("link", { name: "Browse uploads" }).click();
+
+  // The name comes with the link, so it shows before the API answers.
+  await expect(page.getByText("Loading anna's uploads…")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "anna's uploads" })).toBeVisible();
+  release();
+  await expect(page.getByText("1 upload", { exact: true })).toBeVisible();
+
+  api.userUploadsFail();
+  await page.getByRole("link", { name: "All users" }).click();
+  await page.getByRole("button", { name: "anna" }).click();
+  await page.getByRole("link", { name: "Browse uploads" }).click();
+  await expect(page.getByText(/^Failed to load anna's uploads: /)).toBeVisible();
+
+  // A direct visit has no name to go on until the API gives one. (Not from the same address: the
+  // browser treats that as a reload, which keeps the history state.)
+  await page.goto("/");
+  await page.goto(`/admin/users/${api.users[0].id}/uploads`);
+  await expect(page.getByText(/^Failed to load this user's uploads: /)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Uploads" })).toBeVisible();
+});

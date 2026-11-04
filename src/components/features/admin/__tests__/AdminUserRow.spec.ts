@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { RouterLink } from "vue-router";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
 import { QUOTA_UNITS } from "@/scripts/admin/adminUser";
 import type { AdminUser } from "@/types/api/admin";
@@ -86,6 +87,11 @@ describe("AdminUserRow", () => {
     expect((wrapper.find("select").element as HTMLSelectElement).value).toBe("GB");
     expect(buttonNamed(wrapper, "Use default").attributes("disabled")).toBeDefined();
     expect(wrapper.find('a[href="/admin/users/a/uploads"]').text()).toBe("Browse uploads");
+    // The name goes along, so the uploads page can say whose they are before they load.
+    expect(wrapper.findComponent(RouterLink).props("to")).toEqual({
+      path: "/admin/users/a/uploads",
+      state: { uploadsOwner: "user-a" }
+    });
 
     await open(wrapper);
     expect(wrapper.find(".details").exists()).toBe(false);
