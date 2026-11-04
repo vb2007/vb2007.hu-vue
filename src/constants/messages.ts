@@ -156,5 +156,9 @@ export class Messages {
     static readonly quotaFailed: string = "Failed to change the quota";
     static readonly invalidQuota: string = "Enter a size of 0 or more.";
     static readonly quotaTooLarge: string = "That's more than the API can store.";
+    /** `name` is the account's username, when it's known. */
+    static userUploadsFailed(name?: string): string {
+      return name ? `Failed to load ${name}'s uploads` : "Failed to load the user's uploads";
+    }
   };
 }

@@ -7,7 +7,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
- * username, for the admin's view of that user's uploads; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
+ * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
@@ -155,6 +156,9 @@ export class MockApi {
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
   private githubLinkStarted = false;
   private githubUnconfigured = false;
+  /** What the admin's view of a user's uploads waits for before it answers (see `holdsUserUploads`). */
+  private userUploadsHold: Promise<void> | null = null;
+  private userUploadsDown = false;
   /** The API host the app was built against, known once the app has called it. */
   apiOrigin = "";
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
@@ -272,6 +276,21 @@ export class MockApi {
     this.githubUnconfigured = true;
   }
 
+  /** Keeps the admin's view of a user's uploads waiting; call the returned function to answer. */
+  holdsUserUploads() {
+    let release!: () => void;
+    this.userUploadsHold = new Promise((resolve) => (release = resolve));
+    return () => {
+      this.userUploadsHold = null;
+      release();
+    };
+  }
+
+  /** Answers the admin's view of a user's uploads with a 502 and no `{ error }`, like a gateway. */
+  userUploadsFail() {
+    this.userUploadsDown = true;
+  }
+
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
   }
@@ -302,6 +321,10 @@ export class MockApi {
     if (url.origin !== this.cdnOrigin) this.apiOrigin = url.origin;
     if (url.origin === this.cdnOrigin && url.pathname.startsWith("/useruploads/")) {
       return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL });
+    }
+
+    if (this.userUploadsHold && /^\/admin\/users\/[^/]+\/uploads$/.test(url.pathname)) {
+      await this.userUploadsHold;
     }
 
     const contentType = (await request.headerValue("content-type")) ?? "";
@@ -960,6 +983,7 @@ export class MockApi {
     if (!this.user?.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
+    if (this.userUploadsDown) return { status: 502 };
     const user = this.users.find((item) => item.id === id);
     if (!user) return { status: 404, body: { error: "There is no such user." } };
     const listing = this.listUploads(query, user.username);

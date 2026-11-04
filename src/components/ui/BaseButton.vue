@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { RouterLink } from "vue-router";
+import { RouterLink, type RouteLocationRaw } from "vue-router";
 
 withDefaults(
   defineProps<{
     variant?: "primary" | "secondary" | "ghost";
     size?: "md" | "sm";
-    to?: string;
+    /** A path, or a full location, e.g. with history state for the page it opens. */
+    to?: RouteLocationRaw;
     href?: string;
     type?: "button" | "submit";
     loading?: boolean;

@@ -216,12 +216,49 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All users");
     expect(wrapper.findComponent(UploadList).props()).toMatchObject({
-      listing: { endpoint: Endpoints.Admin.userUploads, params: { id: "u 9" } },
+      listing: {
+        endpoint: Endpoints.Admin.userUploads,
+        params: { id: "u 9" },
+        ownerHint: undefined
+      },
       as: "h1"
     });
     expect(String(fetchMock.mock.calls[0][0])).toMatch(
       /^https:\/\/api\.test\/admin\/users\/u%209\/uploads\?/
     );
+  });
+
+  it("AdminUserUploadsView names the user from the link that led there", async () => {
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(500, undefined, "Server Error"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    isSessionChecked.value = true;
+    isLoggedIn.value = true;
+    isSuperuser.value = true;
+
+    const hintFrom = async (state: unknown) => {
+      window.history.replaceState(state, "");
+      const { wrapper } = await mountWithRouter(AdminUserUploadsView, { props: { id: "u9" } });
+      await flushPromises();
+      const listing = wrapper.findComponent(UploadList).props("listing")!;
+      return { hint: "ownerHint" in listing ? listing.ownerHint : "none", text: wrapper.text() };
+    };
+
+    try {
+      const named = await hintFrom({ username: "anna" });
+      expect(named.hint).toBe("anna");
+      expect(named.text).toContain("anna's uploads");
+      expect(named.text).toContain("Failed to load anna's uploads: Server Error");
+
+      // Only a name counts; anything else leaves the generic wording.
+      expect((await hintFrom({ username: "" })).hint).toBeUndefined();
+      expect((await hintFrom({ username: 7 })).hint).toBeUndefined();
+      const none = await hintFrom(null);
+      expect(none.hint).toBeUndefined();
+      expect(none.text).toContain("Failed to load the user's uploads: Server Error");
+    } finally {
+      window.history.replaceState(null, "");
+    }
   });
 
   it("PasteView shows the paste from the route as the page heading", async () => {

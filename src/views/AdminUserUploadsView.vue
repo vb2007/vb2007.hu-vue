@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
 import type { UploadListing } from "@/composables/useUploads";
 import { isSuperuser } from "@/scripts/authentication/authState";
 import PageSection from "@/components/layout/PageSection.vue";
@@ -10,9 +11,21 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 
 const props = defineProps<{ id: string }>();
 
+/**
+ * The name the admin's "Browse uploads" key sends along in the history state. A direct visit has
+ * none, so the list says "the user's" until the API names them.
+ */
+const usernameFromState = () => {
+  const username: unknown = (window.history.state as { username?: unknown } | null)?.username;
+  return typeof username === "string" && username ? username : undefined;
+};
+
+// Read again per user: by the time the id changes, the history state is the new entry's.
 const listing = computed<UploadListing>(() => ({
   endpoint: Endpoints.Admin.userUploads,
-  params: { id: props.id }
+  params: { id: props.id },
+  failure: (name) => Messages.Admin.userUploadsFailed(name),
+  ownerHint: usernameFromState()
 }));
 </script>
 

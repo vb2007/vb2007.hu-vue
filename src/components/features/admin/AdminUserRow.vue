@@ -149,7 +149,12 @@ const useDefault = async () => {
             <dd>{{ formatBytes(usage.usedBytes - usage.quotaBytes) }}</dd>
           </div>
         </dl>
-        <BaseButton size="sm" variant="secondary" :to="`/admin/users/${user.id}/uploads`">
+        <!-- The name goes along, so the uploads page can say whose they are before they load. -->
+        <BaseButton
+          size="sm"
+          variant="secondary"
+          :to="{ path: `/admin/users/${user.id}/uploads`, state: { username: user.username } }"
+        >
           Browse uploads
         </BaseButton>
       </div>
