@@ -14,6 +14,7 @@ describe("AppFooter", () => {
     expect(wrapper.findAll(".foot__links a").map((link) => link.attributes("href"))).toEqual([
       "/shorten",
       "/pastebin",
+      "/upload",
       "/login",
       "/register"
     ]);
@@ -27,6 +28,7 @@ describe("AppFooter", () => {
     expect(wrapper.findAll(".foot__links a").map((link) => link.attributes("href"))).toEqual([
       "/shorten",
       "/pastebin",
+      "/upload",
       "/account"
     ]);
   });

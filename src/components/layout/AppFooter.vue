@@ -16,6 +16,7 @@ const currentYear = getCurrentYear();
       <nav class="foot__links" aria-label="Footer">
         <RouterLink to="/shorten">Shorten</RouterLink>
         <RouterLink to="/pastebin">Paste</RouterLink>
+        <RouterLink to="/upload">Upload</RouterLink>
         <RouterLink v-if="isLoggedIn" to="/account">Account</RouterLink>
         <template v-else>
           <RouterLink to="/login">Log in</RouterLink>
