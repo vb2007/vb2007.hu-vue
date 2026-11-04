@@ -14,6 +14,14 @@ test("home page renders the hero, the shortener gate and the tools directory", a
   await expect(page).toHaveURL("/pastebin");
 });
 
+test("a board header keeps its padding above the kerb hatch", async ({ page }) => {
+  await page.goto("/login");
+  const head = page.getByRole("heading", { level: 1, name: "Log in" }).locator("..");
+
+  // 0.75rem of padding plus the 0.4rem hatch, at the 16px root size.
+  await expect(head).toHaveCSS("padding-bottom", "18.4px");
+});
+
 test("footer links lead to each page", async ({ page }) => {
   await page.goto("/");
   const footer = page.getByRole("navigation", { name: "Footer" });

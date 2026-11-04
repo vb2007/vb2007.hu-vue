@@ -24,13 +24,15 @@ withDefaults(defineProps<{ title: string; as?: "h1" | "h2" | "h3" }>(), { as: "h
 }
 
 .board__head {
+  /* Height of the kerb hatch; the header's bottom padding starts above it */
+  --board-hatch: 0.4rem;
+
   position: relative;
   display: flex;
-  padding-bottom: calc(var(--sp-3) + 0.4rem);
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-5);
+  padding: var(--sp-3) var(--sp-5) calc(var(--sp-3) + var(--board-hatch));
   background: linear-gradient(to bottom, oklch(1 0 0 / 0.16), transparent 60%), var(--c-action);
   color: var(--c-on-action);
 }
@@ -42,7 +44,7 @@ withDefaults(defineProps<{ title: string; as?: "h1" | "h2" | "h3" }>(), { as: "h
   left: 0;
   right: 0;
   bottom: 0;
-  height: 0.4rem;
+  height: var(--board-hatch);
   background: repeating-linear-gradient(-45deg, var(--c-works) 0 7px, var(--c-on-works) 7px 14px);
 }
 
