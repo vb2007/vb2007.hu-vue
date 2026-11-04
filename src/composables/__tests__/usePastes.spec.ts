@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { effectScope } from "vue";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { PASTES_PER_PAGE, usePastes } from "@/composables/usePastes";
 import { username } from "@/scripts/authentication/authState";
 
@@ -44,7 +45,7 @@ describe("usePastes", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       listUrl("limit=10&page=1&sortBy=addedOn&sortOrder=desc"),
-      { method: "GET", credentials: "include" }
+      { method: "GET", credentials: "include", signal: expect.any(AbortSignal) }
     );
     expect(list.pastes.value).toEqual([paste("p1")]);
     expect(list.pagination.value).toMatchObject({ page: 1, pages: 1, total: 1 });
@@ -107,6 +108,62 @@ describe("usePastes", () => {
     await list.load();
 
     expect(list.errorMessage.value).toBe("Error connecting to server");
+  });
+
+  it("aborts a load when a newer one starts, and leaves the list to the newer one", async () => {
+    deferResponse(fetchMock);
+    const newer = deferResponse(fetchMock);
+    const list = usePastes();
+
+    const older = list.load();
+    const pending = list.goToPage(2);
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(fetchMock.mock.calls[1][1]!.signal!.aborted).toBe(false);
+
+    await older;
+    expect(list.pastes.value).toEqual([]);
+    expect(list.errorMessage.value).toBe("");
+    expect(list.isLoading.value).toBe(true);
+
+    newer.respond(page([paste("p11")], 2, 2));
+    await pending;
+    expect(list.pastes.value).toEqual([paste("p11")]);
+    expect(list.pagination.value).toMatchObject({ page: 2 });
+    expect(list.isLoading.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older answer that arrives after the newer one", async () => {
+    const older = deferResponse(fetchMock, { ignoreAbort: true });
+    const newer = deferResponse(fetchMock);
+    const list = usePastes();
+
+    const first = list.setSortOrder("asc");
+    const second = list.setSortOrder("desc");
+
+    newer.respond(page([paste("newest")]));
+    await second;
+    older.respond(page([paste("oldest")], 1, 3));
+    await first;
+
+    expect(list.pastes.value).toEqual([paste("newest")]);
+    expect(list.pagination.value).toMatchObject({ pages: 1 });
+    expect(list.errorMessage.value).toBe("");
+    expect(list.isLoading.value).toBe(false);
+  });
+
+  it("aborts the load in flight when it goes away", async () => {
+    deferResponse(fetchMock);
+    const scope = effectScope();
+    const list = scope.run(() => usePastes())!;
+
+    const pending = list.load();
+    scope.stop();
+    await pending;
+
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(list.errorMessage.value).toBe("");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("deletes a paste and reloads the page", async () => {
