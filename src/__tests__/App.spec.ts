@@ -5,6 +5,7 @@ import AppNavbar from "@/components/layout/AppNavbar.vue";
 import AppFooter from "@/components/layout/AppFooter.vue";
 import HomeView from "@/views/HomeView.vue";
 import LoginView from "@/views/LoginView.vue";
+import NotFoundView from "@/views/NotFoundView.vue";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -24,5 +25,14 @@ describe("App", () => {
     await router.push("/login");
     await flushPromises();
     await vi.waitFor(() => expect(wrapper.findComponent(LoginView).exists()).toBe(true));
+  });
+
+  it("renders the not-found board inside main for an unknown path", async () => {
+    const { wrapper } = await mountWithRouter(App, {}, "/no/such/page");
+
+    await vi.waitFor(() =>
+      expect(wrapper.find("main#main").findComponent(NotFoundView).exists()).toBe(true)
+    );
+    expect(wrapper.find("main#main h1").text()).toBe("Page not found");
   });
 });
