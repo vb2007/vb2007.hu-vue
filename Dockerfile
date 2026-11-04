@@ -20,6 +20,8 @@ RUN npm run build-only
 FROM nginxinc/nginx-unprivileged:1.31.6-alpine AS runtime
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+# Not in conf.d: the base image includes conf.d/*.conf at http level.
+COPY docker/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 8080
