@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { SEARCH_DELAY_MS, useAdminUsers } from "@/composables/useAdminUsers";
 import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 
 const listing = (users: AdminUser[], { page = 1, pages = 1, total = users.length } = {}) =>
@@ -33,7 +34,7 @@ describe("useAdminUsers", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/admin/users?limit=20&page=1&sortBy=usedBytes&sortOrder=desc",
-      { method: "GET", credentials: "include" }
+      { method: "GET", credentials: "include", signal: expect.any(AbortSignal) }
     );
     expect(api.users.value).toEqual([anAdminUser("a")]);
     expect(api.pagination.value?.total).toBe(1);
@@ -78,6 +79,68 @@ describe("useAdminUsers", () => {
     vi.advanceTimersByTime(SEARCH_DELAY_MS);
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts a load when a newer one starts, and leaves the list to the newer one", async () => {
+    deferResponse(fetchMock);
+    const newer = deferResponse(fetchMock);
+    const { api } = mountComposable(() => useAdminUsers());
+
+    const older = api.load();
+    const pending = api.setSort("username", "asc");
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(fetchMock.mock.calls[1][1]!.signal!.aborted).toBe(false);
+
+    await older;
+    expect(api.users.value).toEqual([]);
+    expect(api.errorMessage.value).toBe("");
+    expect(api.isLoading.value).toBe(true);
+
+    newer.respond(listing([anAdminUser("b")]));
+    await pending;
+    expect(api.users.value).toEqual([anAdminUser("b")]);
+    expect(api.isLoading.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older search's answer that arrives after the newer one", async () => {
+    const older = deferResponse(fetchMock, { ignoreAbort: true });
+    const newer = deferResponse(fetchMock);
+    vi.useFakeTimers();
+    const { api } = mountComposable(() => useAdminUsers());
+
+    api.query.value = "a";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    api.query.value = "ab";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(lastUrl(fetchMock)).toContain("&q=ab");
+    vi.useRealTimers();
+
+    newer.respond(listing([anAdminUser("ab")]));
+    await flushPromises();
+    older.respond(listing([anAdminUser("a"), anAdminUser("abc")], { pages: 2, total: 21 }));
+    await flushPromises();
+
+    expect(api.users.value).toEqual([anAdminUser("ab")]);
+    expect(api.pagination.value?.total).toBe(1);
+    expect(api.errorMessage.value).toBe("");
+    expect(api.isLoading.value).toBe(false);
+  });
+
+  it("aborts the load in flight when it goes away", async () => {
+    deferResponse(fetchMock);
+    const { api, wrapper } = mountComposable(() => useAdminUsers());
+
+    const pending = api.load();
+    wrapper.unmount();
+    await pending;
+
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(api.errorMessage.value).toBe("");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("shows the API's error, or a connection error", async () => {

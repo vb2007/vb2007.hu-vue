@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { SEARCH_DELAY_MS, useUploads } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { anUpload } from "@/__tests__/helpers/uploads";
 import type { Upload } from "@/types/api/uploads";
@@ -34,7 +35,7 @@ describe("useUploads", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/uploads?limit=10&page=1&sortBy=uploadedOn&sortOrder=desc",
-      { method: "GET", credentials: "include" }
+      { method: "GET", credentials: "include", signal: expect.any(AbortSignal) }
     );
     expect(api.uploads.value).toEqual([anUpload("a")]);
     expect(api.pagination.value?.total).toBe(1);
@@ -130,6 +131,85 @@ describe("useUploads", () => {
     vi.runAllTimers();
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts a load when a newer one starts, and leaves the list to the newer one", async () => {
+    deferResponse(fetchMock);
+    const newer = deferResponse(fetchMock);
+    const { api } = mountComposable(() =>
+      useUploads(10, { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } })
+    );
+
+    const older = api.load();
+    const pending = api.setVisibilityFilter("private");
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(fetchMock.mock.calls[1][1]!.signal!.aborted).toBe(false);
+
+    await older;
+    expect(api.uploads.value).toEqual([]);
+    expect(api.owner.value).toBeNull();
+    expect(api.errorMessage.value).toBe("");
+    expect(api.isLoading.value).toBe(true);
+
+    newer.respond(
+      jsonResponse(200, {
+        user: { id: "u9", username: "anna" },
+        uploads: [anUpload("b")],
+        pagination: {
+          limit: 10,
+          page: 1,
+          total: 1,
+          pages: 1,
+          sortBy: "uploadedOn",
+          sortOrder: "desc"
+        }
+      })
+    );
+    await pending;
+    expect(api.uploads.value).toEqual([anUpload("b")]);
+    expect(api.owner.value).toEqual({ id: "u9", username: "anna" });
+    expect(api.isLoading.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older search's answer that arrives after the newer one", async () => {
+    const older = deferResponse(fetchMock, { ignoreAbort: true });
+    const newer = deferResponse(fetchMock);
+    vi.useFakeTimers();
+    const { api } = mountComposable(() => useUploads());
+
+    api.query.value = "hol";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    api.query.value = "holiday";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(lastUrl(fetchMock)).toContain("&q=holiday");
+    vi.useRealTimers();
+
+    newer.respond(listing([anUpload("holiday")]));
+    await flushPromises();
+    older.respond(listing([anUpload("hol"), anUpload("holly")], { pages: 2, total: 12 }));
+    await flushPromises();
+
+    expect(api.uploads.value).toEqual([anUpload("holiday")]);
+    expect(api.pagination.value?.total).toBe(1);
+    expect(api.errorMessage.value).toBe("");
+    expect(api.isLoading.value).toBe(false);
+  });
+
+  it("aborts the load in flight when unmounted", async () => {
+    deferResponse(fetchMock);
+    const { api, wrapper } = mountComposable(() => useUploads());
+
+    const pending = api.load();
+    wrapper.unmount();
+    await pending;
+
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(api.errorMessage.value).toBe("");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("shows the API's error when loading fails", async () => {

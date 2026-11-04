@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { apiRequest } from "@/scripts/api/client";
 import { username } from "@/scripts/authentication/authState";
 import type { Pagination, SortOrder } from "@/types/api/common";
@@ -18,16 +19,22 @@ export const usePastes = (limit = PASTES_PER_PAGE) => {
   const errorMessage = ref("");
   const deletingId = ref("");
   const deleteError = ref("");
+  const latest = useLatestRequest();
 
   const load = async () => {
+    const signal = latest.next();
+
     isLoading.value = true;
     errorMessage.value = "";
 
     const result = await apiRequest(Endpoints.Pastebin.list, {
       params: { username: username.value },
       query: { limit, page: page.value, sortBy: "addedOn", sortOrder: sortOrder.value },
-      failure: Messages.Pastebin.listFailed
+      failure: Messages.Pastebin.listFailed,
+      signal
     });
+    // A newer load replaced this one, or the list is gone.
+    if (signal.aborted) return;
 
     if (result.ok) {
       pastes.value = result.data.pastes;
