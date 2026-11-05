@@ -330,9 +330,11 @@ describe("register", () => {
     expect(registerStatus.value).toBe(error);
   });
 
-  it("leaves out a rate limiter's retryAfter, since it sent no code", async () => {
-    const error = "Too many e-mails requested: try again later.";
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 3600 }));
+  it.each([
+    ["the mail limit", "Too many e-mails requested: try again later.", 3412],
+    ["the failed attempts limit", "Too many failed attempts: try again later.", 900]
+  ])("doesn't take %s's 429 for the cooldown: no code went out", async (_, error, retryAfter) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
     expect(registerStatus.value).toBe(error);

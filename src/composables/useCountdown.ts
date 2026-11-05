@@ -13,9 +13,14 @@ import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
  * With a `storageKey`, `start(seconds, id)` also keeps the deadline for `id` (e.g. a normalized
  * e-mail address) in sessionStorage, and `resume(id)` picks it up again after a reload. One
  * deadline is kept per key: starting for another id replaces it.
+ *
+ * `start`'s `note` says why it waits, e.g. a rate limiter's message: it's kept with the deadline,
+ * so after a reload `note` explains the wait again. It holds until the next `start` or `resume`.
  */
 export const useCountdown = (storageKey?: string) => {
   const remaining = ref(0);
+  /** Why the last started or resumed countdown waits; "" when nothing has to be said. */
+  const note = ref("");
   const active = computed(() => remaining.value > 0);
   let deadline = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -41,8 +46,12 @@ export const useCountdown = (storageKey?: string) => {
     timer = setInterval(tick, 250);
   };
 
-  /** (Re)starts it at `seconds`; with a storage key and an `id`, keeps the deadline for that id. */
-  const start = (seconds: number, id?: string) => {
+  /**
+   * (Re)starts it at `seconds`; with a storage key and an `id`, keeps the deadline for that id,
+   * and `reason` as its `note`.
+   */
+  const start = (seconds: number, id?: string, reason = "") => {
+    note.value = reason;
     if (seconds <= 0) {
       stop();
       return;
@@ -50,7 +59,7 @@ export const useCountdown = (storageKey?: string) => {
 
     runUntil(Date.now() + seconds * 1000);
     if (storageKey && id !== undefined) {
-      writeSaved(storageKey, { id, deadline });
+      writeSaved(storageKey, reason ? { id, deadline, note: reason } : { id, deadline });
     }
   };
 
@@ -65,13 +74,14 @@ export const useCountdown = (storageKey?: string) => {
       return false;
     }
 
+    note.value = saved.note ?? "";
     runUntil(saved.deadline);
     return true;
   };
 
   onScopeDispose(stop);
 
-  return { remaining, active, start, resume, stop };
+  return { remaining, active, note, start, resume, stop };
 };
 
 /**

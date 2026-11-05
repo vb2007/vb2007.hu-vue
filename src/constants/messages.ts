@@ -1,3 +1,6 @@
+import { SITE_LOCALE } from "@/constants/locale";
+import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
+
 /**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
  * shown when it sends one, these otherwise. A `failure` text is followed by the status
@@ -120,6 +123,21 @@ export class Messages {
       "A code was sent just now. You can send another once the countdown ends.";
     static invalid(digits: number): string {
       return `Enter the ${digits}-digit code from the e-mail.`;
+    }
+    /**
+     * The register step's resend key while it waits. Like the two below, `units: "long"` spells
+     * the units out for the key's accessible name ("Resend in 57 minutes").
+     */
+    static resendIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Resend in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
+    /** The change e-mail form's key while it waits. */
+    static sendCodeIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Send code in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
+    /** The password reset's resend key while it waits. */
+    static sendAgainIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Send again in ${formatWait(seconds, SITE_LOCALE, units)}`;
     }
   };
 
