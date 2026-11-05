@@ -81,6 +81,8 @@ export const MOCK_PASSWORD = "e2e-password";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
+/** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -988,11 +990,20 @@ export class MockApi {
     }
   }
 
+  /** The API's `validateMongooseId`: admin routes run it on `:id` after the superuser check. */
+  private invalidId(): MockResponse {
+    return {
+      status: 400,
+      body: { error: "Invalid ID format: must be a 24 character HEX string." }
+    };
+  }
+
   /** The admin's view of one user's uploads: the same listing, plus whose they are. */
   private listUserUploads(id: string, query: URLSearchParams) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
     if (this.userUploadsDown) return { status: 502 };
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const user = this.users.find((item) => item.id === id);
     if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
     const listing = this.listUploads(query, user.username);
@@ -1069,6 +1080,7 @@ export class MockApi {
   private setQuota(id: string, quotaBytes: number | null | undefined) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const user = this.users.find((item) => item.id === id);
     if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
     const isQuota =
