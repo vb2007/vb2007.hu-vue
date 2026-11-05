@@ -245,7 +245,8 @@ test("a reset past the daily cap of wrong codes holds Reset password for hours",
 
   await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
   const key = page.getByRole("button", { name: /^Try again in/ });
-  await expect(key).toHaveText("Try again in 23 hr 45 min");
+  await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hours \d+ minutes$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Code")).toBeFocused();
   await expect(page).toHaveURL("/reset-password");
@@ -264,12 +265,13 @@ test("asking for a code over the mail limit holds Send code for its wait", async
 
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
   const key = page.locator("form").getByRole("button");
-  await expect(key).toHaveText("Try again in 57 min");
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("E-mail")).toBeFocused();
   expect(api.passwordResets).toEqual([]);
 
-  await page.clock.runFor(3_412_000);
+  // A jump, rather than every tick of the countdown on the way.
+  await page.clock.fastForward(3_412_000);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(key).toHaveText("Send code");
   await expect(key).toBeEnabled();

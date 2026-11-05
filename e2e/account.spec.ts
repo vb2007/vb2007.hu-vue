@@ -29,6 +29,29 @@ test("a failed GitHub login is explained once, then dropped from the URL", async
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("a login over the limiter holds the key for its wait, then lets the user try again", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  api.limitsLogins();
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("not-the-password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  const key = page.getByRole("button", { name: "Try again in 15 minutes" });
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
+
+  // A jump, rather than every tick of the countdown on the way.
+  await page.clock.fastForward(900_000);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
+});
+
 test("the account page asks visitors to log in", async ({ page }) => {
   await page.goto("/account");
 
@@ -317,6 +340,28 @@ test("a wrong code keeps the change waiting", async ({ page, api }) => {
   await page.getByLabel("Confirmation code").fill("12345");
   await page.keyboard.press("Enter");
   await expect(page.getByText("Enter the 6-digit code from the e-mail.")).toBeVisible();
+});
+
+test("a code past the daily cap of wrong codes holds Confirm code for hours", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  api.capsCodeChecks();
+  await page.goto("/account");
+
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  const key = page.getByRole("button", { name: /^Try again in \d+ hours \d+ minutes$/ });
+  await expect(key).toHaveText(/^Try again in \d+ hr \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  // Asking for a new code has limits of its own.
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeEnabled();
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
 });
 
 test("a waiting change survives a reload, and a new code is one password away", async ({
@@ -677,6 +722,10 @@ test("a password change that's rate limited says when to try again", async ({ pa
 
   await expect(details.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
   expect(api.password).toBe(MOCK_PASSWORD);
+  const key = details.getByRole("button", { name: /^Try again in \d+ minutes$/ });
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(details.getByLabel("Current password")).toBeFocused();
 });
 
 test("a GitHub account other than the linked one is explained", async ({ page, api }) => {
@@ -972,6 +1021,10 @@ test("deleting the account can be cancelled, and says when to try again", async 
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Delete account" }).click();
   await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  const key = page.getByRole("button", { name: /^Try again in \d+ minutes$/ });
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Password")).toBeFocused();
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByLabel("Password")).toHaveCount(0);

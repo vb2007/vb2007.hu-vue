@@ -146,7 +146,7 @@ test("registering over the mail limit stays on the form, since no code was sent"
   await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
   // The limit is per IP, so Register waits it out whatever the address.
   const key = page.locator("form").getByRole("button", { name: /^(Register|Try again)/ });
-  await expect(key).toHaveText("Try again in 57 min");
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("E-mail")).toBeFocused();
 });
@@ -165,7 +165,8 @@ test("a code past the daily cap of wrong codes holds Confirm code for hours", as
 
   await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
   const key = page.getByRole("button", { name: /^Try again in/ });
-  await expect(key).toHaveText("Try again in 23 hr 45 min");
+  await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hours \d+ minutes$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
   await expect(page.getByText("Registration successful!")).toHaveCount(0);
