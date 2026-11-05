@@ -233,7 +233,7 @@ describe("useRegisterCode", () => {
         {
           field: "email",
           message:
-            "An account already uses this address. Log in instead, with its password or with GitHub; the log-in page can also reset the password."
+            "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
         }
       ],
       [
@@ -282,7 +282,7 @@ describe("useRegisterCode", () => {
       expect(step.codeFieldError.value).toBe(invalidCode);
     });
 
-    it("keeps the API's missing-fields refusal on the step, not under one field", async () => {
+    it("keeps the API's missing-fields refusal on the step, not under a form field", async () => {
       const error =
         "You must provide an E-mail address, the confirmation code, a username and a password.";
       fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
@@ -338,7 +338,7 @@ describe("useRegisterCode", () => {
       const pending = step.resend();
       expect(step.isResending.value).toBe(true);
 
-      expect(await pending).toBe(true);
+      expect(await pending).toBe("sent");
       expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/register/resend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -360,7 +360,7 @@ describe("useRegisterCode", () => {
       const step = openStep();
       step.cooldown.stop();
 
-      expect(await step.resend()).toBe(false);
+      expect(await step.resend()).toBe("failed");
 
       expect(step.codeError.value).toBe(
         "A code was sent just now. You can send another once the countdown ends."
@@ -404,7 +404,7 @@ describe("useRegisterCode", () => {
       const step = openStep();
       step.cooldown.stop();
 
-      expect(await step.resend()).toBe(false);
+      expect(await step.resend()).toBe("lost");
 
       expect(step.codeError.value).toBe("The e-mail couldn't be sent: please try again later.");
       expect(step.notice.value).toBe("lost");
@@ -438,7 +438,7 @@ describe("useRegisterCode", () => {
       fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
       const step = openStep();
 
-      expect(await step.resend()).toBe(false);
+      expect(await step.resend()).toBe("failed");
       expect(step.codeError.value).toBe("Error connecting to server");
       expect(step.isResending.value).toBe(false);
     });

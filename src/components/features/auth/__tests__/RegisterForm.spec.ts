@@ -589,7 +589,7 @@ describe("RegisterForm", () => {
         409,
         "An account with this E-mail address already exists.",
         FIELDS.email,
-        "An account already uses this address. Log in instead, with its password or with GitHub; the log-in page can also reset the password.",
+        "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.",
         "Register"
       ],
       [
@@ -740,6 +740,54 @@ describe("RegisterForm", () => {
         expect(register).toHaveBeenCalledTimes(codeLeft ? 1 : 2);
       }
     );
+
+    it.each([
+      [
+        "refused",
+        () => jsonResponse(429, { error: "Too many e-mails requested: try again later." })
+      ],
+      ["failed on the server", () => jsonResponse(500, undefined, "Internal Server Error")],
+      ["unreachable", () => Promise.reject(new TypeError("Failed to fetch"))]
+    ])("keeps the code typed after a resend when the next resend is %s", async (_, answer) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+      await wrapper.find("input").setValue("654321");
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      fetchMock.mockImplementationOnce(answer as () => Promise<Response>);
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      // The notice still says "resent" from before, but this resend replaced nothing.
+      expect(wrapper.find('[role="status"]').text()).toContain("A new code is on its way");
+      expect(wrapper.find("input").element.value).toBe("654321");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    });
+
+    it("holds Confirm code while a new code is being sent", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      let answer!: (response: Response) => void;
+      fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      const wrapper = await atCodeStep();
+      await wrapper.find("input").setValue("123456");
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      // The resend may replace the code: confirming it now could only spend a try.
+      expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+      answer(jsonResponse(200, {}));
+      await flushPromises();
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+    });
 
     it("holds Resend and Change address while a code is being confirmed", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });

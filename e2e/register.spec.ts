@@ -282,7 +282,7 @@ test("an address that already has an account is only refused at the code", async
 
   const email = page.getByLabel("E-mail");
   await expect(email).toHaveAccessibleDescription(
-    "An account already uses this address. Log in instead, with its password or with GitHub; the log-in page can also reset the password."
+    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
   );
   await expect(email).toBeFocused();
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);

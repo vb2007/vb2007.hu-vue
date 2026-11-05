@@ -317,8 +317,8 @@ const handleCode = async () => {
 };
 
 const sendAgain = async () => {
-  await resend();
-  if (notice.value === "resent" || notice.value === "lost") {
+  // Decided by this resend's own outcome: the notice can still be an earlier resend's.
+  if ((await resend()) !== "failed") {
     // A new code replaced the one typed before, even when it couldn't be mailed: confirming the
     // old one would only spend a try.
     codeKeptFor.value = code.value = "";
@@ -418,10 +418,12 @@ watch(isLoggedIn, (newVal) => {
         @blur="leaveCode('code')"
       />
       <StatusMessage v-if="codeError" tone="error">{{ codeError }}</StatusMessage>
+      <!-- Waits while a resend may replace the code it would spend a try on. -->
       <BaseButton
         type="submit"
         block
         :loading="isVerifying"
+        :disabled="isResending"
         :blocked="!isCodeValid"
         :error="isButtonError"
       >

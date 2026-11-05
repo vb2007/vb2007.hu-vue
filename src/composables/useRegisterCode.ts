@@ -35,6 +35,12 @@ export type RegisterCodeResult =
   /** Nothing changed; `codeFieldError` or `codeError` says why. */
   | "failed";
 
+/**
+ * What a resend did to the code: a new one was mailed, the old one was replaced but the new one
+ * couldn't be mailed, or nothing changed (a refusal, the server or the network) and it still works.
+ */
+export type ResendOutcome = "sent" | "lost" | "failed";
+
 /** A refusal about one of the register form's fields, to show under it. */
 export interface FormProblem {
   field: RegisterField;
@@ -181,8 +187,8 @@ export const useRegisterCode = () => {
     return outcome;
   };
 
-  /** Mails a new code, which replaces the old one. Returns whether it worked. */
-  const resend = async () => {
+  /** Mails a new code, which replaces the old one. Returns what became of the old code. */
+  const resend = async (): Promise<ResendOutcome> => {
     isResending.value = true;
     showError("");
 
@@ -191,8 +197,10 @@ export const useRegisterCode = () => {
       failure: Messages.EmailCode.resendFailed
     });
 
+    let outcome: ResendOutcome = "failed";
     if (result.ok) {
       notice.value = "resent";
+      outcome = "sent";
       holdResend(RESEND_COOLDOWN_SECONDS);
     } else if (result.status === HttpStatus.TooManyRequests) {
       holdResend(retryAfterFrom(result.body));
@@ -206,11 +214,12 @@ export const useRegisterCode = () => {
       if (result.status === HttpStatus.ServiceUnavailable) {
         // The API replaced the code before the e-mail failed, so the old one is gone too.
         notice.value = "lost";
+        outcome = "lost";
       }
     }
     isResending.value = false;
 
-    return result.ok;
+    return outcome;
   };
 
   return {
