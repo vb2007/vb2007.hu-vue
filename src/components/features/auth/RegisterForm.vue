@@ -128,7 +128,12 @@ const NOTICES: Record<CodeNotice, [string, string, string]> = {
     ".",
     `Enter it to finish registering; it works for ${Limits.Code.registerValidMinutes} minutes.`
   ],
-  resent: ["A new code is on its way to", ".", "The previous one no longer works."],
+  // The API answers a resend the same whether or not a registration is waiting for the address.
+  resent: [
+    "If a registration is waiting for",
+    ",",
+    "a new code is on its way, and the one before no longer works."
+  ],
   earlier: [
     "Enter the code that was mailed to",
     ".",
