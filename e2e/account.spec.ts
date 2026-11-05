@@ -442,6 +442,37 @@ test("a code that expired with the page open takes the waiting change away", asy
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
 });
 
+test("a session that ended elsewhere logs the account page out, without blaming the change", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+
+  // A login on another device (or a password reset) ends this one: the API keeps one session.
+  api.loggedOut();
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  const ended = page.getByRole("status");
+  await expect(ended).toHaveText(
+    "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account."
+  );
+  await expect(ended).toBeFocused();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText(/wasn't confirmed/)).toHaveCount(0);
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+  if (isMobile) await page.keyboard.press("Escape");
+
+  await page.getByRole("main").getByRole("link", { name: "Log in" }).click();
+  await expect(page).toHaveURL("/login");
+});
+
 test("the e-mail form checks the address before sending it", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   await page.goto("/account");

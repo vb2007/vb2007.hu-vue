@@ -4,7 +4,13 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { COOLDOWN_STORAGE_KEY, useChangeEmail } from "@/composables/useChangeEmail";
 import { Messages } from "@/constants/messages";
-import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import {
+  emailVerified,
+  isLoggedIn,
+  pendingEmail,
+  sessionEnded,
+  userEmail
+} from "@/scripts/authentication/authState";
 
 /** `GET /user` while a change waits for its code, shaped like the API's answer. */
 const waitingUser = {
@@ -271,6 +277,7 @@ describe("useChangeEmail", () => {
 
   describe("confirm", () => {
     beforeEach(() => {
+      isLoggedIn.value = true;
       pendingEmail.value = "new@example.com";
     });
 
@@ -419,7 +426,32 @@ describe("useChangeEmail", () => {
       expect(userEmail.value).toBe("old@example.com");
       expect(email.cooldown.active.value).toBe(false);
       expect(savedCooldown()).toBeNull();
+      // The 403 is an answer the page shows, not a fault to log; the 409 still is one.
+      expect(console.error).toHaveBeenCalledTimes(status === 403 ? 0 : 1);
     });
+
+    it.each([
+      [403, "You must be logged in to perform this action."],
+      [400, wrongCode]
+    ])(
+      "says nothing of the change after a %i when the session has ended",
+      async (status, error) => {
+        const notLoggedIn = { error: "You must be logged in to perform this action." };
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(status, { error }))
+          .mockResolvedValueOnce(jsonResponse(403, notLoggedIn));
+        const email = useWaitingEmail();
+
+        expect(await email.confirm("123456")).toBe(false);
+
+        // The refresh logged the page out; the account page says why, not that the change failed.
+        expect(isLoggedIn.value).toBe(false);
+        expect(sessionEnded.value).toBe(true);
+        expect(email.confirmError.value).toBe("");
+        expect(email.codeError.value).toBe("");
+        expect(email.isConfirming.value).toBe(false);
+      }
+    );
 
     it("drops the waiting change itself when that refresh fails", async () => {
       fetchMock

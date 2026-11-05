@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 // user.ts caches the session lookup at module level, so each test imports fresh copies
 // of it and of the auth state it writes to.
@@ -9,6 +9,10 @@ const load = async () => {
   const authState = await import("@/scripts/authentication/authState");
   return { ...user, ...authState };
 };
+
+/** What the API's `isAuthenticated` answers without a session, or with one it ended. */
+const notLoggedIn = () =>
+  jsonResponse(403, { error: "You must be logged in to perform this action." });
 
 let fetchMock: ReturnType<typeof mockFetch>;
 
@@ -120,7 +124,7 @@ describe("restoreSession", () => {
   });
 
   it("only asks the API once, however often it is called", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401));
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
     const { restoreSession } = await load();
 
     await Promise.all([restoreSession(), restoreSession()]);
@@ -130,13 +134,15 @@ describe("restoreSession", () => {
   });
 
   it("stays logged out when there is no session", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401));
-    const { restoreSession, isLoggedIn, isSessionChecked } = await load();
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { restoreSession, isLoggedIn, isSessionChecked, sessionEnded } = await load();
 
     await restoreSession();
 
     expect(isLoggedIn.value).toBe(false);
     expect(isSessionChecked.value).toBe(true);
+    // A visitor never had a session here, so none ended.
+    expect(sessionEnded.value).toBe(false);
     expect(console.error).not.toHaveBeenCalled();
   });
 
@@ -148,6 +154,136 @@ describe("restoreSession", () => {
 
     expect(isLoggedIn.value).toBe(false);
     expect(isSessionChecked.value).toBe(true);
+  });
+});
+
+describe("fetchUserDetails", () => {
+  it("forgets a session the API ended, and says it ended", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { fetchUserDetails, isLoggedIn, pendingEmail, userEmail, username, sessionEnded } =
+      await load();
+    isLoggedIn.value = true;
+    userEmail.value = "me@example.com";
+    username.value = "me";
+    pendingEmail.value = "new@example.com";
+
+    expect(await fetchUserDetails()).toBe(false);
+
+    expect(isLoggedIn.value).toBe(false);
+    expect(userEmail.value).toBe("");
+    expect(username.value).toBe("");
+    expect(pendingEmail.value).toBe("");
+    expect(sessionEnded.value).toBe(true);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a 500", () => fetchMock.mockResolvedValueOnce(jsonResponse(500))],
+    ["no connection", () => fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))],
+    // E.g. a proxy's block page in front of the API, which isn't the API's answer.
+    ["a 403 without the API's error", () => fetchMock.mockResolvedValueOnce(jsonResponse(403))]
+  ])("keeps the session after %s, which says nothing about it", async (_, answer) => {
+    answer();
+    const { fetchUserDetails, isLoggedIn, userEmail, sessionEnded } = await load();
+    isLoggedIn.value = true;
+    userEmail.value = "me@example.com";
+
+    expect(await fetchUserDetails()).toBe(false);
+
+    expect(isLoggedIn.value).toBe(true);
+    expect(userEmail.value).toBe("me@example.com");
+    expect(sessionEnded.value).toBe(false);
+  });
+
+  it("drops the ended session's notice once logged in again", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { fetchUserDetails, sessionEnded } = await load();
+    sessionEnded.value = true;
+
+    await fetchUserDetails();
+
+    expect(sessionEnded.value).toBe(false);
+  });
+
+  it("ignores the page load's 403 when it answers after a login", async () => {
+    const pageLoad = deferResponse(fetchMock);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, {}))
+      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { restoreSession, login, loginStatus, isLoggedIn, userEmail, sessionEnded } =
+      await load();
+
+    const restoring = restoreSession();
+    await login("me@example.com", "secret");
+    expect(isLoggedIn.value).toBe(true);
+
+    // The lookup from before the login answers last, for the cookie-less request it was.
+    pageLoad.respond(notLoggedIn());
+    await restoring;
+
+    expect(loginStatus.value).toBe("success");
+    expect(isLoggedIn.value).toBe(true);
+    expect(userEmail.value).toBe("me@example.com");
+    expect(sessionEnded.value).toBe(false);
+  });
+
+  it("ignores an older lookup's user when it answers after a newer 403", async () => {
+    const older = deferResponse(fetchMock);
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { fetchUserDetails, isLoggedIn, userEmail, sessionEnded } = await load();
+    isLoggedIn.value = true;
+
+    const first = fetchUserDetails();
+    expect(await fetchUserDetails()).toBe(false);
+    older.respond(jsonResponse(200, { email: "me@example.com" }));
+
+    // It answers for itself, but the newer lookup's logged-out state stays.
+    expect(await first).toBe(true);
+    expect(isLoggedIn.value).toBe(false);
+    expect(userEmail.value).toBe("");
+    expect(sessionEnded.value).toBe(true);
+  });
+
+  it("still applies an older lookup's user when the newer one failed", async () => {
+    const older = deferResponse(fetchMock);
+    fetchMock.mockResolvedValueOnce(jsonResponse(500));
+    const { fetchUserDetails, isLoggedIn, userEmail } = await load();
+
+    const first = fetchUserDetails();
+    expect(await fetchUserDetails()).toBe(false);
+    older.respond(jsonResponse(200, { email: "me@example.com" }));
+
+    expect(await first).toBe(true);
+    expect(isLoggedIn.value).toBe(true);
+    expect(userEmail.value).toBe("me@example.com");
+  });
+
+  it("still applies an older lookup's 403 when the newer one got no answer", async () => {
+    const older = deferResponse(fetchMock);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const { fetchUserDetails, isLoggedIn, sessionEnded } = await load();
+    isLoggedIn.value = true;
+
+    const first = fetchUserDetails();
+    expect(await fetchUserDetails()).toBe(false);
+    older.respond(notLoggedIn());
+
+    expect(await first).toBe(false);
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(true);
+  });
+
+  it("ignores a lookup sent before the page forgot the user", async () => {
+    const lookup = deferResponse(fetchMock);
+    const { fetchUserDetails, clearSession, isLoggedIn, userEmail } = await load();
+
+    const pending = fetchUserDetails();
+    clearSession();
+    lookup.respond(jsonResponse(200, { email: "me@example.com" }));
+
+    expect(await pending).toBe(true);
+    expect(isLoggedIn.value).toBe(false);
+    expect(userEmail.value).toBe("");
   });
 });
 
@@ -171,7 +307,7 @@ describe("login", () => {
   });
 
   it("explains when the browser dropped the session cookie", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, {})).mockResolvedValueOnce(jsonResponse(401));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {})).mockResolvedValueOnce(notLoggedIn());
     const { login, loginStatus, isLoggedIn } = await load();
 
     await login("me@example.com", "secret");
@@ -225,10 +361,12 @@ describe("clearSession", () => {
       hasPassword,
       emailVerified,
       pendingEmail,
+      sessionEnded,
       userEmail,
       username
     } = await load();
     isLoggedIn.value = true;
+    sessionEnded.value = true;
     hasPassword.value = true;
     emailVerified.value = true;
     pendingEmail.value = "new@example.com";
@@ -244,6 +382,8 @@ describe("clearSession", () => {
     expect(pendingEmail.value).toBe("");
     expect(userEmail.value).toBe("");
     expect(username.value).toBe("");
+    // Logging out on purpose isn't a session that ended elsewhere.
+    expect(sessionEnded.value).toBe(false);
   });
 });
 
@@ -292,5 +432,21 @@ describe("logout", () => {
     await logout();
 
     expect(isLoggedIn.value).toBe(false);
+  });
+
+  it("stays logged out when a lookup sent before it answers afterwards", async () => {
+    // E.g. the account's refresh on coming back from GitHub, then Log out straight away.
+    const lookup = deferResponse(fetchMock);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "Logged out." }));
+    const { fetchUserDetails, logout, isLoggedIn, sessionEnded } = await load();
+    isLoggedIn.value = true;
+
+    const pending = fetchUserDetails();
+    await logout();
+    lookup.respond(jsonResponse(200, { email: "me@example.com" }));
+    await pending;
+
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(false);
   });
 });

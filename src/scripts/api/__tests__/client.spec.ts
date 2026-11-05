@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpMethod } from "@/constants/http";
+import { HttpMethod, HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import {
   apiErrorOf,
@@ -171,15 +171,15 @@ describe("apiRequest", () => {
   });
 
   it("doesn't log a status the caller expects", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: "Not logged in." }));
+    const error = "You must be logged in to perform this action.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error }));
 
-    const result = await apiRequest(Endpoints.Pastebin.get, {
-      params: { id: "a" },
+    const result = await apiRequest(Endpoints.User.get, {
       failure,
-      quietStatuses: [401]
+      quietStatuses: [HttpStatus.Forbidden]
     });
 
-    expect(result).toMatchObject({ ok: false, kind: "http", status: 401, error: "Not logged in." });
+    expect(result).toMatchObject({ ok: false, kind: "http", status: 403, error });
     expect(console.error).not.toHaveBeenCalled();
   });
 
