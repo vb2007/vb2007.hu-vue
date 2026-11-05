@@ -485,6 +485,18 @@ describe("PasswordResetForm", () => {
       expect((wrapper.find("input").element as HTMLInputElement).value).toBe("");
     });
 
+    it("checks the password once it's left", async () => {
+      const { wrapper } = await mountFromLink();
+      const password = wrapper.findAll("input")[1];
+
+      await password.setValue("short");
+      await password.trigger("blur");
+
+      expect(wrapper.find(".field__error").text()).toBe(
+        "The password's too short: it must be between 8 and 128 characters."
+      );
+    });
+
     it("checks the password's length before sending it", async () => {
       const { wrapper } = await mountFromLink();
       await wrapper.findAll("input")[1].setValue("short");
