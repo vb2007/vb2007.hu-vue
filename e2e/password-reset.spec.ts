@@ -1,4 +1,4 @@
-import { expect, MOCK_PASSWORD, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 const SENT = "If an account uses this address, a password reset code was sent to it.";
 
@@ -296,6 +296,15 @@ test.describe("the mailed link", () => {
     await expect(page).toHaveURL("/login");
     await expect(page.getByRole("main").getByRole("status")).toHaveText(RESET);
     expect(api.password).toBe("a new password");
+
+    // The old password no longer gets in; the new one does.
+    await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(page.getByRole("main")).toContainText("Incorrect e-mail address or password.");
+    await page.getByLabel("Password", { exact: true }).fill("a new password");
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(page.getByRole("main")).toContainText("Login successful!");
 
     // The link is used up.
     await page.goto(`/reset-password#token=${token}`);
