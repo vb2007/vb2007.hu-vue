@@ -568,6 +568,24 @@ describe("ChangeEmail", () => {
       expect(document.activeElement).toBe(key().element);
     });
 
+    it("shows the change as confirmed when another tab already confirmed it", async () => {
+      await remount();
+      const error = "The code is wrong, expired or already used: check it or request a new one.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, refreshedUser));
+
+      await enterCode("123456");
+
+      expect(userEmail.value).toBe("new@example.com");
+      expect(emailVerified.value).toBe(true);
+      expect(pendingLine().exists()).toBe(false);
+      expect(codeInput().exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(wrapper.find('[role="status"]').text()).toBe("E-mail address updated.");
+      expect(document.activeElement).toBe(key().element);
+    });
+
     it("forgets a code's error once the form opens", async () => {
       await remount();
       await enterCode("1");

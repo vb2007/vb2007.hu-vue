@@ -386,6 +386,37 @@ describe("useChangeEmail", () => {
       );
     });
 
+    it.each([
+      [400, wrongCode],
+      [409, "An account with this E-mail address already exists."]
+    ])(
+      "counts a %i as confirmed when the refresh finds the new address, e.g. from another tab",
+      async (status, error) => {
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error })).mockResolvedValueOnce(
+          jsonResponse(200, {
+            ...waitingUser,
+            email: "new@example.com",
+            emailVerified: true,
+            pendingEmail: null
+          })
+        );
+        const email = useWaitingEmail();
+
+        expect(await email.confirm("123456")).toBe(true);
+
+        // The same as this tab's own 200: the code step goes, and the address is the new one.
+        expect(userEmail.value).toBe("new@example.com");
+        expect(pendingEmail.value).toBe("");
+        expect(emailVerified.value).toBe(true);
+        expect(email.changeMessage.value).toBe("E-mail address updated.");
+        expect(email.confirmError.value).toBe("");
+        expect(email.codeError.value).toBe("");
+        expect(email.isConfirming.value).toBe(false);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(savedCooldown()).toBeNull();
+      }
+    );
+
     it("shows a rate limiter's 429 apart from the code, and keeps the change waiting", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many failed attempts: try again later." })
