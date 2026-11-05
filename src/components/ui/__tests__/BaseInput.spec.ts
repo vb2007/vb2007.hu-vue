@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import BaseInput from "@/components/ui/BaseInput.vue";
+import { Limits } from "@/constants/limits";
 
 describe("BaseInput", () => {
   it("renders a plain labelled text input by default", () => {
@@ -28,7 +29,7 @@ describe("BaseInput", () => {
         autocapitalize: "off",
         required: true,
         mono: true,
-        maxlength: 254
+        maxlength: Limits.Email.maxLength
       }
     });
     const input = wrapper.find("input");
@@ -38,7 +39,7 @@ describe("BaseInput", () => {
       placeholder: "me@example.com",
       autocomplete: "email",
       autocapitalize: "off",
-      maxlength: "254"
+      maxlength: String(Limits.Email.maxLength)
     });
     expect(input.attributes("required")).toBeDefined();
     expect(input.classes()).toContain("field__input--mono");

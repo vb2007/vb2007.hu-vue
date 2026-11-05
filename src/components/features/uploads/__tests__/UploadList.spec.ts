@@ -153,6 +153,10 @@ describe("UploadList", () => {
     fetchMock.mockResolvedValue(listing([anUpload("a")]));
     const wrapper = mount(UploadList);
     await flushPromises();
+    // The API refuses a longer q with a 400.
+    expect(wrapper.find("input[type=search]").attributes("maxlength")).toBe(
+      String(Limits.Search.maxLength)
+    );
 
     await wrapper.find("select").setValue("fileSize:desc");
     await flushPromises();
@@ -165,10 +169,6 @@ describe("UploadList", () => {
     expect(wrapper.find(".count").text()).toBe("1 upload found");
 
     fetchMock.mockResolvedValue(listing([]));
-    // The API refuses a longer q with a 400.
-    expect(wrapper.find("input[type=search]").attributes("maxlength")).toBe(
-      String(Limits.Search.maxLength)
-    );
     vi.useFakeTimers();
     await wrapper.find("input[type=search]").setValue("nothing");
     await nextTick();
