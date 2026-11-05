@@ -222,6 +222,27 @@ test.describe("the mailed link", () => {
     await expect(page.getByRole("button", { name: "Send code" })).toBeVisible();
   });
 
+  test("reads a link opened in a tab already on the page, where only the fragment changes", async ({
+    page,
+    api
+  }) => {
+    await page.goto("/reset-password");
+    await page.getByLabel("E-mail").fill("me@example.com");
+
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+
+    await expect(page).toHaveURL("/reset-password");
+    await expect(page.getByLabel("New password")).toBeFocused();
+    await expect(page.getByLabel("E-mail")).toHaveCount(0);
+    expect(await page.evaluate("JSON.stringify(history.state)")).not.toContain(token);
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await expect(page).toHaveURL("/login");
+    expect(api.password).toBe("a new password");
+  });
+
   test("sets the password once, then the user logs in with it", async ({ page, api }) => {
     const token = api.mailsResetLink();
     await page.goto(`/reset-password#token=${token}`);
@@ -252,8 +273,15 @@ test.describe("the mailed link", () => {
     await page.getByRole("button", { name: "Reset password" }).click();
     await expect(page.getByRole("alert")).toHaveText(BAD_LINK);
 
-    await page.getByRole("button", { name: "Request a new one" }).click();
+    // Trying it again can't help: a new link is the one way on.
+    await expect(page.getByLabel("New password")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reset password" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Request a new link" })).toBeFocused();
+    await page.getByRole("button", { name: "Request a new link" }).click();
     await expect(page.getByLabel("E-mail")).toBeFocused();
+    await expect(page.getByRole("main")).toContainText(
+      "Enter your account's e-mail address to get a code and a link for a new password."
+    );
     await expect(page.getByRole("alert")).toHaveCount(0);
     await page.getByLabel("E-mail").fill("me@example.com");
     await page.getByRole("button", { name: "Send code" }).click();
@@ -269,9 +297,9 @@ test.describe("the mailed link", () => {
 
     await expect(page).toHaveURL("/reset-password");
     await expect(page.getByRole("alert")).toHaveText(
-      "This reset link is incomplete, maybe cut off when it was copied: request a new one."
+      "This reset link isn't complete or was changed: request a new one."
     );
-    await expect(page.getByLabel("E-mail")).toBeVisible();
+    await expect(page.getByLabel("E-mail")).toBeFocused();
     await expect(page.getByLabel("New password")).toHaveCount(0);
   });
 
@@ -301,7 +329,7 @@ test.describe("the mailed link", () => {
     api
   }) => {
     api.loggedInAs("anna@example.com", "anna");
-    const token = api.mailsResetLink("0123456789abcdef01234567");
+    const token = api.mailsResetLink("0123456789abcdef01234567", "me@example.com");
     await page.goto(`/reset-password#token=${token}`);
     await page.getByLabel("New password").fill("a new password");
     await page.getByRole("button", { name: "Reset password" }).click();

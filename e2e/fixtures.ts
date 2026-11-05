@@ -22,7 +22,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
- * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account (`MOCK_USER_ID`), which `POST /auth/password-reset/confirm-link` takes once; resetting or changing the password or the address voids every link.
+ * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account (`MOCK_USER_ID`) or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
@@ -168,8 +168,9 @@ export class MockApi {
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
-  /** The reset links' tokens still live (see `mailsResetLink`). */
-  private readonly resetLinks = new Set<string>();
+  /** The reset links still live (see `mailsResetLink`): token -> the account's id and address. */
+  private readonly resetLinks = new Map<string, { userId: string; email: string }>();
+  private resetLinkCount = 0;
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -280,13 +281,20 @@ export class MockApi {
   }
 
   /**
-   * "Mails" a reset link for the account `userId` and returns its token, which
+   * "Mails" a reset link for the account `userId` at `email` and returns its token, which
    * `POST /auth/password-reset/confirm-link` takes once, like the API (vb2007/vb2007.hu-api#256).
    */
-  mailsResetLink(userId = MOCK_USER_ID) {
-    const token = `${userId}.${`${this.resetLinks.size + 1}`.padStart(43, "e2e_-")}`;
-    this.resetLinks.add(token);
+  mailsResetLink(userId = MOCK_USER_ID, email = this.user?.email ?? "e2e@example.com") {
+    const token = `${userId}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
+    this.resetLinks.set(token, { userId, email });
     return token;
+  }
+
+  /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
+  private voidResetLinks(matches: (link: { userId: string; email: string }) => boolean) {
+    for (const [token, link] of this.resetLinks) {
+      if (matches(link)) this.resetLinks.delete(token);
+    }
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -763,9 +771,9 @@ export class MockApi {
         body: { error: "An account with this E-mail address already exists." }
       };
     }
+    this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.user.email = email;
     this.user.emailVerified = true;
-    this.resetLinks.clear();
     return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
@@ -799,7 +807,7 @@ export class MockApi {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
     this.password = newPassword;
-    this.resetLinks.clear();
+    this.voidResetLinks(({ userId }) => userId === this.user!._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
@@ -831,6 +839,7 @@ export class MockApi {
     this.user.hasPassword = true;
     this.password = password;
     this.githubConfirmed = false;
+    this.voidResetLinks(({ userId }) => userId === this.user!._id);
     return { status: 200, body: { message: "Password set successfully." }, newSession: true };
   }
 
@@ -901,8 +910,8 @@ export class MockApi {
       };
     }
     this.password = body.newPassword!;
-    // A reset by code voids the mailed links too.
-    this.resetLinks.clear();
+    // A reset by code voids the account's mailed links too.
+    this.voidResetLinks(({ email }) => normalize(email) === normalize(body.email!));
     if (this.user && normalize(this.user.email) === normalize(body.email!)) {
       this.user = null;
     }
@@ -943,9 +952,11 @@ export class MockApi {
         body: { error: "The reset link is wrong, expired or already used: request a new one." }
       };
     }
-    this.resetLinks.clear();
+    const { userId } = this.resetLinks.get(token)!;
+    // Using one link voids the account's others, like any new password.
+    this.voidResetLinks((link) => link.userId === userId);
     this.password = newPassword;
-    if (this.user?._id === token.slice(0, token.indexOf("."))) {
+    if (this.user?._id === userId) {
       this.user = null;
     }
     return {
