@@ -2,6 +2,7 @@ import { LoginStatus } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
+import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
   emailVerified,
@@ -64,6 +65,12 @@ export const login = async (email: string, password: string) => {
     failure: Messages.Auth.loginFailed
   });
 
+  if (!result.ok && result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
+    // Locked out for up to 15 minutes: whole minutes say enough, a ticking count would only fidget.
+    const seconds = retryAfterFrom(result.body, 0);
+    loginStatus.value = Messages.Auth.loginLockedOut(Math.ceil(seconds / 60));
+    return;
+  }
   if (!result.ok) {
     loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
     return;
