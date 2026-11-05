@@ -73,19 +73,22 @@ test("a new code can be sent once a minute", async ({ page }) => {
   await expect(resend).toBeDisabled();
 });
 
-test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
-  await page.route("**/auth/register/resend", (route) =>
+/** Answers `path` with the API's 429 carrying `json`: the code cooldown's or a rate limiter's. */
+const refuse = (page: Page, path: string, json: { error: string; retryAfter: number }) =>
+  page.route(`**${path}`, (route) =>
     route.request().method() === "OPTIONS"
       ? route.fallback()
-      : route.fulfill({
-          status: 429,
-          headers: { "Access-Control-Allow-Origin": "*" },
-          json: {
-            error: "A code was sent just now: wait 42 seconds before requesting another one.",
-            retryAfter: 42
-          }
-        })
+      : route.fulfill({ status: 429, headers: { "Access-Control-Allow-Origin": "*" }, json })
   );
+
+/** A rate limiter's 429, which says how long to wait too (vb2007/vb2007.hu-api#242). */
+const MAILS_LIMITED = { error: "Too many e-mails requested: try again later.", retryAfter: 3600 };
+
+test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
+  await refuse(page, "/auth/register/resend", {
+    error: "A code was sent just now: wait 42 seconds before requesting another one.",
+    retryAfter: 42
+  });
   await page.clock.install();
   await fillForm(page);
   // The minute only starts once the code step is up.
@@ -105,20 +108,8 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
-/** Answers `path` with a rate limiter's 429, which has a retryAfter too (vb2007/vb2007.hu-api#242). */
-const limitMails = (page: Page, path: string) =>
-  page.route(`**${path}`, (route) =>
-    route.request().method() === "OPTIONS"
-      ? route.fallback()
-      : route.fulfill({
-          status: 429,
-          headers: { "Access-Control-Allow-Origin": "*" },
-          json: { error: "Too many e-mails requested: try again later.", retryAfter: 3600 }
-        })
-  );
-
 test("a rate limiter's 429 keeps the form, as no code was sent", async ({ page }) => {
-  await limitMails(page, "/auth/register");
+  await refuse(page, "/auth/register", MAILS_LIMITED);
   await fillForm(page);
 
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
@@ -131,7 +122,7 @@ test("a rate limiter's 429 on a resend doesn't hold the key back", async ({ page
   await fillForm(page);
   await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
   await page.clock.runFor(60_000);
-  await limitMails(page, "/auth/register/resend");
+  await refuse(page, "/auth/register/resend", MAILS_LIMITED);
 
   await page.getByRole("button", { name: "Resend code" }).click();
 
