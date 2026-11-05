@@ -57,14 +57,13 @@ describe("requestPasswordReset", () => {
     });
   });
 
-  it("returns the mail limit's error with the wait", async () => {
+  it("returns the mail limit's error alone: its wait isn't a code's", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(429, { error: "Too many e-mails requested: try again later." })
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 1800 })
     );
 
     await expect(requestPasswordReset("me@example.com")).resolves.toEqual({
-      error: "Too many e-mails requested: try again later.",
-      retryAfter: 60
+      error: "Too many e-mails requested: try again later."
     });
   });
 

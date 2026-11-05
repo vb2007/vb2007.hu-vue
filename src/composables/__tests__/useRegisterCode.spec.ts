@@ -102,7 +102,15 @@ describe("useRegisterCode", () => {
 
   it.each([
     ["a resend", 200, {}, 60],
-    ["a refused resend", 429, { error: "Wait.", retryAfter: 42 }, 42]
+    [
+      "a refused resend",
+      429,
+      {
+        error: "A code was sent just now: wait 42 seconds before requesting another one.",
+        retryAfter: 42
+      },
+      42
+    ]
   ])("keeps the countdown after %s", async (_, status, body, seconds) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
     const step = openStep();
@@ -189,7 +197,7 @@ describe("useRegisterCode", () => {
     ] as const)(
       "shows the API's message for a %i response as %s",
       async (status, error, shownAs) => {
-        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error, retryAfter: 900 }));
         const step = openStep();
         step.codeError.value = "old";
 
@@ -282,17 +290,27 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, which has no retryAfter", async () => {
+    it("doesn't hold resending back for a rate limiter's 429, though it has a retryAfter", async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many e-mails requested: try again later." })
+        jsonResponse(429, {
+          error: "Too many e-mails requested: try again later.",
+          retryAfter: 3600
+        })
       );
       const step = openStep();
       step.cooldown.stop();
+      sessionStorage.removeItem(COOLDOWN_STORAGE_KEY);
 
-      await step.resend();
+      expect(await step.resend()).toBe(false);
 
+      // No code went out: the code from before still works, and the message stays.
       expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
-      expect(step.cooldown.remaining.value).toBe(60);
+      expect(step.notice.value).toBe("sent");
+      expect(step.resendWaiting.value).toBe(false);
+      expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBeNull();
+      vi.advanceTimersByTime(3_600_000);
+      await nextTick();
+      expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
     });
 
     it("keeps other errors when the countdown ends", async () => {

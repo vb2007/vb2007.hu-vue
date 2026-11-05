@@ -165,7 +165,7 @@ describe("GithubLink", () => {
     it.each([
       [400, { error: "You must provide your password to link or unlink GitHub." }],
       [403, { error: "The provided password is incorrect." }],
-      [429, { error: "Too many failed attempts: try again later." }]
+      [429, { error: "Too many failed attempts: try again later.", retryAfter: 900 }]
     ])("shows the API's %i with the field and keeps the password", async (status, body) => {
       const { wrapper } = await mountKey();
       await open(wrapper);

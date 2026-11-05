@@ -3,7 +3,9 @@ import { mockFetch, jsonResponse } from "@/__tests__/helpers/fetch";
 
 describe("main", () => {
   it("mounts the app with the router into #app", async () => {
-    mockFetch().mockResolvedValue(jsonResponse(401));
+    mockFetch().mockResolvedValue(
+      jsonResponse(403, { error: "You must be logged in to perform this action." })
+    );
     document.body.innerHTML = '<div id="app"></div>';
 
     await import("@/main");
