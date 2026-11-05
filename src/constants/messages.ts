@@ -44,6 +44,15 @@ export class Messages {
       "An unknown error occurred. Please try again later.";
     static readonly sessionNotKept: string =
       "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
+    /**
+     * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204), with the wait in whole
+     * minutes; 0 or less means the API sent no usable `retryAfter`. GitHub login isn't locked out,
+     * but only gets into an account it's linked to.
+     */
+    static loginLockedOut(minutes: number): string {
+      const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
+      return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
+    }
     /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
     static readonly sessionEnded: string =
       "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";

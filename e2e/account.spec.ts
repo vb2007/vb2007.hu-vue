@@ -29,6 +29,26 @@ test("a failed GitHub login is explained once, then dropped from the URL", async
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("a locked-out login says how long to wait and points to GitHub", async ({ page, api }) => {
+  api.locksLogins(14 * 60 + 5);
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password").fill("a-wrong-password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts. Try again in 15 minutes, or log in with GitHub below if it's linked to your account."
+  );
+  await expect(page.getByRole("link", { name: "Log in with GitHub" })).toBeVisible();
+
+  // Without a wait from the API, it still explains the lockout.
+  api.locksLogins(null);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."
+  );
+});
+
 test("the account page asks visitors to log in", async ({ page }) => {
   await page.goto("/account");
 
