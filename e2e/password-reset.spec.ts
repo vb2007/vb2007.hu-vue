@@ -143,6 +143,8 @@ test("a resend over the mail limit is still explained after a reload, not taken 
   const resend = page.getByRole("button", { name: /^Send again/ });
   await expect(resend).toHaveText("Send again in 57 min");
   await expect(resend).toHaveAccessibleName("Send again in 57 minutes");
+  await expect(resend).toHaveAccessibleDescription(tooMany);
+  expect(api.limitedPasswordResets).toEqual(["me@example.com"]);
 
   await page.reload();
   await page.getByLabel("E-mail").fill("me@example.com");
@@ -153,7 +155,9 @@ test("a resend over the mail limit is still explained after a reload, not taken 
   await expect(page.getByRole("alert")).toHaveText(tooMany);
   await expect(page.getByText("in the last minute")).toHaveCount(0);
   await expect(resend).toBeDisabled();
+  // Neither sent nor refused: the mock saw no request after the reload.
   expect(api.passwordResets).toEqual(["me@example.com"]);
+  expect(api.limitedPasswordResets).toEqual(["me@example.com"]);
 });
 
 test("a code only works for the address that asked for it", async ({ page, api }) => {

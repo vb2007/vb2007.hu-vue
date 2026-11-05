@@ -15,7 +15,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
  * within a minute of the last one gets the API's cooldown 429, and one sent over 15 minutes ago has expired.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#254): the cooldown's names its seconds,
- * and the rate limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code) wait a fixed 15 or 57 minutes.
+ * and the rate limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
@@ -180,6 +180,8 @@ export class MockApi {
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
+  /** The addresses a password reset was asked for while `limitsMailSends()` refused it. */
+  readonly limitedPasswordResets: string[] = [];
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -597,7 +599,10 @@ export class MockApi {
           }
         };
       case "POST /auth/password-reset":
-        if (this.mailSendsLimited) return tooManyEmails();
+        if (this.mailSendsLimited) {
+          this.limitedPasswordResets.push(body?.email ?? "");
+          return tooManyEmails();
+        }
         if (!body?.email) {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
