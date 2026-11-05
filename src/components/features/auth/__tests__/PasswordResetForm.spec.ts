@@ -639,7 +639,11 @@ describe("PasswordResetForm", () => {
     );
     expect(submitButton(wrapper).text()).toBe("Resetting");
 
+    // /login's view loads lazily, which can take longer than a poll's timeout on a busy machine,
+    // so the navigation itself is awaited.
+    const navigated = new Promise((done) => router.afterEach(done));
     settle({ message: "Password reset successfully: log in with the new password." });
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/login"));
+    await navigated;
+    expect(router.currentRoute.value.path).toBe("/login");
   });
 });
