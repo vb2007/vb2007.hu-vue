@@ -16,7 +16,11 @@ export interface PasswordResetAnswer {
   message?: string;
   /** What went wrong otherwise. */
   error?: string;
-  /** Seconds before the mail limit takes another request, after its 429. */
+  /**
+   * Seconds to wait after a 429: before the mail limit takes another request, or before the code
+   * checks take another code (too many wrong ones, or the daily cap, where even the right one is
+   * refused).
+   */
   retryAfter?: number;
 }
 
@@ -57,7 +61,9 @@ export const confirmPasswordReset = async (
   });
 
   if (!result.ok) {
-    return { error: result.error };
+    return result.status === HttpStatus.TooManyRequests
+      ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
+      : { error: result.error };
   }
 
   const message = result.data.message ?? "";

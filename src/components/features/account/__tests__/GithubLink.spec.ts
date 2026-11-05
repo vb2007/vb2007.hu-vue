@@ -164,8 +164,7 @@ describe("GithubLink", () => {
 
     it.each([
       [400, { error: "You must provide your password to link or unlink GitHub." }],
-      [403, { error: "The provided password is incorrect." }],
-      [429, { error: "Too many failed attempts: try again later.", retryAfter: 900 }]
+      [403, { error: "The provided password is incorrect." }]
     ])("shows the API's %i with the field and keeps the password", async (status, body) => {
       const { wrapper } = await mountKey();
       await open(wrapper);
@@ -188,6 +187,49 @@ describe("GithubLink", () => {
       wrapper.unmount();
     });
 
+    it("holds Continue to GitHub for the password checks' wait, keeping the password", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      const { wrapper } = await mountKey();
+      await open(wrapper);
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      (confirmKey(wrapper).element as HTMLElement).focus();
+
+      await confirmWith(wrapper, "wrong");
+      await flushPromises();
+
+      const alert = wrapper.find('[role="alert"]');
+      expect(alert.text()).toBe(`${error} Try again in 15 minutes.`);
+      expect(passwordInput(wrapper).attributes("aria-describedby")).toContain(
+        alert.attributes("id")
+      );
+      expect(passwordInput(wrapper).element.value).toBe("wrong");
+      expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+      expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
+      expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
+      expect(confirmKey(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(assign).not.toHaveBeenCalled();
+      // The focused key disabled, so the field takes the focus.
+      expect(document.activeElement).toBe(passwordInput(wrapper).element);
+
+      await wrapper.find("form").trigger("submit");
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      // Cancel clears the refusal; opened again, the held key still says why.
+      await cancelKey(wrapper).trigger("click");
+      await flushPromises();
+      await open(wrapper);
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
+      expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(confirmKey(wrapper).text()).toBe("Continue to GitHub");
+      expect(confirmKey(wrapper).attributes("disabled")).toBeUndefined();
+      wrapper.unmount();
+    });
+
     it("leaves the focus where it is when it stayed in the form", async () => {
       const { wrapper } = await mountKey();
       await open(wrapper);
@@ -202,7 +244,12 @@ describe("GithubLink", () => {
     });
 
     it.each([
-      ["a rate limiter's 429", jsonResponse(429), "Too many requests: try again later."],
+      [
+        "a rate limiter's 429",
+        jsonResponse(429),
+        // Without a retryAfter it holds the key a minute, which the alert says for screen readers.
+        "Too many requests: try again later. Try again in 60 seconds."
+      ],
       [
         "an API without GitHub",
         jsonResponse(503, { error: "notConfigured" }),
@@ -326,6 +373,40 @@ describe("GithubLink", () => {
       wrapper.unmount();
     });
 
+    it("holds its key after a 429 until the wait ends", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 120 }))
+        .mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }));
+      const { wrapper } = await mountKey();
+
+      await opener(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 2 minutes.`);
+      expect(opener(wrapper).text()).toBe("Try again in 2 min");
+      expect(opener(wrapper).attributes("aria-label")).toBe("Try again in 2 minutes");
+      expect(opener(wrapper).attributes("disabled")).toBeDefined();
+      // The key stays disabled, so the message saying why takes the focus, not the page.
+      const alert = wrapper.find('[role="alert"]');
+      expect(document.activeElement).toBe(alert.element);
+      expect(alert.attributes("tabindex")).toBe("-1");
+      expect(opener(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      await opener(wrapper).trigger("click");
+      expect(wrapper.emitted("start")).toHaveLength(1);
+
+      vi.advanceTimersByTime(120_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(opener(wrapper).text()).toBe("Link GitHub");
+
+      await opener(wrapper).trigger("click");
+      await flushPromises();
+      expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
+      wrapper.unmount();
+    });
+
     it("has no key once GitHub is linked: it's the only way to log in", async () => {
       githubLinked.value = true;
       const { wrapper } = await mountKey();
@@ -435,6 +516,31 @@ describe("GithubLink", () => {
       wrapper.unmount();
     });
 
+    it("holds Unlink GitHub for the password checks' wait, no longer armed", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      const { wrapper } = await mountKey();
+      await open(wrapper);
+
+      await confirmWith(wrapper, "wrong");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
+      expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+      expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
+      expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
+      expect(confirmKey(wrapper).classes()).not.toContain("btn--error");
+      expect(githubLinked.value).toBe(true);
+
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(confirmKey(wrapper).text()).toBe("Unlink GitHub");
+      expect(confirmKey(wrapper).classes()).toContain("btn--error");
+      wrapper.unmount();
+    });
+
     it("says to wait when a rate limiter answers without a message", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(429));
       const { wrapper } = await mountKey();
@@ -443,7 +549,9 @@ describe("GithubLink", () => {
       await confirmWith(wrapper, "hunter22");
       await flushPromises();
 
-      expect(wrapper.find('[role="alert"]').text()).toBe("Too many requests: try again later.");
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        "Too many requests: try again later. Try again in 60 seconds."
+      );
       wrapper.unmount();
     });
 

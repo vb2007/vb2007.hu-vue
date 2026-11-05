@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import AppIcon from "./AppIcon.vue";
 
-defineProps<{ tone: "success" | "error" | "info" }>();
+defineProps<{
+  tone: "success" | "error" | "info";
+  /** Read out after the message but not shown, e.g. a held key's wait, which is shown on the key. */
+  spoken?: string;
+}>();
 </script>
 
 <template>
@@ -10,7 +14,9 @@ defineProps<{ tone: "success" | "error" | "info" }>();
       :name="tone === 'success' ? 'check' : tone === 'error' ? 'alert' : 'info'"
       :size="22"
     />
-    <p class="status__text"><slot /></p>
+    <p class="status__text">
+      <slot /><span v-if="spoken" class="visually-hidden">{{ ` ${spoken}` }}</span>
+    </p>
   </div>
 </template>
 
