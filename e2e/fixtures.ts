@@ -6,14 +6,17 @@ import { test as base, expect, type Route } from "@playwright/test";
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
- * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
+ * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
+ * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
+ * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
  * Confirming a change to `SUPERUSER_EMAIL` is refused, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses
  * addresses on `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
  * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
@@ -74,12 +77,18 @@ export interface MockAdminUser {
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
 /**
- * The API's 429 once its password checks are limited. Like every rate limiter's, it says how long to
- * wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code cooldown's means one was.
+/**
+ * The API's 429s once its password checks or its mail sends are limited. Like every rate limiter's,
+ * they say how long to wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code
+ * cooldown's means one was. The waits are fixed, so a label that counts them reads the same for a minute.
  */
 const PASSWORD_CHECKS_LIMITED: MockResponse = {
   status: 429,
   body: { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+};
+const MAIL_SENDS_LIMITED: MockResponse = {
+  status: 429,
+  body: { error: "Too many e-mails requested: try again later.", retryAfter: 3412 }
 };
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
@@ -211,6 +220,7 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
+  private mailSendsLimited = false;
   /** Set by `locksLogins`: the `retryAfter` of the login's 429. */
   private loginLockout: { retryAfter: number | null } | null = null;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
@@ -224,6 +234,8 @@ export class MockApi {
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
+  /** The addresses a password reset was asked for while `limitsMailSends()` refused it. */
+  readonly limitedPasswordResets: string[] = [];
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -375,6 +387,11 @@ export class MockApi {
   /** Answers password checks with 429, like the API after too many failed attempts. */
   limitsPasswordChecks() {
     this.passwordChecksLimited = true;
+  }
+
+  /** Answers every request that mails a code with 429, like the API past its hourly e-mail limit. */
+  limitsMailSends() {
+    this.mailSendsLimited = true;
   }
 
   /** Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204). */
@@ -628,12 +645,18 @@ export class MockApi {
         return { status: 200, body: { available: !taken } };
       }
       case "POST /auth/register":
+        if (this.mailSendsLimited) return MAIL_SENDS_LIMITED;
         return this.register(body);
       case "POST /auth/register/verify":
         return this.verifyRegistration(body);
       case "POST /auth/register/resend":
+        if (this.mailSendsLimited) return MAIL_SENDS_LIMITED;
         return this.resendRegistrationCode(body?.email);
       case "POST /auth/password-reset": {
+        if (this.mailSendsLimited) {
+          this.limitedPasswordResets.push(body?.email ?? "");
+          return MAIL_SENDS_LIMITED;
+        }
         if (!body?.email) {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
@@ -786,6 +809,8 @@ export class MockApi {
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
     }
+    // Like the API's middleware, the mail limit comes after the password checks' and before the rest.
+    if (this.mailSendsLimited) return MAIL_SENDS_LIMITED;
     if (!email || !password) {
       return {
         status: 400,
