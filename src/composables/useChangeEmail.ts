@@ -95,8 +95,9 @@ export const useChangeEmail = () => {
   /**
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
    * refreshes the user: a 400 may mean it expired, and a 403 or 409 drops the waiting change. The
-   * API only refuses the superuser's address (403) or another account's (409) here, not when it
+   * API refuses the superuser's address (403) or another account's (409) only here, not when it
    * mails the code, so it doesn't show which addresses have accounts (vb2007/vb2007.hu-api#291).
+   * An expired session's 403 ("You are not logged in.") isn't told apart, so it reads as a drop too.
    */
   const confirm = async (code: string) => {
     const address = pendingEmail.value;
