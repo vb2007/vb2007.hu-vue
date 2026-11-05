@@ -10,15 +10,17 @@ import { test as base, expect, type Route } from "@playwright/test";
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
- * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
- * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
- * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
+ * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
+ * A `hasUser(...)` address and `MOCK_SUPERUSER_EMAIL` get the same 202 and code: only the confirm refuses them, with 409
+ * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
+ * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
+ * 15 minutes ago has expired.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
  * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
  * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
- * Confirming a change to `SUPERUSER_EMAIL` is refused, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses
- * addresses on `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
+ * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
+ * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
  * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
@@ -124,6 +126,8 @@ export const MOCK_PASSWORD = "e2e-password";
 export const MOCK_EMAIL = "me@example.com";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
+/** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
+export const MOCK_SUPERUSER_EMAIL = "admin@example.com";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
@@ -131,8 +135,6 @@ const OBJECT_ID = /^[0-9a-f]{24}$/i;
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
 
-/** The API's `SUPERUSER_EMAIL`: no other account may confirm a change to it. */
-export const SUPERUSER_EMAIL = "admin@example.com";
 /** The API refuses these domains and their subdomains (vb2007/vb2007.hu-api#217). */
 export const DISPOSABLE_DOMAINS = ["mailinator.com"];
 /** Domains whose DNS takes no mail, which the API refuses too. */
@@ -889,8 +891,9 @@ export class MockApi {
   }
 
   /**
-   * Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217), plus a 409 for a taken
-   * address, which the API now leaves to the confirm (see #160).
+   * Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217). Another account's address
+   * and the superuser's pass, so they don't show which addresses have accounts
+   * (vb2007/vb2007.hu-api#291): `confirmEmail` refuses them.
    */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
@@ -941,12 +944,6 @@ export class MockApi {
     if (normalized === this.user.email) {
       return { status: 200, body: { message: "E-mail address updated successfully." } };
     }
-    if (this.users.some((user) => user.email === normalized)) {
-      return {
-        status: 409,
-        body: { error: "An account with this E-mail address already exists." }
-      };
-    }
     const refusal = domainError(normalized);
     if (refusal) return { status: 400, body: { error: refusal } };
     if (this.emailChange && this.emailCooldownOnSend !== null) {
@@ -977,6 +974,10 @@ export class MockApi {
     return this.emailChange !== null && this.now() < this.emailChange.expiresAt;
   }
 
+  /**
+   * Checks in the API's order (vb2007/vb2007.hu-api#215 and #291): a right code for the superuser's
+   * address gets 403 and one for another account's 409, and either drops the waiting change.
+   */
   private confirmEmail(code?: string) {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
@@ -987,7 +988,7 @@ export class MockApi {
     }
     const { email } = this.emailChange;
     this.emailChange = null;
-    if (email === SUPERUSER_EMAIL) {
+    if (email === MOCK_SUPERUSER_EMAIL) {
       return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
     }
     if (this.users.some((user) => user.email === email)) {

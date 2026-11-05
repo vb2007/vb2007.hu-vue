@@ -209,13 +209,13 @@ describe("ChangeEmail", () => {
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
     await openForm();
-    await fill("taken@example.com", "secret-password");
+    await fill("new@example.com", "wrong-password");
 
     // The click submits the form, as in the browser.
     await button("Send code").trigger("click");
     // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
     (document.activeElement as HTMLElement).blur();
-    answer(jsonResponse(409, { error: "An account with this E-mail address already exists." }));
+    answer(jsonResponse(403, { error: "The provided password is incorrect." }));
     await flushPromises();
 
     expect(document.activeElement).toBe(inputs()[0].element);
@@ -227,7 +227,7 @@ describe("ChangeEmail", () => {
 
   it.each([
     ["saved", jsonResponse(200, { message: "E-mail address updated successfully." })],
-    ["refused", jsonResponse(409, { error: "Taken." })]
+    ["refused", jsonResponse(403, { error: "The provided password is incorrect." })]
   ])("doesn't trip over focus when it's gone before the save is %s", async (_how, response) => {
     let answer!: (response: Response) => void;
     fetchMock
@@ -261,9 +261,11 @@ describe("ChangeEmail", () => {
     ["the Cancel key", () => button("Cancel").trigger("click")],
     ["Escape", () => wrapper.find("form").trigger("keydown", { key: "Escape" })]
   ])("%s clears the form and focuses the key", async (_how, cancel) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: "Taken." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "The provided password is incorrect." })
+    );
     await openForm();
-    await fill("taken@example.com", "secret-password");
+    await fill("new@example.com", "wrong-password");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 

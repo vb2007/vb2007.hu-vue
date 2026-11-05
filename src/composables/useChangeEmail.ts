@@ -65,7 +65,8 @@ export const useChangeEmail = () => {
 
   /**
    * Returns whether it worked: a code went to the new address, now `pendingEmail`, or the address
-   * was already the current one. The user is refreshed either way.
+   * was already the current one. The user is refreshed either way. A taken address gets a code too:
+   * only `confirm` refuses it.
    */
   const change = async (email: string, password: string) => {
     isChanging.value = true;
@@ -111,11 +112,13 @@ export const useChangeEmail = () => {
 
   /**
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
-   * refreshes the user: a 403 or 409 drops the waiting change, and a 400 may mean it expired. A
-   * 403 can also be the session ending (expired, ended by a password reset, or replaced by a login
-   * elsewhere): the refresh then logs the page out, and the account page says so instead. When the
-   * refresh finds the account on the waiting address, the change was confirmed elsewhere (another
-   * tab or device), so it counts.
+   * refreshes the user: a 400 may mean it expired, and a 403 or 409 drops the waiting change. The
+   * API refuses the superuser's address (403) or another account's (409) only here, not when it
+   * mails the code, so it doesn't show which addresses have accounts (vb2007/vb2007.hu-api#291).
+   * A 403 can also be the session ending (expired, ended by a password reset, or replaced by a
+   * login elsewhere): the refresh then logs the page out, and the account page says so instead.
+   * When the refresh finds the account on the waiting address, the change was confirmed elsewhere
+   * (another tab or device), so it counts.
    */
   const confirm = async (code: string) => {
     const address = pendingEmail.value;
