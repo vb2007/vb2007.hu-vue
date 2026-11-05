@@ -5,6 +5,7 @@ import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
 import { SEARCH_DELAY_MS, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
 import type { Upload } from "@/types/api/uploads";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { anUpload } from "@/__tests__/helpers/uploads";
@@ -164,6 +165,10 @@ describe("UploadList", () => {
     expect(wrapper.find(".count").text()).toBe("1 upload found");
 
     fetchMock.mockResolvedValue(listing([]));
+    // The API refuses a longer q with a 400.
+    expect(wrapper.find("input[type=search]").attributes("maxlength")).toBe(
+      String(Limits.Search.maxLength)
+    );
     vi.useFakeTimers();
     await wrapper.find("input[type=search]").setValue("nothing");
     await nextTick();

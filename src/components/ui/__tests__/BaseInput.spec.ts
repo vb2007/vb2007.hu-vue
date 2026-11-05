@@ -12,6 +12,7 @@ describe("BaseInput", () => {
     expect(input.attributes("type")).toBe("text");
     expect(input.attributes("aria-invalid")).toBeUndefined();
     expect(input.attributes("aria-describedby")).toBeUndefined();
+    expect(input.attributes("maxlength")).toBeUndefined();
     expect(input.classes()).not.toContain("field__input--mono");
     expect(wrapper.find(".field__hint").exists()).toBe(false);
     expect(wrapper.find(".field__error").exists()).toBe(false);
@@ -26,7 +27,8 @@ describe("BaseInput", () => {
         autocomplete: "email",
         autocapitalize: "off",
         required: true,
-        mono: true
+        mono: true,
+        maxlength: 254
       }
     });
     const input = wrapper.find("input");
@@ -35,7 +37,8 @@ describe("BaseInput", () => {
       type: "email",
       placeholder: "me@example.com",
       autocomplete: "email",
-      autocapitalize: "off"
+      autocapitalize: "off",
+      maxlength: "254"
     });
     expect(input.attributes("required")).toBeDefined();
     expect(input.classes()).toContain("field__input--mono");
