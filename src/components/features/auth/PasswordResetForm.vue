@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId } from "vue";
+import { computed, nextTick, ref, useId, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
@@ -92,11 +92,19 @@ const focusFirstField = async () => {
   step.value?.querySelector<HTMLInputElement>("input:not([hidden])")?.focus();
 };
 
-/** Holds the resend key back for `address`; the wait outlives a reload of the page. */
-const waitBeforeResend = (address: string, seconds: number) => {
+/**
+ * Holds the resend key back for `address`; the wait outlives a reload of the page. `reason` is
+ * the mail limit's message when that's what it waits out, kept with it to show again.
+ */
+const waitBeforeResend = (address: string, seconds: number, reason = "") => {
   lastSentTo.value = address;
-  resend.start(seconds, normalizeEmail(address));
+  resend.start(seconds, normalizeEmail(address), reason);
 };
+
+// The mail limit's message only holds until its countdown ends, like the key's wait.
+watch(resend.active, (waiting) => {
+  if (!waiting && failure.value === resend.note.value) failure.value = "";
+});
 
 /** Whether `address` still has to wait for another code, also counting from before a reload. */
 const isWaitingFor = (address: string) => {
@@ -106,8 +114,9 @@ const isWaitingFor = (address: string) => {
   return resend.active.value && normalizeEmail(address) === normalizeEmail(lastSentTo.value);
 };
 
-const showCodeStep = async (message: string) => {
-  failure.value = "";
+/** `problem` is an error to show there, e.g. the mail limit a resumed wait is for. */
+const showCodeStep = async (message: string, problem = "") => {
+  failure.value = problem;
   sentTo.value = email.value;
   sentMessage.value = message;
   await focusFirstField();
@@ -124,7 +133,7 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
       failure.value = answer.error;
       // Only the code step has a key to hold back; the e-mail step just shows the error.
       if (onCodeStep && answer.retryAfter) {
-        waitBeforeResend(address, answer.retryAfter);
+        waitBeforeResend(address, answer.retryAfter, answer.error);
       }
       flagError();
       return null;
@@ -144,9 +153,11 @@ const handleSend = async () => {
     return;
   }
 
-  // A code went to this address moments ago and the API wouldn't send another yet.
+  // A code went to this address moments ago and the API wouldn't send another yet. A wait for
+  // the mail limit says so instead: the last code may be older than a minute.
   if (isWaitingFor(email.value)) {
-    await showCodeStep(lastMessage.value || RECENT_MESSAGE);
+    const limit = resend.note.value;
+    await showCodeStep(lastMessage.value || (limit ? "" : RECENT_MESSAGE), limit);
     return;
   }
 
@@ -159,9 +170,10 @@ const handleSend = async () => {
 /** For a code that already arrived, e.g. after a reload: nothing is sent. */
 const enterCode = async () => {
   if (await emailChecks.validate(step.value)) {
-    // Picks up the countdown, so the key doesn't offer a code the API wouldn't send yet.
-    isWaitingFor(email.value);
-    await showCodeStep("");
+    // Picks up the countdown, so the key doesn't offer a code the API wouldn't send yet, and
+    // says why when it's the mail limit's.
+    const waiting = isWaitingFor(email.value);
+    await showCodeStep("", waiting ? resend.note.value : "");
   }
 };
 
@@ -310,6 +322,11 @@ const handleReset = async () => {
           size="sm"
           :loading="isSending"
           :disabled="isResendWaiting"
+          :aria-label="
+            isResendWaiting && !isSending
+              ? Messages.EmailCode.sendAgainIn(resend.remaining.value, 'long')
+              : undefined
+          "
           @click="sendAgain"
         >
           {{

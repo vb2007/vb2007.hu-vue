@@ -101,9 +101,15 @@ describe("useRegisterCode", () => {
   });
 
   it.each([
-    ["a resend", 200, {}, 60],
-    ["a refused resend", 429, { error: "Wait.", retryAfter: 42 }, 42]
-  ])("keeps the countdown after %s", async (_, status, body, seconds) => {
+    ["a resend", 200, {}, 60, undefined],
+    [
+      "a refused resend, with its message",
+      429,
+      { error: "Too many e-mails requested: try again later.", retryAfter: 42 },
+      42,
+      "Too many e-mails requested: try again later."
+    ]
+  ])("keeps the countdown after %s", async (_, status, body, seconds, note) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
     const step = openStep();
     vi.advanceTimersByTime(60_000);
@@ -111,7 +117,36 @@ describe("useRegisterCode", () => {
     await step.resend();
 
     const kept = JSON.parse(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)!);
-    expect(kept).toEqual({ id: "me@example.com", deadline: Date.now() + seconds * 1000 });
+    expect(kept).toEqual({ id: "me@example.com", deadline: Date.now() + seconds * 1000, note });
+  });
+
+  it("explains a rate limited wait it picks up after a reload, until it ends", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
+    );
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+    await step.resend();
+
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.codeError.value).toBe("Too many e-mails requested: try again later.");
+    await nextTick();
+    vi.advanceTimersByTime(3_412_000);
+    await nextTick();
+    expect(reloaded.codeError.value).toBe("");
+  });
+
+  it("picks up a wait after a sent code without an error", () => {
+    openStep();
+
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.codeError.value).toBe("");
   });
 
   it("forgets an old error when opened again", () => {

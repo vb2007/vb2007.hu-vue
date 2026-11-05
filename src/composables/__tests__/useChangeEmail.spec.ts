@@ -208,7 +208,11 @@ describe("useChangeEmail", () => {
       expect(pendingEmail.value).toBe("new@example.com");
       expect(email.changeError.value).toBe(Messages.EmailCode.cooldown);
       expect(email.cooldown.remaining.value).toBe(42);
-      expect(savedCooldown()).toEqual({ id: "old@example.com", deadline: Date.now() + 42_000 });
+      expect(savedCooldown()).toEqual({
+        id: "old@example.com",
+        deadline: Date.now() + 42_000,
+        note: Messages.EmailCode.cooldown
+      });
       vi.advanceTimersByTime(42_000);
       await nextTick();
       expect(email.cooldown.active.value).toBe(false);
@@ -250,6 +254,35 @@ describe("useChangeEmail", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
       expect(email.cooldown.remaining.value).toBe(60);
+    });
+
+    it("explains a rate limited wait again after a reload", async () => {
+      vi.useFakeTimers();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      await useEmail().change("new@example.com", "wrong-password");
+      expect(savedCooldown()).toEqual({
+        id: "old@example.com",
+        deadline: Date.now() + 900_000,
+        note: error
+      });
+
+      vi.advanceTimersByTime(20_000);
+      const reloaded = useEmail();
+      expect(reloaded.changeError.value).toBe("");
+      reloaded.showWait();
+
+      expect(reloaded.changeError.value).toBe(error);
+      expect(reloaded.cooldown.remaining.value).toBe(880);
+    });
+
+    it("has nothing to explain once the wait is over", () => {
+      const email = useEmail();
+      email.changeError.value = "stale";
+
+      email.showWait();
+
+      expect(email.changeError.value).toBe("stale");
     });
 
     it("keeps another error when the countdown ends", async () => {

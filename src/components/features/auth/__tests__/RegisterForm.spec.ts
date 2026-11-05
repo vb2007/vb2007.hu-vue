@@ -178,7 +178,7 @@ describe("RegisterForm", () => {
     expect(codeInput.attributes("aria-describedby")).toContain(notice.attributes("id"));
     expect(document.activeElement).toBe(codeInput.element);
     expect(submitButton(wrapper).text()).toBe("Confirm code");
-    expect(resendButton(wrapper).text()).toBe("Resend in 1 min");
+    expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
     expect(wrapper.text()).not.toContain("Register with GitHub");
 
@@ -640,7 +640,7 @@ describe("RegisterForm", () => {
       expect(wrapper.find('[role="status"]').text()).toBe(
         "A new code is on its way to me@example.com. The previous one no longer works."
       );
-      expect(resendButton(wrapper).text()).toBe("Resend in 1 min");
+      expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
       // The key it was on is disabled now; the code is what comes next.
       expect(document.activeElement).toBe(wrapper.find("input").element);
     });
@@ -702,6 +702,8 @@ describe("RegisterForm", () => {
 
       expect(wrapper.find('[role="alert"]').text()).toBe(error);
       expect(resendButton(wrapper).text()).toBe("Resend in 57 min");
+      // The short units are for the eye; the key's name spells them out.
+      expect(resendButton(wrapper).attributes("aria-label")).toBe("Resend in 57 minutes");
 
       vi.advanceTimersByTime(3_412_000);
       await flushPromises();

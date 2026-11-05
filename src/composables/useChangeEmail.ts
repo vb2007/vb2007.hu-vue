@@ -40,13 +40,16 @@ export const useChangeEmail = () => {
     removeSaved(COOLDOWN_STORAGE_KEY);
   };
 
-  /** A 429's message, which only holds until the key's countdown ends. */
-  let waitError = "";
-
-  // Every 429 counts its wait down on the key, so its message goes once the key comes back.
+  // Every 429 counts its wait down on the key and keeps its message as the countdown's note, so
+  // the message goes once the key comes back. `showWait` brings it back, e.g. after a reload.
   watch(cooldown.active, (waiting) => {
-    if (!waiting && changeError.value === waitError) changeError.value = "";
+    if (!waiting && changeError.value === cooldown.note.value) changeError.value = "";
   });
+
+  /** Shows why the key waits, if a 429 started its countdown (also one from before a reload). */
+  const showWait = () => {
+    if (cooldown.active.value) changeError.value = cooldown.note.value;
+  };
 
   /**
    * Returns whether it worked: a code went to the new address, now `pendingEmail`, or the address
@@ -78,11 +81,10 @@ export const useChangeEmail = () => {
       // The one-code-a-minute cooldown, or a rate limiter (wrong passwords, too many e-mails):
       // both send retryAfter, but only the cooldown means a code went out.
       const isCooldown = isResendCooldown(result.body);
-      waitError = isCooldown
+      changeError.value = isCooldown
         ? Messages.EmailCode.cooldown
         : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
-      changeError.value = waitError;
-      cooldown.start(retryAfterFrom(result.body), account());
+      cooldown.start(retryAfterFrom(result.body), account(), changeError.value);
       // The code it waits for may have been asked for elsewhere, e.g. in another tab.
       if (isCooldown) await fetchUserDetails();
     } else {
@@ -159,6 +161,7 @@ export const useChangeEmail = () => {
     codeError,
     confirmError,
     confirm,
-    cooldown
+    cooldown,
+    showWait
   };
 };

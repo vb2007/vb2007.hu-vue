@@ -397,6 +397,11 @@ watch(isLoggedIn, (newVal) => {
           size="sm"
           :loading="isResending"
           :disabled="resendWaiting"
+          :aria-label="
+            resendWaiting && !isResending
+              ? Messages.EmailCode.resendIn(resendIn, 'long')
+              : undefined
+          "
           @click="sendAgain"
         >
           {{

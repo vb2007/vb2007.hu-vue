@@ -5,6 +5,8 @@
 export interface SavedForOwner {
   id: string;
   deadline: number;
+  /** Why it lasts until the deadline, e.g. the message of the rate limit a countdown waits out. */
+  note?: string;
 }
 
 /**
@@ -14,7 +16,9 @@ export interface SavedForOwner {
 export const readSaved = (key: string): SavedForOwner | null => {
   try {
     const saved = JSON.parse(sessionStorage.getItem(key) ?? "null");
-    return typeof saved?.id === "string" && Number.isFinite(saved.deadline) ? saved : null;
+    if (typeof saved?.id !== "string" || !Number.isFinite(saved.deadline)) return null;
+    const { id, deadline, note } = saved;
+    return typeof note === "string" ? { id, deadline, note } : { id, deadline };
   } catch {
     return null;
   }

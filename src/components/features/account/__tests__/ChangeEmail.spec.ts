@@ -534,7 +534,7 @@ describe("ChangeEmail", () => {
 
       await button("Change e-mail").trigger("click");
       await flushPromises();
-      expect(button("Send code in 1 min").attributes("disabled")).toBeDefined();
+      expect(button("Send code in 60 sec").attributes("disabled")).toBeDefined();
 
       await wrapper.find("form").trigger("submit");
       await flushPromises();
@@ -661,6 +661,16 @@ describe("ChangeEmail", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(wrapper.find('[role="alert"]').text()).toBe(error);
       expect(button("Send code in 15 min").attributes("disabled")).toBeDefined();
+      expect(button("Send code in 15 min").attributes("aria-label")).toBe(
+        "Send code in 15 minutes"
+      );
+
+      // Closed and opened again, the waiting key still says why.
+      await button("Cancel").trigger("click");
+      await flushPromises();
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
 
       vi.advanceTimersByTime(900_000);
       await flushPromises();

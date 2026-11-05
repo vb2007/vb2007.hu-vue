@@ -29,7 +29,8 @@ const {
   codeError,
   confirmError,
   confirm,
-  cooldown
+  cooldown,
+  showWait
 } = useChangeEmail();
 const { remaining: waitSeconds, active: isWaiting } = cooldown;
 
@@ -85,6 +86,8 @@ const start = async () => {
   email.value = pendingEmail.value;
   changeChecks.reset();
   codeChecks.reset();
+  // A key that still waits (e.g. after a reload, or the form was closed) says why again.
+  showWait();
   open.value = true;
   emit("start");
   await nextTick();
@@ -225,6 +228,9 @@ const confirmCode = async () => {
         size="sm"
         :loading="isChanging"
         :disabled="isWaiting"
+        :aria-label="
+          isWaiting && !isChanging ? Messages.EmailCode.sendCodeIn(waitSeconds, 'long') : undefined
+        "
         :blocked="!isChangeValid"
       >
         {{
