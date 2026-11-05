@@ -149,20 +149,22 @@ export const useRegisterCode = () => {
       failure: Messages.EmailCode.resendFailed
     });
 
-    const codeWait = result.ok ? undefined : codeCooldownOf(result);
     if (result.ok) {
       notice.value = "resent";
       holdResend(RESEND_COOLDOWN_SECONDS);
-    } else if (codeWait !== undefined) {
-      holdResend(codeWait);
-      // The cooldown's own message names its seconds, which would freeze next to the countdown.
-      showError(Messages.EmailCode.cooldown, true);
     } else {
-      // Also a rate limiter's 429: it sent no code, so the key isn't held back for it.
-      showError(result.error);
-      if (result.status === HttpStatus.ServiceUnavailable) {
-        // The API replaced the code before the e-mail failed, so the old one is gone too.
-        notice.value = "lost";
+      const codeWait = codeCooldownOf(result);
+      if (codeWait !== undefined) {
+        holdResend(codeWait);
+        // The cooldown's own message names its seconds, which would freeze next to the countdown.
+        showError(Messages.EmailCode.cooldown, true);
+      } else {
+        // Also a rate limiter's 429: it sent no code, so the key isn't held back for it.
+        showError(result.error);
+        if (result.status === HttpStatus.ServiceUnavailable) {
+          // The API replaced the code before the e-mail failed, so the old one is gone too.
+          notice.value = "lost";
+        }
       }
     }
     isResending.value = false;

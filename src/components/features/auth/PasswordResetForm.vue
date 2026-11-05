@@ -116,8 +116,11 @@ const showCodeStep = async (message: string) => {
   await focusFirstField();
 };
 
-/** Asks the API for a code to `address`; returns its message, or null after showing its error. */
-const askForCode = async (address: string, onCodeStep: boolean) => {
+/**
+ * Asks the API for a code to `address`; returns its message, or null after showing its error.
+ * An error doesn't hold the key back: even the mail limit's 429 means no code went out.
+ */
+const askForCode = async (address: string) => {
   isSending.value = true;
   failure.value = "";
   try {
@@ -125,10 +128,6 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
 
     if (answer.error) {
       failure.value = answer.error;
-      // Only the code step has a key to hold back; the e-mail step just shows the error.
-      if (onCodeStep && answer.retryAfter) {
-        waitBeforeResend(address, answer.retryAfter);
-      }
       flagError();
       return null;
     }
@@ -153,7 +152,7 @@ const handleSend = async () => {
     return;
   }
 
-  const message = await askForCode(email.value, false);
+  const message = await askForCode(email.value);
   if (message !== null) {
     await showCodeStep(message);
   }
@@ -169,7 +168,7 @@ const enterCode = async () => {
 };
 
 const sendAgain = async () => {
-  if ((await askForCode(sentTo.value, true)) !== null) {
+  if ((await askForCode(sentTo.value)) !== null) {
     sentMessage.value = RESENT_MESSAGE;
     // A code typed before was most likely the one that didn't work.
     code.value = "";
