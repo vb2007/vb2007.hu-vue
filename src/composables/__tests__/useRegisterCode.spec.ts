@@ -7,6 +7,7 @@ import {
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode
 } from "@/composables/useRegisterCode";
+import { Messages } from "@/constants/messages";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -103,10 +104,20 @@ describe("useRegisterCode", () => {
   it.each([
     ["a resend, without a note", 200, {}, 60, {}],
     [
-      "a refused resend, with its message",
+      "the cooldown's 429, with its own message",
       429,
-      { error: "Too many e-mails requested: try again later.", retryAfter: 42 },
+      {
+        error: "A code was sent just now: wait 42 seconds before requesting another one.",
+        retryAfter: 42
+      },
       42,
+      { note: Messages.EmailCode.cooldown }
+    ],
+    [
+      "a rate limiter's 429, with its message",
+      429,
+      { error: "Too many e-mails requested: try again later.", retryAfter: 3412 },
+      3412,
       { note: "Too many e-mails requested: try again later." }
     ]
   ])("keeps the countdown after %s", async (_, status, body, seconds, note) => {
@@ -248,7 +259,7 @@ describe("useRegisterCode", () => {
     ] as const)(
       "shows the API's message for a %i response as %s",
       async (status, error, shownAs) => {
-        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error, retryAfter: 900 }));
         const step = openStep();
         step.codeError.value = "old";
 
@@ -379,6 +390,7 @@ describe("useRegisterCode", () => {
 
       expect(await step.resend()).toBe(false);
 
+      // No code went out: the code from before still works, and the key waits the limit out.
       expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
       expect(step.cooldown.remaining.value).toBe(3412);
       expect(step.notice.value).toBe("sent");

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { isResendCooldown, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import type { ApiFailure } from "@/scripts/api/client";
 
 describe("useCountdown", () => {
   // Fake timers mock Date.now too, so the deadline moves with advanceTimersByTime.
@@ -263,27 +264,40 @@ describe("retryAfterFrom", () => {
   });
 });
 
-describe("isResendCooldown", () => {
-  it("knows the per-address cooldown by its message", () => {
-    expect(
-      isResendCooldown({
-        error: "A code was sent just now: wait 42 seconds before requesting another one.",
-        retryAfter: 42
-      })
-    ).toBe(true);
+describe("codeCooldownOf", () => {
+  const cooldownError = "A code was sent just now: wait 42 seconds before requesting another one.";
+  /** A failure as `apiRequest` returns it; `error` is the API's message or the fallback. */
+  const http = (
+    status: number,
+    body: { error?: string; retryAfter?: number } | null
+  ): ApiFailure => ({
+    ok: false,
+    kind: "http",
+    status,
+    error: body?.error ?? `Failed: ${status}`,
+    body
+  });
+
+  it("takes the cooldown's retryAfter: a code went out moments ago", () => {
+    expect(codeCooldownOf(http(429, { error: cooldownError, retryAfter: 41.5 }))).toBe(42);
+  });
+
+  it("waits a minute for a cooldown's 429 without a retryAfter", () => {
+    expect(codeCooldownOf(http(429, { error: cooldownError }))).toBe(60);
   });
 
   it.each([
-    ["the mail limit", { error: "Too many e-mails requested: try again later.", retryAfter: 3412 }],
     [
-      "the failed attempts limit",
-      { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+      "a rate limiter's 429, though it has a retryAfter",
+      http(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
     ],
-    ["a body without a message", { retryAfter: 42 }],
-    ["a message that isn't text", { error: 42 }],
-    ["null", null],
-    ["undefined", undefined]
-  ])("isn't fooled by %s", (_, body) => {
-    expect(isResendCooldown(body)).toBe(false);
+    ["a 429 without a body", http(429, null)],
+    ["the cooldown's text on another status", http(503, { error: cooldownError, retryAfter: 42 })],
+    [
+      "a network failure",
+      { ok: false, kind: "network", status: 0, error: "Error connecting to server" } as ApiFailure
+    ]
+  ])("is undefined for %s", (_, failure) => {
+    expect(codeCooldownOf(failure)).toBeUndefined();
   });
 });

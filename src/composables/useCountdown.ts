@@ -1,6 +1,8 @@
 import { computed, onScopeDispose, ref } from "vue";
+import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
+import { apiErrorOf, type ApiFailure } from "@/scripts/api/client";
 import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
@@ -83,8 +85,9 @@ export const useCountdown = (storageKey?: string) => {
 };
 
 /**
- * The seconds to wait after a 429: its body's `retryAfter`, which the resend cooldown and every
- * rate limiter send (vb2007/vb2007.hu-api#254). `fallback` covers a 429 without a usable one.
+ * The seconds to wait after a 429, sent as `retryAfter` in the body by the resend cooldown and the
+ * rate limiters alike (vb2007/vb2007.hu-api#242), next to the same Retry-After header. Only the body
+ * is read here, and `fallback` stands in for a body without it.
  */
 export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
   const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
@@ -95,11 +98,13 @@ export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSec
 };
 
 /**
- * Whether a 429's body is the per-address resend cooldown (a code went out moments ago and still
- * works), not a rate limiter's. Both send `retryAfter`; only the cooldown's message starts this way.
+ * The seconds left before another code can be mailed, when `failure` is the one-code-a-minute
+ * cooldown's 429: a code went out moments ago and still works. Undefined for anything else,
+ * including a rate limiter's 429, which sends `retryAfter` too but means no code was sent.
  */
-export const isResendCooldown = (body: unknown): boolean => {
-  const error = (body as { error?: unknown } | null | undefined)?.error;
-
-  return typeof error === "string" && error.startsWith(Messages.EmailCode.cooldownPrefix);
-};
+export const codeCooldownOf = (failure: ApiFailure): number | undefined =>
+  failure.kind === "http" &&
+  failure.status === HttpStatus.TooManyRequests &&
+  apiErrorOf(failure)?.startsWith(Messages.EmailCode.cooldownPrefix)
+    ? retryAfterFrom(failure.body)
+    : undefined;

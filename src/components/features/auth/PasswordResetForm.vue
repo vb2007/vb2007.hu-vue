@@ -167,7 +167,11 @@ const showCodeStep = async (message: string, problem = "") => {
   await focusFirstField();
 };
 
-/** Asks the API for a code to `address`; returns its message, or null after showing its error. */
+/**
+ * Asks the API for a code to `address`; returns its message, or null after showing its error.
+ * The mail limit's 429 sent no code either, but on the code step it holds the resend key for the
+ * limit's wait, with its message.
+ */
 const askForCode = async (address: string, onCodeStep: boolean) => {
   isSending.value = true;
   failure.value = "";

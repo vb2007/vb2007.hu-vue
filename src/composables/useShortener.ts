@@ -2,7 +2,7 @@ import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
-import { validateUrl } from "@/scripts/utility/text";
+import { validateShortUrl } from "@/scripts/shorten/shortUrl";
 
 export const shortLink = (code: string) => `${window.location.origin}/r/${code}`;
 
@@ -17,8 +17,9 @@ export const useShortener = () => {
   const shortenedLink = () => (shortenedCode.value ? shortLink(shortenedCode.value) : "");
 
   const shorten = async () => {
-    if (!validateUrl(originalUrl.value)) {
-      errorMessage.value = Messages.ShortUrl.invalidUrl;
+    const invalid = validateShortUrl(originalUrl.value);
+    if (invalid) {
+      errorMessage.value = invalid;
       return;
     }
 

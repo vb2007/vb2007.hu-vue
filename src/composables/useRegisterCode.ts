@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { isResendCooldown, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
@@ -184,7 +184,8 @@ export const useRegisterCode = () => {
     } else if (result.status === HttpStatus.TooManyRequests) {
       // The cooldown's own message names its seconds, which would freeze next to the countdown;
       // a rate limiter's (e.g. too many e-mails) only says to try later, which the key times.
-      const message = isResendCooldown(result.body) ? Messages.EmailCode.cooldown : result.error;
+      const message =
+        codeCooldownOf(result) === undefined ? result.error : Messages.EmailCode.cooldown;
       // The cooldown or a rate limiter: either way the key counts down the API's retryAfter.
       holdResend(retryAfterFrom(result.body), message);
       showError(message, true);

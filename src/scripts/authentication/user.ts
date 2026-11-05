@@ -13,10 +13,19 @@ import {
   isSessionChecked,
   isSuperuser,
   pendingEmail,
+  sessionEnded,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
 import { ref } from "vue";
+
+/**
+ * `GET /user` lookups can answer out of order (e.g. the page load's after a login's), so each is
+ * numbered as it's sent. `appliedLookup` is the newest one the state stands on: an answer from an
+ * older lookup is ignored, and so is one sent before the page forgot the user (`clearSession`).
+ */
+let sentLookups = 0;
+let appliedLookup = 0;
 
 /** A `LoginStatus`, or the API's message when logging in failed. */
 export const loginStatus = ref("");
@@ -26,14 +35,34 @@ export const loginStatus = ref("");
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
 export const fetchUserDetails = async () => {
+  const lookup = ++sentLookups;
   const result = await apiRequest(Endpoints.User.get, {
     failure: Messages.Auth.userFailed,
     // A visitor who isn't logged in: the usual answer, not a fault.
-    quietStatuses: [HttpStatus.Unauthorized]
+    quietStatuses: [HttpStatus.Forbidden]
   });
 
+  /** Whether this answer is newer than what the state stands on; it then becomes that answer. */
+  const takesOver = () => {
+    if (lookup <= appliedLookup) return false;
+    appliedLookup = lookup;
+    return true;
+  };
+
   if (!result.ok) {
+    // GET /user answers 403 only for a missing or ended session. Only the API's own 403 (with its
+    // { error }) says so, not a proxy's block page; other failures say nothing about the session.
+    const loggedOut = result.status === HttpStatus.Forbidden && apiErrorOf(result) !== undefined;
+    if (loggedOut && takesOver()) {
+      const hadSession = isLoggedIn.value;
+      forgetUser();
+      sessionEnded.value = hadSession;
+    }
     return false;
+  }
+
+  if (!takesOver()) {
+    return true;
   }
 
   const { data } = result;
@@ -46,6 +75,7 @@ export const fetchUserDetails = async () => {
   pendingEmail.value = data.pendingEmail ?? "";
   emailVerified.value = data.emailVerified === true;
   isLoggedIn.value = true;
+  sessionEnded.value = false;
   return true;
 };
 
@@ -60,18 +90,26 @@ export const restoreSession = () => {
 };
 
 /**
- * Logs in; `loginStatus` says how it went. Returns the seconds to wait after the login limiter's
- * 429 (vb2007/vb2007.hu-api#254), before which the API refuses even the right password.
+ * Logs in; `loginStatus` says how it went. After the login limiter's 429 (vb2007/vb2007.hu-api#204)
+ * it returns the seconds the API refuses even the right password for: 0 when it didn't say.
  */
 export const login = async (email: string, password: string): Promise<number | undefined> => {
+  // Cleared while it works, so the same refusal again is shown (and announced) afresh.
+  loginStatus.value = "";
   const result = await apiRequest(Endpoints.Auth.login, {
     body: { email, password },
     failure: Messages.Auth.loginFailed
   });
 
+  if (!result.ok && result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
+    // Locked out for up to 15 minutes: the message says it in whole minutes, the held key counts it.
+    const seconds = retryAfterFrom(result.body, 0);
+    loginStatus.value = Messages.Auth.loginLockedOut(Math.ceil(seconds / 60));
+    return seconds;
+  }
   if (!result.ok) {
     loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
-    return result.status === HttpStatus.TooManyRequests ? retryAfterFrom(result.body) : undefined;
+    return;
   }
 
   // The API answered 200, but only a working session cookie makes the login real.
@@ -80,8 +118,7 @@ export const login = async (email: string, password: string): Promise<number | u
     : Messages.Auth.sessionNotKept;
 };
 
-/** Forgets the logged-in user locally; the API ends the session itself. */
-export const clearSession = () => {
+const forgetUser = () => {
   userEmail.value = "";
   username.value = "";
   isSuperuser.value = false;
@@ -91,6 +128,14 @@ export const clearSession = () => {
   pendingEmail.value = "";
   emailVerified.value = false;
   isLoggedIn.value = false;
+  sessionEnded.value = false;
+};
+
+/** Forgets the logged-in user locally; the API ends the session itself. */
+export const clearSession = () => {
+  // A lookup still on its way was sent before this, so its answer no longer counts.
+  appliedLookup = sentLookups;
+  forgetUser();
 };
 
 export const logout = async () => {
