@@ -102,7 +102,9 @@ export const useChangeEmail = () => {
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
    * refreshes the user: a 403 or 409 drops the waiting change, and a 400 may mean it expired. A
    * 403 can also be the session ending (expired, ended by a password reset, or replaced by a login
-   * elsewhere): the refresh then logs the page out, and the account page says so instead.
+   * elsewhere): the refresh then logs the page out, and the account page says so instead. When the
+   * refresh finds the account on the waiting address, the change was confirmed elsewhere (another
+   * tab or device), so it counts.
    */
   const confirm = async (code: string) => {
     const address = pendingEmail.value;
@@ -118,15 +120,14 @@ export const useChangeEmail = () => {
       quietStatuses: [HttpStatus.Forbidden]
     });
 
+    let changed = result.ok;
+
     if (result.ok) {
       if (!(await fetchUserDetails())) {
         userEmail.value = pendingEmail.value;
         pendingEmail.value = "";
         emailVerified.value = true;
       }
-      endCooldown();
-      // Only now, so it doesn't sit next to the waiting address it replaces.
-      changeMessage.value = result.data.message ?? Messages.Account.emailUpdated;
     } else if (result.kind !== "http") {
       confirmError.value = result.error;
     } else {
@@ -140,6 +141,14 @@ export const useChangeEmail = () => {
 
       if (!isLoggedIn.value) {
         // The session ended: nothing was said about the change, and the account page now says why.
+      } else if (
+        !pendingEmail.value &&
+        normalizeEmail(userEmail.value) === normalizeEmail(address)
+      ) {
+        // Confirmed elsewhere, so its code was spent (400), or a race found the address taken by
+        // this very account (409). The refresh already shows it, verified, as a 200 would. A newer
+        // change waiting since then keeps its code step and cooldown, with the usual error.
+        changed = true;
       } else if (!pendingEmail.value) {
         // Its code step is gone with it, so the message names the address it was about. A 400
         // means the code expired, and the API's "check it" no longer fits without the field.
@@ -154,9 +163,15 @@ export const useChangeEmail = () => {
         confirmError.value = result.error;
       }
     }
+
+    if (changed) {
+      endCooldown();
+      // Only now, so it doesn't sit next to the waiting address it replaces.
+      changeMessage.value = (result.ok ? result.data.message : "") || Messages.Account.emailUpdated;
+    }
     isConfirming.value = false;
 
-    return result.ok;
+    return changed;
   };
 
   return {
