@@ -98,6 +98,8 @@ export const MOCK_PASSWORD = "e2e-password";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
+/** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -1104,14 +1106,32 @@ export class MockApi {
     return { status: 200, body: { message: "Upload updated successfully.", upload } };
   }
 
-  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
-  private listUserUploads(id: string, query: URLSearchParams) {
-    if (!this.user?.isSuperuser) {
+  /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
+  private refuseNonSuperuser(): MockResponse | undefined {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (!this.user.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
+  }
+
+  /** The API's `validateMongooseId`: admin routes run it on `:id` after the superuser check. */
+  private invalidId(): MockResponse {
+    return {
+      status: 400,
+      body: { error: "Invalid ID format: must be a 24 character HEX string." }
+    };
+  }
+
+  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
+  private listUserUploads(id: string, query: URLSearchParams) {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     if (this.userUploadsDown) return { status: 502 };
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const user = this.users.find((item) => item.id === id);
-    if (!user) return { status: 404, body: { error: "There is no such user." } };
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
     const listing = this.listUploads(query, user.username);
     return {
       ...listing,
@@ -1152,9 +1172,8 @@ export class MockApi {
   }
 
   private listUsers(query: URLSearchParams) {
-    if (!this.user?.isSuperuser) {
-      return { status: 403, body: { error: "You do not have permission to perform this action." } };
-    }
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortBy = query.get("sortBy") ?? "usedBytes";
@@ -1185,17 +1204,24 @@ export class MockApi {
   }
 
   private setQuota(id: string, quotaBytes: number | null | undefined) {
-    if (!this.user?.isSuperuser) {
-      return { status: 403, body: { error: "You do not have permission to perform this action." } };
-    }
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const user = this.users.find((item) => item.id === id);
-    if (!user) return { status: 404, body: { error: "There is no such user." } };
-    if (quotaBytes !== null && !Number.isInteger(quotaBytes)) {
-      return { status: 400, body: { error: "The quota must be a whole number of bytes or null." } };
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
+    const isQuota =
+      typeof quotaBytes === "number" && Number.isSafeInteger(quotaBytes) && quotaBytes >= 0;
+    if (quotaBytes !== null && !isQuota) {
+      return {
+        status: 400,
+        body: {
+          error: "quotaBytes must be a whole number of bytes from 0, or null for the default quota."
+        }
+      };
     }
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
-    return { status: 200, body: { message: "Upload quota updated.", user } };
+    return { status: 200, body: { message: "Upload quota updated successfully.", user } };
   }
 
   private listPastes(username: string, query: URLSearchParams) {
