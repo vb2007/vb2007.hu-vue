@@ -112,7 +112,12 @@ describe("RegisterForm", () => {
   it.each([
     [{ email: "nope" }, "Enter a valid e-mail address.", 0],
     [
-      { email: `${"a".repeat(243)}@example.com` },
+      { email: `${"a".repeat(65)}@example.com` },
+      "The part of your e-mail address before the @ can't be longer than 64 characters.",
+      0
+    ],
+    [
+      { email: `${"a".repeat(51)}@${`${"b".repeat(63)}.`.repeat(3)}example.com` },
       "Your e-mail address can't be longer than 254 characters.",
       0
     ],
@@ -546,7 +551,7 @@ describe("RegisterForm", () => {
 
     it("keeps a problem that isn't the code's above the key", async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
       );
       const wrapper = await atCodeStep();
 

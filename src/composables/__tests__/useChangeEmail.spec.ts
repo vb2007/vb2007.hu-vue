@@ -4,7 +4,13 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { COOLDOWN_STORAGE_KEY, useChangeEmail } from "@/composables/useChangeEmail";
 import { Messages } from "@/constants/messages";
-import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import {
+  emailVerified,
+  isLoggedIn,
+  pendingEmail,
+  sessionEnded,
+  userEmail
+} from "@/scripts/authentication/authState";
 
 /** `GET /user` while a change waits for its code, shaped like the API's answer. */
 const waitingUser = {
@@ -215,23 +221,28 @@ describe("useChangeEmail", () => {
       expect(email.changeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, and keeps its message after", async () => {
-      vi.useFakeTimers();
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
-      );
-      const email = useEmail();
+    it.each([
+      "Too many failed attempts: try again later.",
+      "Too many e-mails requested: try again later."
+    ])(
+      "shows a rate limiter's 429 without holding the key back, though it has a retryAfter: %s",
+      async (error) => {
+        vi.useFakeTimers();
+        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+        const email = useEmail();
 
-      await email.change("new@example.com", "secret-password");
+        expect(await email.change("new@example.com", "secret-password")).toBe(false);
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
-      expect(email.cooldown.remaining.value).toBe(60);
-      vi.advanceTimersByTime(60_000);
-      await nextTick();
-      expect(email.cooldown.active.value).toBe(false);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
-    });
+        // No code went out, so there's nothing to count down, keep or refresh.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(email.changeError.value).toBe(error);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(savedCooldown()).toBeNull();
+        vi.advanceTimersByTime(900_000);
+        await nextTick();
+        expect(email.changeError.value).toBe(error);
+      }
+    );
 
     it("explains a 429 that isn't JSON", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(429));
@@ -240,7 +251,7 @@ describe("useChangeEmail", () => {
       await email.change("new@example.com", "secret-password");
 
       expect(email.changeError.value).toBe("Too many requests: try again later.");
-      expect(email.cooldown.remaining.value).toBe(60);
+      expect(email.cooldown.active.value).toBe(false);
     });
 
     it("names the status when the error isn't JSON", async () => {
@@ -266,6 +277,7 @@ describe("useChangeEmail", () => {
 
   describe("confirm", () => {
     beforeEach(() => {
+      isLoggedIn.value = true;
       pendingEmail.value = "new@example.com";
     });
 
@@ -381,7 +393,7 @@ describe("useChangeEmail", () => {
 
     it("shows a rate limiter's 429 apart from the code, and keeps the change waiting", async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
       );
       const email = useEmail();
 
@@ -414,7 +426,32 @@ describe("useChangeEmail", () => {
       expect(userEmail.value).toBe("old@example.com");
       expect(email.cooldown.active.value).toBe(false);
       expect(savedCooldown()).toBeNull();
+      // The 403 is an answer the page shows, not a fault to log; the 409 still is one.
+      expect(console.error).toHaveBeenCalledTimes(status === 403 ? 0 : 1);
     });
+
+    it.each([
+      [403, "You must be logged in to perform this action."],
+      [400, wrongCode]
+    ])(
+      "says nothing of the change after a %i when the session has ended",
+      async (status, error) => {
+        const notLoggedIn = { error: "You must be logged in to perform this action." };
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(status, { error }))
+          .mockResolvedValueOnce(jsonResponse(403, notLoggedIn));
+        const email = useWaitingEmail();
+
+        expect(await email.confirm("123456")).toBe(false);
+
+        // The refresh logged the page out; the account page says why, not that the change failed.
+        expect(isLoggedIn.value).toBe(false);
+        expect(sessionEnded.value).toBe(true);
+        expect(email.confirmError.value).toBe("");
+        expect(email.codeError.value).toBe("");
+        expect(email.isConfirming.value).toBe(false);
+      }
+    );
 
     it("drops the waiting change itself when that refresh fails", async () => {
       fetchMock
