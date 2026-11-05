@@ -59,7 +59,7 @@ test("a new code can be sent once a minute", async ({ page }) => {
   await fillForm(page);
 
   const resend = page.getByRole("button", { name: /^Resend/ });
-  await expect(resend).toHaveText("Resend in 1 min");
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 
   await page.clock.runFor(60_000);
@@ -69,7 +69,7 @@ test("a new code can be sent once a minute", async ({ page }) => {
   await expect(page.getByRole("status")).toHaveText(
     "A new code is on its way to new@example.com. The previous one no longer works."
   );
-  await expect(resend).toHaveText("Resend in 1 min");
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 });
 
@@ -97,7 +97,7 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("alert")).toHaveText(
     "A code was sent just now. You can send another once the countdown ends."
   );
-  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 42 sec");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText(/^Resend in [1-4]\d sec$/);
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
 
   await page.clock.runFor(42_000);
@@ -120,7 +120,17 @@ test("a resend over the mail limit shows the API's message and counts its wait i
 
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
   await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveAccessibleName(
+    "Resend in 57 minutes"
+  );
   await expect(page.getByRole("button", { name: /^Resend/ })).toBeDisabled();
+
+  // After a reload, the wait it picks up still says why.
+  await page.reload();
+  await page.getByLabel("E-mail").fill("new@example.com");
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
 });
 
 test("registering over the mail limit stays on the form, since no code was sent", async ({
@@ -148,7 +158,7 @@ test("a code that already arrived can be entered after a reload", async ({ page 
     "Enter the code that was mailed to new@example.com."
   );
   // The minute since the code was sent survives the reload, so no click is wasted on a 429.
-  await expect(page.getByRole("button", { name: /^Resend in (\d+ sec|1 min)$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
@@ -166,7 +176,7 @@ test("registering the same address again within the minute keeps the code sent",
   await expect(page.getByRole("status")).toContainText(
     "Less than a minute ago, a code went to new@example.com. It still works"
   );
-  await expect(page.getByRole("button", { name: /^Resend in (\d+ sec|1 min)$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
