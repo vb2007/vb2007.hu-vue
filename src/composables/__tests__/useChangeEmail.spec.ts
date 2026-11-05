@@ -151,8 +151,12 @@ describe("useChangeEmail", () => {
       [400, "The e-mail address is invalid: must match name@provider.com format."],
       [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one."],
       [400, "This e-mail address's domain can't receive e-mail: check it for typos."],
+      [
+        403,
+        "The superuser's e-mail address can't be changed here: change SUPERUSER_EMAIL in .env instead."
+      ],
       [403, "The provided password is incorrect."],
-      [409, "An account with this E-mail address already exists."]
+      [409, "This account has no password: set one before changing the e-mail address."]
     ])("shows the API's %i and keeps the address", async (status, error) => {
       fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
       const email = useEmail();
@@ -394,6 +398,8 @@ describe("useChangeEmail", () => {
       expect(userEmail.value).toBe("old@example.com");
     });
 
+    // PATCH /user/email mails a code to these as to any address; only the confirm refuses them
+    // (vb2007/vb2007.hu-api#291).
     it.each([
       [403, "This e-mail address is reserved for the superuser."],
       [409, "An account with this E-mail address already exists."]
@@ -414,6 +420,22 @@ describe("useChangeEmail", () => {
       expect(userEmail.value).toBe("old@example.com");
       expect(email.cooldown.active.value).toBe(false);
       expect(savedCooldown()).toBeNull();
+    });
+
+    it("keeps the code step after a 409 that left the change waiting", async () => {
+      // Another account took the address between the API's check and its switch.
+      const error = "An account with this E-mail address already exists.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(409, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
+      const email = useWaitingEmail();
+
+      expect(await email.confirm("123456")).toBe(false);
+
+      expect(email.confirmError.value).toBe(error);
+      expect(email.codeError.value).toBe("");
+      expect(pendingEmail.value).toBe("new@example.com");
+      expect(email.cooldown.active.value).toBe(true);
     });
 
     it("drops the waiting change itself when that refresh fails", async () => {
