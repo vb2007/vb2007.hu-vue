@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { jsonResponse, mockFetch, notLoggedInResponse } from "@/__tests__/helpers/fetch";
 
 /** `GET /user` after the change, shaped like the API's answer. */
 const refreshedUser = {
@@ -181,7 +181,7 @@ describe("ChangeEmail", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(status, { error }))
       // A 503 looks the account up again, which finds no session.
-      .mockResolvedValueOnce(jsonResponse(401));
+      .mockResolvedValueOnce(notLoggedInResponse());
     await openForm();
     await fill("new@example.com", "wrong-password");
     (inputs()[1].element as HTMLInputElement).focus();

@@ -3,7 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { jsonResponse, mockFetch, notLoggedInResponse } from "@/__tests__/helpers/fetch";
 
 const REAUTH =
   "Confirm it's you first: log in with GitHub again (or relink it), then set the password within 10 minutes.";
@@ -149,7 +149,7 @@ describe("SetPasswordForm", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
       // The 409 looks the account up again, which finds no session.
-      .mockResolvedValueOnce(jsonResponse(401));
+      .mockResolvedValueOnce(notLoggedInResponse());
     const wrapper = mount(SetPasswordForm);
     await fill(wrapper, "correct horse");
 

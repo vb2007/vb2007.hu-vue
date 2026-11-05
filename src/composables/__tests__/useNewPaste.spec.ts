@@ -51,13 +51,15 @@ describe("useNewPaste", () => {
   });
 
   it("shows the API's error when it refuses", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not logged in." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "You must be logged in to perform this action." })
+    );
     const newPaste = useNewPaste();
     newPaste.content.value = "hello world";
 
     await newPaste.create();
 
-    expect(newPaste.errorMessage.value).toBe("You are not logged in.");
+    expect(newPaste.errorMessage.value).toBe("You must be logged in to perform this action.");
     expect(newPaste.createdPaste.value).toBeNull();
     expect(newPaste.content.value).toBe("hello world");
     expect(newPaste.isLoading.value).toBe(false);

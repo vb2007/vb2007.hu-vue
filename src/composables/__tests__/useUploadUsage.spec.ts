@@ -30,12 +30,14 @@ describe("useUploadUsage", () => {
   });
 
   it("shows the API's error", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not logged in." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "You must be logged in to perform this action." })
+    );
     const { usage, errorMessage, load } = useUploadUsage();
     await load();
 
     expect(usage.value).toBeNull();
-    expect(errorMessage.value).toBe("You are not logged in.");
+    expect(errorMessage.value).toBe("You must be logged in to perform this action.");
   });
 
   it("says when the server can't be reached", async () => {

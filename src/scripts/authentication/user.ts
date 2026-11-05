@@ -27,8 +27,8 @@ export const loginStatus = ref("");
 export const fetchUserDetails = async () => {
   const result = await apiRequest(Endpoints.User.get, {
     failure: Messages.Auth.userFailed,
-    // A visitor who isn't logged in: the usual answer, not a fault.
-    quietStatuses: [HttpStatus.Unauthorized]
+    // Logged out (no session, or an expired or ended one): the API's usual 403, not a fault.
+    quietStatuses: [HttpStatus.Forbidden]
   });
 
   if (!result.ok) {

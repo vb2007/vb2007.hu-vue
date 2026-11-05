@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { jsonResponse, mockFetch, notLoggedInResponse } from "@/__tests__/helpers/fetch";
 
 // user.ts caches the session lookup at module level, so each test imports fresh copies
 // of it and of the auth state it writes to.
@@ -120,7 +120,7 @@ describe("restoreSession", () => {
   });
 
   it("only asks the API once, however often it is called", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401));
+    fetchMock.mockResolvedValueOnce(notLoggedInResponse());
     const { restoreSession } = await load();
 
     await Promise.all([restoreSession(), restoreSession()]);
@@ -129,8 +129,8 @@ describe("restoreSession", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("stays logged out when there is no session", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401));
+  it("stays logged out, without logging it, when the API answers there is no session", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedInResponse());
     const { restoreSession, isLoggedIn, isSessionChecked } = await load();
 
     await restoreSession();
@@ -138,6 +138,16 @@ describe("restoreSession", () => {
     expect(isLoggedIn.value).toBe(false);
     expect(isSessionChecked.value).toBe(true);
     expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("still logs a lookup that fails for another reason", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
+    const { restoreSession, isLoggedIn } = await load();
+
+    await restoreSession();
+
+    expect(isLoggedIn.value).toBe(false);
+    expect(console.error).toHaveBeenCalledWith("Failed to load the user: ", 500);
   });
 
   it("stays logged out when the API is unreachable", async () => {
@@ -171,7 +181,9 @@ describe("login", () => {
   });
 
   it("explains when the browser dropped the session cookie", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, {})).mockResolvedValueOnce(jsonResponse(401));
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, {}))
+      .mockResolvedValueOnce(notLoggedInResponse());
     const { login, loginStatus, isLoggedIn } = await load();
 
     await login("me@example.com", "secret");

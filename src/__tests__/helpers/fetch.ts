@@ -10,6 +10,10 @@ export const jsonResponse = (status: number, body?: unknown, statusText = "") =>
       body === undefined ? Promise.reject(new SyntaxError("No JSON")) : Promise.resolve(body)
   }) as Response;
 
+/** What the API answers a request without a live session: its `isAuthenticated` middleware's 403. */
+export const notLoggedInResponse = () =>
+  jsonResponse(403, { error: "You must be logged in to perform this action." });
+
 /** Replaces the global fetch with a mock; queue responses with mockResolvedValueOnce / mockRejectedValueOnce. */
 export const mockFetch = () => {
   const fetchMock = vi.fn<typeof fetch>();

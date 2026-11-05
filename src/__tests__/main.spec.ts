@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { mockFetch, jsonResponse } from "@/__tests__/helpers/fetch";
+import { mockFetch, notLoggedInResponse } from "@/__tests__/helpers/fetch";
 
 describe("main", () => {
   it("mounts the app with the router into #app", async () => {
-    mockFetch().mockResolvedValue(jsonResponse(401));
+    mockFetch().mockResolvedValue(notLoggedInResponse());
     document.body.innerHTML = '<div id="app"></div>';
 
     await import("@/main");
