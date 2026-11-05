@@ -19,6 +19,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
  * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
+ * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or registered, whatever the address's case, and takes `api.password`.
+ * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
@@ -78,6 +80,8 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
 const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
+/** The password account `POST /auth/login` knows from the start. */
+export const MOCK_EMAIL = "me@example.com";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
@@ -108,16 +112,30 @@ const parseMultipart = (body: Buffer, contentType: string) => {
   };
 };
 
+interface MockUser {
+  email: string;
+  username: string;
+  isSuperuser: boolean;
+  hasPassword: boolean;
+  emailVerified: boolean;
+  githubId?: string;
+  githubLogin?: string;
+}
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
 export class MockApi {
-  private user: {
-    email: string;
-    username: string;
-    isSuperuser: boolean;
-    hasPassword: boolean;
-    emailVerified: boolean;
-    githubId?: string;
-    githubLogin?: string;
-  } | null = null;
+  private user: MockUser | null = null;
+  /** The accounts `POST /auth/login` knows; logging in makes one of them `user` again. */
+  private readonly accounts: MockUser[] = [
+    {
+      email: MOCK_EMAIL,
+      username: "e2e",
+      isSuperuser: false,
+      hasPassword: true,
+      emailVerified: false
+    }
+  ];
   /** A new address waiting for `MOCK_EMAIL_CODE`, and when its code was sent. */
   private emailChange: { email: string; sentAt: number } | null = null;
   /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
@@ -180,6 +198,16 @@ export class MockApi {
       this.user.githubId = "583231";
       this.user.githubLogin = "e2e-octocat";
     }
+    this.knowsAccount(this.user);
+  }
+
+  /** Lets `POST /auth/login` find `user`, replacing an account with the same address. */
+  private knowsAccount(user: MockUser) {
+    const index = this.accounts.findIndex(
+      (account) => normalizeEmail(account.email) === normalizeEmail(user.email)
+    );
+    if (index === -1) this.accounts.push(user);
+    else this.accounts[index] = user;
   }
 
   /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
@@ -449,14 +477,7 @@ export class MockApi {
             }
           : { status: 401 };
       case "POST /auth/login":
-        this.user = {
-          email: body?.email ?? "e2e@example.com",
-          username: "e2e",
-          isSuperuser: false,
-          hasPassword: true,
-          emailVerified: false
-        };
-        return { status: 200, newSession: true };
+        return this.login(body?.email, body?.password);
       case "DELETE /user":
         return this.deleteAccount(body);
       case "POST /auth/logout":
@@ -557,6 +578,7 @@ export class MockApi {
           // Entering the mailed code confirms the address.
           emailVerified: true
         };
+        this.knowsAccount(this.user);
         this.password = this.pendingRegistration.password;
         this.pendingRegistration = null;
         // Like logging in, confirming the code starts a session.
@@ -605,6 +627,30 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  /**
+   * Like the API (vb2007/vb2007.hu-api#320): one 403 for an unknown address, a wrong password and
+   * an account without a password, so it doesn't reveal which addresses have accounts.
+   */
+  private login(email?: string, password?: string): MockResponse {
+    if (!email?.trim() || !password) {
+      return { status: 400, body: { error: "You must provide an E-mail address and a password." } };
+    }
+    const account = this.accounts.find(
+      (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
+    );
+    if (!account?.hasPassword || password !== this.password) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+        }
+      };
+    }
+    this.user = account;
+    return { status: 200, newSession: true };
   }
 
   /** Links @e2e-octocat and comes back to the account page, which also confirms the user. */
@@ -844,6 +890,7 @@ export class MockApi {
         };
       }
     }
+    this.accounts.splice(this.accounts.indexOf(this.user), 1);
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
@@ -864,9 +911,8 @@ export class MockApi {
         body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
       };
     }
-    const normalize = (email: string) => email.trim().toLowerCase();
     const asked = this.passwordResets.some(
-      (email) => normalize(email) === normalize(body?.email ?? "")
+      (email) => normalizeEmail(email) === normalizeEmail(body?.email ?? "")
     );
     if (!asked || body?.code?.replace(/\s/g, "") !== this.passwordResetCode) {
       return {
@@ -877,7 +923,7 @@ export class MockApi {
       };
     }
     this.password = body.newPassword!;
-    if (this.user && normalize(this.user.email) === normalize(body.email!)) {
+    if (this.user && normalizeEmail(this.user.email) === normalizeEmail(body.email!)) {
       this.user = null;
     }
     return {

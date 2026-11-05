@@ -1,4 +1,4 @@
-import { expect, MOCK_EMAIL_CODE, MOCK_PASSWORD, type MockApi, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_EMAIL_CODE, MOCK_PASSWORD, type MockApi, test } from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
@@ -27,6 +27,41 @@ test("a failed GitHub login is explained once, then dropped from the URL", async
 
   await page.reload();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a refused login shows the API's one message and stays logged out", async ({ page, api }) => {
+  // A GitHub-only account has no password to log in with.
+  api.loggedInAs("octo@example.com", "octo", { password: false, githubLinked: true });
+  api.loggedOut();
+  await page.goto("/login");
+  const main = page.getByRole("main");
+  const logIn = main.getByRole("button", { name: "Log in", exact: true });
+
+  // A wrong password, an unknown address and a GitHub-only account all get the same answer.
+  for (const [email, password] of [
+    [MOCK_EMAIL, "not-the-password"],
+    ["nobody@example.com", MOCK_PASSWORD],
+    ["octo@example.com", MOCK_PASSWORD]
+  ]) {
+    await page.getByLabel("E-mail").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    const answer = page.waitForResponse((response) => response.url().endsWith("/auth/login"));
+    await logIn.click();
+    expect((await answer).status()).toBe(403);
+    await expect(main.getByRole("alert")).toHaveText(
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+    );
+    await expect(logIn).toBeVisible();
+  }
+  await expect(main).not.toContainText("Login successful!");
+  const cookies = await page.context().cookies();
+  expect(cookies.map((cookie) => cookie.name)).not.toContain("VB-AUTH");
+
+  // The address's case doesn't matter, like the API.
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL.toUpperCase());
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await logIn.click();
+  await expect(main).toContainText("Login successful!");
 });
 
 test("the account page asks visitors to log in", async ({ page }) => {
@@ -512,7 +547,7 @@ test("accounts that can't change their e-mail say why", async ({ page, api }) =>
 test("the password changes in place and the session carries on", async ({ page, api }) => {
   // A real login, so the browser holds a VB-AUTH cookie that the change has to replace.
   await page.goto("/login");
-  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();

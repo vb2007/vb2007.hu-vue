@@ -1,11 +1,11 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 test("a user logs in and shortens a link", async ({ page, api }) => {
   api.shortenReturns("abc123");
   await page.goto("/login");
 
-  await page.getByLabel("E-mail").fill("e2e@example.com");
-  await page.getByLabel("Password").fill("secret123");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
 
