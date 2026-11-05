@@ -79,7 +79,7 @@ test("falls back to the API's redirect when the lookup answers without JSON", as
       status: 404,
       contentType: "text/html",
       headers: { "Access-Control-Allow-Origin": "*" },
-      body: "<pre>Cannot GET /shortenUrl/old123</pre>"
+      body: "<h1>404 Not Found</h1>"
     })
   );
 

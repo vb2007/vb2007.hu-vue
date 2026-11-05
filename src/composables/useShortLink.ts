@@ -58,7 +58,9 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
     });
 
     // No answer (the lookup is never aborted: it passes no signal), or a server error: the API's
-    // JSON 500, or a gateway's 502/504 page while the API is down. Worth retrying either way.
+    // JSON 500, or a gateway's 502/504 page while the API is down. That page only arrives as a 502/504
+    // when it carries CORS headers; otherwise the browser reports a network error, which ends here
+    // too. Worth retrying either way.
     if (!result.ok && (result.kind !== "http" || result.status >= HttpStatus.InternalServerError)) {
       state.value = "error";
       errorMessage.value = result.error;
@@ -79,7 +81,8 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
       }
       go(json.originalUrl);
     } else if (json?.error) {
-      // Only a 4xx is left here: the API's answer that the code doesn't exist.
+      // Only a JSON `{ error }` below 500 is left here: in practice the API's 4xx for a code that
+      // doesn't exist.
       state.value = "not-found";
       errorMessage.value = json.error;
     } else {

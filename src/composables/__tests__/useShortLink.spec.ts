@@ -132,7 +132,8 @@ describe("useShortLink", () => {
   });
 
   it("reports a gateway error instead of sending the browser into it", async () => {
-    // Cloudflare's or nginx's own page while the API is down: no JSON.
+    // Cloudflare's or nginx's own page while the API is down: no JSON. It only arrives as a 502
+    // when it carries CORS headers; without them it's a network error, which also ends in "error".
     fetchMock.mockResolvedValueOnce(jsonResponse(502, undefined, "Bad Gateway"));
     const link = useShortLink(navigate);
 
