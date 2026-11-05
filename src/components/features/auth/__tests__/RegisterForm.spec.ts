@@ -657,7 +657,7 @@ describe("RegisterForm", () => {
       const codeInput = wrapper.find<HTMLInputElement>('input[autocomplete="one-time-code"]');
       expect(codeInput.element.value).toBe("123 456");
       expect(document.activeElement).toBe(codeInput.element);
-      expect(resendButton(wrapper).text()).toBe("Resend in 40 s");
+      expect(resendButton(wrapper).text()).toBe("Resend in 40 sec");
 
       await wrapper.find("form").trigger("submit");
       await flushPromises();

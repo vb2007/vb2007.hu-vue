@@ -134,7 +134,7 @@ test("a resend over the mail limit shows the API's message and counts its wait i
 
   // After a reload, the wait it picks up still says why.
   await page.reload();
-  await page.getByLabel("E-mail").fill("new@example.com");
+  await fillFields(page);
   await page.getByRole("button", { name: "Enter it" }).click();
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
   await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
@@ -292,7 +292,7 @@ test("a username taken meanwhile keeps the code, which finishes with another nam
   );
   await expect(page.getByLabel("Confirmation code")).toHaveValue(REGISTRATION_CODE);
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
-  await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByRole("button", { name: "Confirm code" }).click();
 
   await expect(page.getByText("Registration successful!")).toBeVisible();
