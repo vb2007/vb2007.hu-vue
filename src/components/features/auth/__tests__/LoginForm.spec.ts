@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
@@ -133,6 +134,18 @@ describe("LoginForm", () => {
     expect(wrapper.find('[role="alert"]').text()).toBe(
       "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
     );
+  });
+
+  it("shows a lockout's wait above the GitHub login it points to", async () => {
+    loginStatus.value = Messages.Auth.loginLockedOut(15);
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    const alert = wrapper.find('[role="alert"]');
+    expect(alert.text()).toBe(
+      "Too many failed attempts. Try again in 15 minutes, or log in with GitHub below if it's linked to your account."
+    );
+    const github = wrapper.find('a[href="https://api.test/auth/github"]').element;
+    expect(alert.element.compareDocumentPosition(github)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("replaces the form with a success message when logged in", async () => {

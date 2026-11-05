@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, useCountdown } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
@@ -29,7 +29,7 @@ export type RegisterCodeResult =
 export type CodeNotice =
   /** The register form just had it mailed. */
   | "sent"
-  /** A resend mailed a new one. */
+  /** A resend the API accepted: it mailed a new code only if a registration was waiting. */
   | "resent"
   /** The user already has one, e.g. after a reload; nothing was sent. */
   | "earlier"
@@ -139,7 +139,10 @@ export const useRegisterCode = () => {
     return outcome;
   };
 
-  /** Mails a new code, which replaces the old one. Returns whether it worked. */
+  /**
+   * Asks for a new code, which replaces the old one if a registration is waiting. Returns whether
+   * the API accepted it.
+   */
   const resend = async () => {
     isResending.value = true;
     showError("");
@@ -152,18 +155,19 @@ export const useRegisterCode = () => {
     if (result.ok) {
       notice.value = "resent";
       holdResend(RESEND_COOLDOWN_SECONDS);
-    } else if (result.status === HttpStatus.TooManyRequests) {
-      holdResend(retryAfterFrom(result.body));
-      // The cooldown's own message names its seconds, which would freeze next to the countdown.
-      showError(
-        typeof result.body?.retryAfter === "number" ? Messages.EmailCode.cooldown : result.error,
-        true
-      );
     } else {
-      showError(result.error);
-      if (result.status === HttpStatus.ServiceUnavailable) {
-        // The API replaced the code before the e-mail failed, so the old one is gone too.
-        notice.value = "lost";
+      const codeWait = codeCooldownOf(result);
+      if (codeWait !== undefined) {
+        holdResend(codeWait);
+        // The cooldown's own message names its seconds, which would freeze next to the countdown.
+        showError(Messages.EmailCode.cooldown, true);
+      } else {
+        // Also a rate limiter's 429: it sent no code, so the key isn't held back for it.
+        showError(result.error);
+        if (result.status === HttpStatus.ServiceUnavailable) {
+          // The API replaced the code before the e-mail failed, so the old one is gone too.
+          notice.value = "lost";
+        }
       }
     }
     isResending.value = false;
