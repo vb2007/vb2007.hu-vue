@@ -169,6 +169,16 @@ describe("confirmPasswordReset", () => {
     expect(passwordResetNotice.value).toBe("");
   });
 
+  it("returns the code checks' 429 with its wait, which even the right code gets at the cap", async () => {
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+
+    await expect(confirmPasswordReset("me@example.com", "123456", "new password")).resolves.toEqual(
+      { error, retryAfter: 86_400 }
+    );
+    expect(passwordResetNotice.value).toBe("");
+  });
+
   it("names the status when the error has no body", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500));
 

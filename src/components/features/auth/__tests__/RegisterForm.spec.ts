@@ -340,6 +340,38 @@ describe("RegisterForm", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
   });
 
+  it("holds the key after the mail limit's 429, with the API's message, until its wait ends", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error = "Too many e-mails requested: try again later.";
+    vi.mocked(register).mockImplementationOnce(async () => {
+      registerStatus.value = error;
+      return { sent: false, limitedFor: 3412 };
+    });
+    const wrapper = await mountForm();
+    await fill(wrapper);
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    // Nothing went out, so the form stays, with the wait on its key.
+    expect(wrapper.find(FIELDS.email).exists()).toBe(true);
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 57 minutes.`);
+    expect(submitButton(wrapper).text()).toBe("Try again in 57 min");
+    expect(submitButton(wrapper).attributes("aria-label")).toBe("Try again in 57 minutes");
+    expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+    // The disabled key can't take the focus back, so the first field does.
+    expect(document.activeElement).toBe(wrapper.find(FIELDS.email).element);
+
+    await wrapper.find("form").trigger("submit");
+    expect(register).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(3_412_000);
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(submitButton(wrapper).text()).toBe("Register");
+    expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+  });
+
   it("opens the code step when a code went to the address moments ago", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
     vi.mocked(register).mockImplementationOnce(async () => {
@@ -544,11 +576,70 @@ describe("RegisterForm", () => {
 
       await confirm(wrapper);
 
+      // The 429 holds the key for its retryAfter, which the alert says for screen readers.
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "Too many failed attempts: try again later."
+        "Too many failed attempts: try again later. Try again in 15 minutes."
       );
       expect(wrapper.find("input").attributes("aria-invalid")).toBeUndefined();
+      // A held key doesn't shake: it says when to try again instead.
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+    });
+
+    it("still flashes the key for a refusal that holds nothing", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "The API is down." }));
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper);
+
+      expect(wrapper.find('[role="alert"]').text()).toBe("The API is down.");
       expect(submitButton(wrapper).classes()).toContain("btn--error");
+    });
+
+    it("holds Confirm code for the daily cap's wait, in hours, then lets the user try again", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 85_500 }));
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper);
+
+      // Past the wrong codes' window it's the daily cap, which a new code doesn't lift.
+      const alert = () => wrapper.find('[role="alert"]');
+      expect(alert().text()).toBe(
+        `${error} A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes.`
+      );
+      expect(alert().find(".visually-hidden").text()).toBe("Try again in 23 hours 45 minutes.");
+      expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
+      // "23 hours" doesn't contain the visible "23 hr", so the label names the key (spokenWait).
+      expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
+      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert().attributes("id"));
+      expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+      expect(document.activeElement).toBe(wrapper.find("input").element);
+      // Resending has limits of its own, so it isn't held.
+      expect(resendButton(wrapper).text()).toMatch(/^Resend in \d+ sec$/);
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      // Typing a new code drops other errors, but not why the key is held.
+      await wrapper.find("input").setValue("654321");
+      await flushPromises();
+      expect(alert().text()).toContain(error);
+      // Nor does going back to the form and opening the step for the address again.
+      await wrapper.findAll(".code-actions button")[1].trigger("click");
+      await flushPromises();
+      await enterCodeButton(wrapper).trigger("click");
+      await flushPromises();
+      expect(alert().text()).toContain(error);
+      expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
+
+      vi.advanceTimersByTime(85_500_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(submitButton(wrapper).text()).toBe("Confirm code");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
     });
 
     it("flashes the key for its full second on each failed try", async () => {

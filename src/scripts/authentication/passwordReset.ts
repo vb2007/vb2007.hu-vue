@@ -19,8 +19,9 @@ export interface PasswordResetAnswer {
   /** What went wrong otherwise. */
   error?: string;
   /**
-   * Seconds before another try, after a rate limiter's 429: the mail limit's before another code,
-   * or the link limit's before the same link can be tried again (it isn't used up).
+   * Seconds to wait after a 429: before the mail limit takes another request, before the code
+   * checks take another code (too many wrong ones, or the daily cap, where even the right one is
+   * refused), or before the link limit takes the same link again (it isn't used up).
    */
   retryAfter?: number;
   /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
@@ -65,7 +66,9 @@ const finishReset = (
   isThatAccount: () => boolean
 ): PasswordResetAnswer => {
   if (!result.ok) {
-    return { error: result.error };
+    return result.status === HttpStatus.TooManyRequests
+      ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
+      : { error: result.error };
   }
 
   const message = result.data.message ?? "";
@@ -117,22 +120,18 @@ export const confirmPasswordResetLink = async (
     failure: Messages.Auth.passwordResetFailed
   });
 
-  if (!result.ok) {
-    // Too many rejected links from this network: this one isn't used up and works again later.
-    if (result.status === HttpStatus.TooManyRequests) {
-      return { error: result.error, retryAfter: retryAfterFrom(result.body) };
+  if (!result.ok && result.status === HttpStatus.BadRequest) {
+    if (passwordLengthErrors().includes(result.error)) {
+      return { error: result.error, passwordRefused: true };
     }
-    if (result.status === HttpStatus.BadRequest) {
-      if (passwordLengthErrors().includes(result.error)) {
-        return { error: result.error, passwordRefused: true };
-      }
-      // Only the API's own word for a used-up link gives the link up: any other 400 (e.g. a
-      // password rule that changed on the API) leaves it to try again.
-      if (result.error === Messages.Auth.resetLinkRefused) {
-        return { error: result.error, linkRefused: true };
-      }
+    // Only the API's own word for a used-up link gives the link up: any other 400 (e.g. a
+    // password rule that changed on the API) leaves it to try again.
+    if (result.error === Messages.Auth.resetLinkRefused) {
+      return { error: result.error, linkRefused: true };
     }
   }
 
+  // A 429 (too many rejected links from this network) leaves the link usable later: like the
+  // code checks', `finishReset` returns its wait.
   return finishReset(result, () => resetLinkUserId(token) === userId.value);
 };

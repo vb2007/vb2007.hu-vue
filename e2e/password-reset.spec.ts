@@ -240,6 +240,62 @@ test("resetting another account's password keeps the user logged in and says so"
   await expect(main).not.toContainText("You're still logged in");
 });
 
+test("a reset past the daily cap of wrong codes holds Reset password for hours", async ({
+  page,
+  api
+}) => {
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  // Even the right code is refused once 20 were wrong today.
+  api.capsCodeChecks();
+
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes."
+  );
+  const key = page.getByRole("button", { name: /^Try again in/ });
+  await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
+  // it points at says the wait in words.
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  await expect(page).toHaveURL("/reset-password");
+  expect(api.password).not.toBe("a new password");
+});
+
+test("asking for a code over the mail limit holds Send code for its wait", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  api.limitsMailSends();
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many e-mails requested: try again later. Try again in 57 minutes."
+  );
+  const key = page.locator("form").getByRole("button");
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+  expect(api.passwordResets).toEqual([]);
+
+  // A jump, rather than every tick of the countdown on the way.
+  await page.clock.fastForward(3_412_000);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(key).toHaveText("Send code");
+  await expect(key).toBeEnabled();
+});
+
 test.describe("the mailed link", () => {
   const RESET = "Password reset successfully: log in with the new password.";
   const BAD_LINK = "The reset link is wrong, expired or already used: request a new one.";

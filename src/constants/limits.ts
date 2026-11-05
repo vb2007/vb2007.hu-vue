@@ -43,6 +43,11 @@ export class Limits {
      * and a 43-character base64url secret. It works as long as the code.
      */
     static readonly resetLinkToken: RegExp = /^[0-9a-f]{24}\.[\w-]{43}$/;
+    /**
+     * The window for wrong codes (the API's `FAILED_ATTEMPTS_WINDOW_MS`, vb2007/vb2007.hu-api#254).
+     * A longer wait is the daily cap of rejected codes per address, which a new code doesn't lift.
+     */
+    static readonly failedChecksWindowSeconds: number = 15 * 60;
   };
 
   static readonly Github = class {

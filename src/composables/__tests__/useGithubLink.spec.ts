@@ -1,4 +1,4 @@
-import { effectScope, type EffectScope } from "vue";
+import { effectScope, nextTick, type EffectScope } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { LEAVING_GRACE_MS, useGithubLink } from "@/composables/useGithubLink";
@@ -119,6 +119,24 @@ describe("useGithubLink", () => {
     expect(await github.link("hunter22")).toBe(false);
 
     expect(github.linkError.value).toBe("Too many requests: try again later.");
+    // A 429 without a retryAfter waits a minute.
+    expect(github.hold.remaining.value).toBe(60);
+  });
+
+  it("holds linking after the password checks' 429 until its wait ends", async () => {
+    vi.useFakeTimers();
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+    const github = useLink(navigate);
+
+    await github.link("hunter22");
+
+    expect(github.hold.isHeld()).toBe(true);
+    expect(github.hold.remaining.value).toBe(900);
+    vi.advanceTimersByTime(900_000);
+    await nextTick();
+    expect(github.hold.isHeld()).toBe(false);
+    expect(github.linkError.value).toBe("");
   });
 
   it("explains an API without GitHub configured instead of showing its code", async () => {

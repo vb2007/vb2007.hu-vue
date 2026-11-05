@@ -35,7 +35,10 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
-const { isDeleting, deleteError, needsGithub, deleteAccount } = useAccountDelete();
+const { isDeleting, deleteError, needsGithub, deleteAccount, hold } = useAccountDelete();
+const isHeld = computed(() => hold.isHeld());
+/** The refusal, or why the key is held, also once Cancel cleared it and the panel opened again. */
+const shownError = computed(() => hold.shown());
 
 const confirming = ref(false);
 const confirmation = ref("");
@@ -50,9 +53,8 @@ const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
 const githubLink = apiUrl(Endpoints.Auth.githubLink);
 const describedBy = computed(
   () =>
-    [githubConfirmed.value && confirmedId, deleteError.value && errorId]
-      .filter(Boolean)
-      .join(" ") || undefined
+    [githubConfirmed.value && confirmedId, shownError.value && errorId].filter(Boolean).join(" ") ||
+    undefined
 );
 
 /** The password typed, or the username matched exactly; until then the key looks disabled. */
@@ -99,13 +101,14 @@ const cancel = async () => {
 const confirmWithGithub = () => saveDeleteIntent(username.value);
 
 const submit = async () => {
+  if (isHeld.value) return;
   if (!(await validate(form.value))) return;
   githubConfirmed.value = false;
   if (!(await deleteAccount(confirmation.value))) {
     if (needsGithub.value) {
       await nextTick();
       githubKey.value?.$el.focus();
-    } else if (!form.value?.contains(document.activeElement)) {
+    } else if (!form.value?.querySelector(":focus:not(:disabled)")) {
       focusField();
     }
     return;
@@ -179,9 +182,13 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
         required
         @blur="leave('confirmation')"
       />
-      <StatusMessage v-if="deleteError" :id="errorId" :tone="needsGithub ? 'info' : 'error'">{{
-        deleteError
-      }}</StatusMessage>
+      <StatusMessage
+        v-if="shownError"
+        :id="errorId"
+        :tone="needsGithub ? 'info' : 'error'"
+        :spoken="hold.spokenFor()"
+        >{{ shownError }}</StatusMessage
+      >
       <div class="confirm__actions">
         <BaseButton
           v-if="needsGithub"
@@ -198,11 +205,14 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
           v-else
           type="submit"
           size="sm"
-          :error="isValid"
+          :error="isValid && !isHeld"
+          :disabled="isHeld"
+          :aria-label="isHeld ? hold.name.value : undefined"
+          :aria-describedby="isHeld ? errorId : undefined"
           :blocked="!isValid"
           :loading="isDeleting"
         >
-          {{ isDeleting ? "Deleting" : "Delete account" }}
+          {{ isDeleting ? "Deleting" : isHeld ? hold.label.value : "Delete account" }}
         </BaseButton>
         <BaseButton size="sm" variant="ghost" :disabled="isDeleting" @click="cancel">
           Cancel
