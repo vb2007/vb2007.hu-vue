@@ -490,6 +490,8 @@ for (const [status, email, password, error] of [
     await expect(page.getByRole("alert")).toContainText(error);
     await expect(page.getByLabel("New e-mail")).toHaveValue(email);
     await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+    // A limiter's 429 names no wait, so nothing counts down: the key stays ready to try again.
+    await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled();
 
     await page.keyboard.press("Escape");
     await expect(page.getByLabel("New e-mail")).toHaveCount(0);

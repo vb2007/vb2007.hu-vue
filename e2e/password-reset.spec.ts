@@ -80,7 +80,8 @@ test("the code can be sent again once the countdown ends, and the address change
   await expect(page.getByLabel("Code")).toHaveValue("");
   expect(api.passwordResets).toEqual(["typo@example.com", "me@example.com", "me@example.com"]);
 
-  // Over the API's mail limit: its error shows and the key waits again.
+  // Over the API's mail limit, which names no wait and can last an hour: its error shows and stays,
+  // and the key stays ready instead of counting down a minute the API wouldn't keep.
   await page.route("**/auth/password-reset", (route) =>
     route.request().method() === "OPTIONS"
       ? route.fallback()
@@ -93,7 +94,10 @@ test("the code can be sent again once the countdown ends, and the address change
   await page.clock.runFor(60_000);
   await resend.click();
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
-  await expect(resend).toHaveText("Send again in 1:00");
+  await expect(resend).toHaveText("Send again");
+  await expect(resend).toBeEnabled();
+  await page.clock.runFor(60_000);
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
 });
 
 test("a code that already arrived is entered after a reload, without sending another", async ({

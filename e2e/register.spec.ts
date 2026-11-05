@@ -105,6 +105,30 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
+test("a resend over the mail limit keeps its message and the key ready", async ({ page }) => {
+  await page.route("**/auth/register/resend", (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fallback()
+      : route.fulfill({
+          status: 429,
+          headers: { "Access-Control-Allow-Origin": "*" },
+          json: { error: "Too many e-mails requested: try again later." }
+        })
+  );
+  await page.clock.install();
+  await fillForm(page);
+  await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
+  await page.clock.runFor(60_000);
+
+  await page.getByRole("button", { name: "Resend code" }).click();
+
+  // It names no wait and can last an hour, so a countdown would end while the API still refuses.
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  await page.clock.runFor(60_000);
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+});
+
 test("a code that already arrived can be entered after a reload", async ({ page }) => {
   await fillForm(page);
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
