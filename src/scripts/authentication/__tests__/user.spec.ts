@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 // user.ts caches the session lookup at module level, so each test imports fresh copies
 // of it and of the auth state it writes to.
@@ -186,6 +186,19 @@ describe("login", () => {
 
     await login("me@example.com", "nope");
 
+    expect(loginStatus.value).toBe("Wrong password.");
+  });
+
+  it("clears the last status while it asks again, so the same refusal shows afresh", async () => {
+    const response = deferResponse(fetchMock);
+    const { login, loginStatus } = await load();
+    loginStatus.value = "Wrong password.";
+
+    const pending = login("me@example.com", "nope");
+
+    expect(loginStatus.value).toBe("");
+    response.respond(jsonResponse(403, { error: "Wrong password." }));
+    await pending;
     expect(loginStatus.value).toBe("Wrong password.");
   });
 

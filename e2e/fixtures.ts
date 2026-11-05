@@ -22,7 +22,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
- * with that many seconds as `retryAfter`, or without one for `null`.
+ * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
@@ -155,7 +155,7 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
-  /** Set by `locksLogins`: the `retryAfter` of the login's 429, `null` for none. */
+  /** Set by `locksLogins`: the `retryAfter` of the login's 429. */
   private loginLockout: { retryAfter: number | null } | null = null;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
   private githubLinkStarted = false;
@@ -276,7 +276,7 @@ export class MockApi {
   }
 
   /** Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204). */
-  locksLogins(retryAfter: number | null = 900) {
+  locksLogins(retryAfter: number | null) {
     this.loginLockout = { retryAfter };
   }
 
@@ -462,10 +462,7 @@ export class MockApi {
           const { retryAfter } = this.loginLockout;
           return {
             status: 429,
-            body: {
-              error: "Too many failed attempts: try again later.",
-              ...(retryAfter === null ? {} : { retryAfter })
-            }
+            body: { error: "Too many failed attempts: try again later.", retryAfter }
           };
         }
         this.user = {
