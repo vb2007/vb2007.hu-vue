@@ -2,33 +2,32 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import { apiHost } from "@/scripts/api/client";
+import { readableAddress } from "@/scripts/utility/text";
 import NotFoundPage from "@/components/features/not-found/NotFoundPage.vue";
-
-/** A longer address is cut here: the whole of it is still in the address bar. */
-const MAX_SHOWN = 200;
 
 const route = useRoute();
 const host = apiHost();
 
 // The API sends a browser that opens a route it doesn't have here, with the path and query it was
 // asked for as `?url=` (vb2007/vb2007.hu-api#305). Anyone can link here with any `url`, so it's only
-// ever shown as text, and only when it reads as a path on the API: anything else, a missing or
-// repeated `url` included, gets the sentence without an address.
+// ever text, and only when it starts with `/` like every path the API sends: anything else, a
+// missing, bare or repeated `url` included, gets the sentence without an address. What follows the
+// `/` is still anyone's text, so readableAddress escapes the whitespace and invisible characters a
+// real path never has unescaped, and a made-up sentence reads as an escaped address.
 const address = computed(() => {
   const url = route.query.url;
   if (typeof url !== "string" || !url.startsWith("/")) return "";
 
   // Like the not-found page, escapes are decoded so accented letters read as typed. decodeURI keeps
-  // the ones that would change the address's shape (%2F, %3F, %26…), and a malformed one stays as sent.
-  let shown = url;
+  // the ones that would change the address's shape (%2F, %3F, %26…); one malformed escape leaves the
+  // whole address undecoded.
+  let decoded = url;
   try {
-    shown = decodeURI(url);
+    decoded = decodeURI(url);
   } catch {
-    // Kept as sent.
+    // Shown undecoded.
   }
-
-  const chars = [...shown];
-  return chars.length > MAX_SHOWN ? chars.slice(0, MAX_SHOWN).join("") + "…" : shown;
+  return readableAddress(decoded);
 });
 </script>
 

@@ -32,7 +32,9 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.id !== "home" && stop.statu
 </template>
 
 <style scoped>
+/* Isolated, so no character in the address can reorder the sentence around it. */
 :slotted(.path) {
+  unicode-bidi: isolate;
   font-family: var(--font-code);
   font-size: 0.95rem;
   font-weight: 500;
