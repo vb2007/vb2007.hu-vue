@@ -21,6 +21,31 @@ test("a user logs in and shortens a link", async ({ page, api }) => {
   await expect(page.getByLabel("URL")).toHaveValue("");
 });
 
+test("shortening a URL again gives back the user's own link", async ({ page, api }) => {
+  const target = "https://example.com/shared";
+  // Someone else's link to the same URL doesn't count.
+  api.hasShortLink("xyz789", target, "someone-else");
+  api.loggedInAs();
+  api.shortenReturns("abc123");
+  await page.goto("/shorten");
+  const shorten = async (url: string) => {
+    await page.getByLabel("URL").fill(url);
+    await page.getByRole("button", { name: "Shorten", exact: true }).click();
+  };
+
+  await shorten(target);
+  await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Shorten another" }).click();
+  api.shortenReturns("def456");
+  await shorten(target);
+  await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Shorten another" }).click();
+  await shorten("https://example.com/other");
+  await expect(page.getByRole("link", { name: /\/r\/def456$/ })).toBeVisible();
+});
+
 test("an already logged-in user goes straight to the form", async ({ page, api }) => {
   api.loggedInAs("someone@example.com");
   await page.goto("/shorten");

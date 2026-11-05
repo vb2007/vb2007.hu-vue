@@ -486,11 +486,19 @@ export class MockApi {
       case "POST /user/password":
         return this.setPassword(body?.password);
       case "DELETE /auth/github/link": {
-        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
-        if (!this.user.githubId)
-          return { status: 404, body: { error: "No GitHub account is linked." } };
+        const guarded = this.guardGithubLink();
+        if (guarded || !this.user) return guarded;
+        if (!this.user.githubId) {
+          return { status: 404, body: { error: "No GitHub account is linked to this account." } };
+        }
         if (!this.user.hasPassword) {
-          return { status: 403, body: { error: "This account has no password." } };
+          return {
+            status: 403,
+            body: {
+              error:
+                "This account has no password: set one before unlinking GitHub, since it's the only way to log in."
+            }
+          };
         }
         const refusal = this.checkGithubPassword(body?.password);
         if (refusal) return refusal;
@@ -587,12 +595,7 @@ export class MockApi {
       case "POST /auth/password-reset/confirm":
         return this.confirmPasswordReset(body);
       case "POST /shortenUrl/create":
-        this.hasShortLink(
-          this.shortCode,
-          (body as { url?: string } | null)?.url ?? "",
-          this.user?.username
-        );
-        return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
+        return this.shorten((body as { url?: unknown } | null)?.url);
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         return {
@@ -615,11 +618,21 @@ export class MockApi {
     return { status: 302, location: `${this.appOrigin}/account?github=linked` };
   }
 
-  /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
-  private checkGithubPassword(password?: string): MockResponse | undefined {
+  /**
+   * What runs before the GitHub link routes' own checks: the API's `isAuthenticated`, then its shared password limit
+   * (vb2007/vb2007.hu-api#243). Undefined when the request gets through.
+   */
+  private guardGithubLink(): MockResponse | undefined {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
     if (this.passwordChecksLimited) {
       return { status: 429, body: { error: "Too many failed attempts: try again later." } };
     }
+  }
+
+  /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
+  private checkGithubPassword(password?: string): MockResponse | undefined {
     if (!password) {
       return {
         status: 400,
@@ -633,9 +646,10 @@ export class MockApi {
 
   /** `POST /auth/github/link`: answers where GitHub's authorize page is, here on the mock API. */
   private startGithubLink(password?: string): MockResponse {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const guarded = this.guardGithubLink();
+    if (guarded) return guarded;
     if (this.githubUnconfigured) return { status: 503, body: { error: "notConfigured" } };
-    if (this.user.hasPassword) {
+    if (this.user!.hasPassword) {
       const refusal = this.checkGithubPassword(password);
       if (refusal) return refusal;
     }
@@ -1072,19 +1086,83 @@ export class MockApi {
     return { status: 200, body: { message: "Upload quota updated.", user } };
   }
 
+  /**
+   * `POST /shortenUrl/create`, per user like the API (vb2007/vb2007.hu-api#247): the same user's URL again gets
+   * their link back with a 200, anyone else's link to it doesn't count. A new link takes `shortenReturns`' code,
+   * or that code numbered when it's taken.
+   */
+  private shorten(url: unknown): MockResponse {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    // Roughly the API's check: a scheme and no whitespace.
+    if (typeof url !== "string" || !/^[a-z][a-z0-9+.-]*:\S+$/i.test(url)) {
+      return { status: 400, body: { error: "The URI/URL you've provided isn't valid." } };
+    }
+    const answer = (status: number, message: string, code: string) => {
+      const link = this.shortLinks.get(code)!;
+      return {
+        status,
+        body: {
+          message,
+          data: { shortenedUrl: code, originalUrl: url, addedOn: link.addedOn, addedBy: "u1" }
+        }
+      };
+    };
+    const username = this.user.username;
+    const existing = [...this.shortLinks].find(
+      ([, link]) => link.target === url && link.addedBy === username
+    );
+    if (existing) return answer(200, "You've already shortened this URL.", existing[0]);
+
+    let code = this.shortCode;
+    for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;
+    this.hasShortLink(code, url, username);
+    return answer(201, "URL shortened successfully", code);
+  }
+
+  /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
   private listPastes(username: string, query: URLSearchParams) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    const isIntegerInRange = (value: string, min: number, max: number) =>
+      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+    const validators: [string, (value: string) => boolean][] = [
+      ["limit", (value) => isIntegerInRange(value, 1, 50)],
+      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
+      ["sortBy", (value) => value === "addedOn"],
+      ["sortOrder", (value) => value === "asc" || value === "desc"]
+    ];
+    // A repeated parameter reaches the API as an array, which no check accepts.
+    const invalid = validators.find(
+      ([param, isValid]) =>
+        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
+    );
+    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+
+    // Usernames match whatever their case, like the API's collation.
+    const sameName = (name?: string) => name?.toLowerCase() === username.toLowerCase();
+    const known = [
+      this.user.username,
+      ...this.users.map((user) => user.username),
+      ...this.pastes.map((paste) => paste.addedBy)
+    ];
+    if (!known.some(sameName)) {
+      return { status: 404, body: { error: "There is no such user with that username." } };
+    }
+
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => paste.addedBy === username);
+    const owned = this.pastes.filter((paste) => sameName(paste.addedBy));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: { _id: "u1", username } })),
+          .map((paste) => ({ ...paste, addedBy: { _id: "u1", username: paste.addedBy } })),
         pagination: {
           limit,
           page,
