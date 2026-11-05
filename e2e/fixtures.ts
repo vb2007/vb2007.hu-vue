@@ -22,6 +22,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
+ * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account (`MOCK_USER_ID`), which `POST /auth/password-reset/confirm-link` takes once; resetting or changing the password or the address voids every link.
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
@@ -78,6 +79,8 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
 const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
+/** The `_id` of the account `loggedInAs` arranges, which its reset links start with. */
+export const MOCK_USER_ID = "e2e0e2e0e2e0e2e0e2e0e2e0";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
@@ -110,6 +113,7 @@ const parseMultipart = (body: Buffer, contentType: string) => {
 
 export class MockApi {
   private user: {
+    _id: string;
     email: string;
     username: string;
     isSuperuser: boolean;
@@ -164,6 +168,8 @@ export class MockApi {
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
+  /** The reset links' tokens still live (see `mailsResetLink`). */
+  private readonly resetLinks = new Set<string>();
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -175,7 +181,14 @@ export class MockApi {
     username = "e2e",
     { superuser = false, githubLinked = false, password = true, emailVerified = false } = {}
   ) {
-    this.user = { email, username, isSuperuser: superuser, hasPassword: password, emailVerified };
+    this.user = {
+      _id: MOCK_USER_ID,
+      email,
+      username,
+      isSuperuser: superuser,
+      hasPassword: password,
+      emailVerified
+    };
     if (githubLinked) {
       this.user.githubId = "583231";
       this.user.githubLogin = "e2e-octocat";
@@ -264,6 +277,16 @@ export class MockApi {
   ) {
     this.emailChange = { email, sentAt: Date.now() - sentSecondsAgo * 1000 };
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
+  }
+
+  /**
+   * "Mails" a reset link for the account `userId` and returns its token, which
+   * `POST /auth/password-reset/confirm-link` takes once, like the API (vb2007/vb2007.hu-api#256).
+   */
+  mailsResetLink(userId = MOCK_USER_ID) {
+    const token = `${userId}.${`${this.resetLinks.size + 1}`.padStart(43, "e2e_-")}`;
+    this.resetLinks.add(token);
+    return token;
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -383,6 +406,7 @@ export class MockApi {
       currentPassword?: string;
       newPassword?: string;
       username?: string;
+      token?: string;
     } | null,
     query: URLSearchParams
   ): MockResponse | undefined {
@@ -586,6 +610,8 @@ export class MockApi {
         };
       case "POST /auth/password-reset/confirm":
         return this.confirmPasswordReset(body);
+      case "POST /auth/password-reset/confirm-link":
+        return this.confirmPasswordResetLink(body);
       case "POST /shortenUrl/create":
         this.hasShortLink(
           this.shortCode,
@@ -737,6 +763,7 @@ export class MockApi {
     }
     this.user.email = email;
     this.user.emailVerified = true;
+    this.resetLinks.clear();
     return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
@@ -770,6 +797,7 @@ export class MockApi {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
     this.password = newPassword;
+    this.resetLinks.clear();
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
@@ -856,14 +884,8 @@ export class MockApi {
   private confirmPasswordReset(
     body: { email?: string; code?: string; newPassword?: string } | null
   ) {
-    const length = [...(body?.newPassword ?? "")].length;
-    if (length < 8 || length > 128) {
-      const problem = length < 8 ? "too short" : "too long";
-      return {
-        status: 400,
-        body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
-      };
-    }
+    const lengthProblem = this.resetPasswordLengthError(body?.newPassword ?? "");
+    if (lengthProblem) return lengthProblem;
     const normalize = (email: string) => email.trim().toLowerCase();
     const asked = this.passwordResets.some(
       (email) => normalize(email) === normalize(body?.email ?? "")
@@ -877,7 +899,51 @@ export class MockApi {
       };
     }
     this.password = body.newPassword!;
+    // A reset by code voids the mailed links too.
+    this.resetLinks.clear();
     if (this.user && normalize(this.user.email) === normalize(body.email!)) {
+      this.user = null;
+    }
+    return {
+      status: 200,
+      body: { message: "Password reset successfully: log in with the new password." }
+    };
+  }
+
+  /** The API's 400 for a new password out of 8 to 128 characters; undefined when it fits. */
+  private resetPasswordLengthError(password: string): MockResponse | undefined {
+    const length = [...password].length;
+    if (length >= 8 && length <= 128) return undefined;
+    const problem = length < 8 ? "too short" : "too long";
+    return {
+      status: 400,
+      body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
+    };
+  }
+
+  /**
+   * Like the API (vb2007/vb2007.hu-api#256): a live link's token sets the password once and ends
+   * every session of its account. A password the API refuses leaves the link usable.
+   */
+  private confirmPasswordResetLink(body: { token?: string; newPassword?: string } | null) {
+    const { token, newPassword } = body ?? {};
+    if (typeof token !== "string" || !token || typeof newPassword !== "string" || !newPassword) {
+      return {
+        status: 400,
+        body: { error: "You must provide the reset link's token and a new password." }
+      };
+    }
+    const lengthProblem = this.resetPasswordLengthError(newPassword);
+    if (lengthProblem) return lengthProblem;
+    if (!this.resetLinks.has(token)) {
+      return {
+        status: 400,
+        body: { error: "The reset link is wrong, expired or already used: request a new one." }
+      };
+    }
+    this.resetLinks.clear();
+    this.password = newPassword;
+    if (this.user?._id === token.slice(0, token.indexOf("."))) {
       this.user = null;
     }
     return {

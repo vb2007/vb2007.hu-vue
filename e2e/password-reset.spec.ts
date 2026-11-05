@@ -196,3 +196,119 @@ test("resetting another account's password keeps the user logged in and says so"
   await expect(main).toContainText("Login successful!");
   await expect(main).not.toContainText("You're still logged in");
 });
+
+test.describe("the mailed link", () => {
+  const RESET = "Password reset successfully: log in with the new password.";
+  const BAD_LINK = "The reset link is wrong, expired or already used: request a new one.";
+
+  test("asks only for the new password and drops the token from the address and history", async ({
+    page,
+    api
+  }) => {
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+
+    await expect(page).toHaveURL("/reset-password");
+    await expect(page.getByLabel("New password")).toBeFocused();
+    await expect(page.getByLabel("E-mail")).toHaveCount(0);
+    await expect(page.getByLabel("Code")).toHaveCount(0);
+    expect(JSON.stringify(await page.evaluate(() => history.state))).not.toContain(token);
+
+    // Leaving and coming back doesn't bring the token back either.
+    await page.getByRole("main").getByRole("link", { name: "Log in", exact: true }).click();
+    await expect(page).toHaveURL("/login");
+    await page.goBack();
+    await expect(page).toHaveURL("/reset-password");
+    await expect(page.getByRole("button", { name: "Send code" })).toBeVisible();
+  });
+
+  test("sets the password once, then the user logs in with it", async ({ page, api }) => {
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("main").getByRole("status")).toHaveText(RESET);
+    expect(api.password).toBe("a new password");
+
+    // The link is used up.
+    await page.goto(`/reset-password#token=${token}`);
+    await page.getByLabel("New password").fill("another password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await expect(page.getByRole("alert")).toHaveText(BAD_LINK);
+    expect(api.password).toBe("a new password");
+  });
+
+  test("a link that doesn't work shows the API's error and leads to a new code", async ({
+    page,
+    api
+  }) => {
+    api.mailsResetLink();
+    await page.goto(`/reset-password#token=${"0".repeat(24)}.${"x".repeat(43)}`);
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await expect(page.getByRole("alert")).toHaveText(BAD_LINK);
+
+    await page.getByRole("button", { name: "Request a new one" }).click();
+    await expect(page.getByLabel("E-mail")).toBeFocused();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByLabel("E-mail").fill("me@example.com");
+    await page.getByRole("button", { name: "Send code" }).click();
+    await expect(page.getByRole("status")).toHaveText(SENT);
+  });
+
+  test("a malformed link falls back to the e-mail step without asking the API", async ({
+    page,
+    api
+  }) => {
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token.slice(0, -5)}`);
+
+    await expect(page).toHaveURL("/reset-password");
+    await expect(page.getByRole("alert")).toHaveText(
+      "This reset link is incomplete, maybe cut off when it was copied: request a new one."
+    );
+    await expect(page.getByLabel("E-mail")).toBeVisible();
+    await expect(page.getByLabel("New password")).toHaveCount(0);
+  });
+
+  test("resetting with the link logs out the user it belongs to", async ({
+    page,
+    api,
+    isMobile
+  }) => {
+    api.loggedInAs("me@example.com", "me");
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "me@example.com" })).toBeVisible();
+    if (isMobile) await page.keyboard.press("Escape");
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+  });
+
+  test("resetting another account's password with a link keeps the user logged in", async ({
+    page,
+    api
+  }) => {
+    api.loggedInAs("anna@example.com", "anna");
+    const token = api.mailsResetLink("0123456789abcdef01234567");
+    await page.goto(`/reset-password#token=${token}`);
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("main")).toContainText(
+      "You're still logged in as anna@example.com."
+    );
+  });
+});
