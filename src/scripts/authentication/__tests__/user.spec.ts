@@ -184,9 +184,27 @@ describe("login", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: "Wrong password." }));
     const { login, loginStatus } = await load();
 
-    await login("me@example.com", "nope");
+    // Only a 429 says how long to wait.
+    await expect(login("me@example.com", "nope")).resolves.toBeUndefined();
 
     expect(loginStatus.value).toBe("Wrong password.");
+  });
+
+  it("returns the login limiter's wait with its message", async () => {
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 899.2 }));
+    const { login, loginStatus } = await load();
+
+    await expect(login("me@example.com", "nope")).resolves.toBe(900);
+
+    expect(loginStatus.value).toBe(error);
+  });
+
+  it("waits a minute after a 429 without a retryAfter", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: "Slow down." }));
+    const { login } = await load();
+
+    await expect(login("me@example.com", "nope")).resolves.toBe(60);
   });
 
   it("falls back to unknown-error when the error body has no message", async () => {

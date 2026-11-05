@@ -31,7 +31,7 @@ describe("LoginForm", () => {
   });
 
   it("submits the credentials and shows progress meanwhile", async () => {
-    let finishLogin!: () => void;
+    let finishLogin!: (wait?: number) => void;
     vi.mocked(login).mockReturnValueOnce(new Promise((resolve) => (finishLogin = resolve)));
     const { wrapper } = await mountWithRouter(LoginForm);
     const [email, password] = wrapper.findAll("input");
@@ -195,6 +195,7 @@ describe("LoginForm", () => {
     vi.mocked(login).mockImplementationOnce(async () => {
       isLoggedIn.value = true;
       loginStatus.value = "success";
+      return undefined;
     });
     const { wrapper } = await mountWithRouter(LoginForm);
     const [email, password] = wrapper.findAll("input");
@@ -247,6 +248,83 @@ describe("LoginForm", () => {
     await flushPromises();
 
     expect(loginStatus.value).toBe("");
+  });
+
+  describe("over the login limiter", () => {
+    const LIMITED = "Too many failed attempts: try again later.";
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      vi.mocked(login).mockImplementationOnce(async () => {
+        loginStatus.value = LIMITED;
+        return 900;
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      document.body.innerHTML = "";
+    });
+
+    const tryLogin = async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      (wrapper.find('button[type="submit"]').element as HTMLElement).focus();
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      return { wrapper, email, password, key: () => wrapper.find('button[type="submit"]') };
+    };
+
+    it("holds the key for the wait with the API's message, then lets the user try again", async () => {
+      const { wrapper, password, key } = await tryLogin();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      expect(key().text()).toBe("Try again in 15 min");
+      expect(key().attributes("disabled")).toBeDefined();
+      // The disabled key can't keep the focus.
+      expect(document.activeElement).toBe(password.element);
+
+      // Enter in a field can't send it either.
+      await wrapper.find("form").trigger("submit");
+      expect(login).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(899_000);
+      await flushPromises();
+      expect(key().text()).toBe("Try again in 1 sec");
+
+      vi.advanceTimersByTime(1000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(key().text()).toBe("Log in");
+      expect(key().attributes("disabled")).toBeUndefined();
+    });
+
+    it("only holds the address the limiter counted", async () => {
+      const { email, key } = await tryLogin();
+
+      await email.setValue("other@example.com");
+      expect(key().text()).toBe("Log in");
+      expect(key().attributes("disabled")).toBeUndefined();
+
+      // The same address, however it's typed, waits on.
+      await email.setValue(" Me@Example.com ");
+      expect(key().text()).toBe("Try again in 15 min");
+    });
+
+    it("leaves the focus in the form where it stayed", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      (email.element as HTMLElement).focus();
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(email.element);
+    });
   });
 
   it("keeps the status when logging in", async () => {

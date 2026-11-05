@@ -1,5 +1,7 @@
+import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { mountComposable } from "@/__tests__/helpers/host";
 import { useGithubUnlink } from "@/composables/useGithubUnlink";
 import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
 
@@ -17,7 +19,7 @@ describe("useGithubUnlink", () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, { message: "GitHub account unlinked successfully." })
     );
-    const github = useGithubUnlink();
+    const github = mountComposable(useGithubUnlink).api;
 
     const pending = github.unlink("hunter22");
     expect(github.isUnlinking.value).toBe(true);
@@ -43,7 +45,7 @@ describe("useGithubUnlink", () => {
     [429, "Too many failed attempts: try again later."]
   ])("shows the API's %i and keeps GitHub linked", async (status, error) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
-    const github = useGithubUnlink();
+    const github = mountComposable(useGithubUnlink).api;
 
     expect(await github.unlink("hunter22")).toBe(false);
 
@@ -55,16 +57,34 @@ describe("useGithubUnlink", () => {
 
   it("says to wait when a rate limiter answers without a message", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(429));
-    const github = useGithubUnlink();
+    const github = mountComposable(useGithubUnlink).api;
 
     expect(await github.unlink("hunter22")).toBe(false);
 
     expect(github.unlinkError.value).toBe("Too many requests: try again later.");
+    // A 429 without a retryAfter waits a minute.
+    expect(github.hold.remaining.value).toBe(60);
+  });
+
+  it("holds unlinking after the password checks' 429 until its wait ends", async () => {
+    vi.useFakeTimers();
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+    const github = mountComposable(useGithubUnlink).api;
+
+    await github.unlink("hunter22");
+
+    expect(github.hold.isHeld()).toBe(true);
+    expect(github.hold.remaining.value).toBe(900);
+    vi.advanceTimersByTime(900_000);
+    await nextTick();
+    expect(github.hold.isHeld()).toBe(false);
+    expect(github.unlinkError.value).toBe("");
   });
 
   it("reports an unreachable server", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const github = useGithubUnlink();
+    const github = mountComposable(useGithubUnlink).api;
 
     expect(await github.unlink("hunter22")).toBe(false);
 

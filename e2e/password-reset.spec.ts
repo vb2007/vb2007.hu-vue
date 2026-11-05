@@ -196,3 +196,50 @@ test("resetting another account's password keeps the user logged in and says so"
   await expect(main).toContainText("Login successful!");
   await expect(main).not.toContainText("You're still logged in");
 });
+
+test("a reset past the daily cap of wrong codes holds Reset password for hours", async ({
+  page,
+  api
+}) => {
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  // Even the right code is refused once 20 were wrong today.
+  api.capsCodeChecks();
+
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  const key = page.getByRole("button", { name: /^Try again in/ });
+  await expect(key).toHaveText("Try again in 23 hr 45 min");
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  await expect(page).toHaveURL("/reset-password");
+  expect(api.password).not.toBe("a new password");
+});
+
+test("asking for a code over the mail limit holds Send code for its wait", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  api.limitsMailSends();
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  const key = page.locator("form").getByRole("button");
+  await expect(key).toHaveText("Try again in 57 min");
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+  expect(api.passwordResets).toEqual([]);
+
+  await page.clock.runFor(3_412_000);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(key).toHaveText("Send code");
+  await expect(key).toBeEnabled();
+});

@@ -164,8 +164,7 @@ describe("GithubLink", () => {
 
     it.each([
       [400, { error: "You must provide your password to link or unlink GitHub." }],
-      [403, { error: "The provided password is incorrect." }],
-      [429, { error: "Too many failed attempts: try again later." }]
+      [403, { error: "The provided password is incorrect." }]
     ])("shows the API's %i with the field and keeps the password", async (status, body) => {
       const { wrapper } = await mountKey();
       await open(wrapper);
@@ -185,6 +184,38 @@ describe("GithubLink", () => {
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
       expect(confirmKey(wrapper).text()).toBe("Continue to GitHub");
       expect(assign).not.toHaveBeenCalled();
+      wrapper.unmount();
+    });
+
+    it("holds Continue to GitHub for the password checks' wait, keeping the password", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      const { wrapper } = await mountKey();
+      await open(wrapper);
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      (confirmKey(wrapper).element as HTMLElement).focus();
+
+      await confirmWith(wrapper, "wrong");
+      await flushPromises();
+
+      const alert = wrapper.find('[role="alert"]');
+      expect(alert.text()).toBe(error);
+      expect(passwordInput(wrapper).attributes("aria-describedby")).toContain(
+        alert.attributes("id")
+      );
+      expect(passwordInput(wrapper).element.value).toBe("wrong");
+      expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+      expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
+      expect(assign).not.toHaveBeenCalled();
+
+      await wrapper.find("form").trigger("submit");
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(confirmKey(wrapper).text()).toBe("Continue to GitHub");
+      expect(confirmKey(wrapper).attributes("disabled")).toBeUndefined();
       wrapper.unmount();
     });
 
@@ -326,6 +357,34 @@ describe("GithubLink", () => {
       wrapper.unmount();
     });
 
+    it("holds its key after a 429 until the wait ends", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 120 }))
+        .mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }));
+      const { wrapper } = await mountKey();
+
+      await opener(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(opener(wrapper).text()).toBe("Try again in 2 min");
+      expect(opener(wrapper).attributes("disabled")).toBeDefined();
+      await opener(wrapper).trigger("click");
+      expect(wrapper.emitted("start")).toHaveLength(1);
+
+      vi.advanceTimersByTime(120_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(opener(wrapper).text()).toBe("Link GitHub");
+
+      await opener(wrapper).trigger("click");
+      await flushPromises();
+      expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
+      wrapper.unmount();
+    });
+
     it("has no key once GitHub is linked: it's the only way to log in", async () => {
       githubLinked.value = true;
       const { wrapper } = await mountKey();
@@ -432,6 +491,30 @@ describe("GithubLink", () => {
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
       expect(wrapper.emitted("unlinked")).toBeUndefined();
       expect(githubLinked.value).toBe(true);
+      wrapper.unmount();
+    });
+
+    it("holds Unlink GitHub for the password checks' wait, no longer armed", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      const { wrapper } = await mountKey();
+      await open(wrapper);
+
+      await confirmWith(wrapper, "wrong");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+      expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
+      expect(confirmKey(wrapper).classes()).not.toContain("btn--error");
+      expect(githubLinked.value).toBe(true);
+
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(confirmKey(wrapper).text()).toBe("Unlink GitHub");
+      expect(confirmKey(wrapper).classes()).toContain("btn--error");
       wrapper.unmount();
     });
 

@@ -178,6 +178,35 @@ describe("ChangePassword", () => {
     expect(document.activeElement).toBe(buttons()[0].element);
   });
 
+  it("holds Save password for the password checks' wait, then lets the user try again", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+    await open();
+    await fill("wrong-password", "new-password");
+
+    await submit();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(buttons()[0].text()).toBe("Try again in 15 min");
+    expect(buttons()[0].attributes("disabled")).toBeDefined();
+    // The disabled key can't take the focus, so the current password does.
+    expect(document.activeElement).toBe(inputs()[0].element);
+
+    await submit();
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    // Closing keeps the hold: the API would refuse the next try too.
+    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    await open();
+    expect(buttons()[0].text()).toBe("Try again in 15 min");
+
+    vi.advanceTimersByTime(900_000);
+    await flushPromises();
+    expect(buttons()[0].text()).toBe("Save password");
+    expect(buttons()[0].attributes("disabled")).toBeUndefined();
+  });
+
   it("reports an unreachable server", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await open();

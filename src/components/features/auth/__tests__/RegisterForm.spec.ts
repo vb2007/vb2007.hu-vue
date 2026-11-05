@@ -335,6 +335,37 @@ describe("RegisterForm", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
   });
 
+  it("holds the key after the mail limit's 429, with the API's message, until its wait ends", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error = "Too many e-mails requested: try again later.";
+    vi.mocked(register).mockImplementationOnce(async () => {
+      registerStatus.value = error;
+      return { sent: false, limitedFor: 3412 };
+    });
+    const wrapper = await mountForm();
+    await fill(wrapper);
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    // Nothing went out, so the form stays, with the wait on its key.
+    expect(wrapper.find(FIELDS.email).exists()).toBe(true);
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(submitButton(wrapper).text()).toBe("Try again in 57 min");
+    expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+    // The disabled key can't take the focus back, so the first field does.
+    expect(document.activeElement).toBe(wrapper.find(FIELDS.email).element);
+
+    await wrapper.find("form").trigger("submit");
+    expect(register).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(3_412_000);
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(submitButton(wrapper).text()).toBe("Register");
+    expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+  });
+
   it("opens the code step when a code went to the address moments ago", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
     vi.mocked(register).mockImplementationOnce(async () => {
@@ -544,6 +575,32 @@ describe("RegisterForm", () => {
       );
       expect(wrapper.find("input").attributes("aria-invalid")).toBeUndefined();
       expect(submitButton(wrapper).classes()).toContain("btn--error");
+    });
+
+    it("holds Confirm code for the daily cap's wait, in hours, then lets the user try again", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 85_500 }));
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper);
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
+      expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(document.activeElement).toBe(wrapper.find("input").element);
+      // Resending has limits of its own, so it isn't held.
+      expect(resendButton(wrapper).text()).toBe("Resend in 1 min");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(85_500_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(submitButton(wrapper).text()).toBe("Confirm code");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
     });
 
     it("flashes the key for its full second on each failed try", async () => {

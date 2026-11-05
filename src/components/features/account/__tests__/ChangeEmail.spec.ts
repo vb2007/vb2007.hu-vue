@@ -461,6 +461,32 @@ describe("ChangeEmail", () => {
       expect(document.activeElement).toBe(codeInput().element);
     });
 
+    it("holds Confirm code for the daily cap's wait, but not Change e-mail", async () => {
+      fakeCountdown();
+      await remount();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 85_500 }));
+      (button("Confirm code").element as HTMLElement).focus();
+
+      await enterCode("123456");
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Try again in 23 hr 45 min").attributes("disabled")).toBeDefined();
+      expect(button("Change e-mail").attributes("disabled")).toBeUndefined();
+      // The disabled key can't keep the focus.
+      expect(document.activeElement).toBe(codeInput().element);
+      expect(pendingLine().exists()).toBe(true);
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(85_500_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(button("Confirm code").attributes("disabled")).toBeUndefined();
+    });
+
     it("moves a refusal that dropped the change above the key", async () => {
       await remount();
       const error = "An account with this E-mail address already exists.";

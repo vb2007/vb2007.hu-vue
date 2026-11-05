@@ -424,6 +424,26 @@ describe("useChangeEmail", () => {
       expect(email.codeError.value).toBe("");
       expect(pendingEmail.value).toBe("new@example.com");
       expect(userEmail.value).toBe("old@example.com");
+      // A 429 without a retryAfter waits a minute.
+      expect(email.confirmHold.remaining.value).toBe(60);
+    });
+
+    it("holds confirming for the daily cap's wait, but not changing the address", async () => {
+      vi.useFakeTimers();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const email = useEmail();
+
+      await email.confirm("123456");
+
+      expect(email.confirmHold.isHeld()).toBe(true);
+      expect(email.confirmHold.remaining.value).toBe(86_400);
+      expect(email.cooldown.active.value).toBe(false);
+
+      vi.advanceTimersByTime(86_400_000);
+      await nextTick();
+      expect(email.confirmHold.isHeld()).toBe(false);
+      expect(email.confirmError.value).toBe("");
     });
 
     it.each([

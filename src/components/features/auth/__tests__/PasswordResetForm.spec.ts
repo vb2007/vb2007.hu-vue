@@ -133,20 +133,37 @@ describe("PasswordResetForm", () => {
     expect(submitButton(wrapper).text()).toBe("Reset password");
   });
 
-  it("stays on the e-mail step with the API's error, without holding anything back", async () => {
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 60 });
-    const { wrapper } = await mountWithRouter(PasswordResetForm);
+  it("stays on the e-mail step with the mail limit's error, and holds Send code for its wait", async () => {
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
 
     await sendTo(wrapper, "me@example.com");
 
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
     expect(submitButton(wrapper).classes()).toContain("btn--error");
+    expect(submitButton(wrapper).text()).toBe("Try again in 57 min");
+    expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
     expect(emailInput(wrapper).exists()).toBe(true);
+    // The disabled key can't keep the focus.
+    expect(document.activeElement).toBe(emailInput(wrapper).element);
 
-    vi.advanceTimersByTime(1000);
+    // The limit is per IP, so another address waits too.
+    await sendTo(wrapper, "you@example.com");
+    expect(requestPasswordReset).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(3_412_000);
     await flushPromises();
-    expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(submitButton(wrapper).text()).toBe("Send code");
+    expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+  });
 
+  it("doesn't take the mail limit on the e-mail step for a code that went out", async () => {
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 60 });
+    const { wrapper } = await mountWithRouter(PasswordResetForm);
+    await sendTo(wrapper, "me@example.com");
+
+    // Nothing was sent, so the code step's key doesn't count down a resend.
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
     expect(resendButton(wrapper).text()).toBe("Send again");
@@ -386,6 +403,59 @@ describe("PasswordResetForm", () => {
     expect(wrapper.find('[role="alert"]').text()).toBe(WRONG_CODE);
     expect(submitButton(wrapper).text()).toBe("Reset password");
     expect(wrapper.find(".sent-to__address").text()).toBe("me@example.com");
+  });
+
+  it("holds Reset password for the address while the code checks' wait runs, in hours", async () => {
+    const { wrapper } = await mountOnCodeStep();
+    await fillCodeStep(wrapper);
+    const LIMITED = "Too many failed attempts: try again later.";
+    vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: LIMITED, retryAfter: 85_500 });
+    (submitButton(wrapper).element as HTMLElement).focus();
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+    expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
+    expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+    expect(document.activeElement).toBe(codeInput(wrapper).element);
+
+    await wrapper.find("form").trigger("submit");
+    expect(confirmPasswordReset).toHaveBeenCalledOnce();
+
+    // The code checks count per address, so another one can be reset at once.
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    await sendTo(wrapper, "you@example.com");
+    expect(submitButton(wrapper).text()).toBe("Reset password");
+
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    await emailInput(wrapper).setValue("Me@Example.com");
+    await enterCodeButton(wrapper).trigger("click");
+    await flushPromises();
+    expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
+
+    vi.advanceTimersByTime(85_500_000);
+    await flushPromises();
+    expect(submitButton(wrapper).text()).toBe("Reset password");
+    expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+  });
+
+  it("drops the code checks' message once their wait ends", async () => {
+    const { wrapper } = await mountOnCodeStep();
+    await fillCodeStep(wrapper);
+    const LIMITED = "Too many failed attempts: try again later.";
+    vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: LIMITED, retryAfter: 900 });
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+
+    vi.advanceTimersByTime(900_000);
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
   it("resets the password and sends the user to log in", async () => {

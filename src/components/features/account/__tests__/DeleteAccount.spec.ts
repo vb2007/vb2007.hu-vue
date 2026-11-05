@@ -241,6 +241,36 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
+  it("holds the delete key for the password checks' wait, no longer armed, then lets it go", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+    const { wrapper } = await mountPanel();
+    await open(wrapper);
+    await wrapper.find("input").setValue("wrong");
+    (deleteKey(wrapper).element as HTMLElement).focus();
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    // "Delete account in 15 min" would read as a scheduled delete.
+    expect(deleteKey(wrapper).text()).toBe("Try again in 15 min");
+    expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(deleteKey(wrapper).classes()).not.toContain("btn--error");
+    expect(document.activeElement).toBe(wrapper.find("input").element);
+
+    await wrapper.find("form").trigger("submit");
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(900_000);
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(deleteKey(wrapper).text()).toBe("Delete account");
+    expect(deleteKey(wrapper).classes()).toContain("btn--error");
+    wrapper.unmount();
+  });
+
   it("lets a refusal arrive after the panel is gone", async () => {
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));

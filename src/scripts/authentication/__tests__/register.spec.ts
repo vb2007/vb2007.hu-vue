@@ -200,7 +200,6 @@ describe("checkUsername", () => {
 
   it.each([
     ["a 404 from an API without the endpoint", () => jsonResponse(404, { error: "Not found" })],
-    ["a 429", () => jsonResponse(429, { error: "Too many requests" })],
     ["an answer without a verdict", () => jsonResponse(200, {})],
     ["a body that isn't JSON", () => jsonResponse(200)]
   ])("can't tell after %s", async (_case, response) => {
@@ -222,6 +221,50 @@ describe("checkUsername", () => {
 
     await expect(checkUsername("anna", request.signal)).resolves.toBe("unknown");
     expect(console.error).not.toHaveBeenCalled();
+  });
+
+  describe("over the API's limit", () => {
+    const LIMITED = "Too many username checks requested: try again later.";
+
+    // The pause is the module's own, so each test starts a day after the last one's.
+    let day = 0;
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.UTC(2030, 0, 1) + ++day * 86_400_000);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("can't tell after a 429, doesn't log it, and asks nothing until its retryAfter passed", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: LIMITED, retryAfter: 42 }));
+
+      await expect(checkUsername("anna")).resolves.toBe("unknown");
+      expect(console.error).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(41_999);
+      await expect(checkUsername("anne")).resolves.toBe("unknown");
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(1);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { available: true }));
+      await expect(checkUsername("anne")).resolves.toBe("free");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("pauses for a minute after a 429 without a retryAfter", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: LIMITED }));
+
+      await expect(checkUsername("anna")).resolves.toBe("unknown");
+      vi.advanceTimersByTime(59_999);
+      await expect(checkUsername("anna")).resolves.toBe("unknown");
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(1);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { available: false }));
+      await expect(checkUsername("anna")).resolves.toBe("taken");
+    });
   });
 });
 
@@ -255,8 +298,7 @@ describe("register", () => {
     [400, "The password's too short: it must be between 8 and 128 characters.", "password"],
     [409, "An account with this E-mail address already exists.", "email"],
     [409, "This username is already taken.", "username"],
-    // These name e-mails, but aren't the address's fault.
-    [429, "Too many e-mails requested: try again later.", undefined],
+    // This names e-mails, but isn't the address's fault.
     [503, "The e-mail couldn't be sent: please try again later.", undefined]
   ])("shows the API's message for a %i response: %s", async (status, error, field) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
@@ -284,7 +326,22 @@ describe("register", () => {
   ])("doesn't take %s's 429 for the cooldown: no code went out", async (_, error, retryAfter) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
 
-    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
+    // Nothing was sent, so there's no code step and no field to blame: only a wait.
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({
+      sent: false,
+      limitedFor: retryAfter
+    });
+    expect(registerStatus.value).toBe(error);
+  });
+
+  it("waits a minute after a rate limiter's 429 without a retryAfter", async () => {
+    const error = "Too many e-mails requested: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error }));
+
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({
+      sent: false,
+      limitedFor: 60
+    });
     expect(registerStatus.value).toBe(error);
   });
 

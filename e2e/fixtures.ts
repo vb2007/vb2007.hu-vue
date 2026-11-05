@@ -16,6 +16,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * within a minute of the last one gets the API's cooldown 429, and one sent over 15 minutes ago has expired.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#254): the cooldown's names its seconds,
  * and the rate limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code) wait a fixed 15 or 57 minutes.
+ * `api.limitsLogins()` refuses `POST /auth/login` for 15 minutes; `api.capsCodeChecks()` refuses every code check (register verify,
+ * password reset confirm, e-mail confirm), even the right code, for 23 hr 45 min like the daily cap; `api.limitsUsernameChecks()`
+ * refuses `GET /auth/username-available` for 42 seconds, and `api.usernameChecks` counts how often it was asked.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
@@ -76,6 +79,15 @@ const tooManyFailedAttempts = (): MockResponse => ({
 const tooManyEmails = (): MockResponse => ({
   status: 429,
   body: { error: "Too many e-mails requested: try again later.", retryAfter: 3412 }
+});
+/** The daily cap of 20 rejected codes, which refuses even the right one, for most of a day. */
+const tooManyRejectedCodes = (): MockResponse => ({
+  status: 429,
+  body: { error: "Too many failed attempts: try again later.", retryAfter: 85_500 }
+});
+const tooManyUsernameChecks = (): MockResponse => ({
+  status: 429,
+  body: { error: "Too many username checks requested: try again later.", retryAfter: 42 }
 });
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
@@ -169,6 +181,11 @@ export class MockApi {
   private githubConfirmed = false;
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
+  private loginsLimited = false;
+  private codeChecksCapped = false;
+  private usernameChecksLimited = false;
+  /** How often `GET /auth/username-available` was asked, limited or not. */
+  usernameChecks = 0;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
   private githubLinkStarted = false;
   private githubUnconfigured = false;
@@ -290,6 +307,24 @@ export class MockApi {
   /** Answers every request that mails a code with 429, like the API past its hourly e-mail limit. */
   limitsMailSends() {
     this.mailSendsLimited = true;
+  }
+
+  /** Answers `POST /auth/login` with 429, like the API after too many failed logins for an address. */
+  limitsLogins() {
+    this.loginsLimited = true;
+  }
+
+  /**
+   * Answers every code check (register verify, password reset confirm, e-mail confirm) with 429,
+   * like the API at its daily cap of rejected codes, where even the right code is refused.
+   */
+  capsCodeChecks() {
+    this.codeChecksCapped = true;
+  }
+
+  /** Answers `GET /auth/username-available` with 429, like the API past 30 checks a minute, until `false`. */
+  limitsUsernameChecks(limited = true) {
+    this.usernameChecksLimited = limited;
   }
 
   /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
@@ -470,6 +505,7 @@ export class MockApi {
             }
           : { status: 401 };
       case "POST /auth/login":
+        if (this.loginsLimited) return tooManyFailedAttempts();
         this.user = {
           email: body?.email ?? "e2e@example.com",
           username: "e2e",
@@ -522,10 +558,13 @@ export class MockApi {
       case "PATCH /user/email":
         return this.changeEmail(body?.email, body?.password);
       case "POST /user/email/confirm":
+        if (this.user && this.codeChecksCapped) return tooManyRejectedCodes();
         return this.confirmEmail(body?.code);
       case "PATCH /user/password":
         return this.changePassword(body?.currentPassword, body?.newPassword);
       case "GET /auth/username-available": {
+        this.usernameChecks++;
+        if (this.usernameChecksLimited) return tooManyUsernameChecks();
         const name = (query.get("username") ?? "").toLowerCase();
         const taken = [...this.users.map((user) => user.username), this.user?.username].some(
           (username) => username?.toLowerCase() === name
@@ -559,6 +598,7 @@ export class MockApi {
         };
       }
       case "POST /auth/register/verify":
+        if (this.codeChecksCapped) return tooManyRejectedCodes();
         if (
           !this.pendingRegistration ||
           body?.email !== this.pendingRegistration.email ||
@@ -609,6 +649,7 @@ export class MockApi {
           }
         };
       case "POST /auth/password-reset/confirm":
+        if (this.codeChecksCapped) return tooManyRejectedCodes();
         return this.confirmPasswordReset(body);
       case "POST /shortenUrl/create":
         this.hasShortLink(
