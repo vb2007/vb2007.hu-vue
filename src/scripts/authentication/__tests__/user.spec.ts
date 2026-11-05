@@ -10,6 +10,10 @@ const load = async () => {
   return { ...user, ...authState };
 };
 
+/** What the API's `isAuthenticated` answers without a session, or with one it ended. */
+const notLoggedIn = () =>
+  jsonResponse(403, { error: "You must be logged in to perform this action." });
+
 let fetchMock: ReturnType<typeof mockFetch>;
 
 beforeEach(() => {
@@ -120,7 +124,7 @@ describe("restoreSession", () => {
   });
 
   it("only asks the API once, however often it is called", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401));
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
     const { restoreSession } = await load();
 
     await Promise.all([restoreSession(), restoreSession()]);
@@ -130,13 +134,15 @@ describe("restoreSession", () => {
   });
 
   it("stays logged out when there is no session", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401));
-    const { restoreSession, isLoggedIn, isSessionChecked } = await load();
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { restoreSession, isLoggedIn, isSessionChecked, sessionEnded } = await load();
 
     await restoreSession();
 
     expect(isLoggedIn.value).toBe(false);
     expect(isSessionChecked.value).toBe(true);
+    // A visitor never had a session here, so none ended.
+    expect(sessionEnded.value).toBe(false);
     expect(console.error).not.toHaveBeenCalled();
   });
 
@@ -148,6 +154,53 @@ describe("restoreSession", () => {
 
     expect(isLoggedIn.value).toBe(false);
     expect(isSessionChecked.value).toBe(true);
+  });
+});
+
+describe("fetchUserDetails", () => {
+  it("forgets a session the API ended, and says it ended", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { fetchUserDetails, isLoggedIn, pendingEmail, userEmail, username, sessionEnded } =
+      await load();
+    isLoggedIn.value = true;
+    userEmail.value = "me@example.com";
+    username.value = "me";
+    pendingEmail.value = "new@example.com";
+
+    expect(await fetchUserDetails()).toBe(false);
+
+    expect(isLoggedIn.value).toBe(false);
+    expect(userEmail.value).toBe("");
+    expect(username.value).toBe("");
+    expect(pendingEmail.value).toBe("");
+    expect(sessionEnded.value).toBe(true);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a 500", () => fetchMock.mockResolvedValueOnce(jsonResponse(500))],
+    ["no connection", () => fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))]
+  ])("keeps the session after %s, which says nothing about it", async (_, answer) => {
+    answer();
+    const { fetchUserDetails, isLoggedIn, userEmail, sessionEnded } = await load();
+    isLoggedIn.value = true;
+    userEmail.value = "me@example.com";
+
+    expect(await fetchUserDetails()).toBe(false);
+
+    expect(isLoggedIn.value).toBe(true);
+    expect(userEmail.value).toBe("me@example.com");
+    expect(sessionEnded.value).toBe(false);
+  });
+
+  it("drops the ended session's notice once logged in again", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { fetchUserDetails, sessionEnded } = await load();
+    sessionEnded.value = true;
+
+    await fetchUserDetails();
+
+    expect(sessionEnded.value).toBe(false);
   });
 });
 
@@ -171,7 +224,7 @@ describe("login", () => {
   });
 
   it("explains when the browser dropped the session cookie", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, {})).mockResolvedValueOnce(jsonResponse(401));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {})).mockResolvedValueOnce(notLoggedIn());
     const { login, loginStatus, isLoggedIn } = await load();
 
     await login("me@example.com", "secret");
@@ -225,10 +278,12 @@ describe("clearSession", () => {
       hasPassword,
       emailVerified,
       pendingEmail,
+      sessionEnded,
       userEmail,
       username
     } = await load();
     isLoggedIn.value = true;
+    sessionEnded.value = true;
     hasPassword.value = true;
     emailVerified.value = true;
     pendingEmail.value = "new@example.com";
@@ -244,6 +299,8 @@ describe("clearSession", () => {
     expect(pendingEmail.value).toBe("");
     expect(userEmail.value).toBe("");
     expect(username.value).toBe("");
+    // Logging out on purpose isn't a session that ended elsewhere.
+    expect(sessionEnded.value).toBe(false);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   isSessionChecked,
   isSuperuser,
   pendingEmail,
+  sessionEnded,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -28,10 +29,17 @@ export const fetchUserDetails = async () => {
   const result = await apiRequest(Endpoints.User.get, {
     failure: Messages.Auth.userFailed,
     // A visitor who isn't logged in: the usual answer, not a fault.
-    quietStatuses: [HttpStatus.Unauthorized]
+    quietStatuses: [HttpStatus.Forbidden]
   });
 
   if (!result.ok) {
+    // GET /user answers 403 only for a missing or ended session (a password reset ends them all),
+    // so the page forgets the user; other failures say nothing about the session.
+    if (result.status === HttpStatus.Forbidden) {
+      const hadSession = isLoggedIn.value;
+      clearSession();
+      sessionEnded.value = hadSession;
+    }
     return false;
   }
 
@@ -45,6 +53,7 @@ export const fetchUserDetails = async () => {
   pendingEmail.value = data.pendingEmail ?? "";
   emailVerified.value = data.emailVerified === true;
   isLoggedIn.value = true;
+  sessionEnded.value = false;
   return true;
 };
 
@@ -86,6 +95,7 @@ export const clearSession = () => {
   pendingEmail.value = "";
   emailVerified.value = false;
   isLoggedIn.value = false;
+  sessionEnded.value = false;
 };
 
 export const logout = async () => {

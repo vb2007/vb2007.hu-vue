@@ -18,3 +18,8 @@ export const pendingEmail = ref("");
 export const emailVerified = ref(false);
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */
 export const isSessionChecked = ref(false);
+/**
+ * True once the API turned away a session this page had, e.g. after a password reset elsewhere
+ * (vb2007/vb2007.hu-api#218), until the next login; logging out here leaves it false.
+ */
+export const sessionEnded = ref(false);
