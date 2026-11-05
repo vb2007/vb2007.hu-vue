@@ -496,7 +496,7 @@ test("a session that ended elsewhere logs the account page out, without blaming 
   await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
   const ended = page.getByRole("status");
   await expect(ended).toHaveText(
-    "Your session ended, so you're logged out: it expired, or the account was logged in or out elsewhere. Log in again to see your account."
+    "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account."
   );
   await expect(ended).toBeFocused();
   await expect(page.getByRole("alert")).toHaveCount(0);

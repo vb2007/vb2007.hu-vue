@@ -243,6 +243,48 @@ describe("fetchUserDetails", () => {
     expect(userEmail.value).toBe("");
     expect(sessionEnded.value).toBe(true);
   });
+
+  it("still applies an older lookup's user when the newer one failed", async () => {
+    const older = deferResponse(fetchMock);
+    fetchMock.mockResolvedValueOnce(jsonResponse(500));
+    const { fetchUserDetails, isLoggedIn, userEmail } = await load();
+
+    const first = fetchUserDetails();
+    expect(await fetchUserDetails()).toBe(false);
+    older.respond(jsonResponse(200, { email: "me@example.com" }));
+
+    expect(await first).toBe(true);
+    expect(isLoggedIn.value).toBe(true);
+    expect(userEmail.value).toBe("me@example.com");
+  });
+
+  it("still applies an older lookup's 403 when the newer one got no answer", async () => {
+    const older = deferResponse(fetchMock);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const { fetchUserDetails, isLoggedIn, sessionEnded } = await load();
+    isLoggedIn.value = true;
+
+    const first = fetchUserDetails();
+    expect(await fetchUserDetails()).toBe(false);
+    older.respond(notLoggedIn());
+
+    expect(await first).toBe(false);
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(true);
+  });
+
+  it("ignores a lookup sent before the page forgot the user", async () => {
+    const lookup = deferResponse(fetchMock);
+    const { fetchUserDetails, clearSession, isLoggedIn, userEmail } = await load();
+
+    const pending = fetchUserDetails();
+    clearSession();
+    lookup.respond(jsonResponse(200, { email: "me@example.com" }));
+
+    expect(await pending).toBe(true);
+    expect(isLoggedIn.value).toBe(false);
+    expect(userEmail.value).toBe("");
+  });
 });
 
 describe("login", () => {
@@ -390,5 +432,21 @@ describe("logout", () => {
     await logout();
 
     expect(isLoggedIn.value).toBe(false);
+  });
+
+  it("stays logged out when a lookup sent before it answers afterwards", async () => {
+    // E.g. the account's refresh on coming back from GitHub, then Log out straight away.
+    const lookup = deferResponse(fetchMock);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: "Logged out." }));
+    const { fetchUserDetails, logout, isLoggedIn, sessionEnded } = await load();
+    isLoggedIn.value = true;
+
+    const pending = fetchUserDetails();
+    await logout();
+    lookup.respond(jsonResponse(200, { email: "me@example.com" }));
+    await pending;
+
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(false);
   });
 });
