@@ -325,12 +325,21 @@ describe("login", () => {
   });
 
   it("shows the API's error message", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: "Wrong password." }));
-    const { login, loginStatus } = await load();
+    // The API's one answer for an unknown address, a wrong password and a GitHub-only account.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, {
+        error:
+          "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+      })
+    );
+    const { login, loginStatus, isLoggedIn } = await load();
 
     await login("me@example.com", "nope");
 
-    expect(loginStatus.value).toBe("Wrong password.");
+    expect(loginStatus.value).toBe(
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+    );
+    expect(isLoggedIn.value).toBe(false);
   });
 
   it("clears the last status while it asks again, so the same refusal shows afresh", async () => {

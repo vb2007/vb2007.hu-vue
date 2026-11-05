@@ -127,10 +127,13 @@ describe("LoginForm", () => {
   });
 
   it("shows other errors as they came from the API", async () => {
-    loginStatus.value = "Wrong password.";
+    loginStatus.value =
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
     const { wrapper } = await mountWithRouter(LoginForm);
 
-    expect(wrapper.find('[role="alert"]').text()).toBe("Wrong password.");
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+    );
   });
 
   it("shows a lockout's wait above the GitHub login it points to", async () => {
