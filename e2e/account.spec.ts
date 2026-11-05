@@ -459,6 +459,16 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
   await expect(page.getByText("Enter your current password.")).toBeVisible();
   await expect(page.getByLabel("New e-mail")).toBeFocused();
 
+  // Only plain addresses, like the API: the part before the @ has its own limit.
+  await page.getByLabel("New e-mail").fill(`${"a".repeat(65)}@example.com`);
+  await expect(
+    page.getByText(
+      "The part of your e-mail address before the @ can't be longer than 64 characters."
+    )
+  ).toBeVisible();
+  await page.getByLabel("New e-mail").fill('"me"@example.com');
+  await expect(page.getByText("Enter a valid e-mail address.")).toBeVisible();
+
   await page.getByLabel("New e-mail").fill(" Me@Example.com ");
   await page.getByLabel("Current password").fill(MOCK_PASSWORD);
   // Leaving the address checked it already.
