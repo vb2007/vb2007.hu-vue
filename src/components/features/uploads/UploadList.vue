@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { useUploads, type UploadListing } from "@/composables/useUploads";
+import { Limits } from "@/constants/limits";
 import type { SortOrder } from "@/types/api/common";
 import type { UploadSortBy, UploadVisibility } from "@/types/api/uploads";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -106,7 +107,13 @@ defineExpose({ refresh: () => goToPage(1) });
 <template>
   <StationBoard :title="title" :as="as">
     <div class="filters">
-      <BaseInput v-model="query" class="filters__search" type="search" label="Search by name" />
+      <BaseInput
+        v-model="query"
+        class="filters__search"
+        type="search"
+        label="Search by name"
+        :maxlength="Limits.Search.maxLength"
+      />
       <SegmentedControl v-model="filter" legend="Show" :options="FILTER_OPTIONS" size="sm" />
       <BaseSelect v-model="sort" label="Sort" :options="SORT_OPTIONS" size="sm" />
     </div>

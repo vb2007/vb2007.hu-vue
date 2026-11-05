@@ -156,7 +156,7 @@ describe("PasswordResetForm", () => {
   });
 
   it("stays on the e-mail step with the API's error, without holding anything back", async () => {
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 60 });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY });
     const { wrapper } = await mountWithRouter(PasswordResetForm);
 
     await sendTo(wrapper, "me@example.com");
@@ -213,21 +213,31 @@ describe("PasswordResetForm", () => {
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("");
   });
 
-  it("shows the mail limit's error on a resend and waits as long as it says", async () => {
+  it("shows the mail limit's error on a resend, holding nothing back as no code went out", async () => {
     const { wrapper } = await mountOnCodeStep();
     await fillCodeStep(wrapper, "123456");
     await waitOutCountdown();
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 90 });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY });
 
     await resendButton(wrapper).trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:30");
+    expect(resendButton(wrapper).text()).toBe("Send again");
     expect(document.activeElement).toBe(codeInput(wrapper).element);
     // No new code was sent, so the one typed may still be right.
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("123456");
+
+    // Nor does the address count as having a recent code: it's asked for again.
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY });
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(requestPasswordReset).toHaveBeenCalledTimes(3);
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(emailInput(wrapper).exists()).toBe(true);
   });
 
   it("keeps the key ready after a resend error without a wait", async () => {

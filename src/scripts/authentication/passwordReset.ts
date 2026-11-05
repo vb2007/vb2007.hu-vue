@@ -18,7 +18,7 @@ export interface PasswordResetAnswer {
   message?: string;
   /** What went wrong otherwise. */
   error?: string;
-  /** Seconds before another try, after a 429: another code, or the same link again. */
+  /** Seconds before the same link can be tried again, after the API's 429 for too many links. */
   retryAfter?: number;
   /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
   linkRefused?: boolean;
@@ -34,7 +34,8 @@ const passwordLengthErrors = () => [
 
 /**
  * Asks for a code (vb2007/vb2007.hu-api#163). The API answers the same 200 whether or not an
- * account uses the address, so the message is all there is to show.
+ * account uses the address, so the message is all there is to show. It also answers it within the
+ * minute, sending nothing: its only 429 is the mail limit's, which sent no code either.
  */
 export const requestPasswordReset = async (email: string): Promise<PasswordResetAnswer> => {
   const result = await apiRequest(Endpoints.Auth.passwordReset, {
@@ -46,9 +47,7 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
     return { message: result.data.message ?? "" };
   }
 
-  return result.status === HttpStatus.TooManyRequests
-    ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
-    : { error: result.error };
+  return { error: result.error };
 };
 
 /**

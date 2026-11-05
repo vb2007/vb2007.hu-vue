@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
-import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import {
+  emailVerified,
+  isLoggedIn,
+  pendingEmail,
+  userEmail
+} from "@/scripts/authentication/authState";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 /** `GET /user` after the change, shaped like the API's answer. */
@@ -26,6 +31,8 @@ describe("ChangeEmail", () => {
   beforeEach(() => {
     fetchMock = mockFetch();
     vi.spyOn(console, "error").mockImplementation(() => {});
+    // The account page shows the form only while logged in.
+    isLoggedIn.value = true;
     userEmail.value = "old@example.com";
     sessionStorage.clear();
     wrapper = mount(ChangeEmail, { attachTo: document.body });
@@ -180,8 +187,8 @@ describe("ChangeEmail", () => {
   ])("shows the API's %i and keeps what was typed", async (status, error) => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(status, { error }))
-      // A 503 looks the account up again, which finds no session.
-      .mockResolvedValueOnce(jsonResponse(401));
+      // A 503 looks the account up again, which fails too.
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
     (inputs()[1].element as HTMLInputElement).focus();
@@ -452,7 +459,9 @@ describe("ChangeEmail", () => {
       await button("Confirm code").trigger("click");
       // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
       (document.activeElement as HTMLElement).blur();
-      answer(jsonResponse(429, { error: "Too many failed attempts: try again later." }));
+      answer(
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+      );
       await flushPromises();
 
       expect(wrapper.find('[role="alert"]').text()).toBe(
@@ -623,7 +632,12 @@ describe("ChangeEmail", () => {
       wrapper.unmount();
       wrapper = mount(ChangeEmail, { attachTo: document.body });
       fetchMock
-        .mockResolvedValueOnce(jsonResponse(429, { error: "Wait.", retryAfter: 50 }))
+        .mockResolvedValueOnce(
+          jsonResponse(429, {
+            error: "A code was sent just now: wait 50 seconds before requesting another one.",
+            retryAfter: 50
+          })
+        )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await openForm();
       await fill("other@example.com", "secret-password");
