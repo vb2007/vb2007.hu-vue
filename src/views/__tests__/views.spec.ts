@@ -13,6 +13,7 @@ import AdminView from "@/views/AdminView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
+import ApiErrorView from "@/views/ApiErrorView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
@@ -320,5 +321,85 @@ describe("views", () => {
     const { wrapper } = await mountWithRouter(NotFoundView, {}, pushed);
 
     expect(wrapper.find(".path").text()).toBe(shown);
+  });
+
+  const apiError = (url?: string) =>
+    mountWithRouter(
+      ApiErrorView,
+      {},
+      url === undefined ? "/apierror" : `/apierror?url=${encodeURIComponent(url)}`
+    );
+
+  it("ApiErrorView names the API address on the not-found board, with the same ways on", async () => {
+    const { wrapper } = await apiError("/foo?x=1");
+
+    expect(wrapper.findComponent(StationBoard).props()).toMatchObject({
+      title: "API route not found",
+      as: "h1"
+    });
+    expect(wrapper.find("h1").text()).toBe("API route not found");
+    expect(wrapper.find(".board__body p").text()).toBe(
+      "The API has no route at api.test/foo?x=1. The link may be old or mistyped."
+    );
+    expect(wrapper.find(".path .host").text()).toBe("api.test");
+    const home = wrapper.findAll("a").find((link) => link.text() === "Back to home");
+    expect(home?.attributes("href")).toBe("/");
+    const stops = wrapper.findComponent(ToolDirectory).props("stops");
+    expect(stops.map((stop) => stop.id)).toEqual(["shorten", "paste", "upload"]);
+  });
+
+  it("ApiErrorView shows the address only as text, never as a link or markup", async () => {
+    const url = '/x"><a href="https://evil.test">click</a><img src=x onerror=alert(1)>';
+    const { wrapper } = await apiError(url);
+
+    expect(wrapper.find(".path").text()).toBe(`api.test${url}`);
+    expect(wrapper.find(".board__body img").exists()).toBe(false);
+    expect(wrapper.find(".board__body a[href='https://evil.test']").exists()).toBe(false);
+    expect(wrapper.findAll("a").map((link) => link.attributes("href"))).not.toContain(
+      "https://evil.test"
+    );
+  });
+
+  it.each([
+    ["no url", undefined],
+    ["an empty url", ""],
+    ["a url that isn't a path", "Your account is locked, call 555-0100"]
+  ])("ApiErrorView leaves the address out for %s", async (_name, url) => {
+    const { wrapper } = await apiError(url);
+
+    expect(wrapper.find(".path").exists()).toBe(false);
+    expect(wrapper.find(".board__body p").text()).toBe(
+      "The API has no route at the address you opened. The link may be old or mistyped."
+    );
+  });
+
+  it("ApiErrorView leaves the address out when url is repeated", async () => {
+    const { wrapper } = await mountWithRouter(ApiErrorView, {}, "/apierror?url=%2Fa&url=%2Fb");
+
+    expect(wrapper.find(".path").exists()).toBe(false);
+  });
+
+  it.each([
+    ["/%C3%A1rv%C3%ADz?q=%C3%A9", "/árvíz?q=é"],
+    ["/a%2Fb?c=%26", "/a%2Fb?c=%26"],
+    ["/a%E0b", "/a%E0b"]
+  ])("ApiErrorView shows %s as %s", async (url, shown) => {
+    const { wrapper } = await apiError(url);
+
+    expect(wrapper.find(".path").text()).toBe(`api.test${shown}`);
+  });
+
+  it("ApiErrorView cuts a very long address short", async () => {
+    const long = "/" + "é".repeat(500);
+    const { wrapper } = await apiError(long);
+
+    expect(wrapper.find(".path").text()).toBe(`api.test/${"é".repeat(199)}…`);
+  });
+
+  it("ApiErrorView keeps an address at the limit whole", async () => {
+    const atLimit = "/" + "a".repeat(199);
+    const { wrapper } = await apiError(atLimit);
+
+    expect(wrapper.find(".path").text()).toBe(`api.test${atLimit}`);
   });
 });
