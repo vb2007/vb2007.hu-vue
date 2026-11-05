@@ -104,8 +104,13 @@ export const useRegisterCode = () => {
     showError("");
     if (waitSeconds > 0) {
       holdResend(waitSeconds);
-    } else if (cooldown.resume(normalizeEmail(address))) {
+      return;
+    }
+    if (cooldown.resume(normalizeEmail(address))) {
       cooldownFor.value = address;
+    }
+    // Kept or still running in memory (e.g. without sessionStorage), the wait says why again.
+    if (resendWaiting.value) {
       showError(cooldown.note.value, true);
     }
   };

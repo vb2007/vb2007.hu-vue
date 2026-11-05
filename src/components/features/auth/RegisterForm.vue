@@ -31,6 +31,7 @@ import {
   usernameError
 } from "@/scripts/authentication/register";
 import { restoreSession } from "@/scripts/authentication/user";
+import { spokenWait } from "@/scripts/utility/durationUtil";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useRetryHold } from "@/composables/useRetryHold";
 import {
@@ -118,6 +119,21 @@ const registerHold = useRetryHold(registerStatus);
 const isRegisterHeld = computed(() => registerHold.isHeld());
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
+const codeErrorId = useId();
+
+/** The waiting resend key's spelled-out name, where it keeps the visible label in it. */
+const resendName = computed(() =>
+  resendWaiting.value && !isResending.value
+    ? spokenWait(
+        Messages.EmailCode.resendIn(resendIn.value),
+        Messages.EmailCode.resendIn(resendIn.value, "long")
+      )
+    : undefined
+);
+/** Whether the error on show is why the resend key waits, which then describes the key. */
+const errorIsWait = computed(
+  () => resendWaiting.value && !!codeError.value && codeError.value === cooldown.note.value
+);
 
 /** The step on screen (form or code), to move focus into it when it changes. */
 const step = useTemplateRef<HTMLFormElement>("step");
@@ -218,6 +234,9 @@ const openCodeStep = async (kind: CodeNotice, waitSeconds?: number) => {
   registerStatus.value = "";
   code.value = "";
   resetCode();
+  // The code watcher clears old errors on the next flush; letting it run first keeps the
+  // message `open` shows for a wait it picks up.
+  await nextTick();
   open(email.value, kind, waitSeconds);
   await focusStep();
 };
@@ -392,7 +411,7 @@ watch(isLoggedIn, (newVal) => {
         required
         @blur="leaveCode('code')"
       />
-      <StatusMessage v-if="codeError" tone="error">{{ codeError }}</StatusMessage>
+      <StatusMessage v-if="codeError" :id="codeErrorId" tone="error">{{ codeError }}</StatusMessage>
       <BaseButton
         type="submit"
         block
@@ -416,11 +435,8 @@ watch(isLoggedIn, (newVal) => {
           size="sm"
           :loading="isResending"
           :disabled="resendWaiting"
-          :aria-label="
-            resendWaiting && !isResending
-              ? Messages.EmailCode.resendIn(resendIn, 'long')
-              : undefined
-          "
+          :aria-label="resendName"
+          :aria-describedby="errorIsWait ? codeErrorId : undefined"
           @click="sendAgain"
         >
           {{

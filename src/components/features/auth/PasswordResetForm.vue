@@ -15,6 +15,7 @@ import {
   passwordError
 } from "@/scripts/authentication/register";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { spokenWait } from "@/scripts/utility/durationUtil";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -55,6 +56,7 @@ const isResetting = ref(false);
 const isButtonError = ref(false);
 const step = ref<HTMLFormElement>();
 const sentMessageId = useId();
+const failureId = useId();
 const resend = useCountdown("password-reset-cooldown");
 /** After the code checks' 429, Reset password waits for the address; another can go at once. */
 const resetHold = useRetryHold(failure);
@@ -89,6 +91,20 @@ const isResendWaiting = computed(
   () => resend.active.value && normalizeEmail(sentTo.value) === normalizeEmail(lastSentTo.value)
 );
 
+/** The waiting resend key's spelled-out name, where it keeps the visible label in it. */
+const resendName = computed(() =>
+  isResendWaiting.value && !isSending.value
+    ? spokenWait(
+        Messages.EmailCode.sendAgainIn(resend.remaining.value),
+        Messages.EmailCode.sendAgainIn(resend.remaining.value, "long")
+      )
+    : undefined
+);
+/** Whether the error on show is why the resend key waits, which then describes the key. */
+const failureIsWait = computed(
+  () => isResendWaiting.value && !!failure.value && failure.value === resend.note.value
+);
+
 const flagError = () => {
   isButtonError.value = true;
   setTimeout(() => {
@@ -111,9 +127,14 @@ const waitBeforeResend = (address: string, seconds: number, reason = "") => {
   resend.start(seconds, normalizeEmail(address), reason);
 };
 
-// The mail limit's message only holds until its countdown ends, like the key's wait.
+/** Whether the address on screen is the one the countdown holds back. */
+const isWaitShownFor = () =>
+  normalizeEmail(sentTo.value || email.value) === normalizeEmail(lastSentTo.value);
+
+// The mail limit's message only holds until its countdown ends, like the key's wait; an error
+// about another address, or another error, stays.
 watch(resend.active, (waiting) => {
-  if (!waiting && failure.value === resend.note.value) failure.value = "";
+  if (!waiting && failure.value === resend.note.value && isWaitShownFor()) failure.value = "";
 });
 
 /** Whether `address` still has to wait for another code, also counting from before a reload. */
@@ -333,7 +354,7 @@ const handleReset = async () => {
           required
           @blur="leaveReset('newPassword')"
         />
-        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage v-if="failure" :id="failureId" tone="error">{{ failure }}</StatusMessage>
         <BaseButton
           type="submit"
           block
@@ -362,11 +383,8 @@ const handleReset = async () => {
           size="sm"
           :loading="isSending"
           :disabled="isResendWaiting"
-          :aria-label="
-            isResendWaiting && !isSending
-              ? Messages.EmailCode.sendAgainIn(resend.remaining.value, 'long')
-              : undefined
-          "
+          :aria-label="resendName"
+          :aria-describedby="failureIsWait ? failureId : undefined"
           @click="sendAgain"
         >
           {{

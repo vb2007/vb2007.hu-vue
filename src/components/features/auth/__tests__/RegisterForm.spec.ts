@@ -766,10 +766,53 @@ describe("RegisterForm", () => {
       // The short units are for the eye; the key's name spells them out.
       expect(resendButton(wrapper).attributes("aria-label")).toBe("Resend in 57 minutes");
 
+      const alert = wrapper.find('[role="alert"]');
+      expect(resendButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+
       vi.advanceTimersByTime(3_412_000);
       await flushPromises();
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(resendButton(wrapper).text()).toBe("Resend code");
+      expect(resendButton(wrapper).attributes("aria-describedby")).toBeUndefined();
+    });
+
+    it("names a wait of hours by its visible label, which the spelled-out one wouldn't contain", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error = "Too many e-mails requested: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 3900 }));
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(resendButton(wrapper).text()).toBe("Resend in 1 hr 5 min");
+      expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
+    });
+
+    it("keeps the mail limit's message when its code step is entered again after typing a code", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error = "Too many e-mails requested: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 3412 }));
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+      // Typing a code drops the message, as any new attempt does.
+      await wrapper.find("input").setValue("12");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+
+      const back = wrapper.findAll("button").find((button) => button.text() === "Change address");
+      await back!.trigger("click");
+      await flushPromises();
+      await enterCodeButton(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("input").element.value).toBe("");
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(resendButton(wrapper).text()).toBe("Resend in 57 min");
     });
 
     it("goes back to the filled-in form to fix the address", async () => {

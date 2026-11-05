@@ -343,6 +343,50 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
   });
 
+  it("points the waiting key at the mail limit's message, and names hours by the visible label", async () => {
+    const { wrapper } = await mountOnCodeStep();
+    await waitOutCountdown();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3900 });
+    await resendButton(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(resendButton(wrapper).text()).toBe("Send again in 1 hr 5 min");
+    // "1 hour 5 minutes" wouldn't contain what the key shows.
+    expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
+    expect(resendButton(wrapper).attributes("aria-describedby")).toBe(
+      wrapper.find('[role="alert"]').attributes("id")
+    );
+  });
+
+  it("keeps a wrong code's error when the mail limit's wait ends", async () => {
+    const { wrapper } = await mountRateLimited();
+    vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: WRONG_CODE });
+    await fillCodeStep(wrapper);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(resendButton(wrapper).attributes("aria-describedby")).toBeUndefined();
+
+    vi.advanceTimersByTime(3_412_000);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(WRONG_CODE);
+  });
+
+  it("keeps the mail limit's error for another address when the first one's wait ends", async () => {
+    const { wrapper } = await mountRateLimited();
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
+    vi.advanceTimersByTime(3_000_000);
+    await sendTo(wrapper, "other@example.com");
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+
+    vi.advanceTimersByTime(412_000);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+  });
+
   it("keeps another error when the countdown ends", async () => {
     const { wrapper } = await mountOnCodeStep();
     vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: WRONG_CODE });
