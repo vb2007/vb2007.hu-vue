@@ -47,9 +47,13 @@ export class Messages {
     static readonly usernameCheckFailed: string = "Failed to check the username";
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
-    /** A reset link whose token can't be one the API mailed, e.g. cut off when copied. */
+    /** A reset link whose token can't be one the API mailed. */
     static readonly resetLinkMalformed: string =
-      "This reset link is incomplete, maybe cut off when it was copied: request a new one.";
+      "This reset link isn't complete or was changed: request a new one.";
+    /** After the API's 429 on a reset link, which doesn't use the link up. */
+    static resetLinkStillWorks(validMinutes: number): string {
+      return `The link wasn't used up: it works until ${validMinutes} minutes after it was sent.`;
+    }
     static readonly invalidEmail: string = "Enter a valid e-mail address.";
     /** An account's own password left out where it's asked for: logging in, or confirming it's them. */
     static readonly passwordMissing: string = "Enter your password.";

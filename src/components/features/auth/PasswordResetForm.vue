@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useId } from "vue";
+import { computed, nextTick, ref, useId, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
@@ -47,23 +47,20 @@ const RESENT_MESSAGE =
 const RECENT_MESSAGE =
   "If an account uses this address, a code was sent to it in the last minute and still works.";
 
+const linkStillWorks = Messages.Auth.resetLinkStillWorks(Limits.Code.passwordResetValidMinutes);
+
 const route = useRoute();
 const router = useRouter();
 
+/** A well-formed link's token (see the `route.hash` watcher): set, the board asks only for the new password. */
+const linkToken = ref("");
 /**
- * The mailed link (`#token=…`) leaves the address bar at once, history entry included, so the
- * token isn't kept in the history or shared by copying the URL.
+ * What the API made of the link: `refused` it (wrong, expired or used, so only a new one helps), or
+ * `limited` it after too many rejected links from this address, without using it up.
  */
-const tokenInLink = resetLinkTokenFrom(route.hash);
-if (tokenInLink !== null) {
-  void router.replace({ query: route.query, hash: "" });
-}
-/** A well-formed link's token: set, the board asks only for the new password. */
-const linkToken = ref(tokenInLink !== null && isResetLinkToken(tokenInLink) ? tokenInLink : "");
+const linkAnswer = ref<"" | "refused" | "limited">("");
 /** Why a link that came in can't work, shown on the e-mail step it falls back to. */
-const linkError = ref(
-  tokenInLink !== null && !linkToken.value ? Messages.Auth.resetLinkMalformed : ""
-);
+const linkError = ref("");
 /** The logged-in user's address when the link is theirs, for password managers; "" otherwise. */
 const linkUsername = computed(() =>
   isLoggedIn.value && resetLinkUserId(linkToken.value) === userId.value ? userEmail.value : ""
@@ -83,7 +80,8 @@ const failure = ref("");
 const isSending = ref(false);
 const isResetting = ref(false);
 const isButtonError = ref(false);
-const step = ref<HTMLFormElement>();
+/** The step on the board: its form, or the refused link's message and key. */
+const step = ref<HTMLElement>();
 const sentMessageId = useId();
 const resend = useCountdown("password-reset-cooldown");
 
@@ -260,32 +258,97 @@ const submitReset = async (
 const handleReset = () =>
   submitReset(resetChecks, () => confirmPasswordReset(sentTo.value, code.value, newPassword.value));
 
-const handleLinkReset = () =>
-  submitReset(linkChecks, () => confirmPasswordResetLink(linkToken.value, newPassword.value));
+const handleLinkReset = async () => {
+  linkAnswer.value = "";
+  await submitReset(linkChecks, async () => {
+    const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
+    if (answer.linkRefused) {
+      linkAnswer.value = "refused";
+    } else if (answer.retryAfter !== undefined) {
+      linkAnswer.value = "limited";
+    }
+    return answer;
+  });
 
-/** Leaves a link that didn't work for the e-mail step, which mails a new code and link. */
-const requestNewLink = async () => {
-  linkToken.value = "";
+  // The form gave way to the key for a new link, which takes the focus the submit key had.
+  if (linkAnswer.value === "refused") {
+    await nextTick();
+    step.value?.querySelector("button")?.focus();
+  }
+};
+
+/** Empties both password steps, which share the New password field's value. */
+const clearPasswordSteps = () => {
+  code.value = "";
   newPassword.value = "";
   failure.value = "";
+  resetChecks.reset();
   linkChecks.reset();
+};
+
+/**
+ * Leaves the link for the e-mail step, which mails a new code and link; the address is filled in
+ * when the link was the logged-in user's.
+ */
+const requestNewLink = async () => {
+  email.value = linkUsername.value || email.value;
+  linkToken.value = "";
+  linkAnswer.value = "";
+  clearPasswordSteps();
   await focusFirstField();
 };
 
-onMounted(() => {
-  // Someone who followed the link came to type the new password.
-  if (linkToken.value) {
-    void focusFirstField();
-  }
-});
+/**
+ * Reads the mailed link (`#token=…`), also in a tab already on this page, where only the fragment
+ * changes. The token leaves the address bar at once, history entry included, so it isn't kept in
+ * the history or shared by copying the URL.
+ */
+watch(
+  () => route.hash,
+  async (hash) => {
+    const token = resetLinkTokenFrom(hash);
+    if (token === null) {
+      return;
+    }
+    void router.replace({ query: route.query, hash: "" });
+
+    const isWellFormed = isResetLinkToken(token);
+    linkToken.value = isWellFormed ? token : "";
+    linkError.value = isWellFormed ? "" : Messages.Auth.resetLinkMalformed;
+    linkAnswer.value = "";
+    sentTo.value = "";
+    sentMessage.value = "";
+    clearPasswordSteps();
+    // Next comes the new password, or the address to get a link that works.
+    await focusFirstField();
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
   <StationBoard title="Reset password" as="h1">
-    <template v-if="linkToken">
+    <template v-if="linkToken && linkAnswer === 'refused'">
+      <div ref="step" class="form">
+        <StatusMessage tone="error">{{ failure }}</StatusMessage>
+        <BaseButton block @click="requestNewLink">Request a new link</BaseButton>
+      </div>
+      <div class="alt">
+        <p>Remembered it? <RouterLink to="/login">Log in</RouterLink></p>
+      </div>
+    </template>
+
+    <template v-else-if="linkToken">
       <form ref="step" class="form" novalidate @submit.prevent="handleLinkReset">
-        <!-- Tells password managers which login the new password belongs to, when it's known. -->
-        <input type="email" autocomplete="username" :value="linkUsername" readonly hidden />
+        <!-- Tells password managers which login the new password belongs to. -->
+        <input
+          v-if="linkUsername"
+          type="email"
+          autocomplete="username"
+          :value="linkUsername"
+          readonly
+          hidden
+        />
         <p>{{ linkIntro }}</p>
         <BaseInput
           v-model="newPassword"
@@ -297,7 +360,10 @@ onMounted(() => {
           required
           @blur="leaveLink('newPassword')"
         />
-        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage v-if="failure" tone="error">
+          {{ failure }}
+          <template v-if="linkAnswer === 'limited'">{{ linkStillWorks }}</template>
+        </StatusMessage>
         <BaseButton
           type="submit"
           block
@@ -310,9 +376,9 @@ onMounted(() => {
       </form>
       <div class="alt">
         <p>
-          Link not working?
+          {{ linkAnswer === "limited" ? "Can't wait?" : "Link not working?" }}
           <button type="button" class="link" :disabled="isResetting" @click="requestNewLink">
-            Request a new one
+            {{ linkAnswer === "limited" ? "Use a code instead" : "Request a new one" }}
           </button>
         </p>
         <p>Remembered it? <RouterLink to="/login">Log in</RouterLink></p>
@@ -322,7 +388,7 @@ onMounted(() => {
     <template v-else-if="!sentTo">
       <form ref="step" class="form" novalidate @submit.prevent="handleSend">
         <StatusMessage v-if="linkError" tone="error">{{ linkError }}</StatusMessage>
-        <p>Enter your account's e-mail address to get a code for a new password.</p>
+        <p>Enter your account's e-mail address to get a code and a link for a new password.</p>
         <BaseInput
           v-model="email"
           label="E-mail"

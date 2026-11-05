@@ -255,7 +255,8 @@ describe("confirmPasswordResetLink", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: BAD_LINK }));
 
     await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({
-      error: BAD_LINK
+      error: BAD_LINK,
+      linkRefused: true
     });
     expect(clearSession).not.toHaveBeenCalled();
     expect(passwordResetNotice.value).toBe("");
@@ -267,13 +268,22 @@ describe("confirmPasswordResetLink", () => {
     );
 
     await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({
-      error: "Too many failed attempts: try again later."
+      error: "Too many failed attempts: try again later.",
+      retryAfter: 900
+    });
+  });
+
+  it("names the status of any other error, which says nothing about the link", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(500));
+
+    await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({
+      error: "Failed to reset the password: 500"
     });
   });
 
   it("refuses a malformed token without asking the API", async () => {
     await expect(confirmPasswordResetLink("not-a-token", "new password")).resolves.toEqual({
-      error: "This reset link is incomplete, maybe cut off when it was copied: request a new one."
+      error: "This reset link isn't complete or was changed: request a new one."
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });

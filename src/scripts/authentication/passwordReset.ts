@@ -18,8 +18,10 @@ export interface PasswordResetAnswer {
   message?: string;
   /** What went wrong otherwise. */
   error?: string;
-  /** Seconds before another code can be asked for, after a 429. */
+  /** Seconds before another try, after a 429: another code, or the same link again. */
   retryAfter?: number;
+  /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
+  linkRefused?: boolean;
 }
 
 /**
@@ -97,11 +99,21 @@ export const confirmPasswordResetLink = async (
     return { error: Messages.Auth.resetLinkMalformed };
   }
 
-  return finishReset(
-    await apiRequest(Endpoints.Auth.passwordResetConfirmLink, {
-      body: { token, newPassword },
-      failure: Messages.Auth.passwordResetFailed
-    }),
-    () => resetLinkUserId(token) === userId.value
-  );
+  const result = await apiRequest(Endpoints.Auth.passwordResetConfirmLink, {
+    body: { token, newPassword },
+    failure: Messages.Auth.passwordResetFailed
+  });
+
+  if (!result.ok) {
+    // Too many rejected links from this address: this one isn't used up and works again later.
+    if (result.status === HttpStatus.TooManyRequests) {
+      return { error: result.error, retryAfter: retryAfterFrom(result.body) };
+    }
+    // The page checks the password with the API's rules first, so a 400 is about the link.
+    if (result.status === HttpStatus.BadRequest) {
+      return { error: result.error, linkRefused: true };
+    }
+  }
+
+  return finishReset(result, () => resetLinkUserId(token) === userId.value);
 };
