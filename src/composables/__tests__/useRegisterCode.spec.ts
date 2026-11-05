@@ -101,13 +101,13 @@ describe("useRegisterCode", () => {
   });
 
   it.each([
-    ["a resend", 200, {}, 60, undefined],
+    ["a resend, without a note", 200, {}, 60, {}],
     [
       "a refused resend, with its message",
       429,
       { error: "Too many e-mails requested: try again later.", retryAfter: 42 },
       42,
-      "Too many e-mails requested: try again later."
+      { note: "Too many e-mails requested: try again later." }
     ]
   ])("keeps the countdown after %s", async (_, status, body, seconds, note) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
@@ -117,7 +117,31 @@ describe("useRegisterCode", () => {
     await step.resend();
 
     const kept = JSON.parse(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)!);
-    expect(kept).toEqual({ id: "me@example.com", deadline: Date.now() + seconds * 1000, note });
+    expect(kept).toStrictEqual({
+      id: "me@example.com",
+      deadline: Date.now() + seconds * 1000,
+      ...note
+    });
+  });
+
+  it("explains a wait still running in the page when storage is off", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage is off");
+    });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
+    );
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+    await step.resend();
+    step.leave();
+
+    step.open("me@example.com", "earlier");
+
+    expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBeNull();
+    expect(step.resendWaiting.value).toBe(true);
+    expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+    setItem.mockRestore();
   });
 
   it("explains a rate limited wait it picks up after a reload, until it ends", async () => {

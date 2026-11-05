@@ -31,3 +31,12 @@ export const formatWait = (
   const hours = unit(Math.floor(minutes / 60), "hour", units, locale);
   return minutes % 60 ? `${hours} ${unit(minutes % 60, "minute", units, locale)}` : hours;
 };
+
+/**
+ * `spelledOut` as a waiting key's accessible name, but only when it contains the visible label
+ * ("Resend in 57 minutes" for "Resend in 57 min"), so what's shown is still what names the key
+ * (WCAG 2.5.3, Label in Name). Hours don't ("1 hour" for "1 hr"), so then it's undefined and the
+ * visible label names the key.
+ */
+export const spokenWait = (visible: string, spelledOut: string): string | undefined =>
+  spelledOut.includes(visible) ? spelledOut : undefined;

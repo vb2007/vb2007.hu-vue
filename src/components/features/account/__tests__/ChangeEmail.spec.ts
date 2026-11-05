@@ -664,6 +664,9 @@ describe("ChangeEmail", () => {
       expect(button("Send code in 15 min").attributes("aria-label")).toBe(
         "Send code in 15 minutes"
       );
+      expect(button("Send code in 15 min").attributes("aria-describedby")).toBe(
+        wrapper.find('[role="alert"]').attributes("id")
+      );
 
       // Closed and opened again, the waiting key still says why.
       await button("Cancel").trigger("click");

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useChangeEmail } from "@/composables/useChangeEmail";
@@ -12,6 +12,7 @@ import {
   requiredError
 } from "@/scripts/authentication/register";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { spokenWait } from "@/scripts/utility/durationUtil";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -67,6 +68,21 @@ const { errors: codeErrors, isValid: isCodeValid, leave: leaveCode } = codeCheck
 
 /** Ties the code field to the waiting address it confirms. */
 const pendingId = useId();
+const changeErrorId = useId();
+
+/** The waiting key's spelled-out name, where it keeps the visible label in it. */
+const sendName = computed(() =>
+  isWaiting.value && !isChanging.value
+    ? spokenWait(
+        Messages.EmailCode.sendCodeIn(waitSeconds.value),
+        Messages.EmailCode.sendCodeIn(waitSeconds.value, "long")
+      )
+    : undefined
+);
+/** Whether the error on show is why the key waits, which then describes the key. */
+const errorIsWait = computed(
+  () => isWaiting.value && !!changeError.value && changeError.value === cooldown.note.value
+);
 
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
@@ -221,16 +237,17 @@ const confirmCode = async () => {
       required
       @blur="leaveChange('password')"
     />
-    <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
+    <StatusMessage v-if="changeError" :id="changeErrorId" tone="error">{{
+      changeError
+    }}</StatusMessage>
     <div class="change__actions">
       <BaseButton
         type="submit"
         size="sm"
         :loading="isChanging"
         :disabled="isWaiting"
-        :aria-label="
-          isWaiting && !isChanging ? Messages.EmailCode.sendCodeIn(waitSeconds, 'long') : undefined
-        "
+        :aria-label="sendName"
+        :aria-describedby="errorIsWait ? changeErrorId : undefined"
         :blocked="!isChangeValid"
       >
         {{

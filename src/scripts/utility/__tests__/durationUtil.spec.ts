@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatWait } from "@/scripts/utility/durationUtil";
+import { formatWait, spokenWait } from "@/scripts/utility/durationUtil";
 
 describe("formatWait", () => {
   it.each([
@@ -36,5 +36,16 @@ describe("formatWait", () => {
 
   it("follows a given locale", () => {
     expect(formatWait(42, "hu")).toBe("42 mp");
+  });
+});
+
+describe("spokenWait", () => {
+  it("spells the wait out where that keeps the visible label in it", () => {
+    expect(spokenWait("Resend in 57 min", "Resend in 57 minutes")).toBe("Resend in 57 minutes");
+    expect(spokenWait("Resend in 42 sec", "Resend in 42 seconds")).toBe("Resend in 42 seconds");
+  });
+
+  it("leaves hours to the visible label, which the spelled-out one doesn't contain", () => {
+    expect(spokenWait("Resend in 1 hr 5 min", "Resend in 1 hour 5 minutes")).toBeUndefined();
   });
 });
