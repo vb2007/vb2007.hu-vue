@@ -63,6 +63,12 @@ export interface MockAdminUser {
 /** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
+/** What the API (`isAuthenticated`) answers a request without a live session. */
+const NOT_LOGGED_IN = {
+  status: 403,
+  body: { error: "You must be logged in to perform this action." }
+};
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -335,9 +341,10 @@ export class MockApi {
 
     const cookie = (await request.headerValue("cookie")) ?? "";
     const sentSession = cookie.match(/(?:^|;\s*)VB-AUTH=([^;]+)/)?.[1];
-    const response =
+    const response: MockResponse | undefined =
+      // A session the API has replaced: answered as logged out.
       sentSession && sentSession !== this.session
-        ? this.staleSession(`${request.method()} ${url.pathname}`)
+        ? NOT_LOGGED_IN
         : this.respond(
             `${request.method()} ${url.pathname}`,
             request.postDataJSON(),
@@ -360,13 +367,6 @@ export class MockApi {
       });
     }
     return route.fulfill({ status: response.status, headers, json: response.body ?? {} });
-  }
-
-  /** What the API answers a session it has replaced: logged out. */
-  private staleSession(endpoint: string): MockResponse {
-    return endpoint === "GET /user"
-      ? { status: 401 }
-      : { status: 403, body: { error: "You are not logged in." } };
   }
 
   private respond(
@@ -447,7 +447,7 @@ export class MockApi {
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
               }
             }
-          : { status: 401 };
+          : NOT_LOGGED_IN;
       case "POST /auth/login":
         this.user = {
           email: body?.email ?? "e2e@example.com",
@@ -486,7 +486,7 @@ export class MockApi {
       case "POST /user/password":
         return this.setPassword(body?.password);
       case "DELETE /auth/github/link": {
-        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+        if (!this.user) return NOT_LOGGED_IN;
         if (!this.user.githubId)
           return { status: 404, body: { error: "No GitHub account is linked." } };
         if (!this.user.hasPassword) {
@@ -594,7 +594,7 @@ export class MockApi {
         );
         return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
       case "POST /paste":
-        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+        if (!this.user) return NOT_LOGGED_IN;
         return {
           status: 201,
           body: {
@@ -633,7 +633,7 @@ export class MockApi {
 
   /** `POST /auth/github/link`: answers where GitHub's authorize page is, here on the mock API. */
   private startGithubLink(password?: string): MockResponse {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     if (this.githubUnconfigured) return { status: 503, body: { error: "notConfigured" } };
     if (this.user.hasPassword) {
       const refusal = this.checkGithubPassword(password);
@@ -717,7 +717,7 @@ export class MockApi {
   }
 
   private confirmEmail(code?: string) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
     if (!this.isEmailChangeLive() || code.replace(/\s/g, "") !== MOCK_EMAIL_CODE) {
       return {
@@ -741,7 +741,7 @@ export class MockApi {
   }
 
   private changePassword(currentPassword?: string, newPassword?: string) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) {
       return { status: 429, body: { error: "Too many failed attempts: try again later." } };
     }
@@ -902,7 +902,7 @@ export class MockApi {
         body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
       };
     }
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     if (method === "PATCH") {
       if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
         return { status: 403, body: { error: "You are not authorized." } };
@@ -922,7 +922,7 @@ export class MockApi {
   }
 
   private usage() {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const categoryOf = (upload: MockUpload) =>
       ALLOWED_TYPES.find((type) => type.mimeType === upload.mimeType)!.category;
     return {
@@ -946,7 +946,7 @@ export class MockApi {
   }
 
   private receiveUpload(part: ReturnType<typeof parseMultipart>) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
@@ -966,7 +966,7 @@ export class MockApi {
     id: string,
     body: { originalFileName?: string; visibility?: MockUpload["visibility"] } | null
   ) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const index = this.uploads.findIndex((upload) => upload.id === id);
     if (index === -1) return { status: 404, body: { error: "There is no such upload." } };
     if (method === "DELETE") {
@@ -994,7 +994,7 @@ export class MockApi {
   }
 
   private listUploads(query: URLSearchParams, owner: string | undefined) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortBy = (query.get("sortBy") ?? "uploadedOn") as keyof MockUpload;
@@ -1073,7 +1073,7 @@ export class MockApi {
   }
 
   private listPastes(username: string, query: URLSearchParams) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";

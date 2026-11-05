@@ -14,6 +14,22 @@ test("home page renders the hero, the shortener gate and the tools directory", a
   await expect(page).toHaveURL("/pastebin");
 });
 
+test("a logged-out visit doesn't log the API's not-logged-in answer as a failure", async ({
+  page
+}) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  const lookup = page.waitForResponse((response) => new URL(response.url()).pathname === "/user");
+
+  await page.goto("/");
+
+  expect((await lookup).status()).toBe(403);
+  await expect(page.getByRole("heading", { level: 1, name: "Welcome home" })).toBeVisible();
+  expect(errors.filter((error) => error.includes("Failed to load the user"))).toEqual([]);
+});
+
 test("a board header keeps its padding above the kerb hatch", async ({ page }) => {
   await page.goto("/login");
   const head = page.locator("header", {
