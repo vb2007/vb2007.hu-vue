@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { useChangeEmail } from "@/composables/useChangeEmail";
 import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import {
@@ -226,7 +227,13 @@ const confirmCode = async () => {
         :disabled="isWaiting"
         :blocked="!isChangeValid"
       >
-        {{ isChanging ? "Sending" : isWaiting ? `Send code in ${waitSeconds} s` : "Send code" }}
+        {{
+          isChanging
+            ? "Sending"
+            : isWaiting
+              ? Messages.EmailCode.sendCodeIn(waitSeconds)
+              : "Send code"
+        }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
         Cancel

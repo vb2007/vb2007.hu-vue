@@ -155,12 +155,12 @@ describe("PasswordResetForm", () => {
   it("counts down before a code can be sent again", async () => {
     const { wrapper } = await mountOnCodeStep();
 
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:00");
+    expect(resendButton(wrapper).text()).toBe("Send again in 1 min");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
 
     vi.advanceTimersByTime(51_000);
     await flushPromises();
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:09");
+    expect(resendButton(wrapper).text()).toBe("Send again in 9 sec");
 
     vi.advanceTimersByTime(9000);
     await flushPromises();
@@ -185,7 +185,7 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="status"]').text()).toBe(RESENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:00");
+    expect(resendButton(wrapper).text()).toBe("Send again in 1 min");
     expect(changeButton(wrapper).attributes("disabled")).toBeUndefined();
     expect(document.activeElement).toBe(codeInput(wrapper).element);
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("");
@@ -195,14 +195,14 @@ describe("PasswordResetForm", () => {
     const { wrapper } = await mountOnCodeStep();
     await fillCodeStep(wrapper, "123456");
     await waitOutCountdown();
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 90 });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
 
     await resendButton(wrapper).trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:30");
+    expect(resendButton(wrapper).text()).toBe("Send again in 57 min");
     expect(document.activeElement).toBe(codeInput(wrapper).element);
     // No new code was sent, so the one typed may still be right.
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("123456");
@@ -238,7 +238,7 @@ describe("PasswordResetForm", () => {
 
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:40");
+    expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
     const [, code, password] = wrapper.findAll("input");
     expect((code.element as HTMLInputElement).value).toBe("");
     expect((password.element as HTMLInputElement).value).toBe("");
@@ -254,7 +254,7 @@ describe("PasswordResetForm", () => {
 
     expect(requestPasswordReset).toHaveBeenLastCalledWith("other@example.com");
     expect(wrapper.find(".sent-to__address").text()).toBe("other@example.com");
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:00");
+    expect(resendButton(wrapper).text()).toBe("Send again in 1 min");
   });
 
   it("enters a code that already arrived without sending another", async () => {
@@ -285,7 +285,7 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(requestPasswordReset).toHaveBeenCalledOnce();
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:40");
+    expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
   });
 
@@ -299,7 +299,7 @@ describe("PasswordResetForm", () => {
 
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(wrapper.find('[role="status"]').text()).toBe(RECENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:40");
+    expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
   });
 
   it("doesn't hold back another address after a reload", async () => {

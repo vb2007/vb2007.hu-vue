@@ -278,6 +278,16 @@ describe("register", () => {
     expect(registerStatus.value).toBe(error);
   });
 
+  it.each([
+    ["the mail limit", "Too many e-mails requested: try again later.", 3412],
+    ["the failed attempts limit", "Too many failed attempts: try again later.", 900]
+  ])("doesn't take %s's 429 for the cooldown: no code went out", async (_, error, retryAfter) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
+
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
+    expect(registerStatus.value).toBe(error);
+  });
+
   it("ignores a retryAfter on anything but a 429", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(503, { error: "The e-mail couldn't be sent.", retryAfter: 42 })

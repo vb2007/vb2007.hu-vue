@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { isResendCooldown, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
@@ -40,10 +40,12 @@ export const useChangeEmail = () => {
     removeSaved(COOLDOWN_STORAGE_KEY);
   };
 
-  // The cooldown's 429 counts its wait down on the key, so its message has no number to go stale.
-  // A rate limiter's 429 has no wait to count down, so its message stays when the key comes back.
+  /** A 429's message, which only holds until the key's countdown ends. */
+  let waitError = "";
+
+  // Every 429 counts its wait down on the key, so its message goes once the key comes back.
   watch(cooldown.active, (waiting) => {
-    if (!waiting && changeError.value === Messages.EmailCode.cooldown) changeError.value = "";
+    if (!waiting && changeError.value === waitError) changeError.value = "";
   });
 
   /**
@@ -73,11 +75,13 @@ export const useChangeEmail = () => {
         userEmail.value = normalizeEmail(email);
       }
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // Only the one-code-a-minute cooldown sends retryAfter; the rate limiters send an error alone.
-      const isCooldown = typeof result.body?.retryAfter === "number";
-      changeError.value = isCooldown
+      // The one-code-a-minute cooldown, or a rate limiter (wrong passwords, too many e-mails):
+      // both send retryAfter, but only the cooldown means a code went out.
+      const isCooldown = isResendCooldown(result.body);
+      waitError = isCooldown
         ? Messages.EmailCode.cooldown
         : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
+      changeError.value = waitError;
       cooldown.start(retryAfterFrom(result.body), account());
       // The code it waits for may have been asked for elsewhere, e.g. in another tab.
       if (isCooldown) await fetchUserDetails();

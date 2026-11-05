@@ -4,7 +4,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom } from "@/composables/useCountdown";
+import { isResendCooldown, retryAfterFrom } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 
 /** A `RegisterStatus`, or the API's message when registering failed. */
@@ -152,8 +152,9 @@ export interface RegisterAnswer {
   /** The field a 400 or 409 is about; a 429's or 503's message names no field's fault. */
   field?: RegisterField;
   /**
-   * Set when a code went to this address less than a minute ago (the API's per-address
-   * cooldown): that code still works, and another can be sent after this many seconds.
+   * Set only for the API's per-address cooldown, when a code went to this address less than a
+   * minute ago: that code still works, and another can be sent after this many seconds. A rate
+   * limiter's 429 (e.g. too many e-mails) sent nothing, so it leaves this out.
    */
   retryAfter?: number;
 }
@@ -178,14 +179,15 @@ export const register = async (
     return { sent: true };
   }
 
-  // 400 (rules, disposable or undeliverable address), 409 (taken), 429 (too soon), 503 (mail failed)
+  // 400 (rules, disposable or undeliverable address), 409 (taken), 429 (the cooldown or a rate
+  // limit), 503 (mail failed)
   const message = apiErrorOf(result) ?? RegisterStatus.Error;
   const answer: RegisterAnswer = { sent: false };
   if (result.status === HttpStatus.BadRequest || result.status === HttpStatus.Conflict) {
     answer.field = registerFieldOf(message);
   }
-  // Only the per-address cooldown says how long; the rate limiters' 429s don't.
-  if (result.status === HttpStatus.TooManyRequests && typeof result.body?.retryAfter === "number") {
+  // Every 429 says how long to wait, but only the per-address cooldown means a code went out.
+  if (result.status === HttpStatus.TooManyRequests && isResendCooldown(result.body)) {
     answer.retryAfter = retryAfterFrom(result.body);
   }
   registerStatus.value = message;

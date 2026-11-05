@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { isResendCooldown, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 
 describe("useCountdown", () => {
   // Fake timers mock Date.now too, so the deadline moves with advanceTimersByTime.
@@ -216,7 +216,7 @@ describe("retryAfterFrom", () => {
   });
 
   it.each([
-    ["a rate limiter's body without one", { error: "Too many requests." }],
+    ["a body without one", { error: "Too many requests." }],
     ["zero", { retryAfter: 0 }],
     ["a negative number", { retryAfter: -3 }],
     ["infinity", { retryAfter: Infinity }],
@@ -228,5 +228,30 @@ describe("retryAfterFrom", () => {
   ])("falls back for %s", (_, body) => {
     expect(retryAfterFrom(body)).toBe(60);
     expect(retryAfterFrom(body, 15)).toBe(15);
+  });
+});
+
+describe("isResendCooldown", () => {
+  it("knows the per-address cooldown by its message", () => {
+    expect(
+      isResendCooldown({
+        error: "A code was sent just now: wait 42 seconds before requesting another one.",
+        retryAfter: 42
+      })
+    ).toBe(true);
+  });
+
+  it.each([
+    ["the mail limit", { error: "Too many e-mails requested: try again later.", retryAfter: 3412 }],
+    [
+      "the failed attempts limit",
+      { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+    ],
+    ["a body without a message", { retryAfter: 42 }],
+    ["a message that isn't text", { error: 42 }],
+    ["null", null],
+    ["undefined", undefined]
+  ])("isn't fooled by %s", (_, body) => {
+    expect(isResendCooldown(body)).toBe(false);
   });
 });

@@ -1,3 +1,5 @@
+import { formatWait } from "@/scripts/utility/durationUtil";
+
 /**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
  * shown when it sends one, these otherwise. A `failure` text is followed by the status
@@ -78,8 +80,25 @@ export class Messages {
     /** The cooldown's own message names its seconds, which would freeze next to the countdown. */
     static readonly cooldown: string =
       "A code was sent just now. You can send another once the countdown ends.";
+    /**
+     * How the API's per-address resend cooldown starts (`Responses.EmailCodes.resendTooSoon`).
+     * Every rate limiter's 429 sends `retryAfter` too, so only this text tells the cooldown apart.
+     */
+    static readonly cooldownPrefix: string = "A code was sent just now";
     static invalid(digits: number): string {
       return `Enter the ${digits}-digit code from the e-mail.`;
+    }
+    /** The register step's resend key while it waits. */
+    static resendIn(seconds: number): string {
+      return `Resend in ${formatWait(seconds)}`;
+    }
+    /** The change e-mail form's key while it waits. */
+    static sendCodeIn(seconds: number): string {
+      return `Send code in ${formatWait(seconds)}`;
+    }
+    /** The password reset's resend key while it waits. */
+    static sendAgainIn(seconds: number): string {
+      return `Send again in ${formatWait(seconds)}`;
     }
   };
 

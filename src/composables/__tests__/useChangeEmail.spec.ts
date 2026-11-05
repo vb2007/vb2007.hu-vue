@@ -215,7 +215,30 @@ describe("useChangeEmail", () => {
       expect(email.changeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, and keeps its message after", async () => {
+    it.each([
+      ["wrong passwords", "Too many failed attempts: try again later.", 900],
+      ["e-mails", "Too many e-mails requested: try again later.", 3600]
+    ])(
+      "shows a rate limiter's 429 for too many %s, and waits its retryAfter",
+      async (_, error, retryAfter) => {
+        vi.useFakeTimers();
+        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
+        const email = useEmail();
+
+        await email.change("new@example.com", "secret-password");
+
+        // Not the cooldown: nothing was mailed, so the user isn't refreshed.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(email.changeError.value).toBe(error);
+        expect(email.cooldown.remaining.value).toBe(retryAfter);
+        vi.advanceTimersByTime(retryAfter * 1000);
+        await nextTick();
+        expect(email.cooldown.active.value).toBe(false);
+        expect(email.changeError.value).toBe("");
+      }
+    );
+
+    it("waits a minute after a 429 without a retryAfter", async () => {
       vi.useFakeTimers();
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many failed attempts: try again later." })
@@ -227,10 +250,19 @@ describe("useChangeEmail", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
       expect(email.cooldown.remaining.value).toBe(60);
-      vi.advanceTimersByTime(60_000);
+    });
+
+    it("keeps another error when the countdown ends", async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(jsonResponse(500, { error: "Something broke." }));
+      const email = useEmail();
+      email.cooldown.start(5, "old@example.com");
+
+      await email.change("new@example.com", "secret-password");
+      vi.advanceTimersByTime(5_000);
       await nextTick();
-      expect(email.cooldown.active.value).toBe(false);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
+
+      expect(email.changeError.value).toBe("Something broke.");
     });
 
     it("explains a 429 that isn't JSON", async () => {

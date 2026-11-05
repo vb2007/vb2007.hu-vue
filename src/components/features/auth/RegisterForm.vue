@@ -399,7 +399,13 @@ watch(isLoggedIn, (newVal) => {
           :disabled="resendWaiting"
           @click="sendAgain"
         >
-          {{ isResending ? "Sending" : resendWaiting ? `Resend in ${resendIn} s` : "Resend code" }}
+          {{
+            isResending
+              ? "Sending"
+              : resendWaiting
+                ? Messages.EmailCode.resendIn(resendIn)
+                : "Resend code"
+          }}
         </BaseButton>
         <BaseButton variant="ghost" size="sm" @click="changeAddress">Change address</BaseButton>
       </div>

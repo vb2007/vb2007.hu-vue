@@ -106,9 +106,6 @@ const isWaitingFor = (address: string) => {
   return resend.active.value && normalizeEmail(address) === normalizeEmail(lastSentTo.value);
 };
 
-const formatSeconds = (seconds: number) =>
-  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-
 const showCodeStep = async (message: string) => {
   failure.value = "";
   sentTo.value = email.value;
@@ -319,7 +316,7 @@ const handleReset = async () => {
             isSending
               ? "Sending"
               : isResendWaiting
-                ? `Send again in ${formatSeconds(resend.remaining.value)}`
+                ? Messages.EmailCode.sendAgainIn(resend.remaining.value)
                 : "Send again"
           }}
         </BaseButton>

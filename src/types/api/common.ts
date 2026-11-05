@@ -10,7 +10,10 @@ export interface MessageResponse {
 /** What the API sends when a request fails; a bare 500 sends no body at all. */
 export interface ApiErrorBody {
   error?: string;
-  /** Seconds before trying again, on a 429 from the per-address code cooldown. */
+  /**
+   * Seconds before trying again, on any 429: a rate limiter's or the per-address code cooldown's
+   * (vb2007/vb2007.hu-api#254). Only the message tells the cooldown apart, see `isResendCooldown`.
+   */
   retryAfter?: number;
 }
 

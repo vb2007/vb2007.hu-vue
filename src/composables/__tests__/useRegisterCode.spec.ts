@@ -282,7 +282,28 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, which has no retryAfter", async () => {
+    it("shows a rate limiter's 429 as the API says it, and waits its retryAfter", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, {
+          error: "Too many e-mails requested: try again later.",
+          retryAfter: 3412
+        })
+      );
+      const step = openStep();
+      step.cooldown.stop();
+
+      expect(await step.resend()).toBe(false);
+
+      expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+      expect(step.cooldown.remaining.value).toBe(3412);
+      expect(step.notice.value).toBe("sent");
+
+      vi.advanceTimersByTime(3_412_000);
+      await nextTick();
+      expect(step.codeError.value).toBe("");
+    });
+
+    it("waits a minute after a 429 without a retryAfter", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many e-mails requested: try again later." })
       );

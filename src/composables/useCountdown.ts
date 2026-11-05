@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref } from "vue";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
@@ -72,8 +73,8 @@ export const useCountdown = (storageKey?: string) => {
 };
 
 /**
- * The seconds to wait after a 429. The resend cooldown sends them as `retryAfter` in the body;
- * the rate limiters don't, and the Retry-After header isn't exposed to the page, hence `fallback`.
+ * The seconds to wait after a 429: its body's `retryAfter`, which the resend cooldown and every
+ * rate limiter send (vb2007/vb2007.hu-api#254). `fallback` covers a 429 without a usable one.
  */
 export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
   const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
@@ -81,4 +82,14 @@ export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSec
   return typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0
     ? Math.ceil(retryAfter)
     : fallback;
+};
+
+/**
+ * Whether a 429's body is the per-address resend cooldown (a code went out moments ago and still
+ * works), not a rate limiter's. Both send `retryAfter`; only the cooldown's message starts this way.
+ */
+export const isResendCooldown = (body: unknown): boolean => {
+  const error = (body as { error?: unknown } | null | undefined)?.error;
+
+  return typeof error === "string" && error.startsWith(Messages.EmailCode.cooldownPrefix);
 };
