@@ -156,7 +156,7 @@ describe("PasswordResetForm", () => {
   });
 
   it("stays on the e-mail step with the API's error, without holding anything back", async () => {
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 60 });
     const { wrapper } = await mountWithRouter(PasswordResetForm);
 
     await sendTo(wrapper, "me@example.com");
@@ -177,12 +177,12 @@ describe("PasswordResetForm", () => {
   it("counts down before a code can be sent again", async () => {
     const { wrapper } = await mountOnCodeStep();
 
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:00");
+    expect(resendButton(wrapper).text()).toBe("Send again in 60 sec");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
 
     vi.advanceTimersByTime(51_000);
     await flushPromises();
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:09");
+    expect(resendButton(wrapper).text()).toBe("Send again in 9 sec");
 
     vi.advanceTimersByTime(9000);
     await flushPromises();
@@ -207,37 +207,27 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="status"]').text()).toBe(RESENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:00");
+    expect(resendButton(wrapper).text()).toBe("Send again in 60 sec");
     expect(changeButton(wrapper).attributes("disabled")).toBeUndefined();
     expect(document.activeElement).toBe(codeInput(wrapper).element);
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("");
   });
 
-  it("shows the mail limit's error on a resend, holding nothing back as no code went out", async () => {
+  it("shows the mail limit's error on a resend and waits as long as it says", async () => {
     const { wrapper } = await mountOnCodeStep();
     await fillCodeStep(wrapper, "123456");
     await waitOutCountdown();
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
 
     await resendButton(wrapper).trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
-    expect(resendButton(wrapper).text()).toBe("Send again");
+    expect(resendButton(wrapper).text()).toBe("Send again in 57 min");
     expect(document.activeElement).toBe(codeInput(wrapper).element);
     // No new code was sent, so the one typed may still be right.
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("123456");
-
-    // Nor does the address count as having a recent code: it's asked for again.
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY });
-    await changeButton(wrapper).trigger("click");
-    await flushPromises();
-    await wrapper.find("form").trigger("submit");
-    await flushPromises();
-    expect(requestPasswordReset).toHaveBeenCalledTimes(3);
-    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
-    expect(emailInput(wrapper).exists()).toBe(true);
   });
 
   it("keeps the key ready after a resend error without a wait", async () => {
@@ -270,7 +260,7 @@ describe("PasswordResetForm", () => {
 
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:40");
+    expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
     const [, code, password] = wrapper.findAll("input");
     expect((code.element as HTMLInputElement).value).toBe("");
     expect((password.element as HTMLInputElement).value).toBe("");
@@ -286,7 +276,7 @@ describe("PasswordResetForm", () => {
 
     expect(requestPasswordReset).toHaveBeenLastCalledWith("other@example.com");
     expect(wrapper.find(".sent-to__address").text()).toBe("other@example.com");
-    expect(resendButton(wrapper).text()).toBe("Send again in 1:00");
+    expect(resendButton(wrapper).text()).toBe("Send again in 60 sec");
   });
 
   it("enters a code that already arrived without sending another", async () => {
@@ -317,7 +307,7 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(requestPasswordReset).toHaveBeenCalledOnce();
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:40");
+    expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
   });
 
@@ -331,7 +321,125 @@ describe("PasswordResetForm", () => {
 
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(wrapper.find('[role="status"]').text()).toBe(RECENT);
-    expect(resendButton(wrapper).text()).toBe("Send again in 0:40");
+    expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
+  });
+
+  /** On the code step for me@example.com, with "Send again" refused by the mail limit. */
+  const mountRateLimited = async () => {
+    const mounted = await mountOnCodeStep();
+    await waitOutCountdown();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
+    await resendButton(mounted.wrapper).trigger("click");
+    await flushPromises();
+    return mounted;
+  };
+
+  it("drops the mail limit's message once its wait is over", async () => {
+    const { wrapper } = await mountRateLimited();
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(resendButton(wrapper).attributes("aria-label")).toBe("Send again in 57 minutes");
+
+    vi.advanceTimersByTime(3_412_000);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(resendButton(wrapper).text()).toBe("Send again");
+    expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
+  });
+
+  it("points the waiting key at the mail limit's message, and names hours by the visible label", async () => {
+    const { wrapper } = await mountOnCodeStep();
+    await waitOutCountdown();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3900 });
+    await resendButton(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(resendButton(wrapper).text()).toBe("Send again in 1 hr 5 min");
+    // "1 hour 5 minutes" wouldn't contain what the key shows.
+    expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
+    expect(resendButton(wrapper).attributes("aria-describedby")).toBe(
+      wrapper.find('[role="alert"]').attributes("id")
+    );
+  });
+
+  it("keeps a wrong code's error when the mail limit's wait ends", async () => {
+    const { wrapper } = await mountRateLimited();
+    vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: WRONG_CODE });
+    await fillCodeStep(wrapper);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(resendButton(wrapper).attributes("aria-describedby")).toBeUndefined();
+
+    vi.advanceTimersByTime(3_412_000);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(WRONG_CODE);
+  });
+
+  it("keeps the mail limit's error for another address when the first one's wait ends", async () => {
+    const { wrapper } = await mountRateLimited();
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
+    vi.advanceTimersByTime(3_000_000);
+    await sendTo(wrapper, "other@example.com");
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+
+    vi.advanceTimersByTime(412_000);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+  });
+
+  it("keeps another error when the countdown ends", async () => {
+    const { wrapper } = await mountOnCodeStep();
+    vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: WRONG_CODE });
+    await fillCodeStep(wrapper);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    await waitOutCountdown();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(WRONG_CODE);
+  });
+
+  it("says it's the mail limit, not a recent code, when coming back to its wait after a reload", async () => {
+    const first = await mountRateLimited();
+    first.wrapper.unmount();
+
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
+    await sendTo(wrapper, "me@example.com");
+
+    // Nothing is asked for: the wait is still the mail limit's, and no code went out a minute ago.
+    expect(requestPasswordReset).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(resendButton(wrapper).text()).toBe("Send again in 57 min");
+  });
+
+  it("says why the key waits when entering a code after a reload during the mail limit", async () => {
+    const first = await mountRateLimited();
+    first.wrapper.unmount();
+
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
+    await emailInput(wrapper).setValue("me@example.com");
+    await enterCodeButton(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+  });
+
+  it("shows the earlier message again within the page during the mail limit's wait", async () => {
+    const { wrapper } = await mountRateLimited();
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').text()).toBe(SENT);
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
   });
 
   it("doesn't hold back another address after a reload", async () => {
@@ -618,7 +726,7 @@ describe("PasswordResetForm", () => {
       await linkPassword(wrapper).setValue("new password");
       vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
         error: "Too many failed attempts: try again later.",
-        linkLimited: true
+        retryAfter: 900
       });
 
       await wrapper.find("form").trigger("submit");

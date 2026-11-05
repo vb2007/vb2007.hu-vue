@@ -135,6 +135,38 @@ describe("useCountdown with a storage key", () => {
     expect(api.active.value).toBe(false);
   });
 
+  it("keeps why it waits with the deadline, and gives it back on resume", () => {
+    const first = mountComposable(keyed);
+    first.api.start(900, "me@example.com", "Too many failed attempts: try again later.");
+    expect(first.api.note.value).toBe("Too many failed attempts: try again later.");
+    expect(JSON.parse(sessionStorage.getItem(KEY)!).note).toBe(
+      "Too many failed attempts: try again later."
+    );
+    first.wrapper.unmount();
+
+    const { api } = mountComposable(keyed);
+    expect(api.note.value).toBe("");
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.note.value).toBe("Too many failed attempts: try again later.");
+
+    // A new countdown without a reason replaces it, and keeps none.
+    api.start(60, "me@example.com");
+    expect(api.note.value).toBe("");
+    expect(JSON.parse(sessionStorage.getItem(KEY)!)).not.toHaveProperty("note");
+  });
+
+  it.each([
+    ["no note", { id: "me@example.com", deadline: 0 }],
+    ["a note that isn't text", { id: "me@example.com", deadline: 0, note: 42 }]
+  ])("resumes a kept deadline with %s as nothing to say", (_, saved) => {
+    sessionStorage.setItem(KEY, JSON.stringify({ ...saved, deadline: Date.now() + 30_000 }));
+    const { api } = mountComposable(keyed);
+    api.start(10, undefined, "stale");
+
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.note.value).toBe("");
+  });
+
   it("doesn't resume another id's countdown, and leaves the running one alone", () => {
     const { api } = mountComposable(keyed);
     api.start(60, "me@example.com");

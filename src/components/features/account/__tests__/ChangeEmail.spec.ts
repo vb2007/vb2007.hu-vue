@@ -543,7 +543,7 @@ describe("ChangeEmail", () => {
 
       await button("Change e-mail").trigger("click");
       await flushPromises();
-      expect(button("Send code in 60 s").attributes("disabled")).toBeDefined();
+      expect(button("Send code in 60 sec").attributes("disabled")).toBeDefined();
 
       await wrapper.find("form").trigger("submit");
       await flushPromises();
@@ -570,6 +570,24 @@ describe("ChangeEmail", () => {
       expect(document.activeElement).toBe(key().element);
     });
 
+    it("shows the change as confirmed when another tab already confirmed it", async () => {
+      await remount();
+      const error = "The code is wrong, expired or already used: check it or request a new one.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, refreshedUser));
+
+      await enterCode("123456");
+
+      expect(userEmail.value).toBe("new@example.com");
+      expect(emailVerified.value).toBe(true);
+      expect(pendingLine().exists()).toBe(false);
+      expect(codeInput().exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(wrapper.find('[role="status"]').text()).toBe("E-mail address updated.");
+      expect(document.activeElement).toBe(key().element);
+    });
+
     it("forgets a code's error once the form opens", async () => {
       await remount();
       await enterCode("1");
@@ -593,7 +611,7 @@ describe("ChangeEmail", () => {
       await button("Change e-mail").trigger("click");
       await flushPromises();
 
-      expect(button("Send code in 25 s").attributes("disabled")).toBeDefined();
+      expect(button("Send code in 25 sec").attributes("disabled")).toBeDefined();
     });
 
     it("counts down the wait after a 429, then drops its message", async () => {
@@ -614,12 +632,12 @@ describe("ChangeEmail", () => {
       expect(wrapper.find('[role="alert"]').text()).toBe(
         "A code was sent just now. You can send another once the countdown ends."
       );
-      expect(button("Send code in 42 s").attributes("disabled")).toBeDefined();
+      expect(button("Send code in 42 sec").attributes("disabled")).toBeDefined();
       expect(document.activeElement).toBe(inputs()[1].element);
 
       vi.advanceTimersByTime(41_000);
       await flushPromises();
-      expect(button("Send code in 1 s").exists()).toBe(true);
+      expect(button("Send code in 1 sec").exists()).toBe(true);
 
       vi.advanceTimersByTime(1_000);
       await flushPromises();
@@ -652,6 +670,42 @@ describe("ChangeEmail", () => {
       await wrapper.find("form").trigger("keydown", { key: "Escape" });
       await flushPromises();
       expect(codeInput().exists()).toBe(true);
+    });
+
+    it("shows a rate limiter's 429 as the API says it, and counts its wait in minutes", async () => {
+      fakeCountdown();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      await remount();
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await inputs()[1].setValue("wrong-password");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      // Nothing was mailed, so the user isn't refreshed.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Send code in 15 min").attributes("disabled")).toBeDefined();
+      expect(button("Send code in 15 min").attributes("aria-label")).toBe(
+        "Send code in 15 minutes"
+      );
+      expect(button("Send code in 15 min").attributes("aria-describedby")).toBe(
+        wrapper.find('[role="alert"]').attributes("id")
+      );
+
+      // Closed and opened again, the waiting key still says why.
+      await button("Cancel").trigger("click");
+      await flushPromises();
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(button("Send code").attributes("disabled")).toBeUndefined();
     });
   });
 });

@@ -3,6 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
+import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
@@ -18,10 +19,10 @@ export interface PasswordResetAnswer {
   /** What went wrong otherwise. */
   error?: string;
   /**
-   * The API's rate limiter turned the link away (a 429): it isn't used up, and works again later.
-   * Like the code path's mail limit, its wait isn't counted down: the limiter's error says enough.
+   * Seconds before another try, after a rate limiter's 429: the mail limit's before another code,
+   * or the link limit's before the same link can be tried again (it isn't used up).
    */
-  linkLimited?: boolean;
+  retryAfter?: number;
   /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
   linkRefused?: boolean;
   /** The API refused the new password, which leaves the link usable with another one. */
@@ -37,7 +38,8 @@ const passwordLengthErrors = () => [
 /**
  * Asks for a code (vb2007/vb2007.hu-api#163). The API answers the same 200 whether or not an
  * account uses the address, so the message is all there is to show. It also answers it within the
- * minute, sending nothing: its only 429 is the mail limit's, which sent no code either.
+ * minute, sending nothing: its only 429 is the mail limit's, which sent no code either but says how
+ * long it holds.
  */
 export const requestPasswordReset = async (email: string): Promise<PasswordResetAnswer> => {
   const result = await apiRequest(Endpoints.Auth.passwordReset, {
@@ -49,7 +51,9 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
     return { message: result.data.message ?? "" };
   }
 
-  return { error: result.error };
+  return result.status === HttpStatus.TooManyRequests
+    ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
+    : { error: result.error };
 };
 
 /**
@@ -116,7 +120,7 @@ export const confirmPasswordResetLink = async (
   if (!result.ok) {
     // Too many rejected links from this address: this one isn't used up and works again later.
     if (result.status === HttpStatus.TooManyRequests) {
-      return { error: result.error, linkLimited: true };
+      return { error: result.error, retryAfter: retryAfterFrom(result.body) };
     }
     if (result.status === HttpStatus.BadRequest) {
       if (passwordLengthErrors().includes(result.error)) {

@@ -11,7 +11,8 @@ describe("router", () => {
     ["account", "/account"],
     ["login", "/login"],
     ["register", "/register"],
-    ["reset-password", "/reset-password"]
+    ["reset-password", "/reset-password"],
+    ["api-error", "/apierror"]
   ])("resolves the %s route to %s", (name, path) => {
     expect(router.resolve({ name }).path).toBe(path);
   });
@@ -60,7 +61,8 @@ describe("router", () => {
     ["/pastebin/abc", "paste"],
     ["/r/abc", "redirect"],
     ["/r/abc/preview", "redirect-preview"],
-    ["/admin/users/1/uploads", "admin-user-uploads"]
+    ["/admin/users/1/uploads", "admin-user-uploads"],
+    ["/apierror?url=%2Ffoo", "api-error"]
   ])("still resolves %s to its own route, not the catch-all", (path, name) => {
     expect(router.resolve(path).name).toBe(name);
   });

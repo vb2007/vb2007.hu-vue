@@ -67,13 +67,25 @@ describe("requestPasswordReset", () => {
     });
   });
 
-  it("returns the mail limit's error alone: its wait isn't a code's", async () => {
+  it("returns the mail limit's error with its wait", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 1800 })
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
     );
 
     await expect(requestPasswordReset("me@example.com")).resolves.toEqual({
-      error: "Too many e-mails requested: try again later."
+      error: "Too many e-mails requested: try again later.",
+      retryAfter: 3412
+    });
+  });
+
+  it("waits a minute after a 429 without a retryAfter", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later." })
+    );
+
+    await expect(requestPasswordReset("me@example.com")).resolves.toEqual({
+      error: "Too many e-mails requested: try again later.",
+      retryAfter: 60
     });
   });
 
@@ -268,7 +280,7 @@ describe("confirmPasswordResetLink", () => {
 
     await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({
       error: "Too many failed attempts: try again later.",
-      linkLimited: true
+      retryAfter: 900
     });
   });
 
