@@ -14,9 +14,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
  * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
- * `SUPERUSER_EMAIL` is reserved, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses addresses on
- * `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers the
- * next code `PATCH /user/email` mails with the API's 503, which keeps the change waiting and lets a new code go at once.
+ * Confirming a change to `SUPERUSER_EMAIL` is refused, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses
+ * addresses on `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
+ * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
@@ -93,7 +93,7 @@ const DEFAULT_QUOTA = 10 * 1024 * MB;
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
 
-/** The API's `SUPERUSER_EMAIL`: no other account may switch to it. */
+/** The API's `SUPERUSER_EMAIL`: no other account may confirm a change to it. */
 export const SUPERUSER_EMAIL = "admin@example.com";
 /** The API refuses these domains and their subdomains (vb2007/vb2007.hu-api#217). */
 export const DISPOSABLE_DOMAINS = ["mailinator.com"];
@@ -745,7 +745,10 @@ export class MockApi {
     };
   }
 
-  /** Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217). */
+  /**
+   * Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217), plus a 409 for a taken
+   * address, which the API now leaves to the confirm (see #160).
+   */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
@@ -786,9 +789,6 @@ export class MockApi {
     if (password !== this.password) {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
-    if (normalized === SUPERUSER_EMAIL) {
-      return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
-    }
     if (normalized === this.user.email) {
       return { status: 200, body: { message: "E-mail address updated successfully." } };
     }
@@ -806,16 +806,15 @@ export class MockApi {
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
-    this.emailChange = { email: normalized, ...this.newCode(15) };
     if (this.mailFails) {
-      // Like the API, the change still waits, and a new code may go at once.
+      // Like the API, the change that waited before (if any) stays, so a new code may go at once.
       this.mailFails = false;
-      this.emailChange.sentAt = 0;
       return {
         status: 503,
         body: { error: "The e-mail couldn't be sent: please try again later." }
       };
     }
+    this.emailChange = { email: normalized, ...this.newCode(15) };
     return {
       status: 202,
       body: {
