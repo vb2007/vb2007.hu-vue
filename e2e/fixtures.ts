@@ -24,7 +24,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
  * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
- * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or registered, whatever the address's case, and takes `api.password`.
+ * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
@@ -293,6 +293,17 @@ export class MockApi {
       }
     };
     this.users.push(user);
+    // A password reset can reach this account, so logging in reaches it too; an arranged one stays.
+    const email = normalizeEmail(user.email);
+    if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
+      this.accounts.push({
+        email: user.email,
+        username,
+        isSuperuser: false,
+        hasPassword: true,
+        emailVerified: false
+      });
+    }
     return user;
   }
 
