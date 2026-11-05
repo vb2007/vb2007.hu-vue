@@ -978,14 +978,23 @@ export class MockApi {
     return { status: 200, body: { message: "Upload updated successfully.", upload } };
   }
 
-  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
-  private listUserUploads(id: string, query: URLSearchParams) {
-    if (!this.user?.isSuperuser) {
+  /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
+  private refuseNonSuperuser(): MockResponse | undefined {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (!this.user.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
+  }
+
+  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
+  private listUserUploads(id: string, query: URLSearchParams) {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     if (this.userUploadsDown) return { status: 502 };
     const user = this.users.find((item) => item.id === id);
-    if (!user) return { status: 404, body: { error: "There is no such user." } };
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
     const listing = this.listUploads(query, user.username);
     return {
       ...listing,
@@ -1026,9 +1035,8 @@ export class MockApi {
   }
 
   private listUsers(query: URLSearchParams) {
-    if (!this.user?.isSuperuser) {
-      return { status: 403, body: { error: "You do not have permission to perform this action." } };
-    }
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortBy = query.get("sortBy") ?? "usedBytes";
@@ -1059,17 +1067,23 @@ export class MockApi {
   }
 
   private setQuota(id: string, quotaBytes: number | null | undefined) {
-    if (!this.user?.isSuperuser) {
-      return { status: 403, body: { error: "You do not have permission to perform this action." } };
-    }
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     const user = this.users.find((item) => item.id === id);
-    if (!user) return { status: 404, body: { error: "There is no such user." } };
-    if (quotaBytes !== null && !Number.isInteger(quotaBytes)) {
-      return { status: 400, body: { error: "The quota must be a whole number of bytes or null." } };
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
+    const isQuota =
+      typeof quotaBytes === "number" && Number.isSafeInteger(quotaBytes) && quotaBytes >= 0;
+    if (quotaBytes !== null && !isQuota) {
+      return {
+        status: 400,
+        body: {
+          error: "quotaBytes must be a whole number of bytes from 0, or null for the default quota."
+        }
+      };
     }
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
-    return { status: 200, body: { message: "Upload quota updated.", user } };
+    return { status: 200, body: { message: "Upload quota updated successfully.", user } };
   }
 
   private listPastes(username: string, query: URLSearchParams) {
