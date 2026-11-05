@@ -417,6 +417,29 @@ describe("useChangeEmail", () => {
       }
     );
 
+    it("keeps a newer change waiting when the old one was confirmed elsewhere", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error: wrongCode }))
+        .mockResolvedValueOnce(
+          jsonResponse(200, {
+            ...waitingUser,
+            email: "new@example.com",
+            emailVerified: true,
+            pendingEmail: "other@example.com"
+          })
+        );
+      const email = useWaitingEmail();
+
+      expect(await email.confirm("123456")).toBe(false);
+
+      // Another tab confirmed new@example.com, then asked for other@example.com: that one waits.
+      expect(pendingEmail.value).toBe("other@example.com");
+      expect(email.codeError.value).toBe(wrongCode);
+      expect(email.changeMessage.value).toBe("");
+      expect(email.confirmError.value).toBe("");
+      expect(email.cooldown.active.value).toBe(true);
+    });
+
     it("shows a rate limiter's 429 apart from the code, and keeps the change waiting", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many failed attempts: try again later." })

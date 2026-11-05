@@ -139,9 +139,13 @@ export const useChangeEmail = () => {
 
       if (!isLoggedIn.value) {
         // The session ended: nothing was said about the change, and the account page now says why.
-      } else if (normalizeEmail(userEmail.value) === normalizeEmail(address)) {
+      } else if (
+        !pendingEmail.value &&
+        normalizeEmail(userEmail.value) === normalizeEmail(address)
+      ) {
         // Confirmed elsewhere, so its code was spent (400), or a race found the address taken by
-        // this very account (409). The refresh already shows it, verified, as a 200 would.
+        // this very account (409). The refresh already shows it, verified, as a 200 would. A newer
+        // change waiting since then keeps its code step and cooldown, with the usual error.
         changed = true;
       } else if (!pendingEmail.value) {
         // Its code step is gone with it, so the message names the address it was about. A 400
