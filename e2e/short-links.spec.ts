@@ -57,7 +57,7 @@ test("an unknown short link explains itself", async ({ page }) => {
   await expect(page).toHaveURL("/shorten");
 });
 
-test("falls back to the API's redirect when the lookup endpoint isn't deployed", async ({
+test("falls back to the API's redirect when the lookup answers without JSON", async ({
   page,
   api,
   baseURL
@@ -73,7 +73,7 @@ test("falls back to the API's redirect when the lookup endpoint isn't deployed",
       !request.url().startsWith(baseURL!) &&
       new URL(request.url()).pathname === "/r/old123"
   );
-  // What an API without the lookup endpoint answers: Express's default HTML 404.
+  // An HTML 404 from something in front of the API, not the API's own JSON answer.
   await page.route("**/shortenUrl/old123", (route) =>
     route.fulfill({
       status: 404,
@@ -87,4 +87,30 @@ test("falls back to the API's redirect when the lookup endpoint isn't deployed",
 
   await viaApi;
   await expect(page).toHaveURL(target);
+});
+
+test("a server error on the lookup shows the API's message and can be retried", async ({
+  page,
+  api
+}) => {
+  api.hasShortLink("flaky1", TARGET);
+  // The API's JSON 500 once, then the mock's own answer.
+  let failed = false;
+  await page.route("**/shortenUrl/flaky1", (route) => {
+    if (failed) return route.fallback();
+    failed = true;
+    return route.fulfill({
+      status: 500,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: { error: "Something went wrong on the server: please try again later." }
+    });
+  });
+
+  await page.goto("/r/flaky1");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Something went wrong on the server: please try again later."
+  );
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page).toHaveURL(TARGET);
 });

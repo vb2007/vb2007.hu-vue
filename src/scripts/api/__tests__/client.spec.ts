@@ -71,7 +71,7 @@ describe("readJson", () => {
   });
 
   it("is null when the body is not JSON", async () => {
-    expect(await readJson(jsonResponse(500))).toBeNull();
+    expect(await readJson(jsonResponse(502))).toBeNull();
   });
 });
 
@@ -213,16 +213,27 @@ describe("apiRequest", () => {
     expect(console.error).toHaveBeenCalledWith(`${failure}: `, 429);
   });
 
+  it("returns the API's message for a server error", async () => {
+    const error = "Something went wrong on the server: please try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, { error }, "Internal Server Error"));
+
+    const result = await apiRequest(Endpoints.Pastebin.remove, { params: { id: "a" }, failure });
+
+    expect(result).toEqual({ ok: false, kind: "http", status: 500, error, body: { error } });
+    expect(console.error).toHaveBeenCalledWith(`${failure}: `, 500);
+  });
+
   it("falls back to the failure text when the error has no JSON body", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Internal Server Error"));
+    // A gateway's own page while the API is down, not the API's answer.
+    fetchMock.mockResolvedValueOnce(jsonResponse(502, undefined, "Bad Gateway"));
 
     const result = await apiRequest(Endpoints.Pastebin.remove, { params: { id: "a" }, failure });
 
     expect(result).toEqual({
       ok: false,
       kind: "http",
-      status: 500,
-      error: `${failure}: Internal Server Error`,
+      status: 502,
+      error: `${failure}: Bad Gateway`,
       body: null
     });
   });

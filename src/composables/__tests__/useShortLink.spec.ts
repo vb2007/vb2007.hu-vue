@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { useShortLink } from "@/composables/useShortLink";
+import { Messages } from "@/constants/messages";
 
 describe("useShortLink", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
@@ -66,7 +67,7 @@ describe("useShortLink", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("previews the API's redirect while the lookup endpoint doesn't exist", async () => {
+  it("previews the API's redirect when the lookup answers without JSON", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(404));
     const link = useShortLink(navigate);
 
@@ -118,8 +119,32 @@ describe("useShortLink", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("falls back to the API's own redirect while the lookup endpoint doesn't exist", async () => {
-    // An API without the endpoint answers Express's default HTML 404.
+  it("reports a server error with the API's message, so it can be retried", async () => {
+    const error = "Something went wrong on the server: please try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, { error }));
+    const link = useShortLink(navigate);
+
+    await link.resolve("abc123");
+
+    expect(link.state.value).toBe("error");
+    expect(link.errorMessage.value).toBe(error);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("reports a gateway error instead of sending the browser into it", async () => {
+    // Cloudflare's or nginx's own page while the API is down: no JSON.
+    fetchMock.mockResolvedValueOnce(jsonResponse(502, undefined, "Bad Gateway"));
+    const link = useShortLink(navigate);
+
+    await link.resolve("abc123");
+
+    expect(link.state.value).toBe("error");
+    expect(link.errorMessage.value).toBe(`${Messages.ShortUrl.lookupFailed}: Bad Gateway`);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the API's own redirect when the lookup answers without JSON", async () => {
+    // Something in front of the API answered (an HTML page), not the API itself.
     fetchMock.mockResolvedValueOnce(jsonResponse(404));
     const link = useShortLink(navigate);
 
