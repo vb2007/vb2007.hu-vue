@@ -85,7 +85,7 @@ export const apiUrl = <E extends Endpoint>(endpoint: E, ...[options]: UrlArgs<E>
   return `${API_BASE_URL}${path}${search ? `?${search}` : ""}`;
 };
 
-/** The parsed JSON body, or null when there's none (e.g. a bare 500). */
+/** The parsed JSON body, or null when there's none (e.g. a gateway's HTML error page). */
 export const readJson = async (response: Response): Promise<unknown> => {
   try {
     return await response.json();

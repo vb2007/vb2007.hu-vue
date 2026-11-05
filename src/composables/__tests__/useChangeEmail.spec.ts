@@ -221,23 +221,28 @@ describe("useChangeEmail", () => {
       expect(email.changeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, and keeps its message after", async () => {
-      vi.useFakeTimers();
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
-      );
-      const email = useEmail();
+    it.each([
+      "Too many failed attempts: try again later.",
+      "Too many e-mails requested: try again later."
+    ])(
+      "shows a rate limiter's 429 without holding the key back, though it has a retryAfter: %s",
+      async (error) => {
+        vi.useFakeTimers();
+        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+        const email = useEmail();
 
-      await email.change("new@example.com", "secret-password");
+        expect(await email.change("new@example.com", "secret-password")).toBe(false);
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
-      expect(email.cooldown.remaining.value).toBe(60);
-      vi.advanceTimersByTime(60_000);
-      await nextTick();
-      expect(email.cooldown.active.value).toBe(false);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
-    });
+        // No code went out, so there's nothing to count down, keep or refresh.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(email.changeError.value).toBe(error);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(savedCooldown()).toBeNull();
+        vi.advanceTimersByTime(900_000);
+        await nextTick();
+        expect(email.changeError.value).toBe(error);
+      }
+    );
 
     it("explains a 429 that isn't JSON", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(429));
@@ -246,7 +251,7 @@ describe("useChangeEmail", () => {
       await email.change("new@example.com", "secret-password");
 
       expect(email.changeError.value).toBe("Too many requests: try again later.");
-      expect(email.cooldown.remaining.value).toBe(60);
+      expect(email.cooldown.active.value).toBe(false);
     });
 
     it("names the status when the error isn't JSON", async () => {
@@ -442,7 +447,7 @@ describe("useChangeEmail", () => {
 
     it("shows a rate limiter's 429 apart from the code, and keeps the change waiting", async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
       );
       const email = useEmail();
 

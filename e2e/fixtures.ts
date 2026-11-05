@@ -26,6 +26,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
+ * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
+ * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Each address waits for its own code, and a resend within a minute of the last code gets the API's 429.
@@ -71,6 +73,15 @@ export interface MockAdminUser {
 /** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
+/**
+ * The API's 429 once its password checks are limited. Like every rate limiter's, it says how long to
+ * wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code cooldown's means one was.
+ */
+const PASSWORD_CHECKS_LIMITED: MockResponse = {
+  status: 429,
+  body: { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+};
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -89,6 +100,8 @@ export const MOCK_PASSWORD = "e2e-password";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
+/** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -198,6 +211,8 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
+  /** Set by `locksLogins`: the `retryAfter` of the login's 429. */
+  private loginLockout: { retryAfter: number | null } | null = null;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
   private githubLinkStarted = false;
   private githubUnconfigured = false;
@@ -360,6 +375,11 @@ export class MockApi {
   /** Answers password checks with 429, like the API after too many failed attempts. */
   limitsPasswordChecks() {
     this.passwordChecksLimited = true;
+  }
+
+  /** Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204). */
+  locksLogins(retryAfter: number | null) {
+    this.loginLockout = { retryAfter };
   }
 
   /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
@@ -538,6 +558,13 @@ export class MockApi {
             }
           : { status: 403, body: { error: "You must be logged in to perform this action." } };
       case "POST /auth/login":
+        if (this.loginLockout) {
+          const { retryAfter } = this.loginLockout;
+          return {
+            status: 429,
+            body: { error: "Too many failed attempts: try again later.", retryAfter }
+          };
+        }
         this.user = {
           email: body?.email ?? "e2e@example.com",
           username: "e2e",
@@ -625,13 +652,18 @@ export class MockApi {
       }
       case "POST /auth/password-reset/confirm":
         return this.confirmPasswordReset(body);
-      case "POST /shortenUrl/create":
-        this.hasShortLink(
-          this.shortCode,
-          (body as { url?: string } | null)?.url ?? "",
-          this.user?.username
-        );
+      case "POST /shortenUrl/create": {
+        const url = (body as { url?: string } | null)?.url ?? "";
+        // Like the API's SHORT_URL_MAX_LENGTH (vb2007/vb2007.hu-api#289).
+        if (url.length > 2000) {
+          return {
+            status: 400,
+            body: { error: "The URI/URL can be at most 2000 characters long." }
+          };
+        }
+        this.hasShortLink(this.shortCode, url, this.user?.username);
         return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
+      }
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         return {
@@ -657,7 +689,7 @@ export class MockApi {
   /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
   private checkGithubPassword(password?: string): MockResponse | undefined {
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!password) {
       return {
@@ -752,7 +784,7 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!email || !password) {
       return {
@@ -761,7 +793,11 @@ export class MockApi {
       };
     }
     const normalized = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalized)) {
+    // The API's isValidEmail (vb2007/vb2007.hu-api#288): plain addresses only.
+    const atom = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+";
+    const label = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+    const plain = new RegExp(`^${atom}(?:\\.${atom})*@${label}(?:\\.${label})+$`);
+    if (normalized.length > 254 || normalized.indexOf("@") > 64 || !plain.test(normalized)) {
       return {
         status: 400,
         body: { error: "The e-mail address is invalid: must match name@provider.com format." }
@@ -853,7 +889,7 @@ export class MockApi {
   private changePassword(currentPassword?: string, newPassword?: string) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!currentPassword || !newPassword) {
       return {
@@ -919,7 +955,7 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (this.user.hasPassword) {
       if (!body?.password) {
@@ -1091,14 +1127,32 @@ export class MockApi {
     return { status: 200, body: { message: "Upload updated successfully.", upload } };
   }
 
-  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
-  private listUserUploads(id: string, query: URLSearchParams) {
-    if (!this.user?.isSuperuser) {
+  /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
+  private refuseNonSuperuser(): MockResponse | undefined {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (!this.user.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
+  }
+
+  /** The API's `validateMongooseId`: admin routes run it on `:id` after the superuser check. */
+  private invalidId(): MockResponse {
+    return {
+      status: 400,
+      body: { error: "Invalid ID format: must be a 24 character HEX string." }
+    };
+  }
+
+  /** The admin's view of one user's uploads: the same listing, plus whose they are. */
+  private listUserUploads(id: string, query: URLSearchParams) {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     if (this.userUploadsDown) return { status: 502 };
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const user = this.users.find((item) => item.id === id);
-    if (!user) return { status: 404, body: { error: "There is no such user." } };
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
     const listing = this.listUploads(query, user.username);
     return {
       ...listing,
@@ -1139,9 +1193,8 @@ export class MockApi {
   }
 
   private listUsers(query: URLSearchParams) {
-    if (!this.user?.isSuperuser) {
-      return { status: 403, body: { error: "You do not have permission to perform this action." } };
-    }
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortBy = query.get("sortBy") ?? "usedBytes";
@@ -1172,17 +1225,24 @@ export class MockApi {
   }
 
   private setQuota(id: string, quotaBytes: number | null | undefined) {
-    if (!this.user?.isSuperuser) {
-      return { status: 403, body: { error: "You do not have permission to perform this action." } };
-    }
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const user = this.users.find((item) => item.id === id);
-    if (!user) return { status: 404, body: { error: "There is no such user." } };
-    if (quotaBytes !== null && !Number.isInteger(quotaBytes)) {
-      return { status: 400, body: { error: "The quota must be a whole number of bytes or null." } };
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
+    const isQuota =
+      typeof quotaBytes === "number" && Number.isSafeInteger(quotaBytes) && quotaBytes >= 0;
+    if (quotaBytes !== null && !isQuota) {
+      return {
+        status: 400,
+        body: {
+          error: "quotaBytes must be a whole number of bytes from 0, or null for the default quota."
+        }
+      };
     }
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
-    return { status: 200, body: { message: "Upload quota updated.", user } };
+    return { status: 200, body: { message: "Upload quota updated successfully.", user } };
   }
 
   private listPastes(username: string, query: URLSearchParams) {

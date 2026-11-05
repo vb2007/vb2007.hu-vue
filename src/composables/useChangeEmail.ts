@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, useCountdown } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
   emailVerified,
@@ -33,7 +33,7 @@ export const useChangeEmail = () => {
   const codeError = ref("");
   /** Any other confirm failure, including one that dropped the waiting change. */
   const confirmError = ref("");
-  /** Runs until the API takes the form again: after a code was sent, or a 429. */
+  /** Runs until the API mails another code: after one was sent, or the cooldown's 429. */
   const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The API's cooldown is per account, so it's kept for the account's current address. */
   const account = () => normalizeEmail(userEmail.value);
@@ -46,7 +46,7 @@ export const useChangeEmail = () => {
   };
 
   // The cooldown's 429 counts its wait down on the key, so its message has no number to go stale.
-  // A rate limiter's 429 has no wait to count down, so its message stays when the key comes back.
+  // A rate limiter's 429 doesn't hold the key back, so its message stays until the next try.
   watch(cooldown.active, (waiting) => {
     if (!waiting && changeError.value === Messages.EmailCode.cooldown) changeError.value = "";
   });
@@ -78,14 +78,16 @@ export const useChangeEmail = () => {
         userEmail.value = normalizeEmail(email);
       }
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // Only the one-code-a-minute cooldown sends retryAfter; the rate limiters send an error alone.
-      const isCooldown = typeof result.body?.retryAfter === "number";
-      changeError.value = isCooldown
-        ? Messages.EmailCode.cooldown
-        : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
-      cooldown.start(retryAfterFrom(result.body), account());
-      // The code it waits for may have been asked for elsewhere, e.g. in another tab.
-      if (isCooldown) await fetchUserDetails();
+      const codeWait = codeCooldownOf(result);
+      if (codeWait === undefined) {
+        // A rate limiter's (e.g. too many wrong passwords): no code went out, the key stays free.
+        changeError.value = apiErrorOf(result) ?? Messages.Account.tooManyRequests;
+      } else {
+        changeError.value = Messages.EmailCode.cooldown;
+        cooldown.start(codeWait, account());
+        // The code it waits for may have been asked for elsewhere, e.g. in another tab.
+        await fetchUserDetails();
+      }
     } else {
       changeError.value = result.error;
       // The API keeps the new change even when its mail fails, so show what it has now.

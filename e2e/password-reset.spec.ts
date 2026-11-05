@@ -81,20 +81,28 @@ test("the code can be sent again once the countdown ends, and the address change
   await expect(page.getByLabel("Code")).toHaveValue("");
   expect(api.passwordResets).toEqual(["typo@example.com", "me@example.com", "me@example.com"]);
 
-  // Over the API's mail limit: its error shows and the key waits again.
+  // Over the API's mail limit: its error shows, but no code went out, so nothing waits for one.
   await page.route("**/auth/password-reset", (route) =>
     route.request().method() === "OPTIONS"
       ? route.fallback()
       : route.fulfill({
           status: 429,
           headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin },
-          json: { error: "Too many e-mails requested: try again later." }
+          json: { error: "Too many e-mails requested: try again later.", retryAfter: 1800 }
         })
   );
   await page.clock.runFor(60_000);
   await resend.click();
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
-  await expect(resend).toHaveText("Send again in 1:00");
+  await expect(resend).toHaveText("Send again");
+  await expect(resend).toBeEnabled();
+
+  // After a reload the address isn't taken for one with a recent code: the API is asked again.
+  await page.reload();
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByLabel("Code")).toHaveCount(0);
 });
 
 test("a code that already arrived is entered after a reload, without sending another", async ({

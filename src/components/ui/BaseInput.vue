@@ -12,6 +12,7 @@ const props = defineProps<{
   required?: boolean;
   mono?: boolean;
   inputmode?: "text" | "decimal" | "numeric";
+  maxlength?: number;
   /** Ids of elements outside the field that also describe it, e.g. a status message above. */
   describedby?: string;
 }>();
@@ -43,6 +44,7 @@ const describedBy = computed(() => {
       :autocomplete="autocomplete"
       :autocapitalize="autocapitalize"
       :inputmode="inputmode"
+      :maxlength="maxlength"
       :required="required"
       :aria-invalid="error ? true : undefined"
       :aria-describedby="describedBy"

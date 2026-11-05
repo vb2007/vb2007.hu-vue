@@ -459,7 +459,9 @@ describe("ChangeEmail", () => {
       await button("Confirm code").trigger("click");
       // A disabled button loses focus in the browser, which jsdom doesn't do by itself.
       (document.activeElement as HTMLElement).blur();
-      answer(jsonResponse(429, { error: "Too many failed attempts: try again later." }));
+      answer(
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+      );
       await flushPromises();
 
       expect(wrapper.find('[role="alert"]').text()).toBe(
@@ -648,7 +650,12 @@ describe("ChangeEmail", () => {
       wrapper.unmount();
       wrapper = mount(ChangeEmail, { attachTo: document.body });
       fetchMock
-        .mockResolvedValueOnce(jsonResponse(429, { error: "Wait.", retryAfter: 50 }))
+        .mockResolvedValueOnce(
+          jsonResponse(429, {
+            error: "A code was sent just now: wait 50 seconds before requesting another one.",
+            retryAfter: 50
+          })
+        )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await openForm();
       await fill("other@example.com", "secret-password");
