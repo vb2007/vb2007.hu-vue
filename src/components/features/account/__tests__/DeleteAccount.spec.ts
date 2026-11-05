@@ -253,7 +253,7 @@ describe("DeleteAccount", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
     // "Delete account in 15 min" would read as a scheduled delete.
     expect(deleteKey(wrapper).text()).toBe("Try again in 15 min");
     expect(deleteKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
@@ -263,6 +263,19 @@ describe("DeleteAccount", () => {
 
     await wrapper.find("form").trigger("submit");
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(deleteKey(wrapper).attributes("aria-describedby")).toBe(
+      wrapper.find('[role="alert"]').attributes("id")
+    );
+
+    // Cancel forgets the refusal; opened again, the held key still says why.
+    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    await open(wrapper);
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
+    expect(wrapper.find("input").attributes("aria-describedby")).toContain(
+      wrapper.find('[role="alert"]').attributes("id")
+    );
+    await wrapper.find("input").setValue("another try");
 
     vi.advanceTimersByTime(900_000);
     await flushPromises();
@@ -288,7 +301,9 @@ describe("DeleteAccount", () => {
   });
 
   it("puts the key back on Cancel or Escape, forgetting what was typed", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: "Too many failed attempts." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "The provided password is incorrect." })
+    );
     const { wrapper } = await mountPanel();
 
     await open(wrapper);

@@ -40,7 +40,9 @@ test("a login over the limiter holds the key for its wait, then lets the user tr
   await page.getByLabel("Password", { exact: true }).fill("not-the-password");
   await page.getByRole("button", { name: "Log in", exact: true }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. Try again in 15 minutes."
+  );
   const key = page.getByRole("button", { name: "Try again in 15 minutes" });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();
@@ -121,7 +123,8 @@ for (const [what, arrange, error] of [
   [
     "too many failed tries",
     (api: MockApi) => api.limitsPasswordChecks(),
-    "Too many failed attempts: try again later."
+    // The held key's wait, read out with the message.
+    "Too many failed attempts: try again later. Try again in 15 minutes."
   ],
   [
     "an API without GitHub",
@@ -354,9 +357,13 @@ test("a code past the daily cap of wrong codes holds Confirm code for hours", as
   await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
-  const key = page.getByRole("button", { name: /^Try again in \d+ hours \d+ minutes$/ });
-  await expect(key).toHaveText(/^Try again in \d+ hr \d+ min$/);
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. Try again in 23 hours 45 minutes."
+  );
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
+  // it points at says the wait in words.
+  const key = page.getByRole("button", { name: /^Try again in \d+ hr \d+ min$/ });
+  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
   // Asking for a new code has limits of its own.
@@ -720,7 +727,9 @@ test("a password change that's rate limited says when to try again", async ({ pa
   await details.getByLabel("Confirm new password").fill("a-new-password");
   await details.getByRole("button", { name: "Save password" }).click();
 
-  await expect(details.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  await expect(details.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. Try again in 15 minutes."
+  );
   expect(api.password).toBe(MOCK_PASSWORD);
   const key = details.getByRole("button", { name: /^Try again in \d+ minutes$/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
@@ -1020,7 +1029,9 @@ test("deleting the account can be cancelled, and says when to try again", async 
   await page.getByRole("button", { name: "Delete account" }).click();
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Delete account" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. Try again in 15 minutes."
+  );
   const key = page.getByRole("button", { name: /^Try again in \d+ minutes$/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();

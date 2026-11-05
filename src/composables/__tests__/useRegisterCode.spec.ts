@@ -271,7 +271,8 @@ describe("useRegisterCode", () => {
       await step.verify("123456");
 
       expect(step.verifyWaiting.value).toBe(true);
-      expect(step.verifyIn.value).toBe(86_400);
+      expect(step.verifyHold.remaining.value).toBe(86_400);
+      expect(step.verifyCapped.value).toBe(true);
 
       // The limiter counts per address, so another one can be confirmed at once.
       step.open("ME@example.com", "earlier");

@@ -280,10 +280,13 @@ describe("LoginForm", () => {
     it("holds the key for the wait with the API's message, then lets the user try again", async () => {
       const { wrapper, password, key } = await tryLogin();
 
-      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
       expect(key().text()).toBe("Try again in 15 min");
       expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(key().attributes("disabled")).toBeDefined();
+      expect(key().attributes("aria-describedby")).toBe(
+        wrapper.find('[role="alert"]').attributes("id")
+      );
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(password.element);
 

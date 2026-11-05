@@ -187,7 +187,7 @@ describe("ChangePassword", () => {
 
     await submit();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
     expect(buttons()[0].text()).toBe("Try again in 15 min");
     expect(buttons()[0].attributes("aria-label")).toBe("Try again in 15 minutes");
     expect(buttons()[0].attributes("disabled")).toBeDefined();
@@ -201,6 +201,10 @@ describe("ChangePassword", () => {
     await wrapper.find("form").trigger("keydown", { key: "Escape" });
     await open();
     expect(buttons()[0].text()).toBe("Try again in 15 min");
+    // Closing cleared the refusal, but the held key still says why.
+    const alert = wrapper.find('[role="alert"]');
+    expect(alert.text()).toBe(`${error} Try again in 15 minutes.`);
+    expect(buttons()[0].attributes("aria-describedby")).toBe(alert.attributes("id"));
 
     vi.advanceTimersByTime(900_000);
     await flushPromises();

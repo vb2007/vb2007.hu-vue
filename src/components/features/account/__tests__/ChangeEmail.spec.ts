@@ -455,8 +455,9 @@ describe("ChangeEmail", () => {
       answer(jsonResponse(429, { error: "Too many failed attempts: try again later." }));
       await flushPromises();
 
+      // A 429 without a retryAfter holds the key for a minute, which the alert says for screen readers.
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "Too many failed attempts: try again later."
+        "Too many failed attempts: try again later. Try again in 60 seconds."
       );
       expect(document.activeElement).toBe(codeInput().element);
     });
@@ -470,15 +471,28 @@ describe("ChangeEmail", () => {
 
       await enterCode("123456");
 
-      expect(wrapper.find('[role="alert"]').text()).toBe(error);
-      expect(button("Try again in 23 hr 45 min").attributes("disabled")).toBeDefined();
-      expect(button("Try again in 23 hr 45 min").attributes("aria-label")).toBe(
-        "Try again in 23 hours 45 minutes"
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${error} Try again in 23 hours 45 minutes.`
       );
+      expect(button("Try again in 23 hr 45 min").attributes("disabled")).toBeDefined();
+      // "23 hours" doesn't contain the visible "23 hr", so the label names the key (spokenWait),
+      // and the alert it points at says the wait in words.
+      expect(button("Try again in 23 hr 45 min").attributes("aria-label")).toBeUndefined();
+      const describedBy = button("Try again in 23 hr 45 min").attributes("aria-describedby");
+      expect(describedBy).toBe(wrapper.find('[role="alert"]').attributes("id"));
       expect(button("Change e-mail").attributes("disabled")).toBeUndefined();
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(codeInput().element);
       expect(pendingLine().exists()).toBe(true);
+
+      // Opening the e-mail form clears the error; the held key keeps its reason when it's back.
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await wrapper.find("form").trigger("keydown", { key: "Escape" });
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${error} Try again in 23 hours 45 minutes.`
+      );
 
       await wrapper.find("form").trigger("submit");
       await flushPromises();

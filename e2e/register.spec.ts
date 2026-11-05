@@ -140,7 +140,9 @@ test("registering over the mail limit stays on the form, since no code was sent"
   api.limitsMailSends();
   await fillForm(page);
 
-  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many e-mails requested: try again later. Try again in 57 minutes."
+  );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByText(/a code went to/)).toHaveCount(0);
   await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
@@ -163,10 +165,15 @@ test("a code past the daily cap of wrong codes holds Confirm code for hours", as
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes."
+  );
   const key = page.getByRole("button", { name: /^Try again in/ });
   await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
-  await expect(key).toHaveAccessibleName(/^Try again in 23 hours \d+ minutes$/);
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
+  // it points at says the wait in words.
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
   await expect(page.getByText("Registration successful!")).toHaveCount(0);
@@ -187,9 +194,14 @@ test("username checks over the API's limit stop quietly until its wait passed", 
   const username = page.getByLabel("Username");
   const registerKey = page.getByRole("button", { name: "Register", exact: true });
 
+  const limited = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
   await username.fill("anna");
   await page.clock.runFor(500);
-  await expect.poll(() => api.usernameChecks).toBe(1);
+  // The 429 has to arrive before the next typing, which would abort a check still on its way.
+  await (await limited).finished();
+  expect(api.usernameChecks).toBe(1);
   // The 429 says nothing: the name is just unknown, which registering still checks.
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -197,6 +209,7 @@ test("username checks over the API's limit stop quietly until its wait passed", 
   // Within the wait, nothing more is asked.
   await username.fill("anna2");
   await page.clock.runFor(500);
+  expect(api.usernameChecks).toBe(1);
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
 
   api.limitsUsernameChecks(false);

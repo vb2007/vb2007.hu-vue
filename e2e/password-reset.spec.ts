@@ -247,10 +247,15 @@ test("a reset past the daily cap of wrong codes holds Reset password for hours",
   await page.getByLabel("New password").fill("a new password");
   await page.getByRole("button", { name: "Reset password" }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("Too many failed attempts: try again later.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes."
+  );
   const key = page.getByRole("button", { name: /^Try again in/ });
   await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
-  await expect(key).toHaveAccessibleName(/^Try again in 23 hours \d+ minutes$/);
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
+  // it points at says the wait in words.
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Code")).toBeFocused();
   await expect(page).toHaveURL("/reset-password");
@@ -267,7 +272,9 @@ test("asking for a code over the mail limit holds Send code for its wait", async
   await page.getByLabel("E-mail").fill("me@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many e-mails requested: try again later. Try again in 57 minutes."
+  );
   const key = page.locator("form").getByRole("button");
   await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();

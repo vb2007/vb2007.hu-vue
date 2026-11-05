@@ -350,7 +350,7 @@ describe("RegisterForm", () => {
 
     // Nothing went out, so the form stays, with the wait on its key.
     expect(wrapper.find(FIELDS.email).exists()).toBe(true);
-    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 57 minutes.`);
     expect(submitButton(wrapper).text()).toBe("Try again in 57 min");
     expect(submitButton(wrapper).attributes("aria-label")).toBe("Try again in 57 minutes");
     expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
@@ -571,10 +571,22 @@ describe("RegisterForm", () => {
 
       await confirm(wrapper);
 
+      // A 429 without a retryAfter holds the key a minute, which the alert says for screen readers.
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "Too many failed attempts: try again later."
+        "Too many failed attempts: try again later. Try again in 60 seconds."
       );
       expect(wrapper.find("input").attributes("aria-invalid")).toBeUndefined();
+      // A held key doesn't shake: it says when to try again instead.
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+    });
+
+    it("still flashes the key for a refusal that holds nothing", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "The API is down." }));
+      const wrapper = await atCodeStep();
+
+      await confirm(wrapper);
+
+      expect(wrapper.find('[role="alert"]').text()).toBe("The API is down.");
       expect(submitButton(wrapper).classes()).toContain("btn--error");
     });
 
@@ -586,12 +598,18 @@ describe("RegisterForm", () => {
 
       await confirm(wrapper);
 
-      expect(wrapper.find('[role="alert"]').text()).toBe(error);
-      expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
-      expect(submitButton(wrapper).attributes("aria-label")).toBe(
-        "Try again in 23 hours 45 minutes"
+      // Past the wrong codes' window it's the daily cap, which a new code doesn't lift.
+      const alert = () => wrapper.find('[role="alert"]');
+      expect(alert().text()).toBe(
+        `${error} A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes.`
       );
+      expect(alert().find(".visually-hidden").text()).toBe("Try again in 23 hours 45 minutes.");
+      expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
+      // "23 hours" doesn't contain the visible "23 hr", so the label names the key (spokenWait).
+      expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
+      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert().attributes("id"));
       expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
       expect(document.activeElement).toBe(wrapper.find("input").element);
       // Resending has limits of its own, so it isn't held.
       expect(resendButton(wrapper).text()).toMatch(/^Resend in \d+ sec$/);
@@ -599,6 +617,18 @@ describe("RegisterForm", () => {
       await wrapper.find("form").trigger("submit");
       await flushPromises();
       expect(fetchMock).toHaveBeenCalledOnce();
+
+      // Typing a new code drops other errors, but not why the key is held.
+      await wrapper.find("input").setValue("654321");
+      await flushPromises();
+      expect(alert().text()).toContain(error);
+      // Nor does going back to the form and opening the step for the address again.
+      await wrapper.findAll(".code-actions button")[1].trigger("click");
+      await flushPromises();
+      await enterCodeButton(wrapper).trigger("click");
+      await flushPromises();
+      expect(alert().text()).toContain(error);
+      expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
 
       vi.advanceTimersByTime(85_500_000);
       await flushPromises();
