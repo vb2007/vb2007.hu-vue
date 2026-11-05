@@ -636,13 +636,18 @@ export class MockApi {
       }
       case "POST /auth/password-reset/confirm":
         return this.confirmPasswordReset(body);
-      case "POST /shortenUrl/create":
-        this.hasShortLink(
-          this.shortCode,
-          (body as { url?: string } | null)?.url ?? "",
-          this.user?.username
-        );
+      case "POST /shortenUrl/create": {
+        const url = (body as { url?: string } | null)?.url ?? "";
+        // Like the API's SHORT_URL_MAX_LENGTH (vb2007/vb2007.hu-api#289).
+        if (url.length > 2000) {
+          return {
+            status: 400,
+            body: { error: "The URI/URL can be at most 2000 characters long." }
+          };
+        }
+        this.hasShortLink(this.shortCode, url, this.user?.username);
         return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
+      }
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         return {

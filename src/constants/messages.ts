@@ -11,6 +11,10 @@ export class Messages {
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";
+    /** Names the length too, so a pasted link shows how much has to go. */
+    static tooLong(length: number, max: number): string {
+      return `This URL is ${length.toLocaleString()} characters; the limit is ${max.toLocaleString()}.`;
+    }
     static readonly shortenFailed: string = "Failed to shorten URL";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";
