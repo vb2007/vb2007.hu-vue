@@ -1,12 +1,14 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
+import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
-import { apiRequest } from "@/scripts/api/client";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { apiRequest, type ApiResult } from "@/scripts/api/client";
+import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { clearSession } from "@/scripts/authentication/user";
+import type { MessageResponse } from "@/types/api/common";
 
 /** The API's message after a reset, shown once on /login (see LoginForm). */
 export const passwordResetNotice = ref("");
@@ -40,28 +42,66 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
 };
 
 /**
- * Sets the new password with the code. The API ends every session of the account, so a user who
- * was logged in here as that account is logged out too; only locally, as the API already ended
- * the session.
+ * After a reset the API ends every session of the account, so a user logged in here as that
+ * account (`isThatAccount`) is logged out too; only locally, as the API already ended the session.
  */
-export const confirmPasswordReset = async (
-  email: string,
-  code: string,
-  newPassword: string
-): Promise<PasswordResetAnswer> => {
-  const result = await apiRequest(Endpoints.Auth.passwordResetConfirm, {
-    body: { email, code, newPassword },
-    failure: Messages.Auth.passwordResetFailed
-  });
-
+const finishReset = (
+  result: ApiResult<MessageResponse>,
+  isThatAccount: () => boolean
+): PasswordResetAnswer => {
   if (!result.ok) {
     return { error: result.error };
   }
 
   const message = result.data.message ?? "";
-  if (isLoggedIn.value && normalizeEmail(email) === normalizeEmail(userEmail.value)) {
+  if (isLoggedIn.value && isThatAccount()) {
     clearSession();
   }
   passwordResetNotice.value = message;
   return { message };
+};
+
+/** Sets the new password with the code. */
+export const confirmPasswordReset = async (
+  email: string,
+  code: string,
+  newPassword: string
+): Promise<PasswordResetAnswer> =>
+  finishReset(
+    await apiRequest(Endpoints.Auth.passwordResetConfirm, {
+      body: { email, code, newPassword },
+      failure: Messages.Auth.passwordResetFailed
+    }),
+    () => normalizeEmail(email) === normalizeEmail(userEmail.value)
+  );
+
+/**
+ * The token of a mailed reset link, `/reset-password#token=<token>` (vb2007/vb2007.hu-api#256), or
+ * null when the fragment has none.
+ */
+export const resetLinkTokenFrom = (hash: string) =>
+  new URLSearchParams(hash.replace(/^#/, "")).get("token");
+
+/** Whether `token` has the shape of one the API mails; any other is refused without asking it. */
+export const isResetLinkToken = (token: string) => Limits.Code.resetLinkToken.test(token);
+
+/** The id of the account a well-formed token belongs to: the part before the dot. */
+export const resetLinkUserId = (token: string) => token.slice(0, token.indexOf("."));
+
+/** Sets the new password with the mailed link's token, which stands in for the address and code. */
+export const confirmPasswordResetLink = async (
+  token: string,
+  newPassword: string
+): Promise<PasswordResetAnswer> => {
+  if (!isResetLinkToken(token)) {
+    return { error: Messages.Auth.resetLinkMalformed };
+  }
+
+  return finishReset(
+    await apiRequest(Endpoints.Auth.passwordResetConfirmLink, {
+      body: { token, newPassword },
+      failure: Messages.Auth.passwordResetFailed
+    }),
+    () => resetLinkUserId(token) === userId.value
+  );
 };

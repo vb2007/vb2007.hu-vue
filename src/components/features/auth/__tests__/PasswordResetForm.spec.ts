@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises, type VueWrapper } from "@vue/test-utils";
 import PasswordResetForm from "@/components/features/auth/PasswordResetForm.vue";
+import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
 import {
   confirmPasswordReset,
+  confirmPasswordResetLink,
   requestPasswordReset,
   type PasswordResetAnswer
 } from "@/scripts/authentication/passwordReset";
@@ -11,7 +13,8 @@ import { mountWithRouter } from "@/__tests__/helpers/mount";
 vi.mock("@/scripts/authentication/passwordReset", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/passwordReset")>()),
   requestPasswordReset: vi.fn(),
-  confirmPasswordReset: vi.fn()
+  confirmPasswordReset: vi.fn(),
+  confirmPasswordResetLink: vi.fn()
 }));
 
 const SENT = "If an account uses this address, a password reset code was sent to it.";
@@ -21,6 +24,11 @@ const RECENT =
   "If an account uses this address, a code was sent to it in the last minute and still works.";
 const WRONG_CODE = "The code is wrong, expired or already used: check it or request a new one.";
 const TOO_MANY = "Too many e-mails requested: try again later.";
+const USER_ID = "0123456789abcdef01234567";
+const TOKEN = `${USER_ID}.${"a".repeat(40)}-_9`;
+const BAD_LINK = "The reset link is wrong, expired or already used: request a new one.";
+const MALFORMED =
+  "This reset link is incomplete, maybe cut off when it was copied: request a new one.";
 
 enableAutoUnmount(afterEach);
 
@@ -59,6 +67,14 @@ const fillCodeStep = async (wrapper: VueWrapper, code = "123456", password = "ne
   await passwordField.setValue(password);
 };
 
+/** Opens the page from a mailed link carrying `token`. */
+const mountFromLink = (token = TOKEN, query = "") =>
+  mountWithRouter(
+    PasswordResetForm,
+    { attachTo: document.body },
+    `/reset-password${query}#token=${token}`
+  );
+
 /** Lets the resend countdown run out. */
 const waitOutCountdown = async () => {
   vi.advanceTimersByTime(60_000);
@@ -70,11 +86,15 @@ describe("PasswordResetForm", () => {
     vi.useFakeTimers();
     vi.mocked(requestPasswordReset).mockReset();
     vi.mocked(confirmPasswordReset).mockReset();
+    vi.mocked(confirmPasswordResetLink).mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     sessionStorage.clear();
+    isLoggedIn.value = false;
+    userEmail.value = "";
+    userId.value = "";
   });
 
   it("asks for the e-mail address first, with ways to enter a code or log in", async () => {
@@ -405,5 +425,157 @@ describe("PasswordResetForm", () => {
 
     settle({ message: "Password reset successfully: log in with the new password." });
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/login"));
+  });
+
+  it("leaves a fragment without a token alone", async () => {
+    const { wrapper, router } = await mountWithRouter(PasswordResetForm, {}, "/reset-password#top");
+    await flushPromises();
+
+    expect(router.currentRoute.value.hash).toBe("#top");
+    expect(submitButton(wrapper).text()).toBe("Send code");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  describe("from the mailed link", () => {
+    it("drops the token from the address, keeping the rest", async () => {
+      const { router } = await mountFromLink(TOKEN, "?from=mail");
+      await flushPromises();
+
+      expect(router.currentRoute.value.fullPath).toBe("/reset-password?from=mail");
+    });
+
+    it("asks only for the new password, focused, with ways to get a new link or log in", async () => {
+      const { wrapper } = await mountFromLink();
+      await flushPromises();
+
+      const [username, password] = wrapper.findAll("input");
+      expect(wrapper.findAll("input")).toHaveLength(2);
+      // Tells password managers there's a login, even when the page doesn't know which.
+      expect(username.attributes()).toMatchObject({ autocomplete: "username", hidden: "" });
+      expect((username.element as HTMLInputElement).value).toBe("");
+      expect(password.attributes()).toMatchObject({
+        type: "password",
+        autocomplete: "new-password"
+      });
+      expect(document.activeElement).toBe(password.element);
+      expect(wrapper.text()).toContain(
+        "Choose a new password for your account. The link from the e-mail works once, for 30 minutes after it was sent."
+      );
+      expect(wrapper.text()).toContain("8 to 128 characters.");
+      expect(submitButton(wrapper).text()).toBe("Reset password");
+      expect(wrapper.find(".alt button").text()).toBe("Request a new one");
+      expect(wrapper.find('a[href="/login"]').text()).toBe("Log in");
+    });
+
+    it("names the logged-in user for password managers when the link is theirs", async () => {
+      isLoggedIn.value = true;
+      userEmail.value = "me@example.com";
+      userId.value = USER_ID;
+      const { wrapper } = await mountFromLink();
+
+      expect((wrapper.find("input").element as HTMLInputElement).value).toBe("me@example.com");
+    });
+
+    it("doesn't name a logged-in user the link isn't for", async () => {
+      isLoggedIn.value = true;
+      userEmail.value = "someone@example.com";
+      userId.value = "76543210fedcba9876543210";
+      const { wrapper } = await mountFromLink();
+
+      expect((wrapper.find("input").element as HTMLInputElement).value).toBe("");
+    });
+
+    it("checks the password's length before sending it", async () => {
+      const { wrapper } = await mountFromLink();
+      await wrapper.findAll("input")[1].setValue("short");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(confirmPasswordResetLink).not.toHaveBeenCalled();
+      expect(wrapper.find(".field__error").text()).toBe(
+        "The password's too short: it must be between 8 and 128 characters."
+      );
+    });
+
+    it("resets the password with the token and sends the user to log in", async () => {
+      const { wrapper, router } = await mountFromLink();
+      await wrapper.findAll("input")[1].setValue("new password");
+      const { answer, settle } = pendingAnswer();
+      vi.mocked(confirmPasswordResetLink).mockReturnValueOnce(answer);
+
+      await wrapper.find("form").trigger("submit");
+
+      expect(confirmPasswordResetLink).toHaveBeenCalledWith(TOKEN, "new password");
+      expect(submitButton(wrapper).text()).toBe("Resetting");
+      expect(wrapper.find(".alt button").attributes("disabled")).toBeDefined();
+
+      settle({ message: "Password reset successfully: log in with the new password." });
+      await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/login"));
+    });
+
+    it("shows the API's error for a link that doesn't work and stays on the step", async () => {
+      const { wrapper } = await mountFromLink();
+      await wrapper.findAll("input")[1].setValue("new password");
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({ error: BAD_LINK });
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(BAD_LINK);
+      expect(submitButton(wrapper).text()).toBe("Reset password");
+    });
+
+    it("shows the limit's error after too many rejected links", async () => {
+      const { wrapper } = await mountFromLink();
+      await wrapper.findAll("input")[1].setValue("new password");
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
+        error: "Too many failed attempts: try again later."
+      });
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        "Too many failed attempts: try again later."
+      );
+    });
+
+    it("goes to the e-mail step for a new link, leaving nothing behind", async () => {
+      const { wrapper } = await mountFromLink();
+      await wrapper.findAll("input")[1].setValue("new password");
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({ error: BAD_LINK });
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      await wrapper.find(".alt button").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.findAll("input")).toHaveLength(1);
+      expect(document.activeElement).toBe(emailInput(wrapper).element);
+      expect(submitButton(wrapper).text()).toBe("Send code");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
+
+    it("falls back to the e-mail step for a malformed link, without asking the API", async () => {
+      const { wrapper, router } = await mountFromLink("abc");
+      await flushPromises();
+
+      expect(router.currentRoute.value.hash).toBe("");
+      expect(wrapper.find('[role="alert"]').text()).toBe(MALFORMED);
+      expect(submitButton(wrapper).text()).toBe("Send code");
+      expect(confirmPasswordResetLink).not.toHaveBeenCalled();
+    });
+
+    it("drops the malformed link's error once a new code is on its way", async () => {
+      const { wrapper } = await mountFromLink("");
+      vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+
+      await sendTo(wrapper, "me@example.com");
+      await changeButton(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
   });
 });

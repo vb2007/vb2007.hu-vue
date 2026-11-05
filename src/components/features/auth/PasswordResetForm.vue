@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId } from "vue";
-import { RouterLink, useRouter } from "vue-router";
+import { computed, nextTick, onMounted, ref, useId } from "vue";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useCountdown } from "@/composables/useCountdown";
-import { confirmPasswordReset, requestPasswordReset } from "@/scripts/authentication/passwordReset";
+import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
+import {
+  confirmPasswordReset,
+  confirmPasswordResetLink,
+  isResetLinkToken,
+  requestPasswordReset,
+  resetLinkTokenFrom,
+  resetLinkUserId,
+  type PasswordResetAnswer
+} from "@/scripts/authentication/passwordReset";
 import {
   confirmationCodeEarlyError,
   confirmationCodeError,
@@ -20,6 +29,7 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const codeHint = `The ${Limits.Code.digits}-digit code from the e-mail. It works for ${Limits.Code.passwordResetValidMinutes} minutes.`;
+const linkIntro = `Choose a new password for your account. The link from the e-mail works once, for ${Limits.Code.passwordResetValidMinutes} minutes after it was sent.`;
 const passwordHint = Messages.Auth.passwordHint(
   Limits.Password.minLength,
   Limits.Password.maxLength
@@ -37,7 +47,28 @@ const RESENT_MESSAGE =
 const RECENT_MESSAGE =
   "If an account uses this address, a code was sent to it in the last minute and still works.";
 
+const route = useRoute();
 const router = useRouter();
+
+/**
+ * The mailed link (`#token=…`) leaves the address bar at once, history entry included, so the
+ * token isn't kept in the history or shared by copying the URL.
+ */
+const tokenInLink = resetLinkTokenFrom(route.hash);
+if (tokenInLink !== null) {
+  void router.replace({ query: route.query, hash: "" });
+}
+/** A well-formed link's token: set, the board asks only for the new password. */
+const linkToken = ref(tokenInLink !== null && isResetLinkToken(tokenInLink) ? tokenInLink : "");
+/** Why a link that came in can't work, shown on the e-mail step it falls back to. */
+const linkError = ref(
+  tokenInLink !== null && !linkToken.value ? Messages.Auth.resetLinkMalformed : ""
+);
+/** The logged-in user's address when the link is theirs, for password managers; "" otherwise. */
+const linkUsername = computed(() =>
+  isLoggedIn.value && resetLinkUserId(linkToken.value) === userId.value ? userEmail.value : ""
+);
+
 const email = ref("");
 const code = ref("");
 const newPassword = ref("");
@@ -71,8 +102,16 @@ const resetChecks = useFormValidation({
     early: () => passwordEarlyError(newPassword.value)
   }
 });
+const linkChecks = useFormValidation({
+  newPassword: {
+    value: newPassword,
+    check: () => passwordError(newPassword.value),
+    early: () => passwordEarlyError(newPassword.value)
+  }
+});
 const { errors: emailErrors, isValid: isEmailValid, leave: leaveEmail } = emailChecks;
 const { errors: resetErrors, isValid: isResetValid, leave: leaveReset } = resetChecks;
+const { errors: linkErrors, isValid: isLinkValid, leave: leaveLink } = linkChecks;
 
 /** Only the address the countdown started for has to wait; any other can get a code now. */
 const isResendWaiting = computed(
@@ -111,6 +150,7 @@ const formatSeconds = (seconds: number) =>
 
 const showCodeStep = async (message: string) => {
   failure.value = "";
+  linkError.value = "";
   sentTo.value = email.value;
   sentMessage.value = message;
   await focusFirstField();
@@ -190,8 +230,12 @@ const changeAddress = async () => {
   await focusFirstField();
 };
 
-const handleReset = async () => {
-  if (!(await resetChecks.validate(step.value))) {
+/** Checks the step's fields, then sets the password with `send`; done, it's off to /login. */
+const submitReset = async (
+  checks: typeof resetChecks | typeof linkChecks,
+  send: () => Promise<PasswordResetAnswer>
+) => {
+  if (!(await checks.validate(step.value))) {
     flagError();
     return;
   }
@@ -199,7 +243,7 @@ const handleReset = async () => {
   isResetting.value = true;
   failure.value = "";
   try {
-    const answer = await confirmPasswordReset(sentTo.value, code.value, newPassword.value);
+    const answer = await send();
 
     if (answer.error) {
       failure.value = answer.error;
@@ -212,12 +256,72 @@ const handleReset = async () => {
     isResetting.value = false;
   }
 };
+
+const handleReset = () =>
+  submitReset(resetChecks, () => confirmPasswordReset(sentTo.value, code.value, newPassword.value));
+
+const handleLinkReset = () =>
+  submitReset(linkChecks, () => confirmPasswordResetLink(linkToken.value, newPassword.value));
+
+/** Leaves a link that didn't work for the e-mail step, which mails a new code and link. */
+const requestNewLink = async () => {
+  linkToken.value = "";
+  newPassword.value = "";
+  failure.value = "";
+  linkChecks.reset();
+  await focusFirstField();
+};
+
+onMounted(() => {
+  // Someone who followed the link came to type the new password.
+  if (linkToken.value) {
+    void focusFirstField();
+  }
+});
 </script>
 
 <template>
   <StationBoard title="Reset password" as="h1">
-    <template v-if="!sentTo">
+    <template v-if="linkToken">
+      <form ref="step" class="form" novalidate @submit.prevent="handleLinkReset">
+        <!-- Tells password managers which login the new password belongs to, when it's known. -->
+        <input type="email" autocomplete="username" :value="linkUsername" readonly hidden />
+        <p>{{ linkIntro }}</p>
+        <BaseInput
+          v-model="newPassword"
+          label="New password"
+          type="password"
+          autocomplete="new-password"
+          :hint="passwordHint"
+          :error="linkErrors.newPassword"
+          required
+          @blur="leaveLink('newPassword')"
+        />
+        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <BaseButton
+          type="submit"
+          block
+          :loading="isResetting"
+          :blocked="!isLinkValid"
+          :error="isButtonError"
+        >
+          {{ isResetting ? "Resetting" : "Reset password" }}
+        </BaseButton>
+      </form>
+      <div class="alt">
+        <p>
+          Link not working?
+          <button type="button" class="link" :disabled="isResetting" @click="requestNewLink">
+            Request a new one
+          </button>
+        </p>
+        <p>Remembered it? <RouterLink to="/login">Log in</RouterLink></p>
+      </div>
+    </template>
+
+    <template v-else-if="!sentTo">
       <form ref="step" class="form" novalidate @submit.prevent="handleSend">
+        <StatusMessage v-if="linkError" tone="error">{{ linkError }}</StatusMessage>
         <p>Enter your account's e-mail address to get a code for a new password.</p>
         <BaseInput
           v-model="email"

@@ -16,6 +16,7 @@ describe("Endpoints", () => {
     [Endpoints.Auth.logout, "POST", "/auth/logout", true],
     [Endpoints.Auth.passwordReset, "POST", "/auth/password-reset", false],
     [Endpoints.Auth.passwordResetConfirm, "POST", "/auth/password-reset/confirm", false],
+    [Endpoints.Auth.passwordResetConfirmLink, "POST", "/auth/password-reset/confirm-link", false],
     [Endpoints.Auth.github, "GET", "/auth/github", false],
     [Endpoints.Auth.githubLink, "GET", "/auth/github/link", true],
     [Endpoints.Auth.githubStartLink, "POST", "/auth/github/link", true],
