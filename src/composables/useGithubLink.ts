@@ -3,6 +3,8 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { OauthError } from "@/constants/oauth";
+import { retryAfterFrom } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { oauthErrorMessage } from "@/scripts/authentication/github";
 import { fetchUserDetails } from "@/scripts/authentication/user";
@@ -24,6 +26,8 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
   const isLinking = ref(false);
   const isStalled = ref(false);
   const linkError = ref("");
+  /** After the password checks' 429 (too many wrong passwords), linking waits its `retryAfter`. */
+  const hold = useRetryHold(linkError);
   let stallTimer: ReturnType<typeof setTimeout> | undefined;
   let request: AbortController | undefined;
 
@@ -76,6 +80,7 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
       linkError.value = oauthErrorMessage(OauthError.notConfigured);
     } else if (result.status === HttpStatus.TooManyRequests) {
       linkError.value = apiErrorOf(result) ?? Messages.Account.tooManyRequests;
+      hold.start(retryAfterFrom(result.body));
     } else {
       linkError.value = result.error;
     }
@@ -84,5 +89,5 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
     return false;
   };
 
-  return { isLinking, isStalled, linkError, link, stop };
+  return { isLinking, isStalled, linkError, link, stop, hold };
 };

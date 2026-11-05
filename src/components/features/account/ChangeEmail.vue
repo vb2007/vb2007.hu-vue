@@ -31,9 +31,12 @@ const {
   confirmError,
   confirm,
   cooldown,
-  showWait
+  showWait,
+  confirmHold
 } = useChangeEmail();
 const { remaining: waitSeconds, active: isWaiting } = cooldown;
+const isConfirmHeld = computed(() => confirmHold.isHeld());
+const confirmErrorId = useId();
 
 const open = ref(false);
 const email = ref("");
@@ -145,6 +148,7 @@ const save = async () => {
 };
 
 const confirmCode = async () => {
+  if (isConfirmHeld.value) return;
   if (!(await codeChecks.validate(codeForm.value))) return;
   emit("start");
   if (await confirm(code.value.replace(/\s/g, ""))) {
@@ -154,7 +158,7 @@ const confirmCode = async () => {
   await nextTick();
   // Confirmed, dropped or expired: the code step is gone, and its key is left.
   if (!pendingEmail.value) return key.value?.$el.focus();
-  if (!codeForm.value?.contains(document.activeElement)) focusField(codeField.value);
+  if (!codeForm.value?.querySelector(":focus:not(:disabled)")) focusField(codeField.value);
 };
 </script>
 
@@ -193,10 +197,25 @@ const confirmCode = async () => {
       @update:model-value="codeError = ''"
       @blur="leaveCode('code')"
     />
-    <StatusMessage v-if="confirmError" tone="error">{{ confirmError }}</StatusMessage>
+    <!-- A held key keeps its reason, also once opening the e-mail form cleared the error. -->
+    <StatusMessage
+      v-if="confirmHold.shown()"
+      :id="confirmErrorId"
+      tone="error"
+      :spoken="confirmHold.spokenFor()"
+      >{{ confirmHold.shown() }}</StatusMessage
+    >
     <div class="change__actions">
-      <BaseButton type="submit" size="sm" :loading="isConfirming" :blocked="!isCodeValid">
-        {{ isConfirming ? "Confirming" : "Confirm code" }}
+      <BaseButton
+        type="submit"
+        size="sm"
+        :loading="isConfirming"
+        :disabled="isConfirmHeld"
+        :aria-label="isConfirmHeld ? confirmHold.name.value : undefined"
+        :aria-describedby="isConfirmHeld ? confirmErrorId : undefined"
+        :blocked="!isCodeValid"
+      >
+        {{ isConfirming ? "Confirming" : isConfirmHeld ? confirmHold.label.value : "Confirm code" }}
       </BaseButton>
       <BaseButton ref="key" size="sm" variant="secondary" :disabled="isConfirming" @click="start">
         Change e-mail

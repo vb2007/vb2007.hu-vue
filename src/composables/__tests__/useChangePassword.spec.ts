@@ -1,5 +1,7 @@
+import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { mountComposable } from "@/__tests__/helpers/host";
 import { useChangePassword } from "@/composables/useChangePassword";
 
 describe("useChangePassword", () => {
@@ -14,7 +16,7 @@ describe("useChangePassword", () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, { message: "Password changed successfully." })
     );
-    const password = useChangePassword();
+    const password = mountComposable(useChangePassword).api;
 
     const pending = password.change("old-password", "new-password");
     expect(password.isChanging.value).toBe(true);
@@ -35,7 +37,7 @@ describe("useChangePassword", () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(403, { error: "The provided password is incorrect." })
     );
-    const password = useChangePassword();
+    const password = mountComposable(useChangePassword).api;
 
     expect(await password.change("wrong-password", "new-password")).toBe(false);
 
@@ -46,7 +48,7 @@ describe("useChangePassword", () => {
 
   it("falls back to the status when the refusal has no message", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Internal Server Error"));
-    const password = useChangePassword();
+    const password = mountComposable(useChangePassword).api;
 
     expect(await password.change("old-password", "new-password")).toBe(false);
 
@@ -57,7 +59,7 @@ describe("useChangePassword", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
       .mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const password = useChangePassword();
+    const password = mountComposable(useChangePassword).api;
     await password.change("old-password", "new-password");
 
     expect(await password.change("new-password", "newer-password")).toBe(false);
@@ -65,5 +67,24 @@ describe("useChangePassword", () => {
     expect(password.changeError.value).toBe("Error connecting to server");
     expect(password.changed.value).toBe("");
     expect(password.isChanging.value).toBe(false);
+    expect(password.hold.isHeld()).toBe(false);
+  });
+
+  it("holds saving after the password checks' 429 until its wait ends, then drops its message", async () => {
+    vi.useFakeTimers();
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("wrong-password", "new-password")).toBe(false);
+
+    expect(password.changeError.value).toBe(error);
+    expect(password.hold.isHeld()).toBe(true);
+    expect(password.hold.remaining.value).toBe(900);
+
+    vi.advanceTimersByTime(900_000);
+    await nextTick();
+    expect(password.hold.isHeld()).toBe(false);
+    expect(password.changeError.value).toBe("");
   });
 });

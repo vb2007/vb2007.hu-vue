@@ -464,10 +464,53 @@ describe("ChangeEmail", () => {
       );
       await flushPromises();
 
+      // The 429 holds the key for its retryAfter, which the alert says for screen readers.
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "Too many failed attempts: try again later."
+        "Too many failed attempts: try again later. Try again in 15 minutes."
       );
       expect(document.activeElement).toBe(codeInput().element);
+    });
+
+    it("holds Confirm code for the daily cap's wait, but not Change e-mail", async () => {
+      fakeCountdown();
+      await remount();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 85_500 }));
+      (button("Confirm code").element as HTMLElement).focus();
+
+      await enterCode("123456");
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${error} Try again in 23 hours 45 minutes.`
+      );
+      expect(button("Try again in 23 hr 45 min").attributes("disabled")).toBeDefined();
+      // "23 hours" doesn't contain the visible "23 hr", so the label names the key (spokenWait),
+      // and the alert it points at says the wait in words.
+      expect(button("Try again in 23 hr 45 min").attributes("aria-label")).toBeUndefined();
+      const describedBy = button("Try again in 23 hr 45 min").attributes("aria-describedby");
+      expect(describedBy).toBe(wrapper.find('[role="alert"]').attributes("id"));
+      expect(button("Change e-mail").attributes("disabled")).toBeUndefined();
+      // The disabled key can't keep the focus.
+      expect(document.activeElement).toBe(codeInput().element);
+      expect(pendingLine().exists()).toBe(true);
+
+      // Opening the e-mail form clears the error; the held key keeps its reason when it's back.
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await wrapper.find("form").trigger("keydown", { key: "Escape" });
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${error} Try again in 23 hours 45 minutes.`
+      );
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(85_500_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(button("Confirm code").attributes("disabled")).toBeUndefined();
     });
 
     it("moves a refusal that dropped the change above the key", async () => {
