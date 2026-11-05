@@ -6,6 +6,7 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
   page,
   api
 }) => {
+  api.hasUser("me");
   await page.goto("/login");
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page).toHaveURL("/reset-password");
@@ -100,6 +101,7 @@ test("a code that already arrived is entered after a reload, without sending ano
   page,
   api
 }) => {
+  api.hasUser("me");
   await page.clock.install();
   await page.goto("/reset-password");
   await page.getByLabel("E-mail").fill("me@example.com");
@@ -126,8 +128,12 @@ test("a code that already arrived is entered after a reload, without sending ano
 });
 
 test("a code only works for the address that asked for it", async ({ page, api }) => {
-  api.passwordResets.push("me@example.com");
+  api.hasUser("me");
+  api.hasUser("someone");
   await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByRole("button", { name: "Change" }).click();
   await page.getByLabel("E-mail").fill("someone@example.com");
   await page.getByRole("button", { name: "Enter it" }).click();
 
@@ -168,6 +174,7 @@ test("resetting another account's password keeps the user logged in and says so"
   api
 }) => {
   api.loggedInAs("anna@example.com", "anna");
+  api.hasUser("me");
   await page.goto("/reset-password");
   await page.getByLabel("E-mail").fill("me@example.com");
   await page.getByRole("button", { name: "Send code" }).click();

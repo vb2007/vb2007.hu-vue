@@ -236,7 +236,10 @@ describe("register", () => {
   it("asks the API to mail a code, which answers 202 before any account exists", async () => {
     registerStatus.value = "Email already taken.";
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(202, { message: "A confirmation code was sent to me@example.com." })
+      jsonResponse(202, {
+        message:
+          "A confirmation code was sent to me@example.com: send it to POST /auth/register/verify to finish registering."
+      })
     );
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: true });

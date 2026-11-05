@@ -537,8 +537,15 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
 });
 
-// The form checks the address with the API's own rule, so a 400 can't come from it.
+// The form checks the address's format with the API's own rule, but only the API checks its domain
+// (vb2007/vb2007.hu-api#217).
 for (const [status, email, password, error] of [
+  [
+    400,
+    "new@mailinator.com",
+    MOCK_PASSWORD,
+    "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
+  ],
   [403, "new@example.com", "wrong-password", "The provided password is incorrect."],
   [409, "taken@example.com", MOCK_PASSWORD, "An account with this E-mail address already exists."],
   [429, "new@example.com", MOCK_PASSWORD, "Too many failed attempts: try again later."]
@@ -563,6 +570,32 @@ for (const [status, email, password, error] of [
     await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
   });
 }
+
+test("a code whose mail failed keeps the change that waited, and another goes at once", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("old@example.com");
+  api.failsNextMail();
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("new@example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The e-mail couldn't be sent: please try again later."
+  );
+  // The API keeps the change that waited before, and no countdown holds the key.
+  await expect(page.getByText("Waiting for confirmation: old@example.com")).toBeVisible();
+  await expect(page.getByLabel("New e-mail")).toHaveValue("new@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+});
 
 test("accounts that can't change their e-mail say why", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
