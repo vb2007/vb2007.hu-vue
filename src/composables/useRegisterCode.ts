@@ -36,8 +36,9 @@ export type RegisterCodeResult =
   | "failed";
 
 /**
- * What a resend did to the code: a new one was mailed, the old one was replaced but the new one
- * couldn't be mailed, or nothing changed (a refusal, the server or the network) and it still works.
+ * What a resend did to the code: the API accepted it (a waiting registration's code was replaced
+ * and the new one mailed), the old one was replaced but the new one couldn't be mailed, or nothing
+ * changed (a refusal, the server or the network) and it still works.
  */
 export type ResendOutcome = "sent" | "lost" | "failed";
 
@@ -51,7 +52,7 @@ export interface FormProblem {
 export type CodeNotice =
   /** The register form just had it mailed. */
   | "sent"
-  /** A resend mailed a new one. */
+  /** A resend the API accepted: it mailed a new code only if a registration was waiting. */
   | "resent"
   /** The user already has one, e.g. after a reload; nothing was sent. */
   | "earlier"
@@ -187,7 +188,10 @@ export const useRegisterCode = () => {
     return outcome;
   };
 
-  /** Mails a new code, which replaces the old one. Returns what became of the old code. */
+  /**
+   * Asks for a new code, which replaces the old one if a registration is waiting. Returns what
+   * became of the old code.
+   */
   const resend = async (): Promise<ResendOutcome> => {
     isResending.value = true;
     showError("");

@@ -72,7 +72,7 @@ test("a new code can be sent once a minute", async ({ page }) => {
   await resend.click();
 
   await expect(page.getByRole("status")).toHaveText(
-    "A new code is on its way to new@example.com. The previous one no longer works."
+    "If a registration is waiting for new@example.com, a new code is on its way, and the one before no longer works."
   );
   await expect(resend).toHaveText("Resend in 60 s");
   await expect(resend).toBeDisabled();
