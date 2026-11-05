@@ -10,10 +10,12 @@ import { test as base, expect, type Route } from "@playwright/test";
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
- * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
- * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
- * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
+ * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
+ * A `hasUser(...)` address and `MOCK_SUPERUSER_EMAIL` get the same 202 and code: only the confirm refuses them, with 409
+ * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
+ * waiting; a new code within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes
+ * ago has expired.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
@@ -80,6 +82,8 @@ const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
+/** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
+export const MOCK_SUPERUSER_EMAIL = "admin@example.com";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
@@ -644,8 +648,9 @@ export class MockApi {
   }
 
   /**
-   * Checks in the API's order (vb2007/vb2007.hu-api#162 and #215), short of the superuser-reserved
-   * address and the domain checks.
+   * Checks in the API's order (vb2007/vb2007.hu-api#162 and #215), short of the domain checks. Another
+   * account's address and the superuser's pass, so they don't show which addresses have accounts
+   * (vb2007/vb2007.hu-api#291): `confirmEmail` refuses them.
    */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
@@ -682,12 +687,6 @@ export class MockApi {
     if (normalized === this.user.email) {
       return { status: 200, body: { message: "E-mail address updated successfully." } };
     }
-    if (this.users.some((user) => user.email === normalized)) {
-      return {
-        status: 409,
-        body: { error: "An account with this E-mail address already exists." }
-      };
-    }
     if (this.emailChange && this.emailCooldownOnSend !== null) {
       this.emailChange.sentAt = Date.now() - (60 - this.emailCooldownOnSend) * 1000;
       this.emailCooldownOnSend = null;
@@ -716,6 +715,10 @@ export class MockApi {
     return this.emailChange !== null && Date.now() < this.emailChange.sentAt + 15 * 60_000;
   }
 
+  /**
+   * Checks in the API's order (vb2007/vb2007.hu-api#215 and #291): a right code for the superuser's
+   * address gets 403 and one for another account's 409, and either drops the waiting change.
+   */
   private confirmEmail(code?: string) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
@@ -729,6 +732,9 @@ export class MockApi {
     }
     const { email } = this.emailChange!;
     this.emailChange = null;
+    if (email === MOCK_SUPERUSER_EMAIL) {
+      return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
+    }
     if (this.users.some((user) => user.email === email)) {
       return {
         status: 409,
