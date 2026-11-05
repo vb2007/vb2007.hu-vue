@@ -215,22 +215,24 @@ describe("useChangeEmail", () => {
       expect(email.changeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, and keeps its message after", async () => {
+    it.each([
+      ["the mail limiter's", "Too many e-mails requested: try again later."],
+      ["the password limiter's", "Too many failed attempts: try again later."]
+    ])("counts nothing down after %s 429, and keeps its message", async (_, error) => {
       vi.useFakeTimers();
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
-      );
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error }));
       const email = useEmail();
 
-      await email.change("new@example.com", "secret-password");
+      expect(await email.change("new@example.com", "secret-password")).toBe(false);
 
+      // Its wait can last an hour and isn't sent, so the key stays usable rather than lying.
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
-      expect(email.cooldown.remaining.value).toBe(60);
+      expect(email.changeError.value).toBe(error);
+      expect(email.cooldown.active.value).toBe(false);
+      expect(savedCooldown()).toBeNull();
       vi.advanceTimersByTime(60_000);
       await nextTick();
-      expect(email.cooldown.active.value).toBe(false);
-      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
+      expect(email.changeError.value).toBe(error);
     });
 
     it("explains a 429 that isn't JSON", async () => {
@@ -240,7 +242,7 @@ describe("useChangeEmail", () => {
       await email.change("new@example.com", "secret-password");
 
       expect(email.changeError.value).toBe("Too many requests: try again later.");
-      expect(email.cooldown.remaining.value).toBe(60);
+      expect(email.cooldown.active.value).toBe(false);
     });
 
     it("names the status when the error isn't JSON", async () => {

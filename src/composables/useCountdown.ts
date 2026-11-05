@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref } from "vue";
-import { Limits } from "@/constants/limits";
+import { HttpStatus } from "@/constants/http";
+import type { ApiResult } from "@/scripts/api/client";
 import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
@@ -72,13 +73,18 @@ export const useCountdown = (storageKey?: string) => {
 };
 
 /**
- * The seconds to wait after a 429. The resend cooldown sends them as `retryAfter` in the body;
- * the rate limiters don't, and the Retry-After header isn't exposed to the page, hence `fallback`.
+ * The seconds to wait, when `result` is the one-code-a-minute cooldown's 429, which sends them as
+ * `retryAfter` in the body; otherwise undefined. The rate limiters' 429s don't send them, and their
+ * wait (up to an hour) can't be read either, since the Retry-After header isn't exposed to the
+ * page: such a 429 gets no countdown, as one would end while the API still refuses.
  */
-export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
-  const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
+export const retryAfterFrom = (result: ApiResult<unknown>): number | undefined => {
+  if (result.ok || result.kind !== "http" || result.status !== HttpStatus.TooManyRequests) {
+    return undefined;
+  }
+  const retryAfter: unknown = result.body?.retryAfter;
 
   return typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0
     ? Math.ceil(retryAfter)
-    : fallback;
+    : undefined;
 };

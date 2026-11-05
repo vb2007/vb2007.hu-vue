@@ -184,9 +184,10 @@ export const register = async (
   if (result.status === HttpStatus.BadRequest || result.status === HttpStatus.Conflict) {
     answer.field = registerFieldOf(message);
   }
-  // Only the per-address cooldown says how long; the rate limiters' 429s don't.
-  if (result.status === HttpStatus.TooManyRequests && typeof result.body?.retryAfter === "number") {
-    answer.retryAfter = retryAfterFrom(result.body);
+  // Only the per-address cooldown says how long; the mail limiter's 429 stays on the form.
+  const retryAfter = retryAfterFrom(result);
+  if (retryAfter) {
+    answer.retryAfter = retryAfter;
   }
   registerStatus.value = message;
   return answer;

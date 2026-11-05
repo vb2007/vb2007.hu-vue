@@ -1,6 +1,5 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
@@ -34,9 +33,10 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
     return { message: result.data.message ?? "" };
   }
 
-  return result.status === HttpStatus.TooManyRequests
-    ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
-    : { error: result.error };
+  // The API sends no cooldown 429 here, only the mail limiter's, which names no wait; a cooldown
+  // would still count down, should the API start sending one.
+  const retryAfter = retryAfterFrom(result);
+  return retryAfter ? { error: result.error, retryAfter } : { error: result.error };
 };
 
 /**

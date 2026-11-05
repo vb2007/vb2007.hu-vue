@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import type { ApiResult } from "@/scripts/api/client";
+import type { ApiErrorBody } from "@/types/api/common";
 
 describe("useCountdown", () => {
   // Fake timers mock Date.now too, so the deadline moves with advanceTimersByTime.
@@ -210,23 +212,40 @@ describe("useCountdown with a storage key", () => {
 });
 
 describe("retryAfterFrom", () => {
-  it("takes the API's retryAfter, rounded up to whole seconds", () => {
-    expect(retryAfterFrom({ error: "Wait a bit.", retryAfter: 42 })).toBe(42);
-    expect(retryAfterFrom({ error: "Wait a bit.", retryAfter: 41.3 })).toBe(42);
+  /** A 429 with `body`, as apiRequest returns it. */
+  const tooMany = (body: ApiErrorBody | null): ApiResult<unknown> => ({
+    ok: false,
+    kind: "http",
+    status: 429,
+    error: body?.error ?? "Too many requests.",
+    body
+  });
+
+  it("takes the cooldown's retryAfter, rounded up to whole seconds", () => {
+    expect(retryAfterFrom(tooMany({ error: "Wait a bit.", retryAfter: 42 }))).toBe(42);
+    expect(retryAfterFrom(tooMany({ error: "Wait a bit.", retryAfter: 41.3 }))).toBe(42);
   });
 
   it.each([
-    ["a rate limiter's body without one", { error: "Too many requests." }],
+    ["a rate limiter's 429, which has none", { error: "Too many e-mails requested." }],
     ["zero", { retryAfter: 0 }],
     ["a negative number", { retryAfter: -3 }],
     ["infinity", { retryAfter: Infinity }],
     ["NaN", { retryAfter: NaN }],
-    ["a string", { retryAfter: "30" }],
-    ["null", null],
-    ["undefined", undefined],
-    ["a non-object", "Too many requests."]
-  ])("falls back for %s", (_, body) => {
-    expect(retryAfterFrom(body)).toBe(60);
-    expect(retryAfterFrom(body, 15)).toBe(15);
+    ["a string", { retryAfter: "30" as unknown as number }],
+    ["a 429 without a body", null]
+  ])("gives no wait for %s", (_, body) => {
+    expect(retryAfterFrom(tooMany(body))).toBeUndefined();
+  });
+
+  it.each<[string, ApiResult<unknown>]>([
+    ["a success", { ok: true, status: 200, data: { retryAfter: 42 } }],
+    [
+      "another status",
+      { ok: false, kind: "http", status: 503, error: "Down.", body: { retryAfter: 42 } }
+    ],
+    ["no answer", { ok: false, kind: "network", status: 0, error: "Offline." }]
+  ])("gives no wait for %s", (_, result) => {
+    expect(retryAfterFrom(result)).toBeUndefined();
   });
 });

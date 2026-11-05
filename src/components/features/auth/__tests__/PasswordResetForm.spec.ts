@@ -21,6 +21,8 @@ const RECENT =
   "If an account uses this address, a code was sent to it in the last minute and still works.";
 const WRONG_CODE = "The code is wrong, expired or already used: check it or request a new one.";
 const TOO_MANY = "Too many e-mails requested: try again later.";
+/** A per-address cooldown's 429, which the API doesn't send here yet but would count down. */
+const COOLDOWN = "A code was sent just now: wait 90 seconds before requesting another one.";
 
 enableAutoUnmount(afterEach);
 
@@ -134,12 +136,12 @@ describe("PasswordResetForm", () => {
   });
 
   it("stays on the e-mail step with the API's error, without holding anything back", async () => {
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 60 });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: COOLDOWN, retryAfter: 60 });
     const { wrapper } = await mountWithRouter(PasswordResetForm);
 
     await sendTo(wrapper, "me@example.com");
 
-    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(wrapper.find('[role="alert"]').text()).toBe(COOLDOWN);
     expect(submitButton(wrapper).classes()).toContain("btn--error");
     expect(emailInput(wrapper).exists()).toBe(true);
 
@@ -191,16 +193,16 @@ describe("PasswordResetForm", () => {
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("");
   });
 
-  it("shows the mail limit's error on a resend and waits as long as it says", async () => {
+  it("shows a cooldown's error on a resend and waits as long as it says", async () => {
     const { wrapper } = await mountOnCodeStep();
     await fillCodeStep(wrapper, "123456");
     await waitOutCountdown();
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 90 });
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: COOLDOWN, retryAfter: 90 });
 
     await resendButton(wrapper).trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(wrapper.find('[role="alert"]').text()).toBe(COOLDOWN);
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
     expect(resendButton(wrapper).text()).toBe("Send again in 1:30");
     expect(document.activeElement).toBe(codeInput(wrapper).element);
@@ -208,17 +210,28 @@ describe("PasswordResetForm", () => {
     expect((codeInput(wrapper).element as HTMLInputElement).value).toBe("123456");
   });
 
-  it("keeps the key ready after a resend error without a wait", async () => {
-    const { wrapper } = await mountOnCodeStep();
-    await waitOutCountdown();
-    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: "Error connecting to server" });
+  it.each([
+    ["the mail limiter's", TOO_MANY],
+    ["a network", "Error connecting to server"]
+  ])(
+    "keeps the key ready and the message after %s error, which names no wait",
+    async (_, error) => {
+      const { wrapper } = await mountOnCodeStep();
+      await waitOutCountdown();
+      vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error });
 
-    await resendButton(wrapper).trigger("click");
-    await flushPromises();
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe("Error connecting to server");
-    expect(resendButton(wrapper).text()).toBe("Send again");
-  });
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(resendButton(wrapper).text()).toBe("Send again");
+      expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
+
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    }
+  );
 
   it("goes back to change the address, keeping it and its countdown", async () => {
     const { wrapper } = await mountOnCodeStep();

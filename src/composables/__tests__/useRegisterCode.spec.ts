@@ -282,17 +282,24 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, which has no retryAfter", async () => {
+    it("counts nothing down after the mail limiter's 429, and keeps its message", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many e-mails requested: try again later." })
       );
       const step = openStep();
       step.cooldown.stop();
 
-      await step.resend();
+      expect(await step.resend()).toBe(false);
 
+      // Its wait can last an hour and isn't sent, so the key stays usable rather than lying.
       expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
-      expect(step.cooldown.remaining.value).toBe(60);
+      expect(step.cooldown.active.value).toBe(false);
+      expect(step.resendWaiting.value).toBe(false);
+      expect(step.notice.value).toBe("sent");
+
+      vi.advanceTimersByTime(60_000);
+      await nextTick();
+      expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
     });
 
     it("keeps other errors when the countdown ends", async () => {

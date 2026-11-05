@@ -618,6 +618,27 @@ describe("ChangeEmail", () => {
       expect(button("Send code").attributes("disabled")).toBeUndefined();
     });
 
+    it("keeps the key ready and the message after the mail limiter's 429", async () => {
+      fakeCountdown();
+      const error = "Too many e-mails requested: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error }));
+      await remount();
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await inputs()[1].setValue("secret-password");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      // It names no wait, and can last an hour: a countdown would end while the API still refuses.
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Send code").attributes("disabled")).toBeUndefined();
+
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    });
+
     it("shows the change a 429 waits for, when its code was asked for elsewhere", async () => {
       fakeCountdown();
       wrapper.unmount();

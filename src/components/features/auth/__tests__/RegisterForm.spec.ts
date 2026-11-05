@@ -689,6 +689,27 @@ describe("RegisterForm", () => {
       expect(resendButton(wrapper).text()).toBe("Resend code");
     });
 
+    it("keeps the key ready and the message after the mail limiter's refusal", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error = "Too many e-mails requested: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error }));
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      // It names no wait, and can last an hour: a countdown would end while the API still refuses.
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(resendButton(wrapper).text()).toBe("Resend code");
+      expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
+
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    });
+
     it("goes back to the filled-in form to fix the address", async () => {
       const wrapper = await atCodeStep();
       registerStatus.value = "stale";

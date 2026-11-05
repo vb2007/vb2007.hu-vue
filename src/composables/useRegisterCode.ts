@@ -149,17 +149,17 @@ export const useRegisterCode = () => {
       failure: Messages.EmailCode.resendFailed
     });
 
+    const wait = retryAfterFrom(result);
     if (result.ok) {
       notice.value = "resent";
       holdResend(RESEND_COOLDOWN_SECONDS);
-    } else if (result.status === HttpStatus.TooManyRequests) {
-      holdResend(retryAfterFrom(result.body));
+    } else if (wait) {
+      holdResend(wait);
       // The cooldown's own message names its seconds, which would freeze next to the countdown.
-      showError(
-        typeof result.body?.retryAfter === "number" ? Messages.EmailCode.cooldown : result.error,
-        true
-      );
+      showError(Messages.EmailCode.cooldown, true);
     } else {
+      // The mail limiter's 429 names no wait (it can last an hour), so like any other failure its
+      // message stays until the next try and the key stays usable.
       showError(result.error);
       if (result.status === HttpStatus.ServiceUnavailable) {
         // The API replaced the code before the e-mail failed, so the old one is gone too.
