@@ -20,6 +20,33 @@ describe("useShortener", () => {
     expect(shortener.errorMessage.value).toBe("Invalid URL / URI format.");
   });
 
+  it("sends a URL of exactly the API's 2000-character limit", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: { shortenedUrl: "abc123" } }));
+    const shortener = useShortener();
+    const url = `https://example.com/${"a".repeat(2000 - "https://example.com/".length)}`;
+    shortener.originalUrl.value = url;
+
+    await shortener.shorten();
+
+    expect(url).toHaveLength(2000);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(shortener.errorMessage.value).toBe("");
+    expect(shortener.shortenedCode.value).toBe("abc123");
+  });
+
+  it("refuses a URL over the limit without calling the API", async () => {
+    const shortener = useShortener();
+    shortener.originalUrl.value = `https://example.com/${"a".repeat(2001 - "https://example.com/".length)}`;
+
+    await shortener.shorten();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(shortener.errorMessage.value).toBe(
+      `This URL is ${(2001).toLocaleString()} characters; the limit is ${(2000).toLocaleString()}.`
+    );
+    expect(shortener.isLoading.value).toBe(false);
+  });
+
   it("stores the short code and clears the input on success", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: { shortenedUrl: "abc123" } }));
     const shortener = useShortener();

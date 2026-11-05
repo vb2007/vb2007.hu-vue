@@ -3,9 +3,14 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, useCountdown } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
-import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import {
+  emailVerified,
+  isLoggedIn,
+  pendingEmail,
+  userEmail
+} from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 import { removeSaved } from "@/scripts/utility/savedForOwner";
@@ -28,7 +33,7 @@ export const useChangeEmail = () => {
   const codeError = ref("");
   /** Any other confirm failure, including one that dropped the waiting change. */
   const confirmError = ref("");
-  /** Runs until the API takes the form again: after a code was sent, or a 429. */
+  /** Runs until the API mails another code: after one was sent, or the cooldown's 429. */
   const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The API's cooldown is per account, so it's kept for the account's current address. */
   const account = () => normalizeEmail(userEmail.value);
@@ -41,7 +46,7 @@ export const useChangeEmail = () => {
   };
 
   // The cooldown's 429 counts its wait down on the key, so its message has no number to go stale.
-  // A rate limiter's 429 has no wait to count down, so its message stays when the key comes back.
+  // A rate limiter's 429 doesn't hold the key back, so its message stays until the next try.
   watch(cooldown.active, (waiting) => {
     if (!waiting && changeError.value === Messages.EmailCode.cooldown) changeError.value = "";
   });
@@ -74,14 +79,16 @@ export const useChangeEmail = () => {
         userEmail.value = normalizeEmail(email);
       }
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // Only the one-code-a-minute cooldown sends retryAfter; the rate limiters send an error alone.
-      const isCooldown = typeof result.body?.retryAfter === "number";
-      changeError.value = isCooldown
-        ? Messages.EmailCode.cooldown
-        : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
-      cooldown.start(retryAfterFrom(result.body), account());
-      // The code it waits for may have been asked for elsewhere, e.g. in another tab.
-      if (isCooldown) await fetchUserDetails();
+      const codeWait = codeCooldownOf(result);
+      if (codeWait === undefined) {
+        // A rate limiter's (e.g. too many wrong passwords): no code went out, the key stays free.
+        changeError.value = apiErrorOf(result) ?? Messages.Account.tooManyRequests;
+      } else {
+        changeError.value = Messages.EmailCode.cooldown;
+        cooldown.start(codeWait, account());
+        // The code it waits for may have been asked for elsewhere, e.g. in another tab.
+        await fetchUserDetails();
+      }
     } else {
       changeError.value = result.error;
       // The API keeps the new change even when its mail fails, so show what it has now.
@@ -97,7 +104,8 @@ export const useChangeEmail = () => {
    * refreshes the user: a 400 may mean it expired, and a 403 or 409 drops the waiting change. The
    * API refuses the superuser's address (403) or another account's (409) only here, not when it
    * mails the code, so it doesn't show which addresses have accounts (vb2007/vb2007.hu-api#291).
-   * An expired session's 403 ("You are not logged in.") isn't told apart, so it reads as a drop too.
+   * A 403 can also be the session ending (expired, ended by a password reset, or replaced by a
+   * login elsewhere): the refresh then logs the page out, and the account page says so instead.
    */
   const confirm = async (code: string) => {
     const address = pendingEmail.value;
@@ -108,7 +116,9 @@ export const useChangeEmail = () => {
 
     const result = await apiRequest(Endpoints.User.confirmEmail, {
       body: { code },
-      failure: Messages.Account.confirmEmailFailed
+      failure: Messages.Account.confirmEmailFailed,
+      // A dropped change or an ended session: both are shown, neither is a fault.
+      quietStatuses: [HttpStatus.Forbidden]
     });
 
     if (result.ok) {
@@ -131,7 +141,9 @@ export const useChangeEmail = () => {
         if (dropped && !refreshed) pendingEmail.value = "";
       }
 
-      if (!pendingEmail.value) {
+      if (!isLoggedIn.value) {
+        // The session ended: nothing was said about the change, and the account page now says why.
+      } else if (!pendingEmail.value) {
         // Its code step is gone with it, so the message names the address it was about. A 400
         // means the code expired, and the API's "check it" no longer fits without the field.
         endCooldown();

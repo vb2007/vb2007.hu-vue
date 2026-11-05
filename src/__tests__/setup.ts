@@ -8,6 +8,7 @@ import {
   isSessionChecked,
   isSuperuser,
   pendingEmail,
+  sessionEnded,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -50,6 +51,7 @@ afterEach(() => {
   hasPassword.value = false;
   pendingEmail.value = "";
   emailVerified.value = false;
+  sessionEnded.value = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
