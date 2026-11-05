@@ -90,7 +90,9 @@ describe("ShortenPanel", () => {
 
     await input.setValue(url(2001));
     expect(input.element.value).toHaveLength(2001);
-    expect(wrapper.find(".field__error").text()).toBe("A URL can be at most 2000 characters.");
+    expect(wrapper.find(".field__error").text()).toBe(
+      `This URL is ${(2001).toLocaleString()} characters; the limit is ${(2000).toLocaleString()}.`
+    );
     expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
 
     await wrapper.find("form").trigger("submit");

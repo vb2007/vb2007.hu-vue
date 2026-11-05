@@ -40,15 +40,21 @@ test("a URL over 2000 characters is refused before it's sent", async ({ page, ap
   const ofLength = (length: number) =>
     `https://example.com/${"a".repeat(length - "https://example.com/".length)}`;
 
-  await url.fill(ofLength(2001));
-  await expect(url).toHaveAccessibleDescription("A URL can be at most 2000 characters.");
-  await expect(url).toHaveValue(ofLength(2001));
+  // Numbers are written the browser's way, e.g. "2,430".
+  const [length, limit] = await page.evaluate(() =>
+    [2430, 2000].map((value) => value.toLocaleString())
+  );
+  const tooLong = `This URL is ${length} characters; the limit is ${limit}.`;
+
+  await url.fill(ofLength(2430));
+  await expect(url).toHaveAccessibleDescription(tooLong);
+  await expect(url).toHaveValue(ofLength(2430));
   await expect(page.getByRole("button", { name: "Shorten", exact: true })).toHaveAttribute(
     "aria-disabled",
     "true"
   );
   await url.press("Enter");
-  await expect(url).toHaveAccessibleDescription("A URL can be at most 2000 characters.");
+  await expect(url).toHaveAccessibleDescription(tooLong);
   expect(sent).toEqual([]);
 
   await url.fill(ofLength(2000));

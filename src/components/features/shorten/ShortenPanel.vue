@@ -2,8 +2,9 @@
 import { useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { useShortener, validateShortUrl } from "@/composables/useShortener";
+import { useShortener } from "@/composables/useShortener";
 import { Limits } from "@/constants/limits";
+import { validateShortUrl } from "@/scripts/shorten/shortUrl";
 import { displayLink } from "@/scripts/utility/text";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";

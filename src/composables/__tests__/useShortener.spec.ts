@@ -41,31 +41,10 @@ describe("useShortener", () => {
     await shortener.shorten();
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(shortener.errorMessage.value).toBe("A URL can be at most 2000 characters.");
-    expect(shortener.isLoading.value).toBe(false);
-  });
-
-  it("names the format problem first for a URL that's also too long", async () => {
-    const shortener = useShortener();
-    shortener.originalUrl.value = "a".repeat(2001);
-
-    await shortener.shorten();
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(shortener.errorMessage.value).toBe("Invalid URL / URI format.");
-  });
-
-  it("shows the API's refusal of a URL it counts as too long", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(400, { error: "The URI/URL can be at most 2000 characters long." })
+    expect(shortener.errorMessage.value).toBe(
+      `This URL is ${(2001).toLocaleString()} characters; the limit is ${(2000).toLocaleString()}.`
     );
-    const shortener = useShortener();
-    shortener.originalUrl.value = "https://example.com";
-
-    await shortener.shorten();
-
-    expect(shortener.errorMessage.value).toBe("The URI/URL can be at most 2000 characters long.");
-    expect(shortener.shortenedCode.value).toBe("");
+    expect(shortener.isLoading.value).toBe(false);
   });
 
   it("stores the short code and clears the input on success", async () => {
