@@ -7,6 +7,7 @@ import {
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode
 } from "@/composables/useRegisterCode";
+import { Messages } from "@/constants/messages";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -101,17 +102,25 @@ describe("useRegisterCode", () => {
   });
 
   it.each([
-    ["a resend", 200, {}, 60],
+    ["a resend, without a note", 200, {}, 60, {}],
     [
-      "a refused resend",
+      "the cooldown's 429, with its own message",
       429,
       {
         error: "A code was sent just now: wait 42 seconds before requesting another one.",
         retryAfter: 42
       },
-      42
+      42,
+      { note: Messages.EmailCode.cooldown }
+    ],
+    [
+      "a rate limiter's 429, with its message",
+      429,
+      { error: "Too many e-mails requested: try again later.", retryAfter: 3412 },
+      3412,
+      { note: "Too many e-mails requested: try again later." }
     ]
-  ])("keeps the countdown after %s", async (_, status, body, seconds) => {
+  ])("keeps the countdown after %s", async (_, status, body, seconds, note) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
     const step = openStep();
     vi.advanceTimersByTime(60_000);
@@ -119,7 +128,60 @@ describe("useRegisterCode", () => {
     await step.resend();
 
     const kept = JSON.parse(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)!);
-    expect(kept).toEqual({ id: "me@example.com", deadline: Date.now() + seconds * 1000 });
+    expect(kept).toStrictEqual({
+      id: "me@example.com",
+      deadline: Date.now() + seconds * 1000,
+      ...note
+    });
+  });
+
+  it("explains a wait still running in the page when storage is off", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage is off");
+    });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
+    );
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+    await step.resend();
+    step.leave();
+
+    step.open("me@example.com", "earlier");
+
+    expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBeNull();
+    expect(step.resendWaiting.value).toBe(true);
+    expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+    setItem.mockRestore();
+  });
+
+  it("explains a rate limited wait it picks up after a reload, until it ends", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
+    );
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+    await step.resend();
+
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.codeError.value).toBe("Too many e-mails requested: try again later.");
+    await nextTick();
+    vi.advanceTimersByTime(3_412_000);
+    await nextTick();
+    expect(reloaded.codeError.value).toBe("");
+  });
+
+  it("picks up a wait after a sent code without an error", () => {
+    openStep();
+
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.codeError.value).toBe("");
   });
 
   it("forgets an old error when opened again", () => {
@@ -211,6 +273,32 @@ describe("useRegisterCode", () => {
       }
     );
 
+    it("holds confirming for the address until the code checks' wait ends", async () => {
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const step = openStep();
+      expect(step.verifyWaiting.value).toBe(false);
+
+      await step.verify("123456");
+
+      expect(step.verifyWaiting.value).toBe(true);
+      expect(step.verifyHold.remaining.value).toBe(86_400);
+      expect(step.verifyCapped.value).toBe(true);
+
+      // The limiter counts per address, so another one can be confirmed at once.
+      step.open("ME@example.com", "earlier");
+      expect(step.verifyWaiting.value).toBe(true);
+      step.open("you@example.com", "earlier");
+      expect(step.verifyWaiting.value).toBe(false);
+
+      step.open("me@example.com", "earlier");
+      step.codeError.value = error;
+      vi.advanceTimersByTime(86_400_000);
+      await nextTick();
+      expect(step.verifyWaiting.value).toBe(false);
+      expect(step.codeError.value).toBe("");
+    });
+
     it("reports a name taken meanwhile, which ends the waiting registration", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(409, { error: "This username is already taken." })
@@ -290,27 +378,39 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
     });
 
-    it("doesn't hold resending back for a rate limiter's 429, though it has a retryAfter", async () => {
+    it("shows a rate limiter's 429 as the API says it, and waits its retryAfter", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, {
           error: "Too many e-mails requested: try again later.",
-          retryAfter: 3600
+          retryAfter: 3412
         })
       );
       const step = openStep();
       step.cooldown.stop();
-      sessionStorage.removeItem(COOLDOWN_STORAGE_KEY);
 
       expect(await step.resend()).toBe(false);
 
-      // No code went out: the code from before still works, and the message stays.
+      // No code went out: the code from before still works, and the key waits the limit out.
       expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+      expect(step.cooldown.remaining.value).toBe(3412);
       expect(step.notice.value).toBe("sent");
-      expect(step.resendWaiting.value).toBe(false);
-      expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBeNull();
-      vi.advanceTimersByTime(3_600_000);
+
+      vi.advanceTimersByTime(3_412_000);
       await nextTick();
+      expect(step.codeError.value).toBe("");
+    });
+
+    it("waits a minute after a 429 without a retryAfter", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, { error: "Too many e-mails requested: try again later." })
+      );
+      const step = openStep();
+      step.cooldown.stop();
+
+      await step.resend();
+
       expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+      expect(step.cooldown.remaining.value).toBe(60);
     });
 
     it("keeps other errors when the countdown ends", async () => {

@@ -6,24 +6,33 @@ import { test as base, expect, type Route } from "@playwright/test";
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
- * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
+ * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
+ * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
+ * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
  * Confirming a change to `SUPERUSER_EMAIL` is refused, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses
  * addresses on `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
  * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
+ * `api.capsCodeChecks()` refuses every code check (register verify, password reset confirm, e-mail confirm), even the right code,
+ * for 23 hr 45 min like the daily cap; `api.limitsUsernameChecks()` refuses `GET /auth/username-available` for 42 seconds, and
+ * `api.usernameChecks` counts how often it was asked.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
  * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
+ * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
+ * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
+ * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
@@ -74,12 +83,26 @@ export interface MockAdminUser {
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
 /**
- * The API's 429 once its password checks are limited. Like every rate limiter's, it says how long to
- * wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code cooldown's means one was.
+ * The API's 429s once its password checks or its mail sends are limited. Like every rate limiter's,
+ * they say how long to wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code
+ * cooldown's means one was. The waits are fixed, so a label that counts them reads the same for a minute.
  */
 const PASSWORD_CHECKS_LIMITED: MockResponse = {
   status: 429,
   body: { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+};
+const MAIL_SENDS_LIMITED: MockResponse = {
+  status: 429,
+  body: { error: "Too many e-mails requested: try again later.", retryAfter: 3412 }
+};
+/** The daily cap of 20 rejected codes, which refuses even the right one, for most of a day. */
+const CODE_CHECKS_CAPPED: MockResponse = {
+  status: 429,
+  body: { error: "Too many failed attempts: try again later.", retryAfter: 85_500 }
+};
+const USERNAME_CHECKS_LIMITED: MockResponse = {
+  status: 429,
+  body: { error: "Too many username checks requested: try again later.", retryAfter: 42 }
 };
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
@@ -97,6 +120,8 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
 const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
+/** The password account `POST /auth/login` knows from the start. */
+export const MOCK_EMAIL = "me@example.com";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
@@ -211,16 +236,28 @@ const isValidUri = (url: unknown): url is string =>
   !/\s/.test(url) &&
   URI_PREFIXES.some((prefix) => url.toLowerCase().startsWith(prefix));
 
+interface MockUser {
+  email: string;
+  username: string;
+  isSuperuser: boolean;
+  hasPassword: boolean;
+  emailVerified: boolean;
+  githubId?: string;
+  githubLogin?: string;
+}
+
 export class MockApi {
-  private user: {
-    email: string;
-    username: string;
-    isSuperuser: boolean;
-    hasPassword: boolean;
-    emailVerified: boolean;
-    githubId?: string;
-    githubLogin?: string;
-  } | null = null;
+  private user: MockUser | null = null;
+  /** The accounts `POST /auth/login` knows; logging in makes one of them `user` again. */
+  private readonly accounts: MockUser[] = [
+    {
+      email: MOCK_EMAIL,
+      username: "e2e",
+      isSuperuser: false,
+      hasPassword: true,
+      emailVerified: false
+    }
+  ];
   /** A new address waiting for `MOCK_EMAIL_CODE`. */
   private emailChange: (MockCode & { email: string }) | null = null;
   /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
@@ -261,6 +298,11 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
+  private mailSendsLimited = false;
+  private codeChecksCapped = false;
+  private usernameChecksLimited = false;
+  /** How often `GET /auth/username-available` was asked, limited or not. */
+  usernameChecks = 0;
   /** Set by `locksLogins`: the `retryAfter` of the login's 429. */
   private loginLockout: { retryAfter: number | null } | null = null;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
@@ -274,6 +316,8 @@ export class MockApi {
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
+  /** The addresses a password reset was asked for while `limitsMailSends()` refused it. */
+  readonly limitedPasswordResets: string[] = [];
   readonly unhandled: string[] = [];
 
   loggedOut() {
@@ -290,6 +334,16 @@ export class MockApi {
       this.user.githubId = "583231";
       this.user.githubLogin = "e2e-octocat";
     }
+    this.knowsAccount(this.user);
+  }
+
+  /** Lets `POST /auth/login` find `user`, replacing an account with the same address. */
+  private knowsAccount(user: MockUser) {
+    const index = this.accounts.findIndex(
+      (account) => normalizeEmail(account.email) === normalizeEmail(user.email)
+    );
+    if (index === -1) this.accounts.push(user);
+    else this.accounts[index] = user;
   }
 
   /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
@@ -316,6 +370,17 @@ export class MockApi {
       }
     };
     this.users.push(user);
+    // A password reset can reach this account, so logging in reaches it too; an arranged one stays.
+    const email = normalizeEmail(user.email);
+    if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
+      this.accounts.push({
+        email: user.email,
+        username,
+        isSuperuser: false,
+        hasPassword: true,
+        emailVerified: false
+      });
+    }
     return user;
   }
 
@@ -425,6 +490,24 @@ export class MockApi {
   /** Answers password checks with 429, like the API after too many failed attempts. */
   limitsPasswordChecks() {
     this.passwordChecksLimited = true;
+  }
+
+  /** Answers every request that mails a code with 429, like the API past its hourly e-mail limit. */
+  limitsMailSends() {
+    this.mailSendsLimited = true;
+  }
+
+  /**
+   * Answers every code check (register verify, password reset confirm, e-mail confirm) with 429,
+   * like the API at its daily cap of rejected codes, where even the right code is refused.
+   */
+  capsCodeChecks() {
+    this.codeChecksCapped = true;
+  }
+
+  /** Answers `GET /auth/username-available` with 429, like the API past 30 checks a minute, until `false`. */
+  limitsUsernameChecks(limited = true) {
+    this.usernameChecksLimited = limited;
   }
 
   /** Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204). */
@@ -608,21 +691,7 @@ export class MockApi {
             }
           : { status: 403, body: { error: "You must be logged in to perform this action." } };
       case "POST /auth/login":
-        if (this.loginLockout) {
-          const { retryAfter } = this.loginLockout;
-          return {
-            status: 429,
-            body: { error: "Too many failed attempts: try again later.", retryAfter }
-          };
-        }
-        this.user = {
-          email: body?.email ?? "e2e@example.com",
-          username: "e2e",
-          isSuperuser: false,
-          hasPassword: true,
-          emailVerified: this.verifiedAddresses.has(normalizeEmail(body?.email ?? ""))
-        };
-        return { status: 200, newSession: true };
+        return this.login(body?.email, body?.password);
       case "DELETE /user":
         return this.deleteAccount(body);
       case "POST /auth/logout":
@@ -675,10 +744,13 @@ export class MockApi {
       case "PATCH /user/email":
         return this.changeEmail(body?.email, body?.password);
       case "POST /user/email/confirm":
+        if (this.user && this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.confirmEmail(body?.code);
       case "PATCH /user/password":
         return this.changePassword(body?.currentPassword, body?.newPassword);
       case "GET /auth/username-available": {
+        this.usernameChecks++;
+        if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
         const name = (query.get("username") ?? "").toLowerCase();
         const taken = [...this.users.map((user) => user.username), this.user?.username].some(
           (username) => username?.toLowerCase() === name
@@ -686,12 +758,19 @@ export class MockApi {
         return { status: 200, body: { available: !taken } };
       }
       case "POST /auth/register":
+        if (this.mailSendsLimited) return MAIL_SENDS_LIMITED;
         return this.register(body);
       case "POST /auth/register/verify":
+        if (this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.verifyRegistration(body);
       case "POST /auth/register/resend":
+        if (this.mailSendsLimited) return MAIL_SENDS_LIMITED;
         return this.resendRegistrationCode(body?.email);
       case "POST /auth/password-reset": {
+        if (this.mailSendsLimited) {
+          this.limitedPasswordResets.push(body?.email ?? "");
+          return MAIL_SENDS_LIMITED;
+        }
         if (!body?.email) {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
@@ -709,6 +788,7 @@ export class MockApi {
         };
       }
       case "POST /auth/password-reset/confirm":
+        if (this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.confirmPasswordReset(body);
       case "POST /shortenUrl/create":
         return this.shorten((body as { url?: unknown } | null)?.url);
@@ -724,6 +804,38 @@ export class MockApi {
       default:
         return undefined;
     }
+  }
+
+  /**
+   * Like the API (vb2007/vb2007.hu-api#320): one 403 for an unknown address, a wrong password and
+   * an account without a password, so it doesn't reveal which addresses have accounts.
+   */
+  private login(email?: string, password?: string): MockResponse {
+    if (this.loginLockout) {
+      const { retryAfter } = this.loginLockout;
+      return {
+        status: 429,
+        body: { error: "Too many failed attempts: try again later.", retryAfter }
+      };
+    }
+    if (!email?.trim() || !password) {
+      return { status: 400, body: { error: "You must provide an E-mail address and a password." } };
+    }
+    const account = this.accounts.find(
+      (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
+    );
+    if (!account?.hasPassword || password !== this.password) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+        }
+      };
+    }
+    if (this.verifiedAddresses.has(normalizeEmail(email))) account.emailVerified = true;
+    this.user = account;
+    return { status: 200, newSession: true };
   }
 
   /** Links @e2e-octocat and comes back to the account page, which also confirms the user. */
@@ -807,6 +919,7 @@ export class MockApi {
       // Entering the mailed code confirms the address.
       emailVerified: true
     };
+    this.knowsAccount(this.user);
     this.password = pending.password;
     this.pendingRegistrations.delete(email);
     // Like logging in, confirming the code starts a session.
@@ -845,6 +958,8 @@ export class MockApi {
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
     }
+    // Like the API's middleware, the mail limit comes after the password checks' and before the rest.
+    if (this.mailSendsLimited) return MAIL_SENDS_LIMITED;
     if (!email || !password) {
       return {
         status: 400,
@@ -1049,6 +1164,8 @@ export class MockApi {
         };
       }
     }
+    const index = this.accounts.indexOf(this.user);
+    if (index !== -1) this.accounts.splice(index, 1);
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
@@ -1366,6 +1483,7 @@ export class MockApi {
     const sameName = (name?: string) => name?.toLowerCase() === username.toLowerCase();
     const known = [
       this.user.username,
+      ...this.accounts.map((account) => account.username),
       ...this.users.map((user) => user.username),
       ...this.pastes.map((paste) => paste.addedBy)
     ];

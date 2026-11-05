@@ -4,7 +4,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { codeCooldownOf } from "@/composables/useCountdown";
+import { codeCooldownOf, retryAfterFrom } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 
 /** A `RegisterStatus`, or the API's message when registering failed. */
@@ -142,21 +142,32 @@ export const USERNAME_CHECK_DELAY = 400;
 /** Whether a username is free; "unknown" when the API couldn't say, which register's 409 covers. */
 export type UsernameAvailability = "free" | "taken" | "unknown";
 
+/** Until when (`Date.now()`) the API limits username checks; none are sent before then. */
+let usernameChecksPausedUntil = 0;
+
 /**
  * Asks the API whether `username` is free (vb2007/vb2007.hu-api#233), sent as register sends it.
  * A failure, a 429 or an API without the endpoint yet is "unknown", never a problem to show. An
- * aborted check (newer typing replaced it) is "unknown" too, and isn't logged.
+ * aborted check (newer typing replaced it) is "unknown" too, and isn't logged. The 429 (30 checks
+ * a minute per IP) is expected and isn't logged either: no check is sent until its `retryAfter`
+ * has passed, and those are "unknown" too.
  */
 export const checkUsername = async (
   username: string,
   signal?: AbortSignal
 ): Promise<UsernameAvailability> => {
+  if (Date.now() < usernameChecksPausedUntil) return "unknown";
+
   const result = await apiRequest(Endpoints.Auth.usernameAvailable, {
     query: { username },
     signal,
-    failure: Messages.Auth.usernameCheckFailed
+    failure: Messages.Auth.usernameCheckFailed,
+    quietStatuses: [HttpStatus.TooManyRequests]
   });
 
+  if (!result.ok && result.status === HttpStatus.TooManyRequests) {
+    usernameChecksPausedUntil = Date.now() + retryAfterFrom(result.body) * 1000;
+  }
   if (!result.ok || typeof result.data.available !== "boolean") return "unknown";
   return result.data.available ? "free" : "taken";
 };
@@ -168,10 +179,16 @@ export interface RegisterAnswer {
   /** The field a 400 or 409 is about; a 429's or 503's message names no field's fault. */
   field?: RegisterField;
   /**
-   * Set when a code went to this address less than a minute ago (the API's per-address
-   * cooldown): that code still works, and another can be sent after this many seconds.
+   * Set only for the API's per-address cooldown, when a code went to this address less than a
+   * minute ago: that code still works, and another can be sent after this many seconds. A rate
+   * limiter's 429 (e.g. too many e-mails) sent nothing, so it leaves this out.
    */
   retryAfter?: number;
+  /**
+   * Set only for a rate limiter's 429 (the hourly mail limit, per IP): nothing was sent, and the
+   * API takes no registration for this many seconds.
+   */
+  limitedFor?: number;
 }
 
 /**
@@ -201,10 +218,11 @@ export const register = async (
   if (result.status === HttpStatus.BadRequest || result.status === HttpStatus.Conflict) {
     answer.field = registerFieldOf(message);
   }
-  // Only the per-address cooldown's 429 means a code went out; a rate limiter's sent none.
-  const codeWait = codeCooldownOf(result);
-  if (codeWait !== undefined) {
-    answer.retryAfter = codeWait;
+  // Every 429 says how long to wait, but only the per-address cooldown means a code went out.
+  if (result.status === HttpStatus.TooManyRequests) {
+    const codeWait = codeCooldownOf(result);
+    if (codeWait !== undefined) answer.retryAfter = codeWait;
+    else answer.limitedFor = retryAfterFrom(result.body);
   }
   registerStatus.value = message;
   return answer;

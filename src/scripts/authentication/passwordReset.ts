@@ -1,6 +1,8 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
+import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
@@ -14,12 +16,19 @@ export interface PasswordResetAnswer {
   message?: string;
   /** What went wrong otherwise. */
   error?: string;
+  /**
+   * Seconds to wait after a 429: before the mail limit takes another request, or before the code
+   * checks take another code (too many wrong ones, or the daily cap, where even the right one is
+   * refused).
+   */
+  retryAfter?: number;
 }
 
 /**
  * Asks for a code (vb2007/vb2007.hu-api#163). The API answers the same 200 whether or not an
  * account uses the address, so the message is all there is to show. It also answers it within the
- * minute, sending nothing: its only 429 is the mail limit's, which sent no code either.
+ * minute, sending nothing: its only 429 is the mail limit's, which sent no code either but says how
+ * long it holds.
  */
 export const requestPasswordReset = async (email: string): Promise<PasswordResetAnswer> => {
   const result = await apiRequest(Endpoints.Auth.passwordReset, {
@@ -31,7 +40,9 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
     return { message: result.data.message ?? "" };
   }
 
-  return { error: result.error };
+  return result.status === HttpStatus.TooManyRequests
+    ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
+    : { error: result.error };
 };
 
 /**
@@ -50,7 +61,9 @@ export const confirmPasswordReset = async (
   });
 
   if (!result.ok) {
-    return { error: result.error };
+    return result.status === HttpStatus.TooManyRequests
+      ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
+      : { error: result.error };
   }
 
   const message = result.data.message ?? "";

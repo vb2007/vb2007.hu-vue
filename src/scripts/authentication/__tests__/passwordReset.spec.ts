@@ -57,13 +57,25 @@ describe("requestPasswordReset", () => {
     });
   });
 
-  it("returns the mail limit's error alone: its wait isn't a code's", async () => {
+  it("returns the mail limit's error with its wait", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 1800 })
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
     );
 
     await expect(requestPasswordReset("me@example.com")).resolves.toEqual({
-      error: "Too many e-mails requested: try again later."
+      error: "Too many e-mails requested: try again later.",
+      retryAfter: 3412
+    });
+  });
+
+  it("waits a minute after a 429 without a retryAfter", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later." })
+    );
+
+    await expect(requestPasswordReset("me@example.com")).resolves.toEqual({
+      error: "Too many e-mails requested: try again later.",
+      retryAfter: 60
     });
   });
 
@@ -144,6 +156,16 @@ describe("confirmPasswordReset", () => {
       { error: "The code is wrong, expired or already used: check it or request a new one." }
     );
     expect(clearSession).not.toHaveBeenCalled();
+    expect(passwordResetNotice.value).toBe("");
+  });
+
+  it("returns the code checks' 429 with its wait, which even the right code gets at the cap", async () => {
+    const error = "Too many failed attempts: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+
+    await expect(confirmPasswordReset("me@example.com", "123456", "new password")).resolves.toEqual(
+      { error, retryAfter: 86_400 }
+    );
     expect(passwordResetNotice.value).toBe("");
   });
 

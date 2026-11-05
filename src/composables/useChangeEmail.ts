@@ -3,7 +3,8 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { codeCooldownOf, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
   emailVerified,
@@ -33,7 +34,7 @@ export const useChangeEmail = () => {
   const codeError = ref("");
   /** Any other confirm failure, including one that dropped the waiting change. */
   const confirmError = ref("");
-  /** Runs until the API mails another code: after one was sent, or the cooldown's 429. */
+  /** Runs until the API takes the form again: after a code was sent, or any 429. */
   const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The API's cooldown is per account, so it's kept for the account's current address. */
   const account = () => normalizeEmail(userEmail.value);
@@ -45,11 +46,22 @@ export const useChangeEmail = () => {
     removeSaved(COOLDOWN_STORAGE_KEY);
   };
 
-  // The cooldown's 429 counts its wait down on the key, so its message has no number to go stale.
-  // A rate limiter's 429 doesn't hold the key back, so its message stays until the next try.
+  /**
+   * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
+   * is refused), Confirm code waits; Change e-mail has limits of its own, so it doesn't.
+   */
+  const confirmHold = useRetryHold(confirmError);
+
+  // Every 429 counts its wait down on the key and keeps its message as the countdown's note, so
+  // the message goes once the key comes back. `showWait` brings it back, e.g. after a reload.
   watch(cooldown.active, (waiting) => {
-    if (!waiting && changeError.value === Messages.EmailCode.cooldown) changeError.value = "";
+    if (!waiting && changeError.value === cooldown.note.value) changeError.value = "";
   });
+
+  /** Shows why the key waits, if a 429 started its countdown (also one from before a reload). */
+  const showWait = () => {
+    if (cooldown.active.value) changeError.value = cooldown.note.value;
+  };
 
   /**
    * Returns whether it worked: a code went to the new address, now `pendingEmail`, or the address
@@ -78,16 +90,15 @@ export const useChangeEmail = () => {
         userEmail.value = normalizeEmail(email);
       }
     } else if (result.status === HttpStatus.TooManyRequests) {
-      const codeWait = codeCooldownOf(result);
-      if (codeWait === undefined) {
-        // A rate limiter's (e.g. too many wrong passwords): no code went out, the key stays free.
-        changeError.value = apiErrorOf(result) ?? Messages.Account.tooManyRequests;
-      } else {
-        changeError.value = Messages.EmailCode.cooldown;
-        cooldown.start(codeWait, account());
-        // The code it waits for may have been asked for elsewhere, e.g. in another tab.
-        await fetchUserDetails();
-      }
+      // The one-code-a-minute cooldown, or a rate limiter (wrong passwords, too many e-mails):
+      // both count the API's retryAfter down on the key, but only the cooldown means a code went out.
+      const isCooldown = codeCooldownOf(result) !== undefined;
+      changeError.value = isCooldown
+        ? Messages.EmailCode.cooldown
+        : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
+      cooldown.start(retryAfterFrom(result.body), account(), changeError.value);
+      // The code it waits for may have been asked for elsewhere, e.g. in another tab.
+      if (isCooldown) await fetchUserDetails();
     } else {
       changeError.value = result.error;
       // The API keeps the new change even when its mail fails, so show what it has now.
@@ -102,7 +113,9 @@ export const useChangeEmail = () => {
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
    * refreshes the user: a 403 or 409 drops the waiting change, and a 400 may mean it expired. A
    * 403 can also be the session ending (expired, ended by a password reset, or replaced by a login
-   * elsewhere): the refresh then logs the page out, and the account page says so instead.
+   * elsewhere): the refresh then logs the page out, and the account page says so instead. When the
+   * refresh finds the account on the waiting address, the change was confirmed elsewhere (another
+   * tab or device), so it counts.
    */
   const confirm = async (code: string) => {
     const address = pendingEmail.value;
@@ -118,15 +131,14 @@ export const useChangeEmail = () => {
       quietStatuses: [HttpStatus.Forbidden]
     });
 
+    let changed = result.ok;
+
     if (result.ok) {
       if (!(await fetchUserDetails())) {
         userEmail.value = pendingEmail.value;
         pendingEmail.value = "";
         emailVerified.value = true;
       }
-      endCooldown();
-      // Only now, so it doesn't sit next to the waiting address it replaces.
-      changeMessage.value = result.data.message ?? Messages.Account.emailUpdated;
     } else if (result.kind !== "http") {
       confirmError.value = result.error;
     } else {
@@ -140,6 +152,14 @@ export const useChangeEmail = () => {
 
       if (!isLoggedIn.value) {
         // The session ended: nothing was said about the change, and the account page now says why.
+      } else if (
+        !pendingEmail.value &&
+        normalizeEmail(userEmail.value) === normalizeEmail(address)
+      ) {
+        // Confirmed elsewhere, so its code was spent (400), or a race found the address taken by
+        // this very account (409). The refresh already shows it, verified, as a 200 would. A newer
+        // change waiting since then keeps its code step and cooldown, with the usual error.
+        changed = true;
       } else if (!pendingEmail.value) {
         // Its code step is gone with it, so the message names the address it was about. A 400
         // means the code expired, and the API's "check it" no longer fits without the field.
@@ -152,11 +172,20 @@ export const useChangeEmail = () => {
         codeError.value = result.error;
       } else {
         confirmError.value = result.error;
+        if (result.status === HttpStatus.TooManyRequests) {
+          confirmHold.start(retryAfterFrom(result.body));
+        }
       }
+    }
+
+    if (changed) {
+      endCooldown();
+      // Only now, so it doesn't sit next to the waiting address it replaces.
+      changeMessage.value = (result.ok ? result.data.message : "") || Messages.Account.emailUpdated;
     }
     isConfirming.value = false;
 
-    return result.ok;
+    return changed;
   };
 
   return {
@@ -168,6 +197,8 @@ export const useChangeEmail = () => {
     codeError,
     confirmError,
     confirm,
-    cooldown
+    cooldown,
+    showWait,
+    confirmHold
   };
 };

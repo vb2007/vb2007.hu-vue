@@ -1,3 +1,6 @@
+import { SITE_LOCALE } from "@/constants/locale";
+import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
+
 /**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
  * shown when it sends one, these otherwise. A `failure` text is followed by the status
@@ -8,6 +11,22 @@ export class Messages {
   static readonly connectionError: string = "Error connecting to server";
   /** The caller aborted the request, e.g. a check that newer typing replaced; never shown. */
   static readonly requestAborted: string = "The request was aborted";
+  /**
+   * A submit key held after a rate limiter's 429 (see `useRetryHold`), counting its `retryAfter`
+   * down. The key's own verb would read as a promise ("Delete account in 15 min"), so it says this.
+   * `units: "long"` spells the units out for the key's accessible name ("Try again in 15 minutes").
+   */
+  static tryAgainIn(seconds: number, units: WaitUnits = "short"): string {
+    return `Try again in ${formatWait(seconds, SITE_LOCALE, units)}`;
+  }
+  /**
+   * The held key's wait in words, read out with the 429's message ("Try again in 23 hours 45
+   * minutes."): the counting key is disabled, so a screen reader would never reach it. It's fixed
+   * when the hold starts, so it's only in the message for screen readers, not shown beside the key.
+   */
+  static tryAgainSpoken(seconds: number): string {
+    return `${this.tryAgainIn(seconds, "long")}.`;
+  }
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";
@@ -102,8 +121,29 @@ export class Messages {
     /** The cooldown's own message names its seconds, which would freeze next to the countdown. */
     static readonly cooldown: string =
       "A code was sent just now. You can send another once the countdown ends.";
+    /**
+     * Under a code checks' hold longer than their window: the daily cap of wrong codes, which
+     * counts per address, so a new code would be refused too (see `Limits.Code.failedChecksWindowSeconds`).
+     */
+    static readonly capped: string =
+      "A new code won't help: no code is accepted for this address until the wait ends.";
     static invalid(digits: number): string {
       return `Enter the ${digits}-digit code from the e-mail.`;
+    }
+    /**
+     * The register step's resend key while it waits. Like the two below, `units: "long"` spells
+     * the units out for the key's accessible name ("Resend in 57 minutes").
+     */
+    static resendIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Resend in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
+    /** The change e-mail form's key while it waits. */
+    static sendCodeIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Send code in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
+    /** The password reset's resend key while it waits. */
+    static sendAgainIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Send again in ${formatWait(seconds, SITE_LOCALE, units)}`;
     }
   };
 

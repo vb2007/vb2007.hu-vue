@@ -3,7 +3,8 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { codeCooldownOf, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
@@ -61,6 +62,21 @@ export const useRegisterCode = () => {
   const resendWaiting = computed(
     () => cooldown.active.value && normalizeEmail(cooldownFor.value) === normalizeEmail(email.value)
   );
+  /**
+   * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
+   * is refused), Confirm code waits for the address; another address can be confirmed at once.
+   */
+  const verifyHold = useRetryHold(codeError);
+  const heldId = () => normalizeEmail(email.value);
+  const verifyWaiting = computed(() => verifyHold.isHeld(heldId()));
+  /** The error to show: `codeError`, or why Confirm code waits, also once it was cleared. */
+  const shownError = computed(() => verifyHold.shown(heldId()));
+  /** The wait in words, read out with the hold's message. */
+  const verifySpoken = computed(() => verifyHold.spokenFor(heldId()));
+  /** Held past the wrong codes' window: the daily cap, which a new code doesn't lift. */
+  const verifyCapped = computed(
+    () => verifyWaiting.value && verifyHold.seconds.value > Limits.Code.failedChecksWindowSeconds
+  );
 
   /** Shows one problem at a time; an empty message clears both. */
   const showError = (message: string, endsWithCooldown = false) => {
@@ -74,9 +90,10 @@ export const useRegisterCode = () => {
     codeFieldError.value = message;
   };
 
-  const holdResend = (seconds: number) => {
+  /** Holds the resend key back; `reason` is kept with the wait, to show again after a reload. */
+  const holdResend = (seconds: number, reason = "") => {
     cooldownFor.value = email.value;
-    cooldown.start(seconds, normalizeEmail(email.value));
+    cooldown.start(seconds, normalizeEmail(email.value), reason);
   };
 
   watch(cooldown.active, (active) => {
@@ -87,7 +104,8 @@ export const useRegisterCode = () => {
 
   /**
    * Opens the step for `address`; `waitSeconds` holds resending back that long. Without it, a
-   * countdown kept for the address (e.g. from before a reload) picks up where it was.
+   * countdown kept for the address (e.g. from before a reload) picks up where it was, with the
+   * refused resend's message that started it.
    */
   const open = (address: string, kind: CodeNotice, waitSeconds = 0) => {
     email.value = address;
@@ -95,8 +113,14 @@ export const useRegisterCode = () => {
     showError("");
     if (waitSeconds > 0) {
       holdResend(waitSeconds);
-    } else if (cooldown.resume(normalizeEmail(address))) {
+      return;
+    }
+    if (cooldown.resume(normalizeEmail(address))) {
       cooldownFor.value = address;
+    }
+    // Kept or still running in memory (e.g. without sessionStorage), the wait says why again.
+    if (resendWaiting.value) {
+      showError(cooldown.note.value, true);
     }
   };
 
@@ -132,6 +156,8 @@ export const useRegisterCode = () => {
       showError(result.error);
       if (result.status === HttpStatus.Conflict) {
         outcome = "taken";
+      } else if (result.status === HttpStatus.TooManyRequests) {
+        verifyHold.start(retryAfterFrom(result.body), heldId());
       }
     }
     isVerifying.value = false;
@@ -155,19 +181,19 @@ export const useRegisterCode = () => {
     if (result.ok) {
       notice.value = "resent";
       holdResend(RESEND_COOLDOWN_SECONDS);
+    } else if (result.status === HttpStatus.TooManyRequests) {
+      // The cooldown's own message names its seconds, which would freeze next to the countdown;
+      // a rate limiter's (e.g. too many e-mails) only says to try later, which the key times.
+      const message =
+        codeCooldownOf(result) === undefined ? result.error : Messages.EmailCode.cooldown;
+      // The cooldown or a rate limiter: either way the key counts down the API's retryAfter.
+      holdResend(retryAfterFrom(result.body), message);
+      showError(message, true);
     } else {
-      const codeWait = codeCooldownOf(result);
-      if (codeWait !== undefined) {
-        holdResend(codeWait);
-        // The cooldown's own message names its seconds, which would freeze next to the countdown.
-        showError(Messages.EmailCode.cooldown, true);
-      } else {
-        // Also a rate limiter's 429: it sent no code, so the key isn't held back for it.
-        showError(result.error);
-        if (result.status === HttpStatus.ServiceUnavailable) {
-          // The API replaced the code before the e-mail failed, so the old one is gone too.
-          notice.value = "lost";
-        }
+      showError(result.error);
+      if (result.status === HttpStatus.ServiceUnavailable) {
+        // The API replaced the code before the e-mail failed, so the old one is gone too.
+        notice.value = "lost";
       }
     }
     isResending.value = false;
@@ -184,6 +210,11 @@ export const useRegisterCode = () => {
     codeFieldError,
     cooldown,
     resendWaiting,
+    verifyWaiting,
+    verifyHold,
+    shownError,
+    verifySpoken,
+    verifyCapped,
     open,
     leave,
     verify,

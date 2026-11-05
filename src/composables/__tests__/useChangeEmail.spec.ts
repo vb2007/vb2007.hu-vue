@@ -214,7 +214,11 @@ describe("useChangeEmail", () => {
       expect(pendingEmail.value).toBe("new@example.com");
       expect(email.changeError.value).toBe(Messages.EmailCode.cooldown);
       expect(email.cooldown.remaining.value).toBe(42);
-      expect(savedCooldown()).toEqual({ id: "old@example.com", deadline: Date.now() + 42_000 });
+      expect(savedCooldown()).toEqual({
+        id: "old@example.com",
+        deadline: Date.now() + 42_000,
+        note: Messages.EmailCode.cooldown
+      });
       vi.advanceTimersByTime(42_000);
       await nextTick();
       expect(email.cooldown.active.value).toBe(false);
@@ -222,27 +226,83 @@ describe("useChangeEmail", () => {
     });
 
     it.each([
-      "Too many failed attempts: try again later.",
-      "Too many e-mails requested: try again later."
+      ["wrong passwords", "Too many failed attempts: try again later.", 900],
+      ["e-mails", "Too many e-mails requested: try again later.", 3600]
     ])(
-      "shows a rate limiter's 429 without holding the key back, though it has a retryAfter: %s",
-      async (error) => {
+      "shows a rate limiter's 429 for too many %s, and waits its retryAfter",
+      async (_, error, retryAfter) => {
         vi.useFakeTimers();
-        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
         const email = useEmail();
 
-        expect(await email.change("new@example.com", "secret-password")).toBe(false);
+        await email.change("new@example.com", "secret-password");
 
-        // No code went out, so there's nothing to count down, keep or refresh.
+        // Not the cooldown: nothing was mailed, so the user isn't refreshed.
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(email.changeError.value).toBe(error);
-        expect(email.cooldown.active.value).toBe(false);
-        expect(savedCooldown()).toBeNull();
-        vi.advanceTimersByTime(900_000);
+        expect(email.cooldown.remaining.value).toBe(retryAfter);
+        vi.advanceTimersByTime(retryAfter * 1000);
         await nextTick();
-        expect(email.changeError.value).toBe(error);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(email.changeError.value).toBe("");
       }
     );
+
+    it("waits a minute after a 429 without a retryAfter", async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+      );
+      const email = useEmail();
+
+      expect(await email.change("new@example.com", "secret-password")).toBe(false);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(email.changeError.value).toBe("Too many failed attempts: try again later.");
+      expect(email.cooldown.remaining.value).toBe(60);
+    });
+
+    it("explains a rate limited wait again after a reload", async () => {
+      vi.useFakeTimers();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+      await useEmail().change("new@example.com", "wrong-password");
+      expect(savedCooldown()).toEqual({
+        id: "old@example.com",
+        deadline: Date.now() + 900_000,
+        note: error
+      });
+
+      vi.advanceTimersByTime(20_000);
+      const reloaded = useEmail();
+      expect(reloaded.changeError.value).toBe("");
+      reloaded.showWait();
+
+      expect(reloaded.changeError.value).toBe(error);
+      expect(reloaded.cooldown.remaining.value).toBe(880);
+    });
+
+    it("has nothing to explain once the wait is over", () => {
+      const email = useEmail();
+      email.changeError.value = "stale";
+
+      email.showWait();
+
+      expect(email.changeError.value).toBe("stale");
+    });
+
+    it("keeps another error when the countdown ends", async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(jsonResponse(500, { error: "Something broke." }));
+      const email = useEmail();
+      email.cooldown.start(5, "old@example.com");
+
+      await email.change("new@example.com", "secret-password");
+      vi.advanceTimersByTime(5_000);
+      await nextTick();
+
+      expect(email.changeError.value).toBe("Something broke.");
+    });
 
     it("explains a 429 that isn't JSON", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(429));
@@ -251,7 +311,7 @@ describe("useChangeEmail", () => {
       await email.change("new@example.com", "secret-password");
 
       expect(email.changeError.value).toBe("Too many requests: try again later.");
-      expect(email.cooldown.active.value).toBe(false);
+      expect(email.cooldown.remaining.value).toBe(60);
     });
 
     it("names the status when the error isn't JSON", async () => {
@@ -391,6 +451,60 @@ describe("useChangeEmail", () => {
       );
     });
 
+    it.each([
+      [400, wrongCode],
+      [409, "An account with this E-mail address already exists."]
+    ])(
+      "counts a %i as confirmed when the refresh finds the new address, e.g. from another tab",
+      async (status, error) => {
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error })).mockResolvedValueOnce(
+          jsonResponse(200, {
+            ...waitingUser,
+            email: "new@example.com",
+            emailVerified: true,
+            pendingEmail: null
+          })
+        );
+        const email = useWaitingEmail();
+
+        expect(await email.confirm("123456")).toBe(true);
+
+        // The same as this tab's own 200: the code step goes, and the address is the new one.
+        expect(userEmail.value).toBe("new@example.com");
+        expect(pendingEmail.value).toBe("");
+        expect(emailVerified.value).toBe(true);
+        expect(email.changeMessage.value).toBe("E-mail address updated.");
+        expect(email.confirmError.value).toBe("");
+        expect(email.codeError.value).toBe("");
+        expect(email.isConfirming.value).toBe(false);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(savedCooldown()).toBeNull();
+      }
+    );
+
+    it("keeps a newer change waiting when the old one was confirmed elsewhere", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error: wrongCode }))
+        .mockResolvedValueOnce(
+          jsonResponse(200, {
+            ...waitingUser,
+            email: "new@example.com",
+            emailVerified: true,
+            pendingEmail: "other@example.com"
+          })
+        );
+      const email = useWaitingEmail();
+
+      expect(await email.confirm("123456")).toBe(false);
+
+      // Another tab confirmed new@example.com, then asked for other@example.com: that one waits.
+      expect(pendingEmail.value).toBe("other@example.com");
+      expect(email.codeError.value).toBe(wrongCode);
+      expect(email.changeMessage.value).toBe("");
+      expect(email.confirmError.value).toBe("");
+      expect(email.cooldown.active.value).toBe(true);
+    });
+
     it("shows a rate limiter's 429 apart from the code, and keeps the change waiting", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
@@ -404,6 +518,26 @@ describe("useChangeEmail", () => {
       expect(email.codeError.value).toBe("");
       expect(pendingEmail.value).toBe("new@example.com");
       expect(userEmail.value).toBe("old@example.com");
+      // The hold waits the limiter's retryAfter out.
+      expect(email.confirmHold.remaining.value).toBe(900);
+    });
+
+    it("holds confirming for the daily cap's wait, but not changing the address", async () => {
+      vi.useFakeTimers();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const email = useEmail();
+
+      await email.confirm("123456");
+
+      expect(email.confirmHold.isHeld()).toBe(true);
+      expect(email.confirmHold.remaining.value).toBe(86_400);
+      expect(email.cooldown.active.value).toBe(false);
+
+      vi.advanceTimersByTime(86_400_000);
+      await nextTick();
+      expect(email.confirmHold.isHeld()).toBe(false);
+      expect(email.confirmError.value).toBe("");
     });
 
     it.each([

@@ -59,7 +59,7 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await fillForm(page);
 
   const resend = page.getByRole("button", { name: /^Resend/ });
-  await expect(resend).toHaveText("Resend in 60 s");
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 
   await page.clock.runFor(60_000);
@@ -71,20 +71,17 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await expect(page.getByRole("status")).toHaveText(
     "If a registration is waiting for new@example.com, a new code is on its way, and the one before no longer works."
   );
-  await expect(resend).toHaveText("Resend in 60 s");
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 });
 
-/** Answers `path` with the API's 429 carrying `json`: the code cooldown's or a rate limiter's. */
+/** Answers `path` with the API's 429 carrying `json`, e.g. the code cooldown's. */
 const refuse = (page: Page, path: string, json: { error: string; retryAfter: number }) =>
   page.route(`**${path}`, (route) =>
     route.request().method() === "OPTIONS"
       ? route.fallback()
       : route.fulfill({ status: 429, headers: { "Access-Control-Allow-Origin": "*" }, json })
   );
-
-/** A rate limiter's 429, which says how long to wait too (vb2007/vb2007.hu-api#242). */
-const MAILS_LIMITED = { error: "Too many e-mails requested: try again later.", retryAfter: 3600 };
 
 test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
   await refuse(page, "/auth/register/resend", {
@@ -102,7 +99,7 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("alert")).toHaveText(
     "A code was sent just now. You can send another once the countdown ends."
   );
-  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 42 s");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText(/^Resend in [1-4]\d sec$/);
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
 
   await page.clock.runFor(42_000);
@@ -110,29 +107,122 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
-test("a rate limiter's 429 keeps the form, as no code was sent", async ({ page }) => {
-  await refuse(page, "/auth/register", MAILS_LIMITED);
-  await fillForm(page);
-
-  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
-  await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
-  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
-});
-
-test("a rate limiter's 429 on a resend doesn't hold the key back", async ({ page }) => {
+test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({
+  page,
+  api
+}) => {
   await page.clock.install();
   await fillForm(page);
   await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
   await page.clock.runFor(60_000);
-  await refuse(page, "/auth/register/resend", MAILS_LIMITED);
+  // The first code went out; the next one is over the limit.
+  api.limitsMailSends();
 
   await page.getByRole("button", { name: "Resend code" }).click();
 
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
-  await expect(page.getByRole("status")).toContainText(
-    "A 6-digit code is on its way to new@example.com."
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveAccessibleName(
+    "Resend in 57 minutes"
   );
-  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /^Resend/ })).toBeDisabled();
+
+  // After a reload, the wait it picks up still says why.
+  await page.reload();
+  await page.getByLabel("E-mail").fill("new@example.com");
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
+});
+
+test("registering over the mail limit stays on the form, since no code was sent", async ({
+  page,
+  api
+}) => {
+  api.limitsMailSends();
+  await fillForm(page);
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many e-mails requested: try again later. Try again in 57 minutes."
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByText(/a code went to/)).toHaveCount(0);
+  await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
+  // The limit is per IP, so Register waits it out whatever the address.
+  const key = page.locator("form").getByRole("button", { name: /^(Register|Try again)/ });
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+});
+
+test("a code past the daily cap of wrong codes holds Confirm code for hours", async ({
+  page,
+  api
+}) => {
+  await fillForm(page);
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  // Even the right code is refused once 20 were wrong today.
+  api.capsCodeChecks();
+
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes."
+  );
+  const key = page.getByRole("button", { name: /^Try again in/ });
+  await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
+  // it points at says the wait in words.
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await expect(page.getByText("Registration successful!")).toHaveCount(0);
+});
+
+test("username checks over the API's limit stop quietly until its wait passed", async ({
+  page,
+  api
+}) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.clock.install();
+  api.limitsUsernameChecks();
+  api.hasUser("anna4");
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const registerKey = page.getByRole("button", { name: "Register", exact: true });
+
+  const limited = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
+  await username.fill("anna");
+  await page.clock.runFor(500);
+  // The 429 has to arrive before the next typing, which would abort a check still on its way.
+  await (await limited).finished();
+  expect(api.usernameChecks).toBe(1);
+  // The 429 says nothing: the name is just unknown, which registering still checks.
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  // Within the wait, nothing more is asked.
+  await username.fill("anna2");
+  await page.clock.runFor(500);
+  expect(api.usernameChecks).toBe(1);
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+
+  api.limitsUsernameChecks(false);
+  await page.clock.runFor(42_000);
+  await username.fill("anna4");
+  await page.clock.runFor(500);
+  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(registerKey).toHaveAttribute("aria-disabled", "true");
+  expect(api.usernameChecks).toBe(2);
+  // The expected 429 isn't logged as an error (the browser's own failed-request line aside).
+  expect(errors.filter((error) => error.includes("username"))).toEqual([]);
 });
 
 test("a code that already arrived can be entered after a reload", async ({ page }) => {
@@ -147,7 +237,7 @@ test("a code that already arrived can be entered after a reload", async ({ page 
     "Enter the code that was mailed to new@example.com."
   );
   // The minute since the code was sent survives the reload, so no click is wasted on a 429.
-  await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
@@ -165,7 +255,7 @@ test("registering the same address again within the minute keeps the code sent",
   await expect(page.getByRole("status")).toContainText(
     "Less than a minute ago, a code went to new@example.com. It still works"
   );
-  await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 

@@ -317,12 +317,22 @@ describe("login", () => {
   });
 
   it("shows the API's error message", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: "Wrong password." }));
-    const { login, loginStatus } = await load();
+    // The API's one answer for an unknown address, a wrong password and a GitHub-only account.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, {
+        error:
+          "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+      })
+    );
+    const { login, loginStatus, isLoggedIn } = await load();
 
-    await login("me@example.com", "nope");
+    // Only a 429 says how long to wait.
+    await expect(login("me@example.com", "nope")).resolves.toBeUndefined();
 
-    expect(loginStatus.value).toBe("Wrong password.");
+    expect(loginStatus.value).toBe(
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+    );
+    expect(isLoggedIn.value).toBe(false);
   });
 
   it("clears the last status while it asks again, so the same refusal shows afresh", async () => {
@@ -345,7 +355,7 @@ describe("login", () => {
     [60, "in a minute"],
     [5, "in a minute"]
   ])(
-    "says how long a lockout of %i seconds lasts, rounded up to minutes",
+    "says how long a lockout of %i seconds lasts, rounded up to minutes, and returns its wait",
     async (seconds, wait) => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, {
@@ -355,7 +365,8 @@ describe("login", () => {
       );
       const { login, loginStatus } = await load();
 
-      await login("me@example.com", "nope");
+      // The wait the form holds its key for.
+      await expect(login("me@example.com", "nope")).resolves.toBe(seconds);
 
       expect(loginStatus.value).toBe(
         `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`
@@ -373,7 +384,8 @@ describe("login", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(429, body));
     const { login, loginStatus } = await load();
 
-    await login("me@example.com", "nope");
+    // No known wait, so nothing to hold the key for.
+    await expect(login("me@example.com", "nope")).resolves.toBe(0);
 
     expect(loginStatus.value).toBe(
       "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."

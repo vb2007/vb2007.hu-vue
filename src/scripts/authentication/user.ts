@@ -89,7 +89,11 @@ export const restoreSession = () => {
   return sessionRestore;
 };
 
-export const login = async (email: string, password: string) => {
+/**
+ * Logs in; `loginStatus` says how it went. After the login limiter's 429 (vb2007/vb2007.hu-api#204)
+ * it returns the seconds the API refuses even the right password for: 0 when it didn't say.
+ */
+export const login = async (email: string, password: string): Promise<number | undefined> => {
   // Cleared while it works, so the same refusal again is shown (and announced) afresh.
   loginStatus.value = "";
   const result = await apiRequest(Endpoints.Auth.login, {
@@ -98,10 +102,10 @@ export const login = async (email: string, password: string) => {
   });
 
   if (!result.ok && result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
-    // Locked out for up to 15 minutes: whole minutes say enough, a ticking count would only fidget.
+    // Locked out for up to 15 minutes: the message says it in whole minutes, the held key counts it.
     const seconds = retryAfterFrom(result.body, 0);
     loginStatus.value = Messages.Auth.loginLockedOut(Math.ceil(seconds / 60));
-    return;
+    return seconds;
   }
   if (!result.ok) {
     loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
