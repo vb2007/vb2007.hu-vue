@@ -259,8 +259,8 @@ const handleReset = () =>
   submitReset(resetChecks, () => confirmPasswordReset(sentTo.value, code.value, newPassword.value));
 
 const handleLinkReset = async () => {
-  linkAnswer.value = "";
   await submitReset(linkChecks, async () => {
+    linkAnswer.value = "";
     const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
     if (answer.linkRefused) {
       linkAnswer.value = "refused";
