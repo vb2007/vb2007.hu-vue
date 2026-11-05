@@ -1,5 +1,8 @@
 import { computed, onScopeDispose, ref } from "vue";
+import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
+import { apiErrorOf, type ApiFailure } from "@/scripts/api/client";
 import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
@@ -72,8 +75,9 @@ export const useCountdown = (storageKey?: string) => {
 };
 
 /**
- * The seconds to wait after a 429. The resend cooldown sends them as `retryAfter` in the body;
- * the rate limiters don't, and the Retry-After header isn't exposed to the page, hence `fallback`.
+ * The seconds to wait after a 429, sent as `retryAfter` in the body by the resend cooldown and the
+ * rate limiters alike (vb2007/vb2007.hu-api#242), next to the same Retry-After header. Only the body
+ * is read here, and `fallback` stands in for a body without it.
  */
 export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
   const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
@@ -82,3 +86,15 @@ export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSec
     ? Math.ceil(retryAfter)
     : fallback;
 };
+
+/**
+ * The seconds left before another code can be mailed, when `failure` is the one-code-a-minute
+ * cooldown's 429: a code went out moments ago and still works. Undefined for anything else,
+ * including a rate limiter's 429, which sends `retryAfter` too but means no code was sent.
+ */
+export const codeCooldownOf = (failure: ApiFailure): number | undefined =>
+  failure.kind === "http" &&
+  failure.status === HttpStatus.TooManyRequests &&
+  apiErrorOf(failure)?.startsWith(Messages.EmailCode.cooldownPrefix)
+    ? retryAfterFrom(failure.body)
+    : undefined;

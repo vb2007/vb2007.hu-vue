@@ -538,7 +538,7 @@ describe("RegisterForm", () => {
 
     it("keeps a problem that isn't the code's above the key", async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
       );
       const wrapper = await atCodeStep();
 

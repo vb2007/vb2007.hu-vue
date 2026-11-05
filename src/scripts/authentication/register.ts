@@ -4,7 +4,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom } from "@/composables/useCountdown";
+import { codeCooldownOf } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 
 /** A `RegisterStatus`, or the API's message when registering failed. */
@@ -194,15 +194,17 @@ export const register = async (
     return { sent: true };
   }
 
-  // 400 (rules, disposable or undeliverable address), 409 (taken), 429 (too soon), 503 (mail failed)
+  // 400 (rules, disposable or undeliverable address), 409 (taken), 429 (too soon or rate limited),
+  // 503 (mail failed)
   const message = apiErrorOf(result) ?? RegisterStatus.Error;
   const answer: RegisterAnswer = { sent: false };
   if (result.status === HttpStatus.BadRequest || result.status === HttpStatus.Conflict) {
     answer.field = registerFieldOf(message);
   }
-  // Only the per-address cooldown says how long; the rate limiters' 429s don't.
-  if (result.status === HttpStatus.TooManyRequests && typeof result.body?.retryAfter === "number") {
-    answer.retryAfter = retryAfterFrom(result.body);
+  // Only the per-address cooldown's 429 means a code went out; a rate limiter's sent none.
+  const codeWait = codeCooldownOf(result);
+  if (codeWait !== undefined) {
+    answer.retryAfter = codeWait;
   }
   registerStatus.value = message;
   return answer;

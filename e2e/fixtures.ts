@@ -71,6 +71,15 @@ export interface MockAdminUser {
 /** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
+/**
+ * The API's 429 once its password checks are limited. Like every rate limiter's, it says how long to
+ * wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code cooldown's means one was.
+ */
+const PASSWORD_CHECKS_LIMITED: MockResponse = {
+  status: 429,
+  body: { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+};
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -659,7 +668,7 @@ export class MockApi {
   /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
   private checkGithubPassword(password?: string): MockResponse | undefined {
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!password) {
       return {
@@ -754,7 +763,7 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!email || !password) {
       return {
@@ -857,7 +866,7 @@ export class MockApi {
   private changePassword(currentPassword?: string, newPassword?: string) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!currentPassword || !newPassword) {
       return {
@@ -923,7 +932,7 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (this.user.hasPassword) {
       if (!body?.password) {

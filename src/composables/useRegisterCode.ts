@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, useCountdown } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
@@ -155,18 +155,19 @@ export const useRegisterCode = () => {
     if (result.ok) {
       notice.value = "resent";
       holdResend(RESEND_COOLDOWN_SECONDS);
-    } else if (result.status === HttpStatus.TooManyRequests) {
-      holdResend(retryAfterFrom(result.body));
-      // The cooldown's own message names its seconds, which would freeze next to the countdown.
-      showError(
-        typeof result.body?.retryAfter === "number" ? Messages.EmailCode.cooldown : result.error,
-        true
-      );
     } else {
-      showError(result.error);
-      if (result.status === HttpStatus.ServiceUnavailable) {
-        // The API replaced the code before the e-mail failed, so the old one is gone too.
-        notice.value = "lost";
+      const codeWait = codeCooldownOf(result);
+      if (codeWait !== undefined) {
+        holdResend(codeWait);
+        // The cooldown's own message names its seconds, which would freeze next to the countdown.
+        showError(Messages.EmailCode.cooldown, true);
+      } else {
+        // Also a rate limiter's 429: it sent no code, so the key isn't held back for it.
+        showError(result.error);
+        if (result.status === HttpStatus.ServiceUnavailable) {
+          // The API replaced the code before the e-mail failed, so the old one is gone too.
+          notice.value = "lost";
+        }
       }
     }
     isResending.value = false;

@@ -234,7 +234,14 @@ describe("checkUsername", () => {
 
   it.each([
     ["a 404 from an API without the endpoint", () => jsonResponse(404, { error: "Not found" })],
-    ["a 429", () => jsonResponse(429, { error: "Too many requests" })],
+    [
+      "a 429",
+      () =>
+        jsonResponse(429, {
+          error: "Too many username checks requested: try again later.",
+          retryAfter: 60
+        })
+    ],
     ["an answer without a verdict", () => jsonResponse(200, {})],
     ["a body that isn't JSON", () => jsonResponse(200)]
   ])("can't tell after %s", async (_case, response) => {
@@ -296,7 +303,9 @@ describe("register", () => {
     [429, "Too many e-mails requested: try again later.", undefined],
     [503, "The e-mail couldn't be sent: please try again later.", undefined]
   ])("shows the API's message for a %i response: %s", async (status, error, field) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    // Every rate limiter's 429 says how long to wait (vb2007/vb2007.hu-api#242).
+    const wait = status === 429 ? { retryAfter: 3600 } : {};
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error, ...wait }));
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual(
       field ? { sent: false, field } : { sent: false }
@@ -312,6 +321,14 @@ describe("register", () => {
       sent: false,
       retryAfter: 42
     });
+    expect(registerStatus.value).toBe(error);
+  });
+
+  it("leaves out a rate limiter's retryAfter, since it sent no code", async () => {
+    const error = "Too many e-mails requested: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 3600 }));
+
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
     expect(registerStatus.value).toBe(error);
   });
 
