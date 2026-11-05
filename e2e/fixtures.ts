@@ -474,6 +474,7 @@ export class MockApi {
           : { status: 401 };
       case "POST /auth/login":
         this.user = {
+          _id: MOCK_USER_ID,
           email: body?.email ?? "e2e@example.com",
           username: "e2e",
           isSuperuser: false,
@@ -574,6 +575,7 @@ export class MockApi {
           };
         }
         this.user = {
+          _id: MOCK_USER_ID,
           email: this.pendingRegistration.email,
           username: this.pendingRegistration.username,
           isSuperuser: false,

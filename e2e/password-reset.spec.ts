@@ -212,7 +212,7 @@ test.describe("the mailed link", () => {
     await expect(page.getByLabel("New password")).toBeFocused();
     await expect(page.getByLabel("E-mail")).toHaveCount(0);
     await expect(page.getByLabel("Code")).toHaveCount(0);
-    expect(JSON.stringify(await page.evaluate(() => history.state))).not.toContain(token);
+    expect(await page.evaluate("JSON.stringify(history.state)")).not.toContain(token);
 
     // Leaving and coming back doesn't bring the token back either.
     await page.getByRole("main").getByRole("link", { name: "Log in", exact: true }).click();
