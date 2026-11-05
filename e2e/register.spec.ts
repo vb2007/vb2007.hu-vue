@@ -105,6 +105,43 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
+/** Answers `path` with a rate limiter's 429, which has a retryAfter too (vb2007/vb2007.hu-api#242). */
+const limitMails = (page: Page, path: string) =>
+  page.route(`**${path}`, (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fallback()
+      : route.fulfill({
+          status: 429,
+          headers: { "Access-Control-Allow-Origin": "*" },
+          json: { error: "Too many e-mails requested: try again later.", retryAfter: 3600 }
+        })
+  );
+
+test("a rate limiter's 429 keeps the form, as no code was sent", async ({ page }) => {
+  await limitMails(page, "/auth/register");
+  await fillForm(page);
+
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+});
+
+test("a rate limiter's 429 on a resend doesn't hold the key back", async ({ page }) => {
+  await page.clock.install();
+  await fillForm(page);
+  await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
+  await page.clock.runFor(60_000);
+  await limitMails(page, "/auth/register/resend");
+
+  await page.getByRole("button", { name: "Resend code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("status")).toContainText(
+    "A 6-digit code is on its way to new@example.com."
+  );
+  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+});
+
 test("a code that already arrived can be entered after a reload", async ({ page }) => {
   await fillForm(page);
   await expect(page.getByLabel("Confirmation code")).toBeVisible();

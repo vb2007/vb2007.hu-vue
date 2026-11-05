@@ -490,6 +490,8 @@ for (const [status, email, password, error] of [
     await expect(page.getByRole("alert")).toContainText(error);
     await expect(page.getByLabel("New e-mail")).toHaveValue(email);
     await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+    // No code went out, so the key isn't held back, even by the 429's retryAfter.
+    await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled();
 
     await page.keyboard.press("Escape");
     await expect(page.getByLabel("New e-mail")).toHaveCount(0);

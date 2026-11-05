@@ -87,13 +87,13 @@ test("the code can be sent again once the countdown ends, and the address change
       : route.fulfill({
           status: 429,
           headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin },
-          json: { error: "Too many e-mails requested: try again later." }
+          json: { error: "Too many e-mails requested: try again later.", retryAfter: 1800 }
         })
   );
   await page.clock.runFor(60_000);
   await resend.click();
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
-  await expect(resend).toHaveText("Send again in 1:00");
+  await expect(resend).toHaveText("Send again in 30:00");
 });
 
 test("a code that already arrived is entered after a reload, without sending another", async ({

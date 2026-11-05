@@ -278,6 +278,14 @@ describe("register", () => {
     expect(registerStatus.value).toBe(error);
   });
 
+  it("leaves out a rate limiter's retryAfter, since it sent no code", async () => {
+    const error = "Too many e-mails requested: try again later.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 3600 }));
+
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
+    expect(registerStatus.value).toBe(error);
+  });
+
   it("ignores a retryAfter on anything but a 429", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(503, { error: "The e-mail couldn't be sent.", retryAfter: 42 })
