@@ -60,6 +60,11 @@ const linkToken = ref("");
  * `limited` it after too many rejected links from this address, without using it up.
  */
 const linkAnswer = ref<"" | "refused" | "limited">("");
+/**
+ * The link limit's wait, which the Reset password key counts down like the code keys' waits. It
+ * isn't kept past a reload, which drops the link anyway.
+ */
+const linkWait = useCountdown();
 /** Why a link that came in can't work, shown on the e-mail step it falls back to. */
 const linkError = ref("");
 /** The logged-in user's address when the link is theirs, for password managers; "" otherwise. */
@@ -132,6 +137,24 @@ const resendName = computed(() =>
 const failureIsWait = computed(
   () => isResendWaiting.value && !!failure.value && failure.value === resend.note.value
 );
+
+/** The link step's waiting key's spelled-out name, like the resend key's; it can't be resetting then. */
+const linkResetName = computed(() =>
+  linkWait.active.value
+    ? spokenWait(
+        Messages.Auth.resetPasswordIn(linkWait.remaining.value),
+        Messages.Auth.resetPasswordIn(linkWait.remaining.value, "long")
+      )
+    : undefined
+);
+
+// The link limit's message, and the code it offers meanwhile, only hold until its wait ends.
+watch(linkWait.active, (waiting) => {
+  if (!waiting && linkAnswer.value === "limited") {
+    linkAnswer.value = "";
+    failure.value = "";
+  }
+});
 
 const flagError = () => {
   isButtonError.value = true;
@@ -302,6 +325,7 @@ const handleLinkReset = async () => {
       linkAnswer.value = "refused";
     } else if (answer.retryAfter !== undefined) {
       linkAnswer.value = "limited";
+      linkWait.start(answer.retryAfter);
     } else if (answer.passwordRefused) {
       passwordRefusal = answer.error!;
     }
@@ -320,6 +344,11 @@ const handleLinkReset = async () => {
   if (linkAnswer.value === "refused") {
     await nextTick();
     step.value?.querySelector("button")?.focus();
+  }
+
+  // The key is disabled for the wait, which drops focus; the password is what's tried again.
+  if (linkAnswer.value === "limited") {
+    await focusFirstField();
   }
 };
 
@@ -340,6 +369,7 @@ const requestNewLink = async () => {
   email.value = linkUsername.value || email.value;
   linkToken.value = "";
   linkAnswer.value = "";
+  linkWait.stop();
   clearPasswordSteps();
   await focusFirstField();
 };
@@ -362,6 +392,8 @@ watch(
     linkToken.value = isWellFormed ? token : "";
     linkError.value = isWellFormed ? "" : Messages.Auth.resetLinkMalformed;
     linkAnswer.value = "";
+    // A new link is tried afresh: the API says again if the limit still holds.
+    linkWait.stop();
     sentTo.value = "";
     sentMessage.value = "";
     clearPasswordSteps();
@@ -409,7 +441,7 @@ watch(
           required
           @blur="leaveLink('newPassword')"
         />
-        <StatusMessage v-if="failure" tone="error">
+        <StatusMessage v-if="failure" :id="failureId" tone="error">
           {{ failure }}
           <template v-if="linkAnswer === 'limited'">{{ linkStillWorks }}</template>
         </StatusMessage>
@@ -417,10 +449,19 @@ watch(
           type="submit"
           block
           :loading="isResetting"
+          :disabled="linkWait.active.value"
           :blocked="!isLinkValid"
           :error="isButtonError"
+          :aria-label="linkResetName"
+          :aria-describedby="linkAnswer === 'limited' ? failureId : undefined"
         >
-          {{ isResetting ? "Resetting" : "Reset password" }}
+          {{
+            isResetting
+              ? "Resetting"
+              : linkWait.active.value
+                ? Messages.Auth.resetPasswordIn(linkWait.remaining.value)
+                : "Reset password"
+          }}
         </BaseButton>
       </form>
       <div class="alt">

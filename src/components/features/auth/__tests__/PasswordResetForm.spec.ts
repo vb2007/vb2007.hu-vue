@@ -721,7 +721,7 @@ describe("PasswordResetForm", () => {
       expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
     });
 
-    it("says the link still works after too many rejected links, and offers a code meanwhile", async () => {
+    it("says the link still works after too many rejected links, counts the wait down, and offers a code meanwhile", async () => {
       const { wrapper } = await mountFromLink();
       await linkPassword(wrapper).setValue("new password");
       vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
@@ -732,19 +732,72 @@ describe("PasswordResetForm", () => {
       await wrapper.find("form").trigger("submit");
       await flushPromises();
 
-      expect(wrapper.find('[role="alert"]').text()).toBe(
+      const alert = wrapper.find('[role="alert"]');
+      expect(alert.text()).toBe(
         "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent."
       );
-      expect(submitButton(wrapper).text()).toBe("Reset password");
+      expect(submitButton(wrapper).text()).toBe("Reset password in 15 min");
+      expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(submitButton(wrapper).attributes("aria-label")).toBe("Reset password in 15 minutes");
+      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(document.activeElement).toBe(linkPassword(wrapper).element);
       expect(wrapper.find(".alt p").text()).toBe("Can't wait? Get a code instead");
 
-      // Trying again later drops the note until the API answers.
+      vi.advanceTimersByTime(899_000);
+      await flushPromises();
+      expect(submitButton(wrapper).text()).toBe("Reset password in 1 sec");
+
+      // The wait over, the limit's message and the code it offered go with it.
+      vi.advanceTimersByTime(1000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(submitButton(wrapper).text()).toBe("Reset password");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+      expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
+      expect(submitButton(wrapper).attributes("aria-describedby")).toBeUndefined();
+      expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
+
       const { answer, settle } = pendingAnswer();
       vi.mocked(confirmPasswordResetLink).mockReturnValueOnce(answer);
       await wrapper.find("form").trigger("submit");
-      expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
+      expect(submitButton(wrapper).text()).toBe("Resetting");
       settle({ message: "Password reset successfully: log in with the new password." });
       await flushPromises();
+    });
+
+    /** Opens the link and gets the link limit's 429, which starts its wait. */
+    const mountLimitedLink = async () => {
+      const mounted = await mountFromLink();
+      await linkPassword(mounted.wrapper).setValue("new password");
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
+        error: "Too many failed attempts: try again later.",
+        retryAfter: 900
+      });
+      await mounted.wrapper.find("form").trigger("submit");
+      await flushPromises();
+      return mounted;
+    };
+
+    it("ends the link limit's wait when the link is left for a code", async () => {
+      const { wrapper } = await mountLimitedLink();
+
+      await wrapper.find(".alt button").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(submitButton(wrapper).text()).toBe("Send code");
+    });
+
+    it("tries a new link in the same tab afresh, without the last one's wait", async () => {
+      const { wrapper, router } = await mountLimitedLink();
+
+      await router.push(`/reset-password#token=${TOKEN}`);
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(submitButton(wrapper).text()).toBe("Reset password");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+      expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
     });
 
     it("goes to an empty e-mail step for a new link, the code step's checks untouched", async () => {

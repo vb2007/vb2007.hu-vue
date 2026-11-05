@@ -76,6 +76,10 @@ export class Messages {
     static resetLinkStillWorks(validMinutes: number): string {
       return `The link wasn't used up: it works until ${validMinutes} minutes after it was sent.`;
     }
+    /** The reset link step's key while it waits out that 429; `units` as for the code keys' waits. */
+    static resetPasswordIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Reset password in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
     static readonly invalidEmail: string = "Enter a valid e-mail address.";
     /** An account's own password left out where it's asked for: logging in, or confirming it's them. */
     static readonly passwordMissing: string = "Enter your password.";
