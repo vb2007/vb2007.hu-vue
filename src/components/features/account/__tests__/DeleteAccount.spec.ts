@@ -227,7 +227,9 @@ describe("DeleteAccount", () => {
 
   it("ties a refused username to the field along with its hint", async () => {
     hasPassword.value = false;
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: "Too many failed attempts." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+    );
     const { wrapper } = await mountPanel();
 
     await open(wrapper);
@@ -257,7 +259,9 @@ describe("DeleteAccount", () => {
   });
 
   it("puts the key back on Cancel or Escape, forgetting what was typed", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: "Too many failed attempts." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+    );
     const { wrapper } = await mountPanel();
 
     await open(wrapper);

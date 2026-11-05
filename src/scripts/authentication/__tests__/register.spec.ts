@@ -71,15 +71,29 @@ describe("registerFieldOf", () => {
 
 const INVALID_EMAIL = "Enter a valid e-mail address.";
 const EMAIL_TOO_LONG = "Your e-mail address can't be longer than 254 characters.";
+const LOCAL_PART_TOO_LONG =
+  "The part of your e-mail address before the @ can't be longer than 64 characters.";
 const CODE = "Enter the 6-digit code from the e-mail.";
+
+/** Three 63 character labels before example.com, like the API's tests, so a long address has a short local part. */
+const LONG_DOMAIN = `${`${"b".repeat(63)}.`.repeat(3)}example.com`;
+const addressOfLength = (length: number) =>
+  `${"a".repeat(length - LONG_DOMAIN.length - 1)}@${LONG_DOMAIN}`;
 
 describe("emailError", () => {
   it.each([
     ["an address", "me@example.com"],
-    ["a 254 character address", `${"a".repeat(242)}@example.com`],
     ["a subdomain address", "me@mail.example.co.uk"],
-    ["an address the API trims", "  Me@Example.com "],
-    ["a 254 character address with padding the API trims", `  ${"a".repeat(242)}@example.com  `]
+    ["a dotted local part", "first.last@example.com"],
+    ["a +tag", "me+tag@example.com"],
+    ["the other characters an atom allows", "a!#$%&'*/=?^_`{|}~-b@example.com"],
+    ["a hyphen inside a domain label", "me@my-mail.example.com"],
+    ["a 63 character domain label", `me@${"b".repeat(63)}.com`],
+    ["a 64 character local part", `${"a".repeat(64)}@example.com`],
+    ["a 254 character address", addressOfLength(254)],
+    ["an address the API trims and lowercases", "  Me@Example.COM "],
+    ["a 254 character address with padding the API trims", `  ${addressOfLength(254)}  `],
+    ["an address that's plain once lowercased", "Ke@example.com"]
   ])("accepts %s", (_case, email) => {
     expect(emailError(email)).toBe("");
   });
@@ -87,16 +101,33 @@ describe("emailError", () => {
   it.each([
     ["an empty field", "", INVALID_EMAIL],
     ["an invalid address", "not-an-email", INVALID_EMAIL],
+    ["two @ signs", "a@@example.com", INVALID_EMAIL],
     ["an address without a dot in the domain", "a@b", INVALID_EMAIL],
     ["an address with an empty domain label", "a@b..c", INVALID_EMAIL],
     ["an address with a leading domain dot", "a@.b.c", INVALID_EMAIL],
     ["an address with a trailing domain dot", "a@b.c.", INVALID_EMAIL],
+    ["a quoted local part", '"x"@example.com', INVALID_EMAIL],
+    ["two dots in a row in the local part", "x..y@example.com", INVALID_EMAIL],
+    ["a leading dot in the local part", ".x@example.com", INVALID_EMAIL],
+    ["a trailing dot in the local part", "x.@example.com", INVALID_EMAIL],
+    ["a space inside", "x y@example.com", INVALID_EMAIL],
+    ["a trailing comment", "x@example.com(c)", INVALID_EMAIL],
+    ["a display name", "n<x@example.com>", INVALID_EMAIL],
+    ["a second address after a comma", "x@example.com,y", INVALID_EMAIL],
+    ["a comma in the local part", "a,b@example.com", INVALID_EMAIL],
+    ["an IP literal domain", "x@[192.168.0.1]", INVALID_EMAIL],
+    ["a leading hyphen in a domain label", "x@-example.com", INVALID_EMAIL],
+    ["a trailing hyphen in a domain label", "x@example-.com", INVALID_EMAIL],
+    ["a domain label over 63 characters", `x@${"b".repeat(64)}.com`, INVALID_EMAIL],
+    ["an underscore in the domain", "x@my_mail.example.com", INVALID_EMAIL],
+    ["a non-ASCII character", "józsef@example.com", INVALID_EMAIL],
     ["a long malformed address", "a".repeat(300), INVALID_EMAIL],
-    ["a 255 character address", `${"a".repeat(243)}@example.com`, EMAIL_TOO_LONG],
+    ["a 65 character local part", `${"a".repeat(65)}@example.com`, LOCAL_PART_TOO_LONG],
+    ["a 255 character address", addressOfLength(255), EMAIL_TOO_LONG],
     [
-      "an address that only grows past 254 characters when lowercased",
-      `İ${"a".repeat(241)}@example.com`,
-      EMAIL_TOO_LONG
+      "a too long local part in a too long address, naming the local part",
+      `${"a".repeat(243)}@example.com`,
+      LOCAL_PART_TOO_LONG
     ]
   ])("rejects %s", (_case, email, expected) => {
     expect(emailError(email)).toBe(expected);
@@ -107,6 +138,9 @@ describe("emailShapeError", () => {
   it.each([
     ["me@example.com", ""],
     [" a@b ", ""],
+    // Registered before the API took only plain addresses: it still logs in.
+    ['"x"@example.com', ""],
+    [`${"a".repeat(65)}@example.com`, ""],
     ["", INVALID_EMAIL],
     ["me", INVALID_EMAIL],
     ["me@", INVALID_EMAIL],
@@ -200,7 +234,14 @@ describe("checkUsername", () => {
 
   it.each([
     ["a 404 from an API without the endpoint", () => jsonResponse(404, { error: "Not found" })],
-    ["a 429", () => jsonResponse(429, { error: "Too many requests" })],
+    [
+      "a 429",
+      () =>
+        jsonResponse(429, {
+          error: "Too many username checks requested: try again later.",
+          retryAfter: 60
+        })
+    ],
     ["an answer without a verdict", () => jsonResponse(200, {})],
     ["a body that isn't JSON", () => jsonResponse(200)]
   ])("can't tell after %s", async (_case, response) => {
@@ -236,7 +277,10 @@ describe("register", () => {
   it("asks the API to mail a code, which answers 202 before any account exists", async () => {
     registerStatus.value = "Email already taken.";
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(202, { message: "A confirmation code was sent to me@example.com." })
+      jsonResponse(202, {
+        message:
+          "A confirmation code was sent to me@example.com: send it to POST /auth/register/verify to finish registering."
+      })
     );
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: true });
@@ -259,7 +303,9 @@ describe("register", () => {
     [429, "Too many e-mails requested: try again later.", undefined],
     [503, "The e-mail couldn't be sent: please try again later.", undefined]
   ])("shows the API's message for a %i response: %s", async (status, error, field) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    // Every rate limiter's 429 says how long to wait (vb2007/vb2007.hu-api#242).
+    const wait = status === 429 ? { retryAfter: 3600 } : {};
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error, ...wait }));
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual(
       field ? { sent: false, field } : { sent: false }

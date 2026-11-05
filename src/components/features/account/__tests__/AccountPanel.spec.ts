@@ -10,6 +10,7 @@ import {
   isSessionChecked,
   isSuperuser,
   pendingEmail,
+  sessionEnded,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -47,6 +48,40 @@ describe("AccountPanel", () => {
       "/login",
       "/register"
     ]);
+  });
+
+  it("says the session ended when the API logged the page out, and moves focus there", async () => {
+    logIn();
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+
+    // What fetchUserDetails does with GET /user's 403, e.g. after a login on another device.
+    isLoggedIn.value = false;
+    sessionEnded.value = true;
+    await flushPromises();
+
+    expect(wrapper.find("h1").text()).toBe("Account");
+    const status = wrapper.find('[role="status"]');
+    expect(status.text()).toBe(
+      "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account."
+    );
+    expect(document.activeElement).toBe(status.element);
+    expect(wrapper.findAll("a").map((link) => link.attributes("href"))).toEqual([
+      "/login",
+      "/register"
+    ]);
+    wrapper.unmount();
+  });
+
+  it("goes back to asking to log in once the ended session's notice is gone", async () => {
+    isSessionChecked.value = true;
+    sessionEnded.value = true;
+    const { wrapper } = await mountWithRouter(AccountPanel);
+    expect(wrapper.find('[role="status"]').text()).toMatch(/^Your session ended/);
+
+    sessionEnded.value = false;
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').text()).toBe("Log in to see your account.");
   });
 
   it("shows the account and offers to link GitHub", async () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The logged-in user's account and how they can log in; visitors get a gate once the session is known. */
-import { computed, nextTick, ref, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import {
@@ -12,6 +12,7 @@ import {
   isSessionChecked,
   isSuperuser,
   pendingEmail,
+  sessionEnded,
   userEmail,
   username
 } from "@/scripts/authentication/authState";
@@ -62,6 +63,13 @@ const announce = async (message: string) => {
   await nextTick();
   noticeMessage.value?.$el.focus();
 };
+// The key that was pressed went with the account board, so focus moves to why it went.
+const endedMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("endedMessage");
+watch(sessionEnded, async (ended) => {
+  if (!ended) return;
+  await nextTick();
+  endedMessage.value?.$el.focus();
+});
 const onPasswordSet = () => announce(Messages.Account.passwordSet);
 const onUnlinked = () => announce(Messages.Account.githubUnlinked);
 </script>
@@ -165,7 +173,15 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
     <div class="gate">
       <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
-      <StatusMessage tone="info">Log in to see your account.</StatusMessage>
+      <StatusMessage
+        v-if="sessionEnded"
+        ref="endedMessage"
+        class="notice"
+        tone="info"
+        tabindex="-1"
+        >{{ Messages.Auth.sessionEnded }}</StatusMessage
+      >
+      <StatusMessage v-else tone="info">Log in to see your account.</StatusMessage>
       <div class="gate__keys">
         <BaseButton to="/login">Log in</BaseButton>
         <BaseButton to="/register" variant="secondary">Register</BaseButton>

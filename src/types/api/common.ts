@@ -7,13 +7,13 @@ export interface MessageResponse {
   message: string;
 }
 
-/** What the API sends when a request fails; a bare 500 sends no body at all. */
+/**
+ * What the API sends when a request fails, a 500 included. Only an answer that never came from the
+ * API (a gateway's 502/504 page, say) has no JSON body at all.
+ */
 export interface ApiErrorBody {
   error?: string;
-  /**
-   * Seconds before trying again, on any 429: a rate limiter's or the per-address code cooldown's
-   * (vb2007/vb2007.hu-api#254). Only the message tells the cooldown apart, see `isResendCooldown`.
-   */
+  /** Seconds before trying again, on any 429: the code cooldown's or a rate limiter's. */
   retryAfter?: number;
 }
 
