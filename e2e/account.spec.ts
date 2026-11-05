@@ -1,4 +1,11 @@
-import { expect, MOCK_EMAIL_CODE, MOCK_PASSWORD, type MockApi, test } from "./fixtures";
+import {
+  expect,
+  MOCK_EMAIL_CODE,
+  MOCK_PASSWORD,
+  type MockApi,
+  SUPERUSER_EMAIL,
+  test
+} from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
@@ -470,13 +477,24 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
 });
 
-// The form checks the address with the API's own rule, so a 400 can't come from it.
+// The form checks the address's format with the API's own rule, but only the API checks its domain
+// (vb2007/vb2007.hu-api#217).
 for (const [status, email, password, error] of [
+  [
+    400,
+    "new@mailinator.com",
+    MOCK_PASSWORD,
+    "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
+  ],
   [403, "new@example.com", "wrong-password", "The provided password is incorrect."],
+  [403, SUPERUSER_EMAIL, MOCK_PASSWORD, "This e-mail address is reserved for the superuser."],
   [409, "taken@example.com", MOCK_PASSWORD, "An account with this E-mail address already exists."],
   [429, "new@example.com", MOCK_PASSWORD, "Too many failed attempts: try again later."]
 ] as const) {
-  test(`a ${status} from the API keeps the form and the address`, async ({ page, api }) => {
+  test(`a ${status} from the API keeps the form and the address: ${error}`, async ({
+    page,
+    api
+  }) => {
     api.loggedInAs("me@example.com", "me");
     api.hasUser("taken");
     if (status === 429) api.limitsPasswordChecks();
@@ -496,6 +514,33 @@ for (const [status, email, password, error] of [
     await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
   });
 }
+
+test("a code whose mail failed leaves the change waiting, and another goes at once", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.failsNextMail();
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("new@example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The e-mail couldn't be sent: please try again later."
+  );
+  // The API keeps the change, so the page shows it, and no countdown holds the key.
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(page.getByLabel("New e-mail")).toHaveValue("new@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+});
 
 test("accounts that can't change their e-mail say why", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });

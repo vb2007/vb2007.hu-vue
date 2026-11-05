@@ -54,7 +54,7 @@ test("registering asks for the mailed code, then logs the new account in", async
   await expect(page.getByLabel("URL")).toBeVisible();
 });
 
-test("a new code can be sent once a minute", async ({ page }) => {
+test("a new code can be sent once a minute", async ({ page, api }) => {
   await page.clock.install();
   await fillForm(page);
 
@@ -63,6 +63,8 @@ test("a new code can be sent once a minute", async ({ page }) => {
   await expect(resend).toBeDisabled();
 
   await page.clock.runFor(60_000);
+  // The API's minute runs out too, so it takes the resend.
+  api.clockRunsFor(60_000);
   await expect(resend).toHaveText("Resend code");
   await resend.click();
 
@@ -159,18 +161,7 @@ test("a mistyped address can be fixed from the code step", async ({ page }) => {
 });
 
 test("the API's reason for refusing an address is shown on the form", async ({ page }) => {
-  await page.route("**/auth/register", (route) =>
-    route.request().method() === "OPTIONS"
-      ? route.fallback()
-      : route.fulfill({
-          status: 400,
-          headers: { "Access-Control-Allow-Origin": "*" },
-          json: {
-            error: "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
-          }
-        })
-  );
-
+  // The mock refuses a disposable domain like the API does.
   await fillForm(page, "someone@mailinator.com");
 
   // It's about the address, so it shows under the E-mail field, which takes focus.
