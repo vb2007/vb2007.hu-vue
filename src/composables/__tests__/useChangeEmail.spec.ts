@@ -452,6 +452,8 @@ describe("useChangeEmail", () => {
       expect(userEmail.value).toBe("old@example.com");
       expect(email.cooldown.active.value).toBe(false);
       expect(savedCooldown()).toBeNull();
+      // The 403 is an answer the page shows, not a fault to log; the 409 still is one.
+      expect(console.error).toHaveBeenCalledTimes(status === 403 ? 0 : 1);
     });
 
     it.each([

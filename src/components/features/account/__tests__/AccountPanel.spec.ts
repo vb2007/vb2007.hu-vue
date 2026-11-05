@@ -54,7 +54,7 @@ describe("AccountPanel", () => {
     logIn();
     const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
 
-    // What fetchUserDetails does with GET /user's 403, e.g. after a password reset elsewhere.
+    // What fetchUserDetails does with GET /user's 403, e.g. after a login on another device.
     isLoggedIn.value = false;
     sessionEnded.value = true;
     await flushPromises();
@@ -62,7 +62,7 @@ describe("AccountPanel", () => {
     expect(wrapper.find("h1").text()).toBe("Account");
     const status = wrapper.find('[role="status"]');
     expect(status.text()).toBe(
-      "Your session ended, so you're logged out: the password may have been changed or reset elsewhere. Log in again to see your account."
+      "Your session ended, so you're logged out: it expired, or the account was logged in or out elsewhere. Log in again to see your account."
     );
     expect(document.activeElement).toBe(status.element);
     expect(wrapper.findAll("a").map((link) => link.attributes("href"))).toEqual([
