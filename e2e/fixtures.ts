@@ -763,7 +763,11 @@ export class MockApi {
       };
     }
     const normalized = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalized)) {
+    // The API's isValidEmail (vb2007/vb2007.hu-api#288): plain addresses only.
+    const atom = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+";
+    const label = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+    const plain = new RegExp(`^${atom}(?:\\.${atom})*@${label}(?:\\.${label})+$`);
+    if (normalized.length > 254 || normalized.indexOf("@") > 64 || !plain.test(normalized)) {
       return {
         status: 400,
         body: { error: "The e-mail address is invalid: must match name@provider.com format." }
