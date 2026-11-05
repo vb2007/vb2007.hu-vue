@@ -4,6 +4,7 @@ import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { isResendCooldown, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
 import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
@@ -61,6 +62,12 @@ export const useRegisterCode = () => {
   const resendWaiting = computed(
     () => cooldown.active.value && normalizeEmail(cooldownFor.value) === normalizeEmail(email.value)
   );
+  /**
+   * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
+   * is refused), Confirm code waits for the address; another address can be confirmed at once.
+   */
+  const verifyHold = useRetryHold(codeError);
+  const verifyWaiting = computed(() => verifyHold.isHeld(normalizeEmail(email.value)));
 
   /** Shows one problem at a time; an empty message clears both. */
   const showError = (message: string, endsWithCooldown = false) => {
@@ -132,6 +139,8 @@ export const useRegisterCode = () => {
       showError(result.error);
       if (result.status === HttpStatus.Conflict) {
         outcome = "taken";
+      } else if (result.status === HttpStatus.TooManyRequests) {
+        verifyHold.start(retryAfterFrom(result.body), normalizeEmail(email.value));
       }
     }
     isVerifying.value = false;
@@ -179,6 +188,8 @@ export const useRegisterCode = () => {
     codeFieldError,
     cooldown,
     resendWaiting,
+    verifyWaiting,
+    verifyIn: verifyHold.remaining,
     open,
     leave,
     verify,

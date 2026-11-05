@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useChangeEmail } from "@/composables/useChangeEmail";
@@ -29,9 +29,11 @@ const {
   codeError,
   confirmError,
   confirm,
-  cooldown
+  cooldown,
+  confirmHold
 } = useChangeEmail();
 const { remaining: waitSeconds, active: isWaiting } = cooldown;
+const isConfirmHeld = computed(() => confirmHold.isHeld());
 
 const open = ref(false);
 const email = ref("");
@@ -126,6 +128,7 @@ const save = async () => {
 };
 
 const confirmCode = async () => {
+  if (isConfirmHeld.value) return;
   if (!(await codeChecks.validate(codeForm.value))) return;
   emit("start");
   if (await confirm(code.value.replace(/\s/g, ""))) {
@@ -135,7 +138,7 @@ const confirmCode = async () => {
   await nextTick();
   // Confirmed, dropped or expired: the code step is gone, and its key is left.
   if (!pendingEmail.value) return key.value?.$el.focus();
-  if (!codeForm.value?.contains(document.activeElement)) focusField(codeField.value);
+  if (!codeForm.value?.querySelector(":focus:not(:disabled)")) focusField(codeField.value);
 };
 </script>
 
@@ -176,8 +179,20 @@ const confirmCode = async () => {
     />
     <StatusMessage v-if="confirmError" tone="error">{{ confirmError }}</StatusMessage>
     <div class="change__actions">
-      <BaseButton type="submit" size="sm" :loading="isConfirming" :blocked="!isCodeValid">
-        {{ isConfirming ? "Confirming" : "Confirm code" }}
+      <BaseButton
+        type="submit"
+        size="sm"
+        :loading="isConfirming"
+        :disabled="isConfirmHeld"
+        :blocked="!isCodeValid"
+      >
+        {{
+          isConfirming
+            ? "Confirming"
+            : isConfirmHeld
+              ? Messages.tryAgainIn(confirmHold.remaining.value)
+              : "Confirm code"
+        }}
       </BaseButton>
       <BaseButton ref="key" size="sm" variant="secondary" :disabled="isConfirming" @click="start">
         Change e-mail

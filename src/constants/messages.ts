@@ -10,6 +10,13 @@ export class Messages {
   static readonly connectionError: string = "Error connecting to server";
   /** The caller aborted the request, e.g. a check that newer typing replaced; never shown. */
   static readonly requestAborted: string = "The request was aborted";
+  /**
+   * A submit key held after a rate limiter's 429 (see `useRetryHold`), counting its `retryAfter`
+   * down. The key's own verb would read as a promise ("Delete account in 15 min"), so it says this.
+   */
+  static tryAgainIn(seconds: number): string {
+    return `Try again in ${formatWait(seconds)}`;
+  }
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";

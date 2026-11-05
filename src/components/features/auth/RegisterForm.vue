@@ -32,6 +32,7 @@ import {
 } from "@/scripts/authentication/register";
 import { restoreSession } from "@/scripts/authentication/user";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { useRetryHold } from "@/composables/useRetryHold";
 import {
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode,
@@ -104,12 +105,17 @@ const {
   codeFieldError,
   cooldown,
   resendWaiting,
+  verifyWaiting,
+  verifyIn,
   open,
   leave,
   verify,
   resend
 } = useRegisterCode();
 const { remaining: resendIn } = cooldown;
+/** After the mail limit's 429 (per IP), Register waits its `retryAfter`, whatever the address. */
+const registerHold = useRetryHold(registerStatus);
+const isRegisterHeld = computed(() => registerHold.isHeld());
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
 
@@ -196,13 +202,15 @@ const focusStep = async () => {
 
 /**
  * After the API's refusal the focused key may have been disabled while it loaded, which drops
- * focus: it goes to the field the refusal is about, or back to the key.
+ * focus: it goes to the field the refusal is about, or back to the key, or to the first field
+ * while the key waits out a rate limit.
  */
 const focusProblem = async () => {
   await nextTick();
   const target =
     step.value?.querySelector<HTMLElement>("[aria-invalid='true']") ??
-    step.value?.querySelector<HTMLButtonElement>("button[type=submit]");
+    step.value?.querySelector<HTMLButtonElement>("button[type=submit]:not(:disabled)") ??
+    step.value?.querySelector("input");
   target?.focus();
 };
 
@@ -215,6 +223,7 @@ const openCodeStep = async (kind: CodeNotice, waitSeconds?: number) => {
 };
 
 const handleSubmit = async () => {
+  if (isRegisterHeld.value) return;
   if (!(await validate(step.value))) {
     flagError();
     return;
@@ -238,6 +247,7 @@ const handleSubmit = async () => {
       setError(answer.field, registerStatus.value);
       registerStatus.value = "";
     }
+    if (answer.limitedFor) registerHold.start(answer.limitedFor);
     flagError();
     await focusProblem();
   }
@@ -252,6 +262,7 @@ const enterCode = async () => {
 };
 
 const handleCode = async () => {
+  if (verifyWaiting.value) return;
   if (!(await validateCode(step.value))) {
     flagError();
     return;
@@ -386,10 +397,17 @@ watch(isLoggedIn, (newVal) => {
         type="submit"
         block
         :loading="isVerifying"
+        :disabled="verifyWaiting"
         :blocked="!isCodeValid"
         :error="isButtonError"
       >
-        {{ isVerifying ? "Confirming" : "Confirm code" }}
+        {{
+          isVerifying
+            ? "Confirming"
+            : verifyWaiting
+              ? Messages.tryAgainIn(verifyIn)
+              : "Confirm code"
+        }}
       </BaseButton>
       <div class="code-actions">
         <BaseButton
@@ -454,10 +472,17 @@ watch(isLoggedIn, (newVal) => {
           type="submit"
           block
           :loading="isLoading"
+          :disabled="isRegisterHeld"
           :blocked="!isValid"
           :error="isButtonError"
         >
-          {{ isLoading ? "Registering" : "Register" }}
+          {{
+            isLoading
+              ? "Registering"
+              : isRegisterHeld
+                ? Messages.tryAgainIn(registerHold.remaining.value)
+                : "Register"
+          }}
         </BaseButton>
       </form>
       <GithubLogin label="Register with GitHub" />

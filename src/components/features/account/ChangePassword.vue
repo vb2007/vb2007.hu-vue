@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The Password row's key, which opens a form in place to change it. */
-import { nextTick, ref, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useChangePassword } from "@/composables/useChangePassword";
@@ -24,7 +24,8 @@ const passwordHint = Messages.Auth.passwordHint(
 
 const emit = defineEmits<{ start: [] }>();
 
-const { isChanging, changeError, changed, change } = useChangePassword();
+const { isChanging, changeError, changed, change, hold } = useChangePassword();
+const isHeld = computed(() => hold.isHeld());
 
 const open = ref(false);
 const currentPassword = ref("");
@@ -74,12 +75,15 @@ const cancel = () => {
 };
 
 const save = async () => {
+  if (isHeld.value) return;
   if (!(await validate(form.value))) return;
 
   if (await change(currentPassword.value, newPassword.value)) return close();
 
   await nextTick();
-  saveKey.value?.$el.focus();
+  // A held key is disabled, so the current password takes the focus instead.
+  if (isHeld.value) fields()[0].focus();
+  else saveKey.value?.$el.focus();
 };
 </script>
 
@@ -129,8 +133,21 @@ const save = async () => {
     />
     <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
     <div class="change__actions">
-      <BaseButton ref="saveKey" type="submit" size="sm" :loading="isChanging" :blocked="!isValid">
-        {{ isChanging ? "Saving" : "Save password" }}
+      <BaseButton
+        ref="saveKey"
+        type="submit"
+        size="sm"
+        :loading="isChanging"
+        :disabled="isHeld"
+        :blocked="!isValid"
+      >
+        {{
+          isChanging
+            ? "Saving"
+            : isHeld
+              ? Messages.tryAgainIn(hold.remaining.value)
+              : "Save password"
+        }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
         Cancel

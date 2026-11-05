@@ -35,7 +35,8 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
-const { isDeleting, deleteError, needsGithub, deleteAccount } = useAccountDelete();
+const { isDeleting, deleteError, needsGithub, deleteAccount, hold } = useAccountDelete();
+const isHeld = computed(() => hold.isHeld());
 
 const confirming = ref(false);
 const confirmation = ref("");
@@ -99,13 +100,14 @@ const cancel = async () => {
 const confirmWithGithub = () => saveDeleteIntent(username.value);
 
 const submit = async () => {
+  if (isHeld.value) return;
   if (!(await validate(form.value))) return;
   githubConfirmed.value = false;
   if (!(await deleteAccount(confirmation.value))) {
     if (needsGithub.value) {
       await nextTick();
       githubKey.value?.$el.focus();
-    } else if (!form.value?.contains(document.activeElement)) {
+    } else if (!form.value?.querySelector(":focus:not(:disabled)")) {
       focusField();
     }
     return;
@@ -198,11 +200,18 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
           v-else
           type="submit"
           size="sm"
-          :error="isValid"
+          :error="isValid && !isHeld"
+          :disabled="isHeld"
           :blocked="!isValid"
           :loading="isDeleting"
         >
-          {{ isDeleting ? "Deleting" : "Delete account" }}
+          {{
+            isDeleting
+              ? "Deleting"
+              : isHeld
+                ? Messages.tryAgainIn(hold.remaining.value)
+                : "Delete account"
+          }}
         </BaseButton>
         <BaseButton size="sm" variant="ghost" :disabled="isDeleting" @click="cancel">
           Cancel

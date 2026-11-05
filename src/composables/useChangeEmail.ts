@@ -4,6 +4,7 @@ import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { isResendCooldown, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { emailVerified, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
@@ -39,6 +40,12 @@ export const useChangeEmail = () => {
     cooldown.stop();
     removeSaved(COOLDOWN_STORAGE_KEY);
   };
+
+  /**
+   * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
+   * is refused), Confirm code waits; Change e-mail has limits of its own, so it doesn't.
+   */
+  const confirmHold = useRetryHold(confirmError);
 
   /** A 429's message, which only holds until the key's countdown ends. */
   let waitError = "";
@@ -143,6 +150,9 @@ export const useChangeEmail = () => {
         codeError.value = result.error;
       } else {
         confirmError.value = result.error;
+        if (result.status === HttpStatus.TooManyRequests) {
+          confirmHold.start(retryAfterFrom(result.body));
+        }
       }
     }
     isConfirming.value = false;
@@ -159,6 +169,7 @@ export const useChangeEmail = () => {
     codeError,
     confirmError,
     confirm,
-    cooldown
+    cooldown,
+    confirmHold
   };
 };

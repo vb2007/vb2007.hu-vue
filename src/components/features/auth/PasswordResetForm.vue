@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from "vue-router";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { confirmPasswordReset, requestPasswordReset } from "@/scripts/authentication/passwordReset";
 import {
   confirmationCodeEarlyError,
@@ -55,6 +56,15 @@ const isButtonError = ref(false);
 const step = ref<HTMLFormElement>();
 const sentMessageId = useId();
 const resend = useCountdown("password-reset-cooldown");
+/** After the code checks' 429, Reset password waits for the address; another can go at once. */
+const resetHold = useRetryHold(failure);
+const isResetHeld = computed(() => resetHold.isHeld(normalizeEmail(sentTo.value)));
+/**
+ * After the mail limit's 429 (per IP) on the e-mail step, Send code waits its `retryAfter`, for
+ * any address. Nothing was sent, so it isn't the resend countdown, which means a code went out.
+ */
+const sendHold = useRetryHold(failure);
+const isSendHeld = computed(() => sendHold.isHeld());
 
 const emailChecks = useFormValidation({
   email: { value: email, check: () => emailShapeError(email.value) }
@@ -122,9 +132,9 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
 
     if (answer.error) {
       failure.value = answer.error;
-      // Only the code step has a key to hold back; the e-mail step just shows the error.
-      if (onCodeStep && answer.retryAfter) {
-        waitBeforeResend(address, answer.retryAfter);
+      if (answer.retryAfter) {
+        if (onCodeStep) waitBeforeResend(address, answer.retryAfter);
+        else sendHold.start(answer.retryAfter);
       }
       flagError();
       return null;
@@ -139,6 +149,7 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
 };
 
 const handleSend = async () => {
+  if (isSendHeld.value) return;
   if (!(await emailChecks.validate(step.value))) {
     flagError();
     return;
@@ -153,6 +164,9 @@ const handleSend = async () => {
   const message = await askForCode(email.value, false);
   if (message !== null) {
     await showCodeStep(message);
+  } else if (isSendHeld.value) {
+    // The key is disabled for the wait, which drops its focus.
+    await focusFirstField();
   }
 };
 
@@ -188,6 +202,7 @@ const changeAddress = async () => {
 };
 
 const handleReset = async () => {
+  if (isResetHeld.value) return;
   if (!(await resetChecks.validate(step.value))) {
     flagError();
     return;
@@ -201,6 +216,11 @@ const handleReset = async () => {
     if (answer.error) {
       failure.value = answer.error;
       flagError();
+      if (answer.retryAfter) {
+        resetHold.start(answer.retryAfter, normalizeEmail(sentTo.value));
+        // The key is disabled for the wait, which drops its focus.
+        await focusFirstField();
+      }
       return;
     }
 
@@ -230,10 +250,17 @@ const handleReset = async () => {
           type="submit"
           block
           :loading="isSending"
+          :disabled="isSendHeld"
           :blocked="!isEmailValid"
           :error="isButtonError"
         >
-          {{ isSending ? "Sending" : "Send code" }}
+          {{
+            isSending
+              ? "Sending"
+              : isSendHeld
+                ? Messages.tryAgainIn(sendHold.remaining.value)
+                : "Send code"
+          }}
         </BaseButton>
       </form>
       <div class="alt">
@@ -296,10 +323,17 @@ const handleReset = async () => {
           type="submit"
           block
           :loading="isResetting"
+          :disabled="isResetHeld"
           :blocked="!isResetValid"
           :error="isButtonError"
         >
-          {{ isResetting ? "Resetting" : "Reset password" }}
+          {{
+            isResetting
+              ? "Resetting"
+              : isResetHeld
+                ? Messages.tryAgainIn(resetHold.remaining.value)
+                : "Reset password"
+          }}
         </BaseButton>
       </form>
       <div class="resend">

@@ -21,8 +21,8 @@ const UNLINK_HINT = "Confirms it's you. Afterwards you log in with your password
 
 const emit = defineEmits<{ start: []; unlinked: [] }>();
 
-const { isLinking, isStalled, linkError, link, stop } = useGithubLink();
-const { isUnlinking, unlinkError, unlink } = useGithubUnlink();
+const { isLinking, isStalled, linkError, link, stop, hold: linkHold } = useGithubLink();
+const { isUnlinking, unlinkError, unlink, hold: unlinkHold } = useGithubUnlink();
 
 const open = ref(false);
 const password = ref("");
@@ -45,6 +45,9 @@ const isLeaving = computed(() => isLinking.value && !isStalled.value);
 /** Cancel waits too, but not on a navigation that should have happened by now. */
 const isCancelBlocked = computed(() => isUnlinking.value || isLeaving.value);
 const confirmError = computed(() => (githubLinked.value ? unlinkError.value : linkError.value));
+/** The hold after the password checks' 429 that the key on screen waits for. */
+const hold = computed(() => (githubLinked.value ? unlinkHold : linkHold));
+const isHeld = computed(() => hold.value.isHeld());
 
 const focusField = () => field.value?.$el.querySelector("input").focus();
 
@@ -109,6 +112,7 @@ onUpdated(() => {
 });
 
 const submit = async () => {
+  if (isHeld.value) return;
   if (!(await validate(form.value))) return;
   if (githubLinked.value) {
     if (await unlink(password.value)) {
@@ -123,7 +127,7 @@ const submit = async () => {
     return;
   }
   // The clicked key disabled while it worked, which dropped the focus.
-  if (!form.value?.contains(document.activeElement)) focusField();
+  if (!form.value?.querySelector(":focus:not(:disabled)")) focusField();
 };
 </script>
 
@@ -158,11 +162,15 @@ const submit = async () => {
       <BaseButton
         type="submit"
         size="sm"
-        :error="githubLinked && isValid"
+        :error="githubLinked && isValid && !isHeld"
+        :disabled="isHeld"
         :blocked="!isValid"
         :loading="isBusy"
       >
-        <template v-if="githubLinked">{{ isUnlinking ? "Unlinking" : "Unlink GitHub" }}</template>
+        <template v-if="isHeld">{{ Messages.tryAgainIn(hold.remaining.value) }}</template>
+        <template v-else-if="githubLinked">{{
+          isUnlinking ? "Unlinking" : "Unlink GitHub"
+        }}</template>
         <template v-else>
           <AppIcon name="github" :size="16" />
           {{ isLinking ? "Opening GitHub" : "Continue to GitHub" }}
@@ -181,9 +189,13 @@ const submit = async () => {
     size="sm"
     :variant="githubLinked ? 'secondary' : 'primary'"
     :loading="isLeaving"
+    :disabled="!hasPassword && isHeld"
     @click="start"
   >
     <template v-if="githubLinked">Unlink GitHub</template>
+    <template v-else-if="!hasPassword && isHeld">{{
+      Messages.tryAgainIn(hold.remaining.value)
+    }}</template>
     <template v-else>{{ isLeaving ? "Opening GitHub" : "Link GitHub" }}</template>
   </BaseButton>
 </template>

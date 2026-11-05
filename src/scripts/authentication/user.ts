@@ -2,6 +2,7 @@ import { LoginStatus } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
+import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
   emailVerified,
@@ -58,7 +59,11 @@ export const restoreSession = () => {
   return sessionRestore;
 };
 
-export const login = async (email: string, password: string) => {
+/**
+ * Logs in; `loginStatus` says how it went. Returns the seconds to wait after the login limiter's
+ * 429 (vb2007/vb2007.hu-api#254), before which the API refuses even the right password.
+ */
+export const login = async (email: string, password: string): Promise<number | undefined> => {
   const result = await apiRequest(Endpoints.Auth.login, {
     body: { email, password },
     failure: Messages.Auth.loginFailed
@@ -66,7 +71,7 @@ export const login = async (email: string, password: string) => {
 
   if (!result.ok) {
     loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
-    return;
+    return result.status === HttpStatus.TooManyRequests ? retryAfterFrom(result.body) : undefined;
   }
 
   // The API answered 200, but only a working session cookie makes the login real.
