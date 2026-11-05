@@ -1,5 +1,10 @@
 /** The API's limits, checked here too so a request that would fail isn't sent. */
 export class Limits {
+  /** Mirrors the API's `SHORT_URL_MAX_LENGTH`: the URL as sent, in UTF-16 units (JS `.length`). */
+  static readonly ShortUrl = class {
+    static readonly maxLength: number = 2000;
+  };
+
   static readonly Paste = class {
     static readonly minLength: number = 2;
     static readonly maxLength: number = 10000;

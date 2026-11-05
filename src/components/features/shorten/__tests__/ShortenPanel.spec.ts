@@ -79,4 +79,35 @@ describe("ShortenPanel", () => {
     expect(wrapper.find(".field__error").exists()).toBe(false);
     expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBeUndefined();
   });
+
+  it("says a URL is too long while it's still in the field, and doesn't send it", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+    const input = wrapper.find("input");
+    const url = (length: number) =>
+      `https://example.com/${"a".repeat(length - "https://example.com/".length)}`;
+
+    await input.setValue(url(2001));
+    expect(input.element.value).toHaveLength(2001);
+    expect(wrapper.find(".field__error").text()).toBe("A URL can be at most 2000 characters.");
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await input.setValue(url(2000));
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("names the format first for a long URL without a scheme", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue("a".repeat(2001));
+
+    expect(wrapper.find(".field__error").text()).toBe("Invalid URL / URI format.");
+  });
 });

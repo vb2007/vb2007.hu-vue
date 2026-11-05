@@ -20,6 +20,54 @@ describe("useShortener", () => {
     expect(shortener.errorMessage.value).toBe("Invalid URL / URI format.");
   });
 
+  it("sends a URL of exactly the API's 2000-character limit", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: { shortenedUrl: "abc123" } }));
+    const shortener = useShortener();
+    const url = `https://example.com/${"a".repeat(2000 - "https://example.com/".length)}`;
+    shortener.originalUrl.value = url;
+
+    await shortener.shorten();
+
+    expect(url).toHaveLength(2000);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(shortener.errorMessage.value).toBe("");
+    expect(shortener.shortenedCode.value).toBe("abc123");
+  });
+
+  it("refuses a URL over the limit without calling the API", async () => {
+    const shortener = useShortener();
+    shortener.originalUrl.value = `https://example.com/${"a".repeat(2001 - "https://example.com/".length)}`;
+
+    await shortener.shorten();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(shortener.errorMessage.value).toBe("A URL can be at most 2000 characters.");
+    expect(shortener.isLoading.value).toBe(false);
+  });
+
+  it("names the format problem first for a URL that's also too long", async () => {
+    const shortener = useShortener();
+    shortener.originalUrl.value = "a".repeat(2001);
+
+    await shortener.shorten();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(shortener.errorMessage.value).toBe("Invalid URL / URI format.");
+  });
+
+  it("shows the API's refusal of a URL it counts as too long", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, { error: "The URI/URL can be at most 2000 characters long." })
+    );
+    const shortener = useShortener();
+    shortener.originalUrl.value = "https://example.com";
+
+    await shortener.shorten();
+
+    expect(shortener.errorMessage.value).toBe("The URI/URL can be at most 2000 characters long.");
+    expect(shortener.shortenedCode.value).toBe("");
+  });
+
   it("stores the short code and clears the input on success", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: { shortenedUrl: "abc123" } }));
     const shortener = useShortener();

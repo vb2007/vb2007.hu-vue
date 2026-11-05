@@ -11,6 +11,9 @@ export class Messages {
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";
+    static tooLong(max: number): string {
+      return `A URL can be at most ${max} characters.`;
+    }
     static readonly shortenFailed: string = "Failed to shorten URL";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";

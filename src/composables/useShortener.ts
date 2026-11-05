@@ -1,10 +1,20 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { validateUrl } from "@/scripts/utility/text";
 
 export const shortLink = (code: string) => `${window.location.origin}/r/${code}`;
+
+/** Returns why the API would refuse to shorten a URL (checked in its order), or "" when it wouldn't. */
+export const validateShortUrl = (url: string) => {
+  if (!validateUrl(url)) return Messages.ShortUrl.invalidUrl;
+  if (url.length > Limits.ShortUrl.maxLength) {
+    return Messages.ShortUrl.tooLong(Limits.ShortUrl.maxLength);
+  }
+  return "";
+};
 
 /** State and request logic for shortening a URL. Shared by Home and Shorten. */
 export const useShortener = () => {
@@ -17,8 +27,9 @@ export const useShortener = () => {
   const shortenedLink = () => (shortenedCode.value ? shortLink(shortenedCode.value) : "");
 
   const shorten = async () => {
-    if (!validateUrl(originalUrl.value)) {
-      errorMessage.value = Messages.ShortUrl.invalidUrl;
+    const invalid = validateShortUrl(originalUrl.value);
+    if (invalid) {
+      errorMessage.value = invalid;
       return;
     }
 

@@ -2,9 +2,9 @@
 import { useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { useShortener } from "@/composables/useShortener";
-import { Messages } from "@/constants/messages";
-import { displayLink, validateUrl } from "@/scripts/utility/text";
+import { useShortener, validateShortUrl } from "@/composables/useShortener";
+import { Limits } from "@/constants/limits";
+import { displayLink } from "@/scripts/utility/text";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -26,7 +26,12 @@ const {
 } = useFormValidation({
   url: {
     value: originalUrl,
-    check: () => (validateUrl(originalUrl.value) ? "" : Messages.ShortUrl.invalidUrl)
+    check: () => validateShortUrl(originalUrl.value),
+    // A pasted URL over the limit can't be fixed by typing on, so that shows straight away.
+    early: () =>
+      originalUrl.value.length > Limits.ShortUrl.maxLength
+        ? validateShortUrl(originalUrl.value)
+        : ""
   }
 });
 
