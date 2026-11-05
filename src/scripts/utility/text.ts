@@ -71,11 +71,13 @@ const percentEncode = (text: string) =>
     .join("");
 
 /**
- * Whitespace, control and format characters, and the letters that render blank (the Hangul fillers
- * and the Braille blank), which could pass for spaces. ZWNJ and ZWJ are kept: they join Persian
- * words and emoji sequences, and can't reorder text.
+ * Whitespace, control and format characters, and the letters that render blank, which could pass
+ * for spaces: U+115F Hangul choseong filler, U+1160 Hangul jungseong filler, U+2800 Braille pattern
+ * blank, U+3164 Hangul filler and U+FFA0 halfwidth Hangul filler. U+200C zero-width non-joiner and
+ * U+200D zero-width joiner are kept: they join Persian words and emoji sequences, and can't reorder
+ * text.
  */
-const UNSHOWN = /(?![‌‍])[\s\p{C}ᅟᅠ⠀ㅤﾠ]/gu;
+const UNSHOWN = /(?![\u200C\u200D])[\s\p{C}\u115F\u1160\u2800\u3164\uFFA0]/gu;
 
 /**
  * A decoded address as it's safe to show in a sentence: anyone can link to one, so whitespace and

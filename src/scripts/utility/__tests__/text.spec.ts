@@ -70,8 +70,8 @@ describe("readableAddress", () => {
   it.each([
     ["an ordinary path", "/foo?x=1", "/foo?x=1"],
     ["accented letters", "/árvíz?q=é", "/árvíz?q=é"],
-    ["a bidi override", "/docs/‮fdp.exe", "/docs/%E2%80%AEfdp.exe"],
-    ["an invisible format character", "/a​b", "/a%E2%80%8Bb"],
+    ["a bidi override", "/docs/\u202Efdp.exe", "/docs/%E2%80%AEfdp.exe"],
+    ["an invisible format character", "/a\u200Bb", "/a%E2%80%8Bb"],
     ["a lone surrogate", "/a\uD800b", "/a%EF%BF%BDb"],
     [
       "a made-up sentence",
@@ -80,18 +80,18 @@ describe("readableAddress", () => {
     ],
     [
       "a sentence spaced with Braille blanks",
-      "/Your⠀session⠀expired",
+      "/Your\u2800session\u2800expired",
       "/Your%E2%A0%80session%E2%A0%80expired"
     ],
-    ["a Hangul filler", "/aㅤb", "/a%E3%85%A4b"],
-    ["a Hangul choseong filler", "/aᅟb", "/a%E1%85%9Fb"],
-    ["a Hangul jungseong filler", "/aᅠb", "/a%E1%85%A0b"],
-    ["a halfwidth Hangul filler", "/aﾠb", "/a%EF%BE%A0b"],
-    ["an emoji family joined with ZWJ", "/👨‍👩‍👧", "/👨‍👩‍👧"],
-    ["a rainbow flag", "/🏳️‍🌈", "/🏳️‍🌈"],
-    ["a Persian word with ZWNJ", "/می‌خواهم", "/می‌خواهم"],
-    ["two marks on one letter", "/ệ", "/ệ"],
-    ["a pile of marks", "/a" + "̸".repeat(4), "/a̸̸%CC%B8%CC%B8"]
+    ["a Hangul filler", "/a\u3164b", "/a%E3%85%A4b"],
+    ["a Hangul choseong filler", "/a\u115Fb", "/a%E1%85%9Fb"],
+    ["a Hangul jungseong filler", "/a\u1160b", "/a%E1%85%A0b"],
+    ["a halfwidth Hangul filler", "/a\uFFA0b", "/a%EF%BE%A0b"],
+    ["an emoji family joined with ZWJ", "/👨\u200D👩\u200D👧", "/👨\u200D👩\u200D👧"],
+    ["a rainbow flag", "/🏳\uFE0F\u200D🌈", "/🏳\uFE0F\u200D🌈"],
+    ["a Persian word with ZWNJ", "/می\u200Cخواهم", "/می\u200Cخواهم"],
+    ["two marks on one letter", "/e\u0323\u0302", "/e\u0323\u0302"],
+    ["a pile of marks", "/a" + "\u0338".repeat(4), "/a\u0338\u0338%CC%B8%CC%B8"]
   ])("shows %s safely", (_name, address, shown) => {
     expect(readableAddress(address)).toBe(shown);
   });
@@ -107,13 +107,13 @@ describe("readableAddress", () => {
   });
 
   it("never cuts a letter from its marks", () => {
-    const address = "/" + "é".repeat(MAX_ADDRESS);
+    const address = "/" + "e\u0301".repeat(MAX_ADDRESS);
 
-    expect(readableAddress(address)).toBe("/" + "é".repeat(MAX_ADDRESS / 2) + "…");
+    expect(readableAddress(address)).toBe("/" + "e\u0301".repeat(MAX_ADDRESS / 2) + "…");
   });
 
   it("keeps the whole address when only its last marks are past the limit", () => {
-    const address = "/" + "a".repeat(MAX_ADDRESS - 1) + "́́";
+    const address = "/" + "a".repeat(MAX_ADDRESS - 1) + "\u0301\u0301";
 
     expect(readableAddress(address)).toBe(address);
   });
