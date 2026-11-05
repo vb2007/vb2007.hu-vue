@@ -5,6 +5,7 @@ import { HttpMethod, HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import {
   apiErrorOf,
+  apiHost,
   apiRequest,
   apiUrl,
   errorMessageFrom,
@@ -62,6 +63,12 @@ describe("apiUrl", () => {
     expect(apiUrl(Endpoints.Pastebin.get, { params: { pasteId: "a" } })).toBe(
       "https://api.test/paste/undefined"
     );
+  });
+});
+
+describe("apiHost", () => {
+  it("is the host of the API's base URL, without the scheme", () => {
+    expect(apiHost()).toBe("api.test");
   });
 });
 

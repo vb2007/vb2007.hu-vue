@@ -367,7 +367,7 @@ test("a waiting change survives a reload, and a new code is one password away", 
   await expect(page.getByLabel("Current password")).toBeFocused();
   await expect(page.getByText("A new code replaces the one already sent.")).toBeVisible();
   // The API's minute between codes outlasts the reload, so the key still waits it out.
-  await expect(page.getByRole("button", { name: /^Send code in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Send code in \d+ seconds?$/ })).toBeDisabled();
 
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
@@ -388,7 +388,7 @@ test("asking for a new code too soon counts down the API's wait", async ({ page,
   await expect(page.getByRole("alert")).toHaveText(
     "A code was sent just now. You can send another once the countdown ends."
   );
-  await expect(page.getByRole("button", { name: /^Send code in \d s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Send code in \d seconds?$/ })).toBeDisabled();
 
   await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled({
     // The 8-second countdown, plus CI's 20-second assertion budget for a slow host.
@@ -480,6 +480,42 @@ test("a code that expired with the page open takes the waiting change away", asy
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+});
+
+test("a change confirmed in another tab shows as confirmed, not as an expired code", async ({
+  page,
+  api,
+  baseURL
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+
+  // Another tab, on the same mock, confirms the code first.
+  const appOrigin = new URL(baseURL!).origin;
+  const other = await page.context().newPage();
+  await other.route(
+    (url) => url.origin !== appOrigin,
+    (route) => api.handle(route, appOrigin)
+  );
+  await other.goto("/account");
+  await other.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await other.getByRole("button", { name: "Confirm code" }).click();
+  await expect(other.getByRole("status")).toHaveText("E-mail address updated successfully.");
+  await other.close();
+
+  // This tab's code is spent now, so the API refuses it with a 400.
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("status")).toHaveText("E-mail address updated.");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText(/wasn't confirmed/)).toHaveCount(0);
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
 });
 
 test("a session that ended elsewhere logs the account page out, without blaming the change", async ({
@@ -576,12 +612,46 @@ for (const [status, email, password, error] of [
     await expect(page.getByRole("alert")).toContainText(error);
     await expect(page.getByLabel("New e-mail")).toHaveValue(email);
     await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
-    // No code went out, so the key isn't held back, even by the 429's retryAfter.
-    await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled();
+    // No code went out, so the key isn't held back; a 429 counts its wait down on it (see below).
+    if (status !== 429) {
+      await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled();
+    }
 
     await page.keyboard.press("Escape");
     await expect(page.getByLabel("New e-mail")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  });
+}
+
+// Every rate limiter's 429 sends its wait too (vb2007/vb2007.hu-api#242), but no code went out.
+for (const [what, arrange, error, label] of [
+  [
+    "too many failed passwords",
+    (api: MockApi) => api.limitsPasswordChecks(),
+    "Too many failed attempts: try again later.",
+    "Send code in 15 min"
+  ],
+  [
+    "too many e-mails",
+    (api: MockApi) => api.limitsMailSends(),
+    "Too many e-mails requested: try again later.",
+    "Send code in 57 min"
+  ]
+] as const) {
+  test(`a change refused for ${what} isn't taken for a code just sent`, async ({ page, api }) => {
+    api.loggedInAs("me@example.com", "me");
+    arrange(api);
+    await page.goto("/account");
+
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await page.getByLabel("New e-mail").fill("new@example.com");
+    await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Send code" }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(error);
+    await expect(page.getByRole("button", { name: label })).toBeDisabled();
+    await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+    await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   });
 }
 
