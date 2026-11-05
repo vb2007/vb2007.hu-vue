@@ -22,7 +22,15 @@ export interface PasswordResetAnswer {
   retryAfter?: number;
   /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
   linkRefused?: boolean;
+  /** The API refused the new password, which leaves the link usable with another one. */
+  passwordRefused?: boolean;
 }
+
+/** The API's 400s for a new password's length, by the rules `Limits` mirrors. */
+const passwordLengthErrors = () => [
+  Messages.Auth.passwordTooShort(Limits.Password.minLength, Limits.Password.maxLength),
+  Messages.Auth.passwordTooLong(Limits.Password.minLength, Limits.Password.maxLength)
+];
 
 /**
  * Asks for a code (vb2007/vb2007.hu-api#163). The API answers the same 200 whether or not an
@@ -109,9 +117,15 @@ export const confirmPasswordResetLink = async (
     if (result.status === HttpStatus.TooManyRequests) {
       return { error: result.error, retryAfter: retryAfterFrom(result.body) };
     }
-    // The page checks the password with the API's rules first, so a 400 is about the link.
     if (result.status === HttpStatus.BadRequest) {
-      return { error: result.error, linkRefused: true };
+      if (passwordLengthErrors().includes(result.error)) {
+        return { error: result.error, passwordRefused: true };
+      }
+      // Only the API's own word for a used-up link gives the link up: any other 400 (e.g. a
+      // password rule that changed on the API) leaves it to try again.
+      if (result.error === Messages.Auth.resetLinkRefused) {
+        return { error: result.error, linkRefused: true };
+      }
     }
   }
 

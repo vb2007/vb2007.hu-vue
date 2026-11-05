@@ -83,6 +83,7 @@ const isButtonError = ref(false);
 /** The step on the board: its form, or the refused link's message and key. */
 const step = ref<HTMLElement>();
 const sentMessageId = useId();
+const refusedMessageId = useId();
 const resend = useCountdown("password-reset-cooldown");
 
 const emailChecks = useFormValidation({
@@ -259,6 +260,7 @@ const handleReset = () =>
   submitReset(resetChecks, () => confirmPasswordReset(sentTo.value, code.value, newPassword.value));
 
 const handleLinkReset = async () => {
+  let passwordRefusal = "";
   await submitReset(linkChecks, async () => {
     linkAnswer.value = "";
     const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
@@ -266,9 +268,19 @@ const handleLinkReset = async () => {
       linkAnswer.value = "refused";
     } else if (answer.retryAfter !== undefined) {
       linkAnswer.value = "limited";
+    } else if (answer.passwordRefused) {
+      passwordRefusal = answer.error!;
     }
     return answer;
   });
+
+  // The link still works: the refusal belongs to the field, which gets the cursor for another one.
+  if (passwordRefusal) {
+    failure.value = "";
+    linkChecks.setError("newPassword", passwordRefusal);
+    await nextTick();
+    step.value?.querySelector<HTMLInputElement>('input[type="password"]')?.focus();
+  }
 
   // The form gave way to the key for a new link, which takes the focus the submit key had.
   if (linkAnswer.value === "refused") {
@@ -330,8 +342,11 @@ watch(
   <StationBoard title="Reset password" as="h1">
     <template v-if="linkToken && linkAnswer === 'refused'">
       <div ref="step" class="form">
-        <StatusMessage tone="error">{{ failure }}</StatusMessage>
-        <BaseButton block @click="requestNewLink">Request a new link</BaseButton>
+        <StatusMessage :id="refusedMessageId" tone="error">{{ failure }}</StatusMessage>
+        <!-- Focused as the message appears, so it reads the message out with its name. -->
+        <BaseButton block :aria-describedby="refusedMessageId" @click="requestNewLink">
+          Request a new link
+        </BaseButton>
       </div>
       <div class="alt">
         <p>Remembered it? <RouterLink to="/login">Log in</RouterLink></p>
@@ -378,7 +393,7 @@ watch(
         <p>
           {{ linkAnswer === "limited" ? "Can't wait?" : "Link not working?" }}
           <button type="button" class="link" :disabled="isResetting" @click="requestNewLink">
-            {{ linkAnswer === "limited" ? "Use a code instead" : "Request a new one" }}
+            {{ linkAnswer === "limited" ? "Get a code instead" : "Request a new one" }}
           </button>
         </p>
         <p>Remembered it? <RouterLink to="/login">Log in</RouterLink></p>

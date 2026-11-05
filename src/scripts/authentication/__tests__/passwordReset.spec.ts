@@ -273,6 +273,25 @@ describe("confirmPasswordResetLink", () => {
     });
   });
 
+  it.each([
+    "The password's too short: it must be between 8 and 128 characters.",
+    "The password's too long: it must be between 8 and 128 characters."
+  ])("tells a refused password from a refused link: %s", async (error) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
+
+    await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({
+      error,
+      passwordRefused: true
+    });
+  });
+
+  it("keeps the link for a 400 it doesn't know, e.g. a password rule the API changed", async () => {
+    const error = "The password's too short: it must be between 10 and 128 characters.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
+
+    await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({ error });
+  });
+
   it("names the status of any other error, which says nothing about the link", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500));
 

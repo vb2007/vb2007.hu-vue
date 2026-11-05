@@ -556,9 +556,36 @@ describe("PasswordResetForm", () => {
       expect(wrapper.find("form").exists()).toBe(false);
       const key = wrapper.find(".form button");
       expect(key.text()).toBe("Request a new link");
+      expect(key.attributes("aria-describedby")).toBe(
+        wrapper.find('[role="alert"]').attributes("id")
+      );
+      expect(key.attributes("aria-describedby")).toBeTruthy();
       expect(key.classes()).toContain("btn--primary");
       expect(document.activeElement).toBe(key.element);
       expect(wrapper.find(".alt").text()).toBe("Remembered it? Log in");
+    });
+
+    it("puts a refused password on its field and keeps the link to try another", async () => {
+      const { wrapper } = await mountFromLink();
+      await linkPassword(wrapper).setValue("new password");
+      const tooShort = "The password's too short: it must be between 8 and 128 characters.";
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
+        error: tooShort,
+        passwordRefused: true
+      });
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find(".field__error").text()).toBe(tooShort);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(document.activeElement).toBe(linkPassword(wrapper).element);
+      expect(submitButton(wrapper).text()).toBe("Reset password");
+      expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
+
+      // Another password takes the refusal away.
+      await linkPassword(wrapper).setValue("another password");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
     });
 
     it("keeps the form for other errors, so the link can be tried again", async () => {
@@ -591,7 +618,7 @@ describe("PasswordResetForm", () => {
         "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent."
       );
       expect(submitButton(wrapper).text()).toBe("Reset password");
-      expect(wrapper.find(".alt p").text()).toBe("Can't wait? Use a code instead");
+      expect(wrapper.find(".alt p").text()).toBe("Can't wait? Get a code instead");
 
       // Trying again later drops the note until the API answers.
       const { answer, settle } = pendingAnswer();

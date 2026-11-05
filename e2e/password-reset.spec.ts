@@ -288,6 +288,38 @@ test.describe("the mailed link", () => {
     await expect(page.getByRole("status")).toHaveText(SENT);
   });
 
+  test("a password the API refuses keeps the link for another one", async ({ page, api }) => {
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+
+    // An API whose password rule moved past the page's check: it answers like the double's length 400.
+    const tooShort = "The password's too short: it must be between 8 and 128 characters.";
+    await page.route("**/auth/password-reset/confirm-link", (route) =>
+      route.request().method() === "OPTIONS"
+        ? route.fallback()
+        : route.fulfill({
+            status: 400,
+            headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin },
+            json: { error: tooShort }
+          })
+    );
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page.getByLabel("New password")).toBeFocused();
+    await expect(page.getByLabel("New password")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByText(tooShort)).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Request a new link" })).toHaveCount(0);
+
+    // The link wasn't used up: the double takes it with another password.
+    await page.unroute("**/auth/password-reset/confirm-link");
+    await page.getByLabel("New password").fill("a longer new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await expect(page).toHaveURL("/login");
+    expect(api.password).toBe("a longer new password");
+  });
+
   test("a malformed link falls back to the e-mail step without asking the API", async ({
     page,
     api
