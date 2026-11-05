@@ -20,6 +20,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or registered, whatever the address's case, and takes `api.password`.
+ * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
@@ -890,7 +891,8 @@ export class MockApi {
         };
       }
     }
-    this.accounts.splice(this.accounts.indexOf(this.user), 1);
+    const index = this.accounts.indexOf(this.user);
+    if (index !== -1) this.accounts.splice(index, 1);
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };

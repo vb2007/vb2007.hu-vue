@@ -48,17 +48,20 @@ test("a refused login shows the API's one message and stays logged out", async (
     const answer = page.waitForResponse((response) => response.url().endsWith("/auth/login"));
     await logIn.click();
     expect((await answer).status()).toBe(403);
+    // The alert keeps the same text between passes, so wait until the key is done with this
+    // pass's answer: `login()` sets the message before the key stops loading.
+    await expect(main.locator("button[type=submit]")).not.toHaveAttribute("aria-busy", "true");
+    await expect(logIn).toBeVisible();
     await expect(main.getByRole("alert")).toHaveText(
       "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
     );
-    await expect(logIn).toBeVisible();
   }
   await expect(main).not.toContainText("Login successful!");
   const cookies = await page.context().cookies();
   expect(cookies.map((cookie) => cookie.name)).not.toContain("VB-AUTH");
 
-  // The address's case doesn't matter, like the API.
-  await page.getByLabel("E-mail").fill(MOCK_EMAIL.toUpperCase());
+  // The address's case and surrounding spaces don't matter, like the API.
+  await page.getByLabel("E-mail").fill(` ${MOCK_EMAIL.toUpperCase()} `);
   await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
   await logIn.click();
   await expect(main).toContainText("Login successful!");
@@ -786,6 +789,15 @@ test("an account is deleted with its password and the visitor lands home logged 
 
   await page.goto("/account");
   await expect(page.getByText("Log in to see your account.")).toBeVisible();
+
+  // The deleted account can't log in again.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+  );
 });
 
 test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({
