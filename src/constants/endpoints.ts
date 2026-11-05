@@ -12,6 +12,7 @@ import type {
   GithubPasswordBody,
   LoginBody,
   PasswordResetConfirmBody,
+  PasswordResetLinkBody,
   RegisterBody,
   RegisterVerifyBody,
   UsernameAvailableQuery,
@@ -110,6 +111,15 @@ export class Endpoints {
     >()({
       method: HttpMethod.Post,
       path: "/auth/password-reset/confirm",
+      credentials: false
+    });
+    /** The mailed link's token with the new password (vb2007/vb2007.hu-api#256). */
+    static readonly passwordResetConfirmLink = defineEndpoint<
+      PasswordResetLinkBody,
+      MessageResponse
+    >()({
+      method: HttpMethod.Post,
+      path: "/auth/password-reset/confirm-link",
       credentials: false
     });
     /** GitHub login (vb2007/vb2007.hu-api#128): a browser navigation, not a fetch call. */

@@ -39,6 +39,11 @@ export class Limits {
     static readonly emailChangeValidMinutes: number = 15;
     static readonly passwordResetValidMinutes: number = 30;
     /**
+     * The token in a mailed reset link (vb2007/vb2007.hu-api#256): the account's 24-hex id, a dot,
+     * and a 43-character base64url secret. It works as long as the code.
+     */
+    static readonly resetLinkToken: RegExp = /^[0-9a-f]{24}\.[\w-]{43}$/;
+    /**
      * The window for wrong codes (the API's `FAILED_ATTEMPTS_WINDOW_MS`, vb2007/vb2007.hu-api#254).
      * A longer wait is the daily cap of rejected codes per address, which a new code doesn't lift.
      */

@@ -23,8 +23,15 @@ beforeEach(() => {
 
 describe("restoreSession", () => {
   it("marks the user as logged in when the API knows the session", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com", username: "me" }));
-    const { restoreSession, isLoggedIn, userEmail, username, isSessionChecked } = await load();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        _id: "0123456789abcdef01234567",
+        email: "me@example.com",
+        username: "me"
+      })
+    );
+    const { restoreSession, isLoggedIn, userEmail, userId, username, isSessionChecked } =
+      await load();
 
     await restoreSession();
 
@@ -34,6 +41,7 @@ describe("restoreSession", () => {
     });
     expect(isLoggedIn.value).toBe(true);
     expect(userEmail.value).toBe("me@example.com");
+    expect(userId.value).toBe("0123456789abcdef01234567");
     expect(username.value).toBe("me");
     expect(isSessionChecked.value).toBe(true);
   });
@@ -439,6 +447,7 @@ describe("clearSession", () => {
       pendingEmail,
       sessionEnded,
       userEmail,
+      userId,
       username
     } = await load();
     isLoggedIn.value = true;
@@ -447,6 +456,7 @@ describe("clearSession", () => {
     emailVerified.value = true;
     pendingEmail.value = "new@example.com";
     userEmail.value = "me@example.com";
+    userId.value = "0123456789abcdef01234567";
     username.value = "me";
 
     clearSession();
@@ -457,6 +467,7 @@ describe("clearSession", () => {
     expect(emailVerified.value).toBe(false);
     expect(pendingEmail.value).toBe("");
     expect(userEmail.value).toBe("");
+    expect(userId.value).toBe("");
     expect(username.value).toBe("");
     // Logging out on purpose isn't a session that ended elsewhere.
     expect(sessionEnded.value).toBe(false);

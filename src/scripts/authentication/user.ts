@@ -15,6 +15,7 @@ import {
   pendingEmail,
   sessionEnded,
   userEmail,
+  userId,
   username
 } from "@/scripts/authentication/authState";
 import { ref } from "vue";
@@ -67,6 +68,7 @@ export const fetchUserDetails = async () => {
 
   const { data } = result;
   userEmail.value = data.email;
+  userId.value = data._id;
   username.value = data.username ?? "";
   isSuperuser.value = data.isSuperuser === true;
   githubLinked.value = Boolean(data.githubId);
@@ -120,6 +122,7 @@ export const login = async (email: string, password: string): Promise<number | u
 
 const forgetUser = () => {
   userEmail.value = "";
+  userId.value = "";
   username.value = "";
   isSuperuser.value = false;
   githubLinked.value = false;

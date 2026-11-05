@@ -46,6 +46,15 @@ export interface PasswordResetConfirmBody {
 }
 
 /**
+ * `POST /auth/password-reset/confirm-link` (vb2007/vb2007.hu-api#256): the token from the mailed
+ * link (`/reset-password#token=…`) stands in for the address and the code.
+ */
+export interface PasswordResetLinkBody {
+  token: string;
+  newPassword: string;
+}
+
+/**
  * `POST` and `DELETE /auth/github/link` (vb2007/vb2007.hu-api#243): an account with a password
  * confirms linking and unlinking with it. A GitHub-only account links without a body.
  */

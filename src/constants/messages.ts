@@ -98,6 +98,16 @@ export class Messages {
       "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.";
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
+    /** A reset link whose token can't be one the API mailed. */
+    static readonly resetLinkMalformed: string =
+      "This reset link isn't complete or was changed: request a new one.";
+    /** The API's 400 for a reset link that's used up (its `invalidPasswordResetLink`). */
+    static readonly resetLinkRefused: string =
+      "The reset link is wrong, expired or already used: request a new one.";
+    /** After the API's 429 on a reset link, which doesn't use the link up. */
+    static resetLinkStillWorks(validMinutes: number): string {
+      return `The link wasn't used up: it works until ${validMinutes} minutes after it was sent.`;
+    }
     static readonly invalidEmail: string = "Enter a valid e-mail address.";
     /** An account's own password left out where it's asked for: logging in, or confirming it's them. */
     static readonly passwordMissing: string = "Enter your password.";

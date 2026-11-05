@@ -40,6 +40,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
+ * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
+ * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an address of a `hasUser(...)` account gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
@@ -126,6 +128,8 @@ const MB = 1024 * 1024;
 export const MOCK_PASSWORD = "e2e-password";
 /** The password account `POST /auth/login` knows from the start. */
 export const MOCK_EMAIL = "me@example.com";
+/** The `_id` of `MOCK_EMAIL`'s account and of the one `loggedInAs` arranges, which their reset links start with. */
+export const MOCK_USER_ID = "e2e0e2e0e2e0e2e0e2e0e2e0";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
 /** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
@@ -241,6 +245,7 @@ const isValidUri = (url: unknown): url is string =>
   URI_PREFIXES.some((prefix) => url.toLowerCase().startsWith(prefix));
 
 interface MockUser {
+  _id: string;
   email: string;
   username: string;
   isSuperuser: boolean;
@@ -255,6 +260,7 @@ export class MockApi {
   /** The accounts `POST /auth/login` knows; logging in makes one of them `user` again. */
   private readonly accounts: MockUser[] = [
     {
+      _id: MOCK_USER_ID,
       email: MOCK_EMAIL,
       username: "e2e",
       isSuperuser: false,
@@ -300,6 +306,7 @@ export class MockApi {
   private githubConfirmed = false;
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
+  private resetLinksLimited = false;
   private codeChecksCapped = false;
   private usernameChecksLimited = false;
   /** How often `GET /auth/username-available` was asked, limited or not. */
@@ -317,6 +324,9 @@ export class MockApi {
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
+  /** The reset links still live (see `mailsResetLink`): token -> the account's id and address. */
+  private readonly resetLinks = new Map<string, { userId: string; email: string }>();
+  private resetLinkCount = 0;
   /** The addresses a password reset was asked for while `limitsMailSends()` refused it. */
   readonly limitedPasswordResets: string[] = [];
   readonly unhandled: string[] = [];
@@ -330,7 +340,14 @@ export class MockApi {
     username = "e2e",
     { superuser = false, githubLinked = false, password = true, emailVerified = false } = {}
   ) {
-    this.user = { email, username, isSuperuser: superuser, hasPassword: password, emailVerified };
+    this.user = {
+      _id: MOCK_USER_ID,
+      email,
+      username,
+      isSuperuser: superuser,
+      hasPassword: password,
+      emailVerified
+    };
     if (githubLinked) {
       this.user.githubId = "583231";
       this.user.githubLogin = "e2e-octocat";
@@ -375,6 +392,7 @@ export class MockApi {
     const email = normalizeEmail(user.email);
     if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
       this.accounts.push({
+        _id: user.id,
         email: user.email,
         username,
         isSuperuser: false,
@@ -442,6 +460,23 @@ export class MockApi {
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
+  /**
+   * "Mails" a reset link for the account `userId` at `email` and returns its token, which
+   * `POST /auth/password-reset/confirm-link` takes once, like the API (vb2007/vb2007.hu-api#256).
+   */
+  mailsResetLink(userId = MOCK_USER_ID, email = this.user?.email ?? MOCK_EMAIL) {
+    const token = `${userId}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
+    this.resetLinks.set(token, { userId, email });
+    return token;
+  }
+
+  /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
+  private voidResetLinks(matches: (link: { userId: string; email: string }) => boolean) {
+    for (const [token, link] of this.resetLinks) {
+      if (matches(link)) this.resetLinks.delete(token);
+    }
+  }
+
   /** Answers the next code `PATCH /user/email` mails with the API's 503, like a mail server that's down. */
   failsNextMail() {
     this.mailFails = true;
@@ -496,6 +531,11 @@ export class MockApi {
   /** Answers every request that mails a code with 429, like the API past its hourly e-mail limit. */
   limitsMailSends() {
     this.mailSendsLimited = true;
+  }
+
+  /** Answers reset links with 429, like the API after too many rejected links from one network. */
+  limitsResetLinks() {
+    this.resetLinksLimited = true;
   }
 
   /**
@@ -626,6 +666,7 @@ export class MockApi {
       currentPassword?: string;
       newPassword?: string;
       username?: string;
+      token?: string;
     } | null,
     query: URLSearchParams
   ): MockResponse | undefined {
@@ -791,6 +832,10 @@ export class MockApi {
       case "POST /auth/password-reset/confirm":
         if (this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.confirmPasswordReset(body);
+      case "POST /auth/password-reset/confirm-link":
+        // The limit counts failed tries, like the password checks', and uses no link up.
+        if (this.resetLinksLimited) return PASSWORD_CHECKS_LIMITED;
+        return this.confirmPasswordResetLink(body);
       case "POST /shortenUrl/create":
         return this.shorten((body as { url?: unknown } | null)?.url);
       case "POST /paste":
@@ -1063,6 +1108,7 @@ export class MockApi {
       return { status: 409, body: { error: "This username is already taken." } };
     }
     this.user = {
+      _id: MOCK_USER_ID,
       email,
       username: username.trim(),
       isSuperuser: false,
@@ -1109,6 +1155,7 @@ export class MockApi {
         body: { error: "An account with this E-mail address already exists." }
       };
     }
+    this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.user.email = email;
     this.user.emailVerified = true;
     return { status: 200, body: { message: "E-mail address updated successfully." } };
@@ -1144,6 +1191,7 @@ export class MockApi {
       return { status: 403, body: { error: "The provided password is incorrect." } };
     }
     this.password = newPassword;
+    this.voidResetLinks(({ userId }) => userId === this.user!._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
@@ -1175,6 +1223,7 @@ export class MockApi {
     this.user.hasPassword = true;
     this.password = password;
     this.githubConfirmed = false;
+    this.voidResetLinks(({ userId }) => userId === this.user!._id);
     return { status: 200, body: { message: "Password set successfully." }, newSession: true };
   }
 
@@ -1238,14 +1287,8 @@ export class MockApi {
         body: { error: "You must provide the E-mail address, the code and a new password." }
       };
     }
-    const length = [...body.newPassword].length;
-    if (length < 8 || length > 128) {
-      const problem = length < 8 ? "too short" : "too long";
-      return {
-        status: 400,
-        body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
-      };
-    }
+    const lengthProblem = this.resetPasswordLengthError(body.newPassword);
+    if (lengthProblem) return lengthProblem;
     const email = normalizeEmail(body.email);
     if (
       !this.claims(this.resetCodes.get(email)) ||
@@ -1256,7 +1299,53 @@ export class MockApi {
     this.resetCodes.delete(email);
     this.password = body.newPassword;
     this.verifiedAddresses.add(email);
+    // A reset by code voids the account's mailed links too.
+    this.voidResetLinks((link) => normalizeEmail(link.email) === email);
     if (this.user && normalizeEmail(this.user.email) === email) {
+      this.user = null;
+    }
+    return {
+      status: 200,
+      body: { message: "Password reset successfully: log in with the new password." }
+    };
+  }
+
+  /** The API's 400 for a new password out of 8 to 128 characters; undefined when it fits. */
+  private resetPasswordLengthError(password: string): MockResponse | undefined {
+    const length = [...password].length;
+    if (length >= 8 && length <= 128) return undefined;
+    const problem = length < 8 ? "too short" : "too long";
+    return {
+      status: 400,
+      body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
+    };
+  }
+
+  /**
+   * Like the API (vb2007/vb2007.hu-api#256): a live link's token sets the password once and ends
+   * every session of its account. A password the API refuses leaves the link usable.
+   */
+  private confirmPasswordResetLink(body: { token?: string; newPassword?: string } | null) {
+    const { token, newPassword } = body ?? {};
+    if (typeof token !== "string" || !token || typeof newPassword !== "string" || !newPassword) {
+      return {
+        status: 400,
+        body: { error: "You must provide the reset link's token and a new password." }
+      };
+    }
+    const lengthProblem = this.resetPasswordLengthError(newPassword);
+    if (lengthProblem) return lengthProblem;
+    if (!this.resetLinks.has(token)) {
+      return {
+        status: 400,
+        body: { error: "The reset link is wrong, expired or already used: request a new one." }
+      };
+    }
+    const { userId } = this.resetLinks.get(token)!;
+    // Using one link voids the account's others, like any new password.
+    this.voidResetLinks((link) => link.userId === userId);
+    this.password = newPassword;
+    if (this.user?._id === userId) {
       this.user = null;
     }
     return {
