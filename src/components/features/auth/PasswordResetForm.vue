@@ -496,7 +496,6 @@ watch(
           <template v-if="linkAnswer === 'limited'">{{ linkStillWorks }}</template>
         </StatusMessage>
         <BaseButton
-          :class="{ 'link-reset__key--waiting': isLinkHeld }"
           type="submit"
           block
           :loading="isResetting"
@@ -730,8 +729,7 @@ watch(
   color: var(--c-ink-soft);
 }
 
-.resend__key,
-.link-reset__key--waiting {
+.resend__key {
   font-variant-numeric: tabular-nums;
 }
 </style>

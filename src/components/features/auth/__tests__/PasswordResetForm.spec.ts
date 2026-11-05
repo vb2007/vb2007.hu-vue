@@ -870,7 +870,6 @@ describe("PasswordResetForm", () => {
       // A held key doesn't shake: it says when to try again instead.
       expect(submitButton(wrapper).classes()).not.toContain("btn--error");
       expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
-      expect(submitButton(wrapper).classes()).toContain("link-reset__key--waiting");
       expect(document.activeElement).toBe(linkPassword(wrapper).element);
       expect(wrapper.find(".alt p").text()).toBe("Can't wait? Get a code instead");
 
@@ -886,7 +885,6 @@ describe("PasswordResetForm", () => {
       expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
       expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
       expect(submitButton(wrapper).attributes("aria-describedby")).toBeUndefined();
-      expect(submitButton(wrapper).classes()).not.toContain("link-reset__key--waiting");
       expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
 
       const { answer, settle } = pendingAnswer();
@@ -944,6 +942,36 @@ describe("PasswordResetForm", () => {
       // Nor is the shake's timeout left to run: only what's put off to the next turn goes first.
       vi.advanceTimersByTime(0);
       expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("keeps the held link's message when the code step's earlier hold takes the same text away", async () => {
+      const LIMITED = "Too many failed attempts: try again later.";
+      const { wrapper, router } = await mountOnCodeStep();
+      await fillCodeStep(wrapper);
+      vi.mocked(confirmPasswordReset).mockResolvedValueOnce({ error: LIMITED, retryAfter: 60 });
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(submitButton(wrapper).text()).toBe("Try again in 60 sec");
+
+      // A link comes in while the code step is still held, and gets the same limiter's 429.
+      await router.push(`/reset-password#token=${TOKEN}`);
+      await flushPromises();
+      await linkPassword(wrapper).setValue("new password");
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({ error: LIMITED, retryAfter: 900 });
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      // The code step's hold ends first and clears the shared error, which reads the same.
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${LIMITED} The link wasn't used up: it works until 30 minutes after it was sent. Try again in 15 minutes.`
+      );
+      expect(submitButton(wrapper).text()).toBe("Try again in 14 min");
+      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(
+        wrapper.find('[role="alert"]').attributes("id")
+      );
     });
 
     it("sends nothing while the link's key is held", async () => {

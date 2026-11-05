@@ -134,6 +134,19 @@ describe("useRetryHold", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("keeps a message that replaced the 429's when stopped", () => {
+    const { error, hold } = mountHold();
+    error.value = LIMITED;
+    hold.start(900);
+
+    error.value = "The provided password is incorrect.";
+    hold.stop();
+
+    expect(hold.isHeld()).toBe(false);
+    expect(hold.note.value).toBe("");
+    expect(error.value).toBe("The provided password is incorrect.");
+  });
+
   it("holds only the id it was started for", () => {
     const { hold } = mountHold();
 
