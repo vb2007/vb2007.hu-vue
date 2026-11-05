@@ -189,6 +189,57 @@ describe("login", () => {
     expect(loginStatus.value).toBe("Wrong password.");
   });
 
+  it.each([
+    [900, "in 15 minutes"],
+    [841, "in 15 minutes"],
+    [61, "in 2 minutes"],
+    [60, "in a minute"],
+    [5, "in a minute"]
+  ])(
+    "says how long a lockout of %i seconds lasts, rounded up to minutes",
+    async (seconds, wait) => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, {
+          error: "Too many failed attempts: try again later.",
+          retryAfter: seconds
+        })
+      );
+      const { login, loginStatus } = await load();
+
+      await login("me@example.com", "nope");
+
+      expect(loginStatus.value).toBe(
+        `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`
+      );
+    }
+  );
+
+  it.each([
+    ["without a retryAfter", { error: "Too many failed attempts: try again later." }],
+    ["with a null retryAfter", { retryAfter: null }],
+    ["with a negative retryAfter", { retryAfter: -30 }],
+    ["with a zero retryAfter", { retryAfter: 0 }],
+    ["with a retryAfter that isn't a number", { retryAfter: "900" }]
+  ])("still explains a lockout %s, only without the wait", async (_, body) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, body));
+    const { login, loginStatus } = await load();
+
+    await login("me@example.com", "nope");
+
+    expect(loginStatus.value).toBe(
+      "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."
+    );
+  });
+
+  it("explains a lockout whose 429 has no body", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(429));
+    const { login, loginStatus } = await load();
+
+    await login("me@example.com", "nope");
+
+    expect(loginStatus.value).toMatch(/^Too many failed attempts\. Try again later,/);
+  });
+
   it("falls back to unknown-error when the error body has no message", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
     const { login, loginStatus } = await load();
