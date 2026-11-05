@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest, apiUrl } from "@/scripts/api/client";
 import { isSafeRedirect } from "@/scripts/utility/text";
@@ -56,8 +57,9 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
       failure: Messages.ShortUrl.lookupFailed
     });
 
-    // No answer (the lookup is never aborted: it passes no signal).
-    if (!result.ok && result.kind !== "http") {
+    // No answer (the lookup is never aborted: it passes no signal), or a server error: the API's
+    // JSON 500, or a gateway's 502/504 page while the API is down. Worth retrying either way.
+    if (!result.ok && (result.kind !== "http" || result.status >= HttpStatus.InternalServerError)) {
       state.value = "error";
       errorMessage.value = result.error;
       return;
@@ -77,10 +79,12 @@ export const useShortLink = (navigate = (url: string) => window.location.replace
       }
       go(json.originalUrl);
     } else if (json?.error) {
+      // Only a 4xx is left here: the API's answer that the code doesn't exist.
       state.value = "not-found";
       errorMessage.value = json.error;
     } else {
-      // Not JSON, or no target: an API without the lookup endpoint yet. Its own redirect still works.
+      // Neither a target nor the API's `{ error }`: a non-JSON answer from something in front of
+      // the API, or a lookup without a target. The API's own redirect may still get there.
       go(apiUrl(Endpoints.ShortUrl.redirect, { params }));
     }
   };
