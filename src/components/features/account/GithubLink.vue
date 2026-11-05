@@ -164,6 +164,7 @@ const submit = async () => {
         size="sm"
         :error="githubLinked && isValid && !isHeld"
         :disabled="isHeld"
+        :aria-label="isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined"
         :blocked="!isValid"
         :loading="isBusy"
       >
@@ -190,6 +191,9 @@ const submit = async () => {
     :variant="githubLinked ? 'secondary' : 'primary'"
     :loading="isLeaving"
     :disabled="!hasPassword && isHeld"
+    :aria-label="
+      !hasPassword && isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined
+    "
     @click="start"
   >
     <template v-if="githubLinked">Unlink GitHub</template>

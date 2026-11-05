@@ -256,6 +256,7 @@ describe("DeleteAccount", () => {
     expect(wrapper.find('[role="alert"]').text()).toBe(error);
     // "Delete account in 15 min" would read as a scheduled delete.
     expect(deleteKey(wrapper).text()).toBe("Try again in 15 min");
+    expect(deleteKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
     expect(deleteKey(wrapper).attributes("disabled")).toBeDefined();
     expect(deleteKey(wrapper).classes()).not.toContain("btn--error");
     expect(document.activeElement).toBe(wrapper.find("input").element);

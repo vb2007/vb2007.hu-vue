@@ -139,6 +139,7 @@ const save = async () => {
         size="sm"
         :loading="isChanging"
         :disabled="isHeld"
+        :aria-label="isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined"
         :blocked="!isValid"
       >
         {{

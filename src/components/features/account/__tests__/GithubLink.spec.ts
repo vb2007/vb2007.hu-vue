@@ -205,6 +205,7 @@ describe("GithubLink", () => {
       );
       expect(passwordInput(wrapper).element.value).toBe("wrong");
       expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+      expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
       expect(assign).not.toHaveBeenCalled();
 
@@ -370,6 +371,7 @@ describe("GithubLink", () => {
 
       expect(wrapper.find('[role="alert"]').text()).toBe(error);
       expect(opener(wrapper).text()).toBe("Try again in 2 min");
+      expect(opener(wrapper).attributes("aria-label")).toBe("Try again in 2 minutes");
       expect(opener(wrapper).attributes("disabled")).toBeDefined();
       await opener(wrapper).trigger("click");
       expect(wrapper.emitted("start")).toHaveLength(1);
@@ -506,6 +508,7 @@ describe("GithubLink", () => {
 
       expect(wrapper.find('[role="alert"]').text()).toBe(error);
       expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
+      expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
       expect(confirmKey(wrapper).classes()).not.toContain("btn--error");
       expect(githubLinked.value).toBe(true);

@@ -282,6 +282,7 @@ describe("LoginForm", () => {
 
       expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
       expect(key().text()).toBe("Try again in 15 min");
+      expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(key().attributes("disabled")).toBeDefined();
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(password.element);
@@ -299,6 +300,7 @@ describe("LoginForm", () => {
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(key().text()).toBe("Log in");
       expect(key().attributes("disabled")).toBeUndefined();
+      expect(key().attributes("aria-label")).toBeUndefined();
     });
 
     it("only holds the address the limiter counted", async () => {

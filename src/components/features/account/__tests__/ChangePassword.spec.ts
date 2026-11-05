@@ -189,6 +189,7 @@ describe("ChangePassword", () => {
 
     expect(wrapper.find('[role="alert"]').text()).toBe(error);
     expect(buttons()[0].text()).toBe("Try again in 15 min");
+    expect(buttons()[0].attributes("aria-label")).toBe("Try again in 15 minutes");
     expect(buttons()[0].attributes("disabled")).toBeDefined();
     // The disabled key can't take the focus, so the current password does.
     expect(document.activeElement).toBe(inputs()[0].element);

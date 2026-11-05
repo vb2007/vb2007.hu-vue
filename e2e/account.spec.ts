@@ -340,7 +340,7 @@ test("a waiting change survives a reload, and a new code is one password away", 
   await expect(page.getByLabel("Current password")).toBeFocused();
   await expect(page.getByText("A new code replaces the one already sent.")).toBeVisible();
   // The API's minute between codes outlasts the reload, so the key still waits it out.
-  await expect(page.getByRole("button", { name: /^Send code in (\d+ sec|1 min)$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Send code in \d+ seconds?$/ })).toBeDisabled();
 
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
@@ -361,7 +361,7 @@ test("asking for a new code too soon counts down the API's wait", async ({ page,
   await expect(page.getByRole("alert")).toHaveText(
     "A code was sent just now. You can send another once the countdown ends."
   );
-  await expect(page.getByRole("button", { name: /^Send code in \d sec$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Send code in \d seconds?$/ })).toBeDisabled();
 
   await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled({
     // The 8-second countdown, plus CI's 20-second assertion budget for a slow host.

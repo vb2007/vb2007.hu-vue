@@ -122,6 +122,7 @@ watch(isLoggedIn, (newVal) => {
           block
           :loading="isLoading"
           :disabled="isHeld"
+          :aria-label="isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined"
           :blocked="!isValid"
           :error="isButtonError"
         >

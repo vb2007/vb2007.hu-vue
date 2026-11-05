@@ -398,6 +398,7 @@ watch(isLoggedIn, (newVal) => {
         block
         :loading="isVerifying"
         :disabled="verifyWaiting"
+        :aria-label="verifyWaiting ? Messages.tryAgainIn(verifyIn, 'long') : undefined"
         :blocked="!isCodeValid"
         :error="isButtonError"
       >
@@ -415,6 +416,11 @@ watch(isLoggedIn, (newVal) => {
           size="sm"
           :loading="isResending"
           :disabled="resendWaiting"
+          :aria-label="
+            resendWaiting && !isResending
+              ? Messages.EmailCode.resendIn(resendIn, 'long')
+              : undefined
+          "
           @click="sendAgain"
         >
           {{
@@ -473,6 +479,9 @@ watch(isLoggedIn, (newVal) => {
           block
           :loading="isLoading"
           :disabled="isRegisterHeld"
+          :aria-label="
+            isRegisterHeld ? Messages.tryAgainIn(registerHold.remaining.value, 'long') : undefined
+          "
           :blocked="!isValid"
           :error="isButtonError"
         >

@@ -81,9 +81,10 @@ export const useRegisterCode = () => {
     codeFieldError.value = message;
   };
 
-  const holdResend = (seconds: number) => {
+  /** Holds the resend key back; `reason` is kept with the wait, to show again after a reload. */
+  const holdResend = (seconds: number, reason = "") => {
     cooldownFor.value = email.value;
-    cooldown.start(seconds, normalizeEmail(email.value));
+    cooldown.start(seconds, normalizeEmail(email.value), reason);
   };
 
   watch(cooldown.active, (active) => {
@@ -94,7 +95,8 @@ export const useRegisterCode = () => {
 
   /**
    * Opens the step for `address`; `waitSeconds` holds resending back that long. Without it, a
-   * countdown kept for the address (e.g. from before a reload) picks up where it was.
+   * countdown kept for the address (e.g. from before a reload) picks up where it was, with the
+   * refused resend's message that started it.
    */
   const open = (address: string, kind: CodeNotice, waitSeconds = 0) => {
     email.value = address;
@@ -104,6 +106,7 @@ export const useRegisterCode = () => {
       holdResend(waitSeconds);
     } else if (cooldown.resume(normalizeEmail(address))) {
       cooldownFor.value = address;
+      showError(cooldown.note.value, true);
     }
   };
 
@@ -162,11 +165,12 @@ export const useRegisterCode = () => {
       notice.value = "resent";
       holdResend(RESEND_COOLDOWN_SECONDS);
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // The cooldown or a rate limiter: either way the key counts down the API's retryAfter.
-      holdResend(retryAfterFrom(result.body));
       // The cooldown's own message names its seconds, which would freeze next to the countdown;
       // a rate limiter's (e.g. too many e-mails) only says to try later, which the key times.
-      showError(isResendCooldown(result.body) ? Messages.EmailCode.cooldown : result.error, true);
+      const message = isResendCooldown(result.body) ? Messages.EmailCode.cooldown : result.error;
+      // The cooldown or a rate limiter: either way the key counts down the API's retryAfter.
+      holdResend(retryAfterFrom(result.body), message);
+      showError(message, true);
     } else {
       showError(result.error);
       if (result.status === HttpStatus.ServiceUnavailable) {
