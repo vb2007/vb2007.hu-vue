@@ -10,15 +10,17 @@ import { test as base, expect, type Route } from "@playwright/test";
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
- * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
- * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
- * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
+ * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
+ * A `hasUser(...)` address and `MOCK_SUPERUSER_EMAIL` get the same 202 and code: only the confirm refuses them, with 409
+ * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
+ * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
+ * 15 minutes ago has expired.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
  * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
  * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
- * Confirming a change to `SUPERUSER_EMAIL` is refused, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses
- * addresses on `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
+ * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
+ * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
  * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
@@ -40,7 +42,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
- * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
+ * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an address of a `hasUser(...)` account gets the same 202, and a taken name a 409.
+ * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
+ * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
  * Each address waits for its own code, and a resend within a minute of the last code gets the API's 429.
  * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
@@ -128,6 +132,8 @@ export const MOCK_EMAIL = "me@example.com";
 export const MOCK_USER_ID = "e2e0e2e0e2e0e2e0e2e0e2e0";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
+/** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
+export const MOCK_SUPERUSER_EMAIL = "admin@example.com";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
@@ -135,8 +141,6 @@ const OBJECT_ID = /^[0-9a-f]{24}$/i;
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
 
-/** The API's `SUPERUSER_EMAIL`: no other account may confirm a change to it. */
-export const SUPERUSER_EMAIL = "admin@example.com";
 /** The API refuses these domains and their subdomains (vb2007/vb2007.hu-api#217). */
 export const DISPOSABLE_DOMAINS = ["mailinator.com"];
 /** Domains whose DNS takes no mail, which the API refuses too. */
@@ -190,6 +194,56 @@ const parseMultipart = (body: Buffer, contentType: string) => {
   };
 };
 
+/**
+ * The API's `validateUri` (`src/helpers/text.ts` in vb2007/vb2007.hu-api): one of these prefixes,
+ * whatever its case, and no whitespace.
+ */
+const URI_PREFIXES = [
+  "acap://",
+  "app://",
+  "file://",
+  "ftp://",
+  "ftps://",
+  "http://",
+  "https://",
+  "icap://",
+  "imap://",
+  "irc://",
+  "mailto:",
+  "ms-access:",
+  "ms-excel:",
+  "ms-infopath:",
+  "ms-powerpoint:",
+  "ms-project:",
+  "ms-publisher:",
+  "ms-spd:",
+  "ms-visio:",
+  "ms-word:",
+  "msteams://",
+  "mtqp://",
+  "nntp://",
+  "pop://",
+  "rsync://",
+  "rtmp://",
+  "rtsp://",
+  "sftp://",
+  "shortcuts://",
+  "smb://",
+  "smtp://",
+  "ssh://",
+  "telnet://",
+  "viber://",
+  "webcal://",
+  "wss://",
+  "xmpp://",
+  "zoomus://",
+  "zoommtg://"
+];
+const isValidUri = (url: unknown): url is string =>
+  typeof url === "string" &&
+  !/\s/.test(url) &&
+  URI_PREFIXES.some((prefix) => url.toLowerCase().startsWith(prefix));
+
 interface MockUser {
   _id: string;
   email: string;
@@ -237,11 +291,8 @@ export class MockApi {
   /** The only `VB-AUTH` value still accepted; each new session replaces it. */
   private session = "";
   private sessionCount = 0;
-  /** Registrations waiting for their code, by address, like the API's. */
-  private readonly pendingRegistrations = new Map<
-    string,
-    MockCode & { username: string; password: string }
-  >();
+  /** Registrations waiting for their code, by address: only the code, like the API's (vb2007/vb2007.hu-api#295). */
+  private readonly pendingRegistrations = new Map<string, MockCode>();
   /** Password reset codes waiting, by account address. */
   private readonly resetCodes = new Map<string, MockCode>();
   /** Addresses a password reset confirmed, verified at their next login. */
@@ -712,11 +763,19 @@ export class MockApi {
       case "POST /user/password":
         return this.setPassword(body?.password);
       case "DELETE /auth/github/link": {
-        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
-        if (!this.user.githubId)
-          return { status: 404, body: { error: "No GitHub account is linked." } };
+        const guarded = this.guardGithubLink();
+        if (guarded || !this.user) return guarded;
+        if (!this.user.githubId) {
+          return { status: 404, body: { error: "No GitHub account is linked to this account." } };
+        }
         if (!this.user.hasPassword) {
-          return { status: 403, body: { error: "This account has no password." } };
+          return {
+            status: 403,
+            body: {
+              error:
+                "This account has no password: set one before unlinking GitHub, since it's the only way to log in."
+            }
+          };
         }
         const refusal = this.checkGithubPassword(body?.password);
         if (refusal) return refusal;
@@ -777,18 +836,8 @@ export class MockApi {
         // The limit counts failed tries, like the password checks', and uses no link up.
         if (this.resetLinksLimited) return PASSWORD_CHECKS_LIMITED;
         return this.confirmPasswordResetLink(body);
-      case "POST /shortenUrl/create": {
-        const url = (body as { url?: string } | null)?.url ?? "";
-        // Like the API's SHORT_URL_MAX_LENGTH (vb2007/vb2007.hu-api#289).
-        if (url.length > 2000) {
-          return {
-            status: 400,
-            body: { error: "The URI/URL can be at most 2000 characters long." }
-          };
-        }
-        this.hasShortLink(this.shortCode, url, this.user?.username);
-        return { status: 200, body: { data: { shortenedUrl: this.shortCode } } };
-      }
+      case "POST /shortenUrl/create":
+        return this.shorten((body as { url?: unknown } | null)?.url);
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         return {
@@ -843,11 +892,21 @@ export class MockApi {
     return { status: 302, location: `${this.appOrigin}/account?github=linked` };
   }
 
-  /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
-  private checkGithubPassword(password?: string): MockResponse | undefined {
+  /**
+   * What runs before the GitHub link routes' own checks: the API's `isAuthenticated`, then its shared password limit
+   * (vb2007/vb2007.hu-api#243). Undefined when the request gets through.
+   */
+  private guardGithubLink(): MockResponse | undefined {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
     }
+  }
+
+  /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
+  private checkGithubPassword(password?: string): MockResponse | undefined {
     if (!password) {
       return {
         status: 400,
@@ -861,9 +920,10 @@ export class MockApi {
 
   /** `POST /auth/github/link`: answers where GitHub's authorize page is, here on the mock API. */
   private startGithubLink(password?: string): MockResponse {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const guarded = this.guardGithubLink();
+    if (guarded) return guarded;
     if (this.githubUnconfigured) return { status: 503, body: { error: "notConfigured" } };
-    if (this.user.hasPassword) {
+    if (this.user!.hasPassword) {
       const refusal = this.checkGithubPassword(password);
       if (refusal) return refusal;
     }
@@ -871,49 +931,25 @@ export class MockApi {
     return { status: 200, body: { url: `${this.apiOrigin}/e2e-github/authorize?state=e2e` } };
   }
 
-  /** Like the API, one code a minute per address; the one sent then still works. */
+  /**
+   * Like the API, one code a minute per address; the one sent then still works. An address that
+   * has an account gets the same answers, so registering doesn't reveal it.
+   */
   private register(body: { email?: string; username?: string; password?: string } | null) {
+    if (this.isUsernameTaken(body?.username)) {
+      return { status: 409, body: { error: "This username is already taken." } };
+    }
     const email = normalizeEmail(body?.email ?? "");
     const refusal = domainError(email);
     if (refusal) return { status: 400, body: { error: refusal } };
     const tooSoon = this.resendTooSoon(this.pendingRegistrations.get(email)?.sentAt);
     if (tooSoon) return tooSoon;
-    this.pendingRegistrations.set(email, {
-      username: body?.username ?? "",
-      password: body?.password ?? "",
-      ...this.newCode(15)
-    });
+    this.pendingRegistrations.set(email, this.newCode(15));
     return {
       status: 202,
       body: {
         message: `A confirmation code was sent to ${email}: send it to POST /auth/register/verify to finish registering.`
       }
-    };
-  }
-
-  private verifyRegistration(body: { email?: string; code?: string } | null): MockResponse {
-    const email = normalizeEmail(body?.email ?? "");
-    const pending = this.pendingRegistrations.get(email);
-    if (!this.claims(pending) || normalizeCode(body?.code) !== REGISTRATION_CODE) {
-      return invalidCode();
-    }
-    this.user = {
-      _id: MOCK_USER_ID,
-      email,
-      username: pending.username,
-      isSuperuser: false,
-      hasPassword: true,
-      // Entering the mailed code confirms the address.
-      emailVerified: true
-    };
-    this.knowsAccount(this.user);
-    this.password = pending.password;
-    this.pendingRegistrations.delete(email);
-    // Like logging in, confirming the code starts a session.
-    return {
-      status: 201,
-      body: { message: `User ${this.user.username} registered successfully.` },
-      newSession: true
     };
   }
 
@@ -935,8 +971,9 @@ export class MockApi {
   }
 
   /**
-   * Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217), plus a 409 for a taken
-   * address, which the API now leaves to the confirm (see #160).
+   * Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217). Another account's address
+   * and the superuser's pass, so they don't show which addresses have accounts
+   * (vb2007/vb2007.hu-api#291): `confirmEmail` refuses them.
    */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
@@ -987,12 +1024,6 @@ export class MockApi {
     if (normalized === this.user.email) {
       return { status: 200, body: { message: "E-mail address updated successfully." } };
     }
-    if (this.users.some((user) => user.email === normalized)) {
-      return {
-        status: 409,
-        body: { error: "An account with this E-mail address already exists." }
-      };
-    }
     const refusal = domainError(normalized);
     if (refusal) return { status: 400, body: { error: refusal } };
     if (this.emailChange && this.emailCooldownOnSend !== null) {
@@ -1018,11 +1049,93 @@ export class MockApi {
     };
   }
 
+  /** Whether an account has `username`, whatever its case, like `GET /auth/username-available`. */
+  private isUsernameTaken(username?: string) {
+    const name = username?.trim().toLowerCase();
+    return [...this.users.map((user) => user.username), this.user?.username].some(
+      (taken) => taken?.toLowerCase() === name
+    );
+  }
+
+  /**
+   * `POST /auth/register/verify`: the waiting registration only holds the address and code, so the
+   * account gets the username and password sent here (vb2007/vb2007.hu-api#295).
+   */
+  private verifyRegistration(
+    body: { email?: string; code?: string; username?: string; password?: string } | null
+  ): MockResponse {
+    const { code, username, password } = body ?? {};
+    if (!body?.email || !code || !username || !password) {
+      return {
+        status: 400,
+        body: {
+          error:
+            "You must provide an E-mail address, the confirmation code, a username and a password."
+        }
+      };
+    }
+    const nameLength = username.trim().length;
+    if (nameLength < 2 || nameLength > 16) {
+      const which = nameLength < 2 ? "short" : "long";
+      return {
+        status: 400,
+        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
+      };
+    }
+    if (password.length < 8 || password.length > 128) {
+      const which = password.length < 8 ? "short" : "long";
+      return {
+        status: 400,
+        body: { error: `The password's too ${which}: it must be between 8 and 128 characters.` }
+      };
+    }
+    const email = normalizeEmail(body.email);
+    if (
+      !this.claims(this.pendingRegistrations.get(email)) ||
+      normalizeCode(code) !== REGISTRATION_CODE
+    ) {
+      return invalidCode();
+    }
+    if (this.hasAccount(email)) {
+      this.pendingRegistrations.delete(email);
+      return {
+        status: 409,
+        body: { error: "An account with this E-mail address already exists." }
+      };
+    }
+    if (this.isUsernameTaken(username)) {
+      // Waiting registrations don't hold a name: the code still works with another one.
+      return { status: 409, body: { error: "This username is already taken." } };
+    }
+    this.user = {
+      _id: MOCK_USER_ID,
+      email,
+      username: username.trim(),
+      isSuperuser: false,
+      hasPassword: true,
+      // Entering the mailed code confirms the address.
+      emailVerified: true
+    };
+    this.knowsAccount(this.user);
+    this.password = password;
+    this.pendingRegistrations.delete(email);
+    // Like logging in, confirming the code starts a session.
+    return {
+      status: 201,
+      body: { message: `User ${this.user.username} registered successfully.` },
+      newSession: true
+    };
+  }
+
   /** A waiting change's code works for 15 minutes; after that, GET /user leaves it out. */
   private isEmailChangeLive() {
     return this.emailChange !== null && this.now() < this.emailChange.expiresAt;
   }
 
+  /**
+   * Checks in the API's order (vb2007/vb2007.hu-api#215 and #291): a right code for the superuser's
+   * address gets 403 and one for another account's 409, and either drops the waiting change.
+   */
   private confirmEmail(code?: string) {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
@@ -1033,7 +1146,7 @@ export class MockApi {
     }
     const { email } = this.emailChange;
     this.emailChange = null;
-    if (email === SUPERUSER_EMAIL) {
+    if (email === MOCK_SUPERUSER_EMAIL) {
       return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
     }
     if (this.users.some((user) => user.email === email)) {
@@ -1451,19 +1564,87 @@ export class MockApi {
     return { status: 200, body: { message: "Upload quota updated successfully.", user } };
   }
 
+  /**
+   * `POST /shortenUrl/create`, per user like the API (vb2007/vb2007.hu-api#247): the same user's URL again gets
+   * their link back with a 200, anyone else's link to it doesn't count. A new link takes `shortenReturns`' code,
+   * or that code numbered when it's taken.
+   */
+  private shorten(url: unknown): MockResponse {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    if (!isValidUri(url)) {
+      return { status: 400, body: { error: "The URI/URL you've provided isn't valid." } };
+    }
+    // Like the API's SHORT_URL_MAX_LENGTH (vb2007/vb2007.hu-api#289).
+    if (url.length > 2000) {
+      return { status: 400, body: { error: "The URI/URL can be at most 2000 characters long." } };
+    }
+    const answer = (status: number, message: string, code: string) => {
+      const link = this.shortLinks.get(code)!;
+      return {
+        status,
+        body: {
+          message,
+          data: { shortenedUrl: code, originalUrl: url, addedOn: link.addedOn, addedBy: "u1" }
+        }
+      };
+    };
+    const username = this.user.username;
+    const existing = [...this.shortLinks].find(
+      ([, link]) => link.target === url && link.addedBy === username
+    );
+    if (existing) return answer(200, "You've already shortened this URL.", existing[0]);
+
+    let code = this.shortCode;
+    for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;
+    this.hasShortLink(code, url, username);
+    return answer(201, "URL shortened successfully", code);
+  }
+
+  /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
   private listPastes(username: string, query: URLSearchParams) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    const isIntegerInRange = (value: string, min: number, max: number) =>
+      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+    const validators: [string, (value: string) => boolean][] = [
+      ["limit", (value) => isIntegerInRange(value, 1, 50)],
+      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
+      ["sortBy", (value) => value === "addedOn"],
+      ["sortOrder", (value) => value === "asc" || value === "desc"]
+    ];
+    // A repeated parameter reaches the API as an array, which no check accepts.
+    const invalid = validators.find(
+      ([param, isValid]) =>
+        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
+    );
+    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+
+    // Usernames match whatever their case, like the API's collation.
+    const sameName = (name?: string) => name?.toLowerCase() === username.toLowerCase();
+    const known = [
+      this.user.username,
+      ...this.accounts.map((account) => account.username),
+      ...this.users.map((user) => user.username),
+      ...this.pastes.map((paste) => paste.addedBy)
+    ];
+    if (!known.some(sameName)) {
+      return { status: 404, body: { error: "There is no such user with that username." } };
+    }
+
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => paste.addedBy === username);
+    const owned = this.pastes.filter((paste) => sameName(paste.addedBy));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: { _id: "u1", username } })),
+          .map((paste) => ({ ...paste, addedBy: { _id: "u1", username: paste.addedBy } })),
         pagination: {
           limit,
           page,

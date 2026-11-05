@@ -1,4 +1,12 @@
-import { expect, MOCK_EMAIL, MOCK_EMAIL_CODE, MOCK_PASSWORD, type MockApi, test } from "./fixtures";
+import {
+  expect,
+  MOCK_EMAIL,
+  MOCK_EMAIL_CODE,
+  MOCK_PASSWORD,
+  MOCK_SUPERUSER_EMAIL,
+  type MockApi,
+  test
+} from "./fixtures";
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
@@ -183,6 +191,15 @@ for (const [what, arrange, error] of [
     "an API without GitHub",
     (api: MockApi) => api.githubIsNotConfigured(),
     "GitHub login isn't available right now."
+  ],
+  [
+    // The API's password limit runs before the link route checks for GitHub (vb2007/vb2007.hu-api#243).
+    "too many failed tries, even on an API without GitHub",
+    (api: MockApi) => {
+      api.limitsPasswordChecks();
+      api.githubIsNotConfigured();
+    },
+    "Too many failed attempts: try again later. Try again in 15 minutes."
   ]
 ] as const) {
   test(`a GitHub link refused for ${what} says why`, async ({ page, api }) => {
@@ -501,30 +518,43 @@ test("a code asked for in another tab shows up when the form is turned away", as
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
 });
 
-test("an address taken meanwhile drops the waiting change and says so", async ({ page, api }) => {
-  api.loggedInAs("me@example.com", "me");
-  api.hasUser("taken");
-  api.hasPendingEmail("taken@example.com");
-  await page.goto("/account");
+// The API mails a code to another account's address or the superuser's like to any other, so it
+// doesn't show which addresses have accounts: only the confirm refuses them (vb2007/vb2007.hu-api#291).
+for (const [status, address, error] of [
+  [409, "taken@example.com", "An account with this E-mail address already exists."],
+  [403, MOCK_SUPERUSER_EMAIL, "This e-mail address is reserved for the superuser."]
+] as const) {
+  test(`a ${status} at confirm drops the waiting change and says so`, async ({ page, api }) => {
+    api.loggedInAs("me@example.com", "me");
+    api.hasUser("taken");
+    await page.goto("/account");
 
-  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
-  await page.getByRole("button", { name: "Confirm code" }).click();
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await page.getByLabel("New e-mail").fill(address);
+    await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Send code" }).click();
+    await expect(page.getByText(`Waiting for confirmation: ${address}`)).toBeVisible();
 
-  await expect(page.getByRole("alert")).toHaveText(
-    "taken@example.com wasn't confirmed. An account with this E-mail address already exists."
-  );
-  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
-  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
-  await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+    await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+    await page.getByRole("button", { name: "Confirm code" }).click();
 
-  // Nothing waits any more, so a new address goes straight away.
-  await page.getByRole("button", { name: "Change e-mail" }).click();
-  await page.getByLabel("New e-mail").fill("other@example.com");
-  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Send code" }).click();
-  await expect(page.getByText("Waiting for confirmation: other@example.com")).toBeVisible();
-});
+    await expect(page.getByRole("alert")).toHaveText(`${address} wasn't confirmed. ${error}`);
+    await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+    await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+    await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
+
+    // Nothing waits any more, so the form comes back empty and a new address goes straight away.
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await expect(page.getByLabel("New e-mail")).toBeFocused();
+    await expect(page.getByLabel("New e-mail")).toHaveValue("");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByLabel("New e-mail").fill("other@example.com");
+    await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Send code", exact: true }).click();
+    await expect(page.getByText("Waiting for confirmation: other@example.com")).toBeVisible();
+  });
+}
 
 test("a code that expired with the page open takes the waiting change away", async ({
   page,
@@ -653,7 +683,7 @@ test("the e-mail form checks the address before sending it", async ({ page, api 
 });
 
 // The form checks the address's format with the API's own rule, but only the API checks its domain
-// (vb2007/vb2007.hu-api#217).
+// (vb2007/vb2007.hu-api#217). A taken address gets a code like any other.
 for (const [status, email, password, error] of [
   [
     400,
@@ -662,12 +692,10 @@ for (const [status, email, password, error] of [
     "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
   ],
   [403, "new@example.com", "wrong-password", "The provided password is incorrect."],
-  [409, "taken@example.com", MOCK_PASSWORD, "An account with this E-mail address already exists."],
   [429, "new@example.com", MOCK_PASSWORD, "Too many failed attempts: try again later."]
 ] as const) {
   test(`a ${status} from the API keeps the form and the address`, async ({ page, api }) => {
     api.loggedInAs("me@example.com", "me");
-    api.hasUser("taken");
     if (status === 429) api.limitsPasswordChecks();
     await page.goto("/account");
 
@@ -754,7 +782,7 @@ test("accounts that can't change their e-mail say why", async ({ page, api }) =>
   await expect(page.getByText("Changing it needs a password.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Change e-mail" })).toHaveCount(0);
 
-  api.loggedInAs("admin@example.com", "admin", { superuser: true });
+  api.loggedInAs(MOCK_SUPERUSER_EMAIL, "admin", { superuser: true });
   await page.reload();
   await expect(page.getByText("It's set in the API's configuration.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Change e-mail" })).toHaveCount(0);
