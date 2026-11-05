@@ -62,7 +62,7 @@ describe("AccountPanel", () => {
     expect(wrapper.find("h1").text()).toBe("Account");
     const status = wrapper.find('[role="status"]');
     expect(status.text()).toBe(
-      "Your session ended, so you're logged out: it expired, or the account was logged in or out elsewhere. Log in again to see your account."
+      "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account."
     );
     expect(document.activeElement).toBe(status.element);
     expect(wrapper.findAll("a").map((link) => link.attributes("href"))).toEqual([

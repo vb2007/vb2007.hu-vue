@@ -40,9 +40,9 @@ export class Messages {
       "An unknown error occurred. Please try again later.";
     static readonly sessionNotKept: string =
       "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
-    /** The API turned away a session the page had: it expired, or was replaced or ended elsewhere. */
+    /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
     static readonly sessionEnded: string =
-      "Your session ended, so you're logged out: it expired, or the account was logged in or out elsewhere. Log in again to see your account.";
+      "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */

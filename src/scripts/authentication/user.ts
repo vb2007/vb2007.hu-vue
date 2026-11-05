@@ -18,8 +18,13 @@ import {
 } from "@/scripts/authentication/authState";
 import { ref } from "vue";
 
-/** Counts `GET /user` lookups, so an older one that answers late is ignored. */
-let latestLookup = 0;
+/**
+ * `GET /user` lookups can answer out of order (e.g. the page load's after a login's), so each is
+ * numbered as it's sent. `appliedLookup` is the newest one the state stands on: an answer from an
+ * older lookup is ignored, and so is one sent before the page forgot the user (`clearSession`).
+ */
+let sentLookups = 0;
+let appliedLookup = 0;
 
 /** A `LoginStatus`, or the API's message when logging in failed. */
 export const loginStatus = ref("");
@@ -29,28 +34,34 @@ export const loginStatus = ref("");
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
 export const fetchUserDetails = async () => {
-  // Lookups can answer out of order (e.g. the page load's and a login's); only the latest counts.
-  const lookup = ++latestLookup;
+  const lookup = ++sentLookups;
   const result = await apiRequest(Endpoints.User.get, {
     failure: Messages.Auth.userFailed,
     // A visitor who isn't logged in: the usual answer, not a fault.
     quietStatuses: [HttpStatus.Forbidden]
   });
 
-  if (lookup !== latestLookup) {
-    return result.ok;
-  }
+  /** Whether this answer is newer than what the state stands on; it then becomes that answer. */
+  const takesOver = () => {
+    if (lookup <= appliedLookup) return false;
+    appliedLookup = lookup;
+    return true;
+  };
 
   if (!result.ok) {
-    // GET /user answers 403 only for a missing or ended session, so the page forgets the user.
-    // Only the API's own 403 (with its { error }) counts, not a proxy's block page; other
-    // failures say nothing about the session.
-    if (result.status === HttpStatus.Forbidden && apiErrorOf(result) !== undefined) {
+    // GET /user answers 403 only for a missing or ended session. Only the API's own 403 (with its
+    // { error }) says so, not a proxy's block page; other failures say nothing about the session.
+    const loggedOut = result.status === HttpStatus.Forbidden && apiErrorOf(result) !== undefined;
+    if (loggedOut && takesOver()) {
       const hadSession = isLoggedIn.value;
-      clearSession();
+      forgetUser();
       sessionEnded.value = hadSession;
     }
     return false;
+  }
+
+  if (!takesOver()) {
+    return true;
   }
 
   const { data } = result;
@@ -94,8 +105,7 @@ export const login = async (email: string, password: string) => {
     : Messages.Auth.sessionNotKept;
 };
 
-/** Forgets the logged-in user locally; the API ends the session itself. */
-export const clearSession = () => {
+const forgetUser = () => {
   userEmail.value = "";
   username.value = "";
   isSuperuser.value = false;
@@ -106,6 +116,13 @@ export const clearSession = () => {
   emailVerified.value = false;
   isLoggedIn.value = false;
   sessionEnded.value = false;
+};
+
+/** Forgets the logged-in user locally; the API ends the session itself. */
+export const clearSession = () => {
+  // A lookup still on its way was sent before this, so its answer no longer counts.
+  appliedLookup = sentLookups;
+  forgetUser();
 };
 
 export const logout = async () => {

@@ -99,8 +99,8 @@ export const useChangeEmail = () => {
   /**
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
    * refreshes the user: a 403 or 409 drops the waiting change, and a 400 may mean it expired. A
-   * 403 can also be the session ending (it expired, or the account was logged in or out elsewhere):
-   * the refresh then logs the page out, and the account page says so instead.
+   * 403 can also be the session ending (expired, ended by a password reset, or replaced by a login
+   * elsewhere): the refresh then logs the page out, and the account page says so instead.
    */
   const confirm = async (code: string) => {
     const address = pendingEmail.value;
