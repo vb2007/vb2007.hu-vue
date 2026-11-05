@@ -442,6 +442,42 @@ test("a code that expired with the page open takes the waiting change away", asy
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
 });
 
+test("a change confirmed in another tab shows as confirmed, not as an expired code", async ({
+  page,
+  api,
+  baseURL
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+
+  // Another tab, on the same mock, confirms the code first.
+  const appOrigin = new URL(baseURL!).origin;
+  const other = await page.context().newPage();
+  await other.route(
+    (url) => url.origin !== appOrigin,
+    (route) => api.handle(route, appOrigin)
+  );
+  await other.goto("/account");
+  await other.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await other.getByRole("button", { name: "Confirm code" }).click();
+  await expect(other.getByRole("status")).toHaveText("E-mail address updated successfully.");
+  await other.close();
+
+  // This tab's code is spent now, so the API refuses it with a 400.
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("status")).toHaveText("E-mail address updated.");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText(/wasn't confirmed/)).toHaveCount(0);
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+});
+
 test("a session that ended elsewhere logs the account page out, without blaming the change", async ({
   page,
   api,
