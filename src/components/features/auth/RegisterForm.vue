@@ -19,12 +19,12 @@ import {
   confirmationCodeEarlyError,
   confirmationCodeError,
   emailError,
+  normalizeEmail,
   passwordEarlyError,
   passwordError,
   passwordMatchEarlyError,
   passwordMatchError,
   register,
-  registerFieldOf,
   registerStatus,
   USERNAME_CHECK_DELAY,
   usernameEarlyError,
@@ -45,7 +45,7 @@ import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
-const USERNAME_TAKEN = "That username is taken.";
+const USERNAME_TAKEN = Messages.Auth.usernameTaken;
 
 const username = ref("");
 const email = ref("");
@@ -56,6 +56,12 @@ const isLoading = ref(false);
 const isButtonError = ref(false);
 /** Set once the API said the typed username is taken; cleared by the next edit. */
 const usernameTaken = ref(false);
+/**
+ * The (normalized) address whose code the code field still holds after the code step sent the
+ * user back to fix the form: that code still works, so going on reopens the step with it instead
+ * of mailing a new one.
+ */
+const codeKeptFor = ref("");
 
 const {
   errors,
@@ -104,6 +110,7 @@ const {
   isResending,
   codeError,
   codeFieldError,
+  formProblem,
   cooldown,
   resendWaiting,
   verifyWaiting,
@@ -117,9 +124,12 @@ const {
   resend
 } = useRegisterCode();
 const { remaining: resendIn } = cooldown;
-/** After the mail limit's 429 (per IP), Register waits its `retryAfter`, whatever the address. */
+/**
+ * After the mail limit's 429 (per IP), Register waits its `retryAfter`, whatever the address.
+ * "Continue" with a kept code mails nothing, so it isn't held, like "Enter it".
+ */
 const registerHold = useRetryHold(registerStatus);
-const isRegisterHeld = computed(() => registerHold.isHeld());
+const isRegisterHeld = computed(() => registerHold.isHeld() && !hasKeptCode.value);
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
 const codeErrorId = useId();
@@ -142,42 +152,51 @@ const errorIsWait = computed(
 /** The step on screen (form or code), to move focus into it when it changes. */
 const step = useTemplateRef<HTMLFormElement>("step");
 const doneMessage = useTemplateRef("doneMessage");
-const emailField = useTemplateRef("emailField");
 
 /**
  * The code step's notice, around the address: the text before it, the punctuation kept with it,
- * and the rest. A waiting registration keeps the username and password it was sent with.
+ * and the rest. The waiting registration only holds the address and code: confirming it registers
+ * the username and password in the form (vb2007/vb2007.hu-api#295), so the notice names the
+ * username it creates.
  */
-const NOTICES: Record<CodeNotice, [string, string, string]> = {
-  sent: [
-    `A ${Limits.Code.digits}-digit code is on its way to`,
-    ".",
-    `Enter it to finish registering; it works for ${Limits.Code.registerValidMinutes} minutes.`
-  ],
-  // The API answers a resend the same whether or not a registration is waiting for the address.
-  resent: [
-    "If a registration is waiting for",
-    ",",
-    "a new code is on its way, and the one before no longer works."
-  ],
-  earlier: [
-    "Enter the code that was mailed to",
-    ".",
-    `It works for ${Limits.Code.registerValidMinutes} minutes after sending, and keeps the username and password you registered with then.`
-  ],
-  recent: [
-    "Less than a minute ago, a code went to",
-    ".",
-    "It still works: enter it to finish registering, with the username and password you sent then."
-  ],
-  lost: [
-    "A new code couldn't be mailed to",
-    ",",
-    "and the one before no longer works. Send a new one below."
-  ]
+const notices = (name: string): Record<CodeNotice, [string, string, string]> => {
+  const minutes = Limits.Code.registerValidMinutes;
+  return {
+    sent: [
+      `A ${Limits.Code.digits}-digit code is on its way to`,
+      ".",
+      `Enter it to register as ${name}; it works for ${minutes} minutes.`
+    ],
+    // The API answers a resend the same whether or not a registration is waiting for the address.
+    resent: [
+      "If a registration is waiting for",
+      ",",
+      "a new code is on its way, and the one before no longer works."
+    ],
+    earlier: [
+      "Enter the code that was mailed to",
+      ".",
+      `It works for ${minutes} minutes after sending, and registers you as ${name} with the password you entered.`
+    ],
+    recent: [
+      "Less than a minute ago, a code went to",
+      ".",
+      `It still works: enter it to register as ${name}.`
+    ],
+    kept: [
+      "Your code for",
+      "",
+      `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
+    ],
+    lost: [
+      "A new code couldn't be mailed to",
+      ",",
+      "and the one before no longer works. Send a new one below."
+    ]
+  };
 };
 
-const noticeText = computed(() => NOTICES[notice.value]);
+const noticeText = computed(() => notices(username.value.trim())[notice.value]);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
@@ -190,20 +209,10 @@ const formError = computed(() => {
   return status === RegisterStatus.Error ? Messages.Auth.registerUnknownError : status;
 });
 
-/** Shows the API's refusal under the field it's about, or above the key otherwise. */
-const showProblem = (message: string) => {
-  const field = registerFieldOf(message);
-  if (field) {
-    registerStatus.value = "";
-    setError(field, message);
-  } else {
-    registerStatus.value = message;
-  }
-};
-
 /** Forgets what was typed, e.g. once the account exists: nothing, least of all the password, stays. */
 const clearForm = () => {
   email.value = username.value = password.value = confirmPassword.value = code.value = "";
+  codeKeptFor.value = "";
   registerStatus.value = "";
   resetChecks();
   resetCode();
@@ -239,10 +248,22 @@ const focusProblem = async () => {
   target?.focus();
 };
 
+/**
+ * Whether the code field holds a code that still works for the typed address. The submit key then
+ * reads "Continue": it reopens the code step and mails nothing.
+ */
+const hasKeptCode = computed(
+  () => !!codeKeptFor.value && codeKeptFor.value === normalizeEmail(email.value)
+);
+
+/** Opens the code step for the typed address; only "kept" keeps the code typed before. */
 const openCodeStep = async (kind: CodeNotice, waitSeconds?: number) => {
   registerStatus.value = "";
-  code.value = "";
-  resetCode();
+  if (kind !== "kept") {
+    code.value = "";
+    resetCode();
+    codeKeptFor.value = "";
+  }
   // The code watcher clears old errors on the next flush; letting it run first keeps the
   // message `open` shows for a wait it picks up.
   await nextTick();
@@ -254,6 +275,11 @@ const handleSubmit = async () => {
   if (isRegisterHeld.value) return;
   if (!(await validate(step.value))) {
     flagError();
+    return;
+  }
+  if (hasKeptCode.value) {
+    // Back from fixing the form: the code from before still works, so no new one is mailed.
+    await openCodeStep("kept");
     return;
   }
 
@@ -282,11 +308,14 @@ const handleSubmit = async () => {
   }
 };
 
-/** For a code that already arrived, e.g. after a reload: nothing is sent. */
+/**
+ * For a code that already arrived, e.g. after a reload: nothing is sent. Confirming it creates the
+ * account with the form's username and password, so the whole form has to pass first. A field
+ * still to fill in isn't a failed registration, so the Register key stays calm.
+ */
 const enterCode = async () => {
-  // The address is what's missing, not a failed registration, so the Register key stays calm.
-  if (await validate(emailField.value?.$el, ["email"])) {
-    await openCodeStep("earlier");
+  if (await validate(step.value)) {
+    await openCodeStep(hasKeptCode.value ? "kept" : "earlier");
   }
 };
 
@@ -297,7 +326,7 @@ const handleCode = async () => {
     return;
   }
 
-  const result = await verify(code.value);
+  const result = await verify(code.value, username.value, password.value);
   switch (result) {
     case "logged-in":
     case "created":
@@ -310,12 +339,16 @@ const handleCode = async () => {
       await nextTick();
       doneMessage.value?.$el.focus();
       break;
-    case "taken": {
-      // The waiting registration is gone, so only the form can go on from here.
-      const error = codeError.value;
+    case "fix-form":
+    case "account-exists": {
+      // Back to the form, at the field the API refused. A username taken meanwhile leaves the
+      // waiting registration as it was, so the typed code and the resend countdown are kept for
+      // going on; an address with an account ended it. The Register key wasn't the one pressed,
+      // so it doesn't flash: the focused field says what to fix.
+      codeKeptFor.value = result === "fix-form" ? normalizeEmail(codeEmail.value) : "";
+      const { field, message } = formProblem.value!;
       leave();
-      showProblem(error);
-      flagError();
+      setError(field, message);
       await focusProblem();
       break;
     }
@@ -328,7 +361,13 @@ const handleCode = async () => {
 };
 
 const sendAgain = async () => {
-  await resend();
+  // Decided by this resend's own outcome: the notice can still be an earlier resend's.
+  if ((await resend()) !== "failed") {
+    // A new code replaced the one typed before, even when it couldn't be mailed: confirming the
+    // old one would only spend a try.
+    codeKeptFor.value = code.value = "";
+    resetCode();
+  }
   // The key is disabled now, which drops focus; the code is what comes next anyway.
   await focusStep();
 };
@@ -339,9 +378,9 @@ const changeAddress = async () => {
   await focusStep();
 };
 
-// A new attempt at the code makes the last error old news.
-watch(code, () => {
-  codeError.value = codeFieldError.value = "";
+// A new attempt at the code makes the last error old news; a field emptied after a resend isn't one.
+watch(code, (value) => {
+  if (value) codeError.value = codeFieldError.value = "";
 });
 
 /* The username is checked with the API once typing pauses and its length is right. */
@@ -426,11 +465,12 @@ watch(isLoggedIn, (newVal) => {
         >{{ shownCodeError
         }}{{ verifyCapped ? ` ${Messages.EmailCode.capped}` : "" }}</StatusMessage
       >
+      <!-- Waits while a resend may replace the code it would spend a try on. -->
       <BaseButton
         type="submit"
         block
         :loading="isVerifying"
-        :disabled="verifyWaiting"
+        :disabled="isResending || verifyWaiting"
         :aria-label="verifyWaiting ? verifyHold.name.value : undefined"
         :aria-describedby="verifyWaiting ? codeErrorId : undefined"
         :blocked="!isCodeValid"
@@ -438,12 +478,13 @@ watch(isLoggedIn, (newVal) => {
       >
         {{ isVerifying ? "Confirming" : verifyWaiting ? verifyHold.label.value : "Confirm code" }}
       </BaseButton>
+      <!-- Both wait while a code is being confirmed: its answer is about this address and code. -->
       <div class="code-actions">
         <BaseButton
           variant="secondary"
           size="sm"
           :loading="isResending"
-          :disabled="resendWaiting"
+          :disabled="resendWaiting || isVerifying"
           :aria-label="resendName"
           :aria-describedby="errorIsWait ? codeErrorId : undefined"
           @click="sendAgain"
@@ -456,14 +497,15 @@ watch(isLoggedIn, (newVal) => {
                 : "Resend code"
           }}
         </BaseButton>
-        <BaseButton variant="ghost" size="sm" @click="changeAddress">Change address</BaseButton>
+        <BaseButton variant="ghost" size="sm" :disabled="isVerifying" @click="changeAddress">
+          Change address
+        </BaseButton>
       </div>
     </form>
 
     <template v-else>
       <form ref="step" class="form" novalidate @submit.prevent="handleSubmit">
         <BaseInput
-          ref="emailField"
           v-model="email"
           label="E-mail"
           type="email"
@@ -515,16 +557,26 @@ watch(isLoggedIn, (newVal) => {
           :blocked="!isValid"
           :error="isButtonError"
         >
-          {{ isLoading ? "Registering" : isRegisterHeld ? registerHold.label.value : "Register" }}
+          {{
+            isLoading
+              ? "Registering"
+              : isRegisterHeld
+                ? registerHold.label.value
+                : hasKeptCode
+                  ? "Continue"
+                  : "Register"
+          }}
         </BaseButton>
       </form>
       <GithubLogin label="Register with GitHub" />
       <div class="alt">
+        <!-- Confirming the code creates the account with the form's fields, so it says so first. -->
         <p>
           Already have a code?
           <button type="button" class="link" :disabled="isLoading" @click="enterCode">
             Enter it
           </button>
+          after filling in the form.
         </p>
         <p>Already registered? <RouterLink to="/login">Log in</RouterLink></p>
       </div>

@@ -80,6 +80,22 @@ export class Messages {
     /** Shown when registering fails without the API's message. */
     static readonly registerUnknownError: string = "Registration failed. Please try again.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
+    /** `GET /auth/username-available` said the typed name is taken. */
+    static readonly usernameTaken: string = "That username is taken: pick another one.";
+    /**
+     * The code step's 409 for a name taken since registering: the code works with another, unless
+     * it expired or ran out of tries meanwhile (each confirmation spends one).
+     */
+    static usernameTakenMeanwhile(minutes: number): string {
+      return `That username was taken in the meantime: pick another one. Your code works for up to ${minutes} minutes after it was sent.`;
+    }
+    /**
+     * The code step's 409 for an address that has an account: the waiting registration is gone.
+     * GitHub login only reaches an account that uses GitHub; resetting the password works for
+     * every account, and gives one made with GitHub a password.
+     */
+    static readonly accountExists: string =
+      "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.";
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
     static readonly invalidEmail: string = "Enter a valid e-mail address.";

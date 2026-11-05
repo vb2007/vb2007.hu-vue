@@ -40,7 +40,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
- * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
+ * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an address of a `hasUser(...)` account gets the same 202, and a taken name a 409.
+ * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
+ * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
  * Each address waits for its own code, and a resend within a minute of the last code gets the API's 429.
  * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
@@ -233,11 +235,8 @@ export class MockApi {
   /** The only `VB-AUTH` value still accepted; each new session replaces it. */
   private session = "";
   private sessionCount = 0;
-  /** Registrations waiting for their code, by address, like the API's. */
-  private readonly pendingRegistrations = new Map<
-    string,
-    MockCode & { username: string; password: string }
-  >();
+  /** Registrations waiting for their code, by address: only the code, like the API's (vb2007/vb2007.hu-api#295). */
+  private readonly pendingRegistrations = new Map<string, MockCode>();
   /** Password reset codes waiting, by account address. */
   private readonly resetCodes = new Map<string, MockCode>();
   /** Addresses a password reset confirmed, verified at their next login. */
@@ -828,48 +827,25 @@ export class MockApi {
     return { status: 200, body: { url: `${this.apiOrigin}/e2e-github/authorize?state=e2e` } };
   }
 
-  /** Like the API, one code a minute per address; the one sent then still works. */
+  /**
+   * Like the API, one code a minute per address; the one sent then still works. An address that
+   * has an account gets the same answers, so registering doesn't reveal it.
+   */
   private register(body: { email?: string; username?: string; password?: string } | null) {
+    if (this.isUsernameTaken(body?.username)) {
+      return { status: 409, body: { error: "This username is already taken." } };
+    }
     const email = normalizeEmail(body?.email ?? "");
     const refusal = domainError(email);
     if (refusal) return { status: 400, body: { error: refusal } };
     const tooSoon = this.resendTooSoon(this.pendingRegistrations.get(email)?.sentAt);
     if (tooSoon) return tooSoon;
-    this.pendingRegistrations.set(email, {
-      username: body?.username ?? "",
-      password: body?.password ?? "",
-      ...this.newCode(15)
-    });
+    this.pendingRegistrations.set(email, this.newCode(15));
     return {
       status: 202,
       body: {
         message: `A confirmation code was sent to ${email}: send it to POST /auth/register/verify to finish registering.`
       }
-    };
-  }
-
-  private verifyRegistration(body: { email?: string; code?: string } | null): MockResponse {
-    const email = normalizeEmail(body?.email ?? "");
-    const pending = this.pendingRegistrations.get(email);
-    if (!this.claims(pending) || normalizeCode(body?.code) !== REGISTRATION_CODE) {
-      return invalidCode();
-    }
-    this.user = {
-      email,
-      username: pending.username,
-      isSuperuser: false,
-      hasPassword: true,
-      // Entering the mailed code confirms the address.
-      emailVerified: true
-    };
-    this.knowsAccount(this.user);
-    this.password = pending.password;
-    this.pendingRegistrations.delete(email);
-    // Like logging in, confirming the code starts a session.
-    return {
-      status: 201,
-      body: { message: `User ${this.user.username} registered successfully.` },
-      newSession: true
     };
   }
 
@@ -966,6 +942,83 @@ export class MockApi {
       body: {
         message: `A confirmation code was sent to ${normalized}: send it to POST /user/email/confirm to switch to that address.`
       }
+    };
+  }
+
+  /** Whether an account has `username`, whatever its case, like `GET /auth/username-available`. */
+  private isUsernameTaken(username?: string) {
+    const name = username?.trim().toLowerCase();
+    return [...this.users.map((user) => user.username), this.user?.username].some(
+      (taken) => taken?.toLowerCase() === name
+    );
+  }
+
+  /**
+   * `POST /auth/register/verify`: the waiting registration only holds the address and code, so the
+   * account gets the username and password sent here (vb2007/vb2007.hu-api#295).
+   */
+  private verifyRegistration(
+    body: { email?: string; code?: string; username?: string; password?: string } | null
+  ): MockResponse {
+    const { code, username, password } = body ?? {};
+    if (!body?.email || !code || !username || !password) {
+      return {
+        status: 400,
+        body: {
+          error:
+            "You must provide an E-mail address, the confirmation code, a username and a password."
+        }
+      };
+    }
+    const nameLength = username.trim().length;
+    if (nameLength < 2 || nameLength > 16) {
+      const which = nameLength < 2 ? "short" : "long";
+      return {
+        status: 400,
+        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
+      };
+    }
+    if (password.length < 8 || password.length > 128) {
+      const which = password.length < 8 ? "short" : "long";
+      return {
+        status: 400,
+        body: { error: `The password's too ${which}: it must be between 8 and 128 characters.` }
+      };
+    }
+    const email = normalizeEmail(body.email);
+    if (
+      !this.claims(this.pendingRegistrations.get(email)) ||
+      normalizeCode(code) !== REGISTRATION_CODE
+    ) {
+      return invalidCode();
+    }
+    if (this.hasAccount(email)) {
+      this.pendingRegistrations.delete(email);
+      return {
+        status: 409,
+        body: { error: "An account with this E-mail address already exists." }
+      };
+    }
+    if (this.isUsernameTaken(username)) {
+      // Waiting registrations don't hold a name: the code still works with another one.
+      return { status: 409, body: { error: "This username is already taken." } };
+    }
+    this.user = {
+      email,
+      username: username.trim(),
+      isSuperuser: false,
+      hasPassword: true,
+      // Entering the mailed code confirms the address.
+      emailVerified: true
+    };
+    this.knowsAccount(this.user);
+    this.password = password;
+    this.pendingRegistrations.delete(email);
+    // Like logging in, confirming the code starts a session.
+    return {
+      status: 201,
+      body: { message: `User ${this.user.username} registered successfully.` },
+      newSession: true
     };
   }
 

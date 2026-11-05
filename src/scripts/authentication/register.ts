@@ -125,21 +125,30 @@ export const confirmationCodeEarlyError = (code: string) =>
 /** The register form's fields, for an error about one of them. */
 export type RegisterField = "email" | "username" | "password" | "confirmPassword";
 
+/** How the API's messages name the fields they're about. */
+const FIELD_NAMES: [RegisterField, RegExp][] = [
+  ["username", /username/i],
+  ["password", /password/i],
+  ["email", /e-?mail/i]
+];
+
 /**
- * The field an API refusal is about: its 400 and 409 messages (taken, disposable or undeliverable
- * address, the length rules). Undefined when it isn't about one field.
+ * The field an API refusal is about: its 400 and 409 messages (a taken username, an address with
+ * an account at the code step, a disposable or undeliverable address, the length rules).
+ * Undefined when it isn't about one field, e.g. a message listing several missing fields.
  */
 export const registerFieldOf = (problem: string): RegisterField | undefined => {
-  if (/username/i.test(problem)) return "username";
-  if (/password/i.test(problem)) return "password";
-  if (/e-?mail/i.test(problem)) return "email";
-  return undefined;
+  const named = FIELD_NAMES.filter(([, name]) => name.test(problem));
+  return named.length === 1 ? named[0][0] : undefined;
 };
 
 /** How long typing has to pause before the register form checks the username with the API. */
 export const USERNAME_CHECK_DELAY = 400;
 
-/** Whether a username is free; "unknown" when the API couldn't say, which register's 409 covers. */
+/**
+ * Whether a username is free; "unknown" when the API couldn't say, which the 409 of registering
+ * or of confirming the code covers.
+ */
 export type UsernameAvailability = "free" | "taken" | "unknown";
 
 /** Until when (`Date.now()`) the API limits username checks; none are sent before then. */
@@ -193,7 +202,10 @@ export interface RegisterAnswer {
 
 /**
  * Asks the API to mail a confirmation code (vb2007/vb2007.hu-api#28): the account is only
- * created once the code is confirmed, see useRegisterCode. `registerStatus` says what went wrong.
+ * created once the code is confirmed, with the username and password sent then, see
+ * useRegisterCode. An address that already has an account gets the same 202, so registering
+ * doesn't tell which addresses have one; only the code step refuses it (vb2007/vb2007.hu-api#295).
+ * `registerStatus` says what went wrong.
  */
 export const register = async (
   username: string,
@@ -211,8 +223,8 @@ export const register = async (
     return { sent: true };
   }
 
-  // 400 (rules, disposable or undeliverable address), 409 (taken), 429 (too soon or rate limited),
-  // 503 (mail failed)
+  // 400 (rules, disposable or undeliverable address), 409 (a taken username),
+  // 429 (too soon or rate limited), 503 (mail failed)
   const message = apiErrorOf(result) ?? RegisterStatus.Error;
   const answer: RegisterAnswer = { sent: false };
   if (result.status === HttpStatus.BadRequest || result.status === HttpStatus.Conflict) {

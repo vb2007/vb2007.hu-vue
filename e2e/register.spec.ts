@@ -2,13 +2,18 @@ import type { Page } from "@playwright/test";
 import { expect, REGISTRATION_CODE, test } from "./fixtures";
 
 // Registering mails a code first (vb2007/vb2007.hu-api#28); the mock "mails" REGISTRATION_CODE.
+// Confirming it creates the account with the form's username and password (vb2007/vb2007.hu-api#295).
 
-const fillForm = async (page: Page, email = "new@example.com") => {
-  await page.goto("/register");
+const fillFields = async (page: Page, email = "new@example.com") => {
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Username").fill("newbie");
   await page.getByLabel("Password", { exact: true }).fill("correct horse");
   await page.getByLabel("Confirm password").fill("correct horse");
+};
+
+const fillForm = async (page: Page, email = "new@example.com") => {
+  await page.goto("/register");
+  await fillFields(page, email);
   await page.getByRole("button", { name: "Register", exact: true }).click();
 };
 
@@ -129,7 +134,7 @@ test("a resend over the mail limit shows the API's message and counts its wait i
 
   // After a reload, the wait it picks up still says why.
   await page.reload();
-  await page.getByLabel("E-mail").fill("new@example.com");
+  await fillFields(page);
   await page.getByRole("button", { name: "Enter it" }).click();
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
   await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
@@ -218,7 +223,7 @@ test("username checks over the API's limit stop quietly until its wait passed", 
   await page.clock.runFor(42_000);
   await username.fill("anna4");
   await page.clock.runFor(500);
-  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
   await expect(registerKey).toHaveAttribute("aria-disabled", "true");
   expect(api.usernameChecks).toBe(2);
   // The expected 429 isn't logged as an error (the browser's own failed-request line aside).
@@ -230,11 +235,12 @@ test("a code that already arrived can be entered after a reload", async ({ page 
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
 
   await page.reload();
-  await page.getByLabel("E-mail").fill("new@example.com");
+  // The form is empty again, and confirming needs its username and password too.
+  await fillFields(page);
   await page.getByRole("button", { name: "Enter it" }).click();
 
-  await expect(page.getByRole("status")).toContainText(
-    "Enter the code that was mailed to new@example.com."
+  await expect(page.getByRole("status")).toHaveText(
+    "Enter the code that was mailed to new@example.com. It works for 15 minutes after sending, and registers you as newbie with the password you entered."
   );
   // The minute since the code was sent survives the reload, so no click is wasted on a 429.
   await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
@@ -314,18 +320,81 @@ test("a taken username is shown at the Username field, which takes focus", async
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
 });
 
-test("entering a code needs the address first, without failing Register", async ({ page }) => {
+test("entering a code needs the whole form first, without failing Register", async ({ page }) => {
   await page.goto("/register");
 
   await page.getByRole("button", { name: "Enter it" }).click();
 
   const email = page.getByLabel("E-mail");
   await expect(email).toHaveAccessibleDescription("Enter a valid e-mail address.");
+  await expect(page.getByLabel("Username")).toHaveAccessibleDescription(
+    "The username's too short: it must be between 2 and 16 characters."
+  );
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAccessibleDescription(
+    /The password's too short/
+  );
   await expect(email).toBeFocused();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Register", exact: true })).not.toHaveClass(
     /btn--error/
   );
+});
+
+test("a username taken meanwhile keeps the code, which finishes with another name", async ({
+  page,
+  api
+}) => {
+  await fillForm(page);
+  await expect(page.getByLabel("Confirmation code")).toBeVisible();
+  // Waiting registrations don't hold a name: someone else takes it before the code is entered.
+  api.hasUser("Newbie");
+
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  const username = page.getByLabel("Username");
+  await expect(username).toHaveAccessibleDescription(
+    "That username was taken in the meantime: pick another one. Your code works for up to 15 minutes after it was sent."
+  );
+  await expect(username).toBeFocused();
+  await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
+
+  await username.fill("newbie2");
+  // The key says it goes on rather than registering again.
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+
+  // No new code is mailed: the step comes back with the one typed before and its countdown.
+  await expect(page.getByRole("status")).toHaveText(
+    "Your code for new@example.com works for up to 15 minutes after it was sent: confirm it to register as newbie2."
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveValue(REGISTRATION_CODE);
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByText("Registration successful!")).toBeVisible();
+  await page.goto("/account");
+  await expect(page.getByText("newbie2", { exact: true })).toBeVisible();
+});
+
+test("an address that already has an account is only refused at the code", async ({
+  page,
+  api
+}) => {
+  api.hasUser("anna");
+
+  // Registering answers like for any address, so it doesn't reveal which ones have accounts.
+  await fillForm(page, "anna@example.com");
+  await expect(page.getByRole("status")).toContainText("on its way to anna@example.com.");
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  const email = page.getByLabel("E-mail");
+  await expect(email).toHaveAccessibleDescription(
+    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
+  );
+  await expect(email).toBeFocused();
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
 });
 
 test("logging out after registering leaves an empty form", async ({ page, isMobile }) => {
@@ -384,7 +453,7 @@ test("a taken username is said while it's typed", async ({ page, api }) => {
   const username = page.getByLabel("Username");
 
   await username.fill("anna");
-  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
   await expect(page.getByRole("button", { name: "Register", exact: true })).toHaveAttribute(
     "aria-disabled",
     "true"
