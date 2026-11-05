@@ -789,6 +789,30 @@ describe("RegisterForm", () => {
       expect(wrapper.find("input").element.value).toBe("");
     });
 
+    it("doesn't hold Continue for the mail limit, since the kept code mails nothing", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      const wrapper = await atCodeStep();
+      await nameTakenMeanwhile(wrapper);
+      vi.mocked(register).mockImplementationOnce(async () => {
+        registerStatus.value = "Too many e-mails requested: try again later.";
+        return { sent: false, limitedFor: 3412 };
+      });
+      await wrapper.find(FIELDS.email).setValue("you@example.com");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(submitButton(wrapper).text()).toBe("Try again in 57 min");
+
+      await wrapper.find(FIELDS.email).setValue("me@example.com");
+
+      expect(submitButton(wrapper).text()).toBe("Continue");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(register).toHaveBeenCalledTimes(2);
+      expect(wrapper.find('[role="status"]').text()).toContain("Your code for me@example.com");
+      expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123 456");
+    });
+
     it.each([
       ["a new code was mailed", 200, {}, "", ""],
       [

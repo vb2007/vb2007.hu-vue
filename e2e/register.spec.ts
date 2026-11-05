@@ -223,7 +223,7 @@ test("username checks over the API's limit stop quietly until its wait passed", 
   await page.clock.runFor(42_000);
   await username.fill("anna4");
   await page.clock.runFor(500);
-  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
   await expect(registerKey).toHaveAttribute("aria-disabled", "true");
   expect(api.usernameChecks).toBe(2);
   // The expected 429 isn't logged as an error (the browser's own failed-request line aside).
