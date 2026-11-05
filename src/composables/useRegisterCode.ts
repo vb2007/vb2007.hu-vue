@@ -144,7 +144,9 @@ export const useRegisterCode = () => {
 
     const result = await apiRequest(Endpoints.Auth.registerVerify, {
       body: { email: email.value, code: code.replace(/\s/g, ""), username, password },
-      failure: Messages.EmailCode.confirmFailed
+      failure: Messages.EmailCode.confirmFailed,
+      // A wrong code and the form's refusals are answers the step shows, not faults.
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Conflict]
     });
 
     let outcome: RegisterCodeResult = "failed";
@@ -161,7 +163,10 @@ export const useRegisterCode = () => {
       showCodeProblem(result.error);
     } else if (result.status === HttpStatus.Conflict && field === "username") {
       // Waiting registrations don't hold a name: the code still works with another one.
-      formProblem.value = { field, message: Messages.Auth.usernameTakenMeanwhile };
+      formProblem.value = {
+        field,
+        message: Messages.Auth.usernameTakenMeanwhile(Limits.Code.registerValidMinutes)
+      };
       outcome = "fix-form";
     } else if (result.status === HttpStatus.Conflict && field === "email") {
       // The address has an account, so the API dropped the waiting registration.

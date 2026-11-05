@@ -167,7 +167,7 @@ describe("RegisterForm", () => {
     expect(wrapper.find("h1").text()).toBe("Register");
     const notice = wrapper.find('[role="status"]');
     expect(notice.text()).toBe(
-      "A 6-digit code is on its way to me@example.com. Enter it to finish registering; it works for 15 minutes."
+      "A 6-digit code is on its way to me@example.com. Enter it to register as vb; it works for 15 minutes."
     );
     const codeInput = wrapper.find("input");
     expect(codeInput.attributes()).toMatchObject({
@@ -235,7 +235,7 @@ describe("RegisterForm", () => {
     await flushPromises();
     expect(checkUsername).toHaveBeenCalledOnce();
     expect(checkUsername).toHaveBeenCalledWith("anna", expect.any(AbortSignal));
-    expect(errorUnder(wrapper, FIELDS.username)).toBe("That username is taken.");
+    expect(errorUnder(wrapper, FIELDS.username)).toBe("That username is taken: pick another one.");
     expect(submitButton(wrapper).attributes("aria-disabled")).toBe("true");
 
     await wrapper.find(FIELDS.username).setValue("anna2");
@@ -349,7 +349,7 @@ describe("RegisterForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "Less than a minute ago, a code went to me@example.com. It still works: enter it to finish registering."
+      "Less than a minute ago, a code went to me@example.com. It still works: enter it to register as vb."
     );
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find("input").element);
@@ -365,7 +365,7 @@ describe("RegisterForm", () => {
 
     expect(register).not.toHaveBeenCalled();
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "Enter the code that was mailed to me@example.com. It works for 15 minutes after sending, and finishes registering with the username and password you entered."
+      "Enter the code that was mailed to me@example.com. It works for 15 minutes after sending, and registers you as vb with the password you entered."
     );
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend code");
@@ -390,6 +390,10 @@ describe("RegisterForm", () => {
   it("asks for the whole form before entering a code, which creates the account with it", async () => {
     const wrapper = await mountForm();
     await wrapper.find('input[type="email"]').setValue("nope");
+    // Said before it's pressed, e.g. by someone back after a reload with an empty form.
+    expect(wrapper.find(".alt p").text().replace(/\s+/g, " ")).toBe(
+      "Already have a code? Enter it after filling in the form."
+    );
 
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
@@ -577,25 +581,28 @@ describe("RegisterForm", () => {
         409,
         "This username is already taken.",
         FIELDS.username,
-        "This username was taken in the meantime. Pick another one: your code still works."
+        "That username was taken in the meantime: pick another one. Your code works for up to 15 minutes after it was sent.",
+        "Continue"
       ],
       [
         "an address that already has an account",
         409,
         "An account with this E-mail address already exists.",
         FIELDS.email,
-        "An account already uses this address. Log in instead, or reset its password if you've forgotten it."
+        "An account already uses this address. Log in instead, with its password or with GitHub; the log-in page can also reset the password.",
+        "Register"
       ],
       [
         "a username outside the length rule",
         400,
         "The username's too long: it must be between 2 and 16 characters.",
         FIELDS.username,
-        "The username's too long: it must be between 2 and 16 characters."
+        "The username's too long: it must be between 2 and 16 characters.",
+        "Continue"
       ]
     ])(
       "goes back to the filled-in form, at the field, for %s",
-      async (_, status, error, field, shown) => {
+      async (_, status, error, field, shown, label) => {
         fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
         const wrapper = await atCodeStep();
 
@@ -603,7 +610,8 @@ describe("RegisterForm", () => {
 
         expect(errorUnder(wrapper, field)).toBe(shown);
         expect(wrapper.find('[role="alert"]').exists()).toBe(false);
-        expect(submitButton(wrapper).text()).toBe("Register");
+        // A code that still works makes the key go on to it rather than register again.
+        expect(submitButton(wrapper).text()).toBe(label);
         // Confirm code was pressed, not Register: the focused field says what to fix.
         expect(submitButton(wrapper).classes()).not.toContain("btn--error");
         expect(wrapper.findAll("input").map((input) => input.element.value)).toEqual([
@@ -636,10 +644,10 @@ describe("RegisterForm", () => {
       await wrapper.find("form").trigger("submit");
       await flushPromises();
 
-      // No new code is mailed: the step reopens with the one typed before.
+      // No new code is mailed: the step reopens with the one typed before, for the new name.
       expect(register).toHaveBeenCalledTimes(1);
       expect(wrapper.find('[role="status"]').text()).toBe(
-        "No new code was sent: confirm the one mailed to me@example.com to finish registering."
+        "Your code for me@example.com works for up to 15 minutes after it was sent: confirm it to register as vb2."
       );
       const codeInput = wrapper.find<HTMLInputElement>('input[autocomplete="one-time-code"]');
       expect(codeInput.element.value).toBe("123 456");
@@ -665,7 +673,7 @@ describe("RegisterForm", () => {
       await enterCodeButton(wrapper).trigger("click");
       await flushPromises();
 
-      expect(wrapper.find('[role="status"]').text()).toContain("No new code was sent");
+      expect(wrapper.find('[role="status"]').text()).toContain("Your code for me@example.com");
       expect(wrapper.find("input").element.value).toBe("123 456");
     });
 
@@ -673,8 +681,10 @@ describe("RegisterForm", () => {
       const wrapper = await atCodeStep();
       await nameTakenMeanwhile(wrapper);
       vi.mocked(register).mockResolvedValueOnce({ sent: true });
+      expect(submitButton(wrapper).text()).toBe("Continue");
 
       await wrapper.find(FIELDS.email).setValue("you@example.com");
+      expect(submitButton(wrapper).text()).toBe("Register");
       await wrapper.find("form").trigger("submit");
       await flushPromises();
 
@@ -683,26 +693,76 @@ describe("RegisterForm", () => {
       expect(wrapper.find("input").element.value).toBe("");
     });
 
-    it("forgets the kept code once a new one replaces it", async () => {
+    it.each([
+      ["a new code was mailed", 200, {}, "", ""],
+      [
+        "the new code couldn't be mailed",
+        503,
+        { error: "The e-mail couldn't be sent: please try again later." },
+        "",
+        "The e-mail couldn't be sent: please try again later."
+      ],
+      [
+        "resending was refused, so the code stays",
+        429,
+        { error: "Too many e-mails requested: try again later." },
+        "123 456",
+        "Too many e-mails requested: try again later."
+      ]
+    ])(
+      "from the kept code's step, a resend where %s decides what's kept",
+      async (_, status, body, codeLeft, alert) => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+        const wrapper = await atCodeStep();
+        await nameTakenMeanwhile(wrapper);
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+        vi.advanceTimersByTime(60_000);
+        await flushPromises();
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
+
+        await resendButton(wrapper).trigger("click");
+        await flushPromises();
+
+        // A replaced code is cleared, so Confirm can't spend a try on it; the error stays.
+        expect(wrapper.find("input").element.value).toBe(codeLeft);
+        expect(wrapper.find('[role="alert"]').exists()).toBe(!!alert);
+        if (alert) expect(wrapper.find('[role="alert"]').text()).toBe(alert);
+
+        vi.mocked(register).mockResolvedValueOnce({ sent: true });
+        const back = wrapper.findAll("button").find((button) => button.text() === "Change address");
+        await back!.trigger("click");
+        await flushPromises();
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+
+        // Only a code that still stands is reopened without mailing another.
+        expect(register).toHaveBeenCalledTimes(codeLeft ? 1 : 2);
+      }
+    );
+
+    it("holds Resend and Change address while a code is being confirmed", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      let answer!: (response: Response) => void;
+      fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
       const wrapper = await atCodeStep();
-      await nameTakenMeanwhile(wrapper);
-      await wrapper.find("form").trigger("submit");
-      await flushPromises();
       vi.advanceTimersByTime(60_000);
       await flushPromises();
-      fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
-      await resendButton(wrapper).trigger("click");
-      await flushPromises();
-      vi.mocked(register).mockResolvedValueOnce({ sent: true });
 
-      const back = wrapper.findAll("button").find((button) => button.text() === "Change address");
-      await back!.trigger("click");
-      await flushPromises();
+      await wrapper.find("input").setValue("123456");
       await wrapper.find("form").trigger("submit");
       await flushPromises();
 
-      expect(register).toHaveBeenCalledTimes(2);
+      const back = () =>
+        wrapper.findAll("button").find((button) => button.text() === "Change address")!;
+      // Its answer is about this address: neither may move the step on before it arrives.
+      expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(back().attributes("disabled")).toBeDefined();
+
+      answer(jsonResponse(400, { error: "The code is wrong, expired or already used." }));
+      await flushPromises();
+      expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
+      expect(back().attributes("disabled")).toBeUndefined();
     });
 
     it("holds the address with an account back until it's changed, keeping no code", async () => {

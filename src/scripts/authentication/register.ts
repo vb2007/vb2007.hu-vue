@@ -109,16 +109,21 @@ export const confirmationCodeEarlyError = (code: string) =>
 /** The register form's fields, for an error about one of them. */
 export type RegisterField = "email" | "username" | "password" | "confirmPassword";
 
+/** How the API's messages name the fields they're about. */
+const FIELD_NAMES: [RegisterField, RegExp][] = [
+  ["username", /username/i],
+  ["password", /password/i],
+  ["email", /e-?mail/i]
+];
+
 /**
  * The field an API refusal is about: its 400 and 409 messages (a taken username, an address with
  * an account at the code step, a disposable or undeliverable address, the length rules).
- * Undefined when it isn't about one field.
+ * Undefined when it isn't about one field, e.g. a message listing several missing fields.
  */
 export const registerFieldOf = (problem: string): RegisterField | undefined => {
-  if (/username/i.test(problem)) return "username";
-  if (/password/i.test(problem)) return "password";
-  if (/e-?mail/i.test(problem)) return "email";
-  return undefined;
+  const named = FIELD_NAMES.filter(([, name]) => name.test(problem));
+  return named.length === 1 ? named[0][0] : undefined;
 };
 
 /** How long typing has to pause before the register form checks the username with the API. */

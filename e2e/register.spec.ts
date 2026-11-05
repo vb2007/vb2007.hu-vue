@@ -120,7 +120,7 @@ test("a code that already arrived can be entered after a reload", async ({ page 
   await page.getByRole("button", { name: "Enter it" }).click();
 
   await expect(page.getByRole("status")).toHaveText(
-    "Enter the code that was mailed to new@example.com. It works for 15 minutes after sending, and finishes registering with the username and password you entered."
+    "Enter the code that was mailed to new@example.com. It works for 15 minutes after sending, and registers you as newbie with the password you entered."
   );
   // The minute since the code was sent survives the reload, so no click is wasted on a 429.
   await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
@@ -245,17 +245,18 @@ test("a username taken meanwhile keeps the code, which finishes with another nam
 
   const username = page.getByLabel("Username");
   await expect(username).toHaveAccessibleDescription(
-    "This username was taken in the meantime. Pick another one: your code still works."
+    "That username was taken in the meantime: pick another one. Your code works for up to 15 minutes after it was sent."
   );
   await expect(username).toBeFocused();
   await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
 
   await username.fill("newbie2");
-  await page.getByRole("button", { name: "Register", exact: true }).click();
+  // The key says it goes on rather than registering again.
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   // No new code is mailed: the step comes back with the one typed before and its countdown.
   await expect(page.getByRole("status")).toHaveText(
-    "No new code was sent: confirm the one mailed to new@example.com to finish registering."
+    "Your code for new@example.com works for up to 15 minutes after it was sent: confirm it to register as newbie2."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveValue(REGISTRATION_CODE);
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
@@ -281,7 +282,7 @@ test("an address that already has an account is only refused at the code", async
 
   const email = page.getByLabel("E-mail");
   await expect(email).toHaveAccessibleDescription(
-    "An account already uses this address. Log in instead, or reset its password if you've forgotten it."
+    "An account already uses this address. Log in instead, with its password or with GitHub; the log-in page can also reset the password."
   );
   await expect(email).toBeFocused();
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
@@ -343,7 +344,7 @@ test("a taken username is said while it's typed", async ({ page, api }) => {
   const username = page.getByLabel("Username");
 
   await username.fill("anna");
-  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
   await expect(page.getByRole("button", { name: "Register", exact: true })).toHaveAttribute(
     "aria-disabled",
     "true"

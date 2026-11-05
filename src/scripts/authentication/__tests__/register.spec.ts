@@ -63,7 +63,13 @@ describe("registerFieldOf", () => {
     ["An account with this E-mail address already exists.", "email"],
     ["This e-mail address's domain can't receive e-mail: check it for typos.", "email"],
     ["error", undefined],
-    ["Registration failed.", undefined]
+    ["Registration failed.", undefined],
+    // The API's messages for missing fields name several: none of them is the one at fault.
+    ["You must provide a username, E-mail address, and a password.", undefined],
+    [
+      "You must provide an E-mail address, the confirmation code, a username and a password.",
+      undefined
+    ]
   ])("puts %j under the %s field", (problem, field) => {
     expect(registerFieldOf(problem)).toBe(field);
   });

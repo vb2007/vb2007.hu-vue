@@ -189,11 +189,11 @@ describe("useRegisterCode", () => {
     });
 
     it.each([
-      [400, invalidCode, "codeFieldError"],
-      [429, "Too many failed attempts: try again later.", "codeError"]
+      [400, invalidCode, "codeFieldError", false],
+      [429, "Too many failed attempts: try again later.", "codeError", true]
     ] as const)(
       "shows the API's message for a %i response as %s",
-      async (status, error, shownAs) => {
+      async (status, error, shownAs, logged) => {
         fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
         const step = openStep();
         step.codeError.value = "old";
@@ -203,7 +203,12 @@ describe("useRegisterCode", () => {
         expect(step[shownAs].value).toBe(error);
         expect(step[shownAs === "codeError" ? "codeFieldError" : "codeError"].value).toBe("");
         expect(fetchUserDetails).not.toHaveBeenCalled();
-        expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", status);
+        // A wrong code is an answer, not a fault: only the rate limit is logged.
+        if (logged) {
+          expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", status);
+        } else {
+          expect(console.error).not.toHaveBeenCalled();
+        }
         expect(step.isVerifying.value).toBe(false);
       }
     );
@@ -217,7 +222,7 @@ describe("useRegisterCode", () => {
         {
           field: "username",
           message:
-            "This username was taken in the meantime. Pick another one: your code still works."
+            "That username was taken in the meantime: pick another one. Your code works for up to 15 minutes after it was sent."
         }
       ],
       [
@@ -228,7 +233,7 @@ describe("useRegisterCode", () => {
         {
           field: "email",
           message:
-            "An account already uses this address. Log in instead, or reset its password if you've forgotten it."
+            "An account already uses this address. Log in instead, with its password or with GitHub; the log-in page can also reset the password."
         }
       ],
       [
@@ -261,6 +266,7 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
       expect(step.codeFieldError.value).toBe("");
       expect(step.isVerifying.value).toBe(false);
+      expect(console.error).not.toHaveBeenCalled();
     });
 
     it("forgets the last form problem on the next try", async () => {
@@ -274,6 +280,18 @@ describe("useRegisterCode", () => {
 
       expect(step.formProblem.value).toBeUndefined();
       expect(step.codeFieldError.value).toBe(invalidCode);
+    });
+
+    it("keeps the API's missing-fields refusal on the step, not under one field", async () => {
+      const error =
+        "You must provide an E-mail address, the confirmation code, a username and a password.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
+      const step = openStep();
+
+      expect(await step.verify("123456", "vb", "password")).toBe("failed");
+
+      expect(step.formProblem.value).toBeUndefined();
+      expect(step.codeFieldError.value).toBe(error);
     });
 
     it("keeps a conflict that names no field on the step", async () => {
