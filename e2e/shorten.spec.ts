@@ -65,3 +65,17 @@ test("the URL is checked once it's left", async ({ page, api }) => {
   await url.fill("https://example.com");
   await expect(url).not.toHaveAttribute("aria-invalid", "true");
 });
+
+test("a URL the API refuses shows its reason", async ({ page, api }) => {
+  api.loggedInAs();
+  await page.goto("/shorten");
+  const url = page.getByLabel("URL");
+
+  // The form lets whitespace through; the API doesn't.
+  await url.fill("https://example.com/a b");
+  await page.getByRole("button", { name: "Shorten", exact: true }).click();
+
+  await expect(url).toHaveAccessibleDescription("The URI/URL you've provided isn't valid.");
+  await expect(url).toHaveValue("https://example.com/a b");
+  expect(api.shortLinks.size).toBe(0);
+});

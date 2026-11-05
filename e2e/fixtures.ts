@@ -108,6 +108,58 @@ const parseMultipart = (body: Buffer, contentType: string) => {
   };
 };
 
+/**
+ * The API's `validateUri` (`src/helpers/text.ts` in vb2007/vb2007.hu-api): one of these prefixes,
+ * whatever its case, and no whitespace.
+ */
+const URI_PREFIXES = [
+  "acap://",
+  "app://",
+  "file://",
+  "ftp://",
+  "ftps://",
+  "http://",
+  "https://",
+  "icap://",
+  "imap://",
+  "irc://",
+  "mailto:",
+  "ms-access:",
+  "ms-excel:",
+  "ms-infopath:",
+  "ms-powerpoint:",
+  "ms-project:",
+  "ms-publisher:",
+  "ms-spd:",
+  "ms-visio:",
+  "ms-word:",
+  "msteams://",
+  "mtqp://",
+  "nntp://",
+  "pop://",
+  "rsync://",
+  "rtmp://",
+  "rtsp://",
+  "sftp://",
+  "shortcuts://",
+  "smb://",
+  "smtp://",
+  "ssh://",
+  "telnet://",
+  "viber://",
+  "webcal://",
+  "wss://",
+  "xmpp://",
+  "zoomus://",
+  "zoommtg://"
+];
+const isValidUri = (url: unknown): url is string =>
+  typeof url === "string" &&
+  !/\s/.test(url) &&
+  URI_PREFIXES.some((prefix) => url.toLowerCase().startsWith(prefix));
+/** The short link schema's `maxlength`: saving a longer URL throws, and the API answers 500 without an `{ error }`. */
+const MAX_URL_LENGTH = 2000;
+
 export class MockApi {
   private user: {
     email: string;
@@ -1095,8 +1147,7 @@ export class MockApi {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
-    // Roughly the API's check: a scheme and no whitespace.
-    if (typeof url !== "string" || !/^[a-z][a-z0-9+.-]*:\S+$/i.test(url)) {
+    if (!isValidUri(url)) {
       return { status: 400, body: { error: "The URI/URL you've provided isn't valid." } };
     }
     const answer = (status: number, message: string, code: string) => {
@@ -1114,6 +1165,8 @@ export class MockApi {
       ([, link]) => link.target === url && link.addedBy === username
     );
     if (existing) return answer(200, "You've already shortened this URL.", existing[0]);
+
+    if (url.length > MAX_URL_LENGTH) return { status: 500 };
 
     let code = this.shortCode;
     for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;

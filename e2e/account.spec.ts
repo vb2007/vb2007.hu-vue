@@ -104,6 +104,15 @@ for (const [what, arrange, error] of [
     "an API without GitHub",
     (api: MockApi) => api.githubIsNotConfigured(),
     "GitHub login isn't available right now."
+  ],
+  [
+    // The API's password limit runs before the link route checks for GitHub (vb2007/vb2007.hu-api#243).
+    "too many failed tries, even on an API without GitHub",
+    (api: MockApi) => {
+      api.limitsPasswordChecks();
+      api.githubIsNotConfigured();
+    },
+    "Too many failed attempts: try again later."
   ]
 ] as const) {
   test(`a GitHub link refused for ${what} says why`, async ({ page, api }) => {
