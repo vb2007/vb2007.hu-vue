@@ -340,7 +340,7 @@ test("a waiting change survives a reload, and a new code is one password away", 
   await expect(page.getByLabel("Current password")).toBeFocused();
   await expect(page.getByText("A new code replaces the one already sent.")).toBeVisible();
   // The API's minute between codes outlasts the reload, so the key still waits it out.
-  await expect(page.getByRole("button", { name: /^Send code in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Send code in (\d+ sec|1 min)$/ })).toBeDisabled();
 
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
@@ -361,7 +361,7 @@ test("asking for a new code too soon counts down the API's wait", async ({ page,
   await expect(page.getByRole("alert")).toHaveText(
     "A code was sent just now. You can send another once the countdown ends."
   );
-  await expect(page.getByRole("button", { name: /^Send code in \d s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Send code in \d sec$/ })).toBeDisabled();
 
   await expect(page.getByRole("button", { name: "Send code", exact: true })).toBeEnabled({
     // The 8-second countdown, plus CI's 20-second assertion budget for a slow host.
@@ -494,6 +494,38 @@ for (const [status, email, password, error] of [
     await page.keyboard.press("Escape");
     await expect(page.getByLabel("New e-mail")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  });
+}
+
+// Every rate limiter's 429 sends its wait too (vb2007/vb2007.hu-api#254), but no code went out.
+for (const [what, arrange, error, label] of [
+  [
+    "too many failed passwords",
+    (api: MockApi) => api.limitsPasswordChecks(),
+    "Too many failed attempts: try again later.",
+    "Send code in 15 min"
+  ],
+  [
+    "too many e-mails",
+    (api: MockApi) => api.limitsMailSends(),
+    "Too many e-mails requested: try again later.",
+    "Send code in 57 min"
+  ]
+] as const) {
+  test(`a change refused for ${what} isn't taken for a code just sent`, async ({ page, api }) => {
+    api.loggedInAs("me@example.com", "me");
+    arrange(api);
+    await page.goto("/account");
+
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await page.getByLabel("New e-mail").fill("new@example.com");
+    await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Send code" }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(error);
+    await expect(page.getByRole("button", { name: label })).toBeDisabled();
+    await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+    await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   });
 }
 

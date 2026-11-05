@@ -6,14 +6,16 @@ import { test as base, expect, type Route } from "@playwright/test";
  *
  * A test arranges state through the helpers (`api.loggedInAs(...)`, `api.shortenReturns(...)`,
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
- * `api.hasUser(...)`, `api.limitsPasswordChecks()`) before navigating; `hasUpload(..., { owner })` files an upload under another
+ * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too, and `hasUser(...)` addresses count as taken. It doesn't change the address: it
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
- * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * within a minute of the last one gets the API's cooldown 429, and one sent over 15 minutes ago has expired.
+ * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#254): the cooldown's names its seconds,
+ * and the rate limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code) wait a fixed 15 or 57 minutes.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
@@ -62,6 +64,19 @@ export interface MockAdminUser {
 
 /** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
+
+/**
+ * The API's rate limiter 429s, which send their wait as `retryAfter` like the resend cooldown does
+ * (vb2007/vb2007.hu-api#254). The waits are fixed, so a label that counts them reads the same for a minute.
+ */
+const tooManyFailedAttempts = (): MockResponse => ({
+  status: 429,
+  body: { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+});
+const tooManyEmails = (): MockResponse => ({
+  status: 429,
+  body: { error: "Too many e-mails requested: try again later.", retryAfter: 3412 }
+});
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
@@ -153,6 +168,7 @@ export class MockApi {
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
   private passwordChecksLimited = false;
+  private mailSendsLimited = false;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
   private githubLinkStarted = false;
   private githubUnconfigured = false;
@@ -269,6 +285,11 @@ export class MockApi {
   /** Answers password checks with 429, like the API after too many failed attempts. */
   limitsPasswordChecks() {
     this.passwordChecksLimited = true;
+  }
+
+  /** Answers every request that mails a code with 429, like the API past its hourly e-mail limit. */
+  limitsMailSends() {
+    this.mailSendsLimited = true;
   }
 
   /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
@@ -512,6 +533,7 @@ export class MockApi {
         return { status: 200, body: { available: !taken } };
       }
       case "POST /auth/register": {
+        if (this.mailSendsLimited) return tooManyEmails();
         // Like the API, one code a minute per address; the one sent then still works.
         const waited = this.pendingRegistration
           ? Math.ceil(60 - (Date.now() - this.pendingRegistration.sentAt) / 1000)
@@ -566,6 +588,7 @@ export class MockApi {
           newSession: true
         };
       case "POST /auth/register/resend":
+        if (this.mailSendsLimited) return tooManyEmails();
         return {
           status: 200,
           body: {
@@ -574,6 +597,7 @@ export class MockApi {
           }
         };
       case "POST /auth/password-reset":
+        if (this.mailSendsLimited) return tooManyEmails();
         if (!body?.email) {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
@@ -618,7 +642,7 @@ export class MockApi {
   /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
   private checkGithubPassword(password?: string): MockResponse | undefined {
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return tooManyFailedAttempts();
     }
     if (!password) {
       return {
@@ -652,8 +676,10 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return tooManyFailedAttempts();
     }
+    // Like the API's middleware, the mail limit comes after the password checks' and before the rest.
+    if (this.mailSendsLimited) return tooManyEmails();
     if (!email || !password) {
       return {
         status: 400,
@@ -743,7 +769,7 @@ export class MockApi {
   private changePassword(currentPassword?: string, newPassword?: string) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return tooManyFailedAttempts();
     }
     if (!currentPassword || !newPassword) {
       return {
@@ -809,7 +835,7 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return tooManyFailedAttempts();
     }
     if (this.user.hasPassword) {
       if (!body?.password) {
