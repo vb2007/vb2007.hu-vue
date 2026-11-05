@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_PASSWORD, test } from "./fixtures";
 
 const SENT = "If an account uses this address, a password reset code was sent to it.";
 
@@ -361,6 +361,38 @@ test.describe("the mailed link", () => {
     await page.getByRole("button", { name: "Reset password" }).click();
     await expect(page).toHaveURL("/login");
     expect(api.password).toBe("a longer new password");
+  });
+
+  test("too many rejected links count the wait down on the key, and the link still works", async ({
+    page,
+    api
+  }) => {
+    await page.clock.install();
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+    api.limitsResetLinks();
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    const limited =
+      "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent.";
+    await expect(page.getByRole("alert")).toHaveText(limited);
+    const key = page.getByRole("button", { name: /^Reset password/ });
+    await expect(key).toHaveText("Reset password in 15 min");
+    await expect(key).toBeDisabled();
+    await expect(key).toHaveAccessibleName("Reset password in 15 minutes");
+    await expect(key).toHaveAccessibleDescription(limited);
+    await expect(page.getByLabel("New password")).toBeFocused();
+    await expect(page.getByRole("main")).toContainText("Can't wait? Get a code instead");
+
+    // Jumps to the end, as a tab left in the background would; the key counts from its deadline.
+    await page.clock.fastForward(900_000);
+    await expect(key).toHaveText("Reset password");
+    await expect(key).toBeEnabled();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("main")).toContainText("Link not working? Request a new one");
+    expect(api.password).toBe(MOCK_PASSWORD);
   });
 
   test("a malformed link falls back to the e-mail step without asking the API", async ({

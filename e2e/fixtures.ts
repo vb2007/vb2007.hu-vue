@@ -33,6 +33,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account (`MOCK_USER_ID`) or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
+ * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
  * Each address waits for its own code, and a resend within a minute of the last code gets the API's 429.
  * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
@@ -225,6 +226,7 @@ export class MockApi {
   private githubConfirmed = false;
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
+  private resetLinksLimited = false;
   /** Set by `locksLogins`: the `retryAfter` of the login's 429. */
   private loginLockout: { retryAfter: number | null } | null = null;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
@@ -423,6 +425,11 @@ export class MockApi {
   /** Answers every request that mails a code with 429, like the API past its hourly e-mail limit. */
   limitsMailSends() {
     this.mailSendsLimited = true;
+  }
+
+  /** Answers reset links with 429, like the API after too many rejected links from one network. */
+  limitsResetLinks() {
+    this.resetLinksLimited = true;
   }
 
   /** Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204). */
@@ -709,6 +716,8 @@ export class MockApi {
       case "POST /auth/password-reset/confirm":
         return this.confirmPasswordReset(body);
       case "POST /auth/password-reset/confirm-link":
+        // The limit counts failed tries, like the password checks', and uses no link up.
+        if (this.resetLinksLimited) return PASSWORD_CHECKS_LIMITED;
         return this.confirmPasswordResetLink(body);
       case "POST /shortenUrl/create": {
         const url = (body as { url?: string } | null)?.url ?? "";
