@@ -51,4 +51,12 @@ export class Limits {
     /** Slashes and control characters. */
     static readonly forbiddenCharacters: RegExp = /[/\\\u0000-\u001f\u007f]/;
   };
+
+  /**
+   * The `q` that searches a list of uploads or, for the admin, of users. Counted in UTF-16 units,
+   * untrimmed, like the input's maxlength.
+   */
+  static readonly Search = class {
+    static readonly maxLength: number = 100;
+  };
 }
