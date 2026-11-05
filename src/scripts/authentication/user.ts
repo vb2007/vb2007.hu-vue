@@ -60,6 +60,8 @@ export const restoreSession = () => {
 };
 
 export const login = async (email: string, password: string) => {
+  // Cleared while it works, so the same refusal again is shown (and announced) afresh.
+  loginStatus.value = "";
   const result = await apiRequest(Endpoints.Auth.login, {
     body: { email, password },
     failure: Messages.Auth.loginFailed

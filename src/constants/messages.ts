@@ -42,18 +42,12 @@ export class Messages {
       "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
     /**
      * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204), with the wait in whole
-     * minutes, or none when the API sent no `retryAfter`. GitHub login isn't locked out, but only
-     * gets into an account it's linked to.
+     * minutes; 0 or less means the API sent no usable `retryAfter`. GitHub login isn't locked out,
+     * but only gets into an account it's linked to.
      */
-    static loginLockedOut(minutes?: number): string {
-      // Whole sentences rather than a spliced-in wait, so each reads right once translated.
-      if (!minutes) {
-        return "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account.";
-      }
-      if (minutes === 1) {
-        return "Too many failed attempts. Try again in a minute, or log in with GitHub below if it's linked to your account.";
-      }
-      return `Too many failed attempts. Try again in ${minutes} minutes, or log in with GitHub below if it's linked to your account.`;
+    static loginLockedOut(minutes: number): string {
+      const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
+      return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
     }
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
