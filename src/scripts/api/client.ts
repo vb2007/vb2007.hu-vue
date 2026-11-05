@@ -85,6 +85,9 @@ export const apiUrl = <E extends Endpoint>(endpoint: E, ...[options]: UrlArgs<E>
   return `${API_BASE_URL}${path}${search ? `?${search}` : ""}`;
 };
 
+/** The API's host (`api.vb2007.hu`), for copy that names an address on the API. */
+export const apiHost = (): string => new URL(API_BASE_URL).host;
+
 /** The parsed JSON body, or null when there's none (e.g. a bare 500). */
 export const readJson = async (response: Response): Promise<unknown> => {
   try {
