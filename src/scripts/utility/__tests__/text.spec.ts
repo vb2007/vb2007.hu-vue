@@ -78,6 +78,18 @@ describe("readableAddress", () => {
       "/\n\nYour session expired. Log in again",
       "/%0A%0AYour%20session%20expired.%20Log%20in%20again"
     ],
+    [
+      "a sentence spaced with Braille blanks",
+      "/Your⠀session⠀expired",
+      "/Your%E2%A0%80session%E2%A0%80expired"
+    ],
+    ["a Hangul filler", "/aㅤb", "/a%E3%85%A4b"],
+    ["a Hangul choseong filler", "/aᅟb", "/a%E1%85%9Fb"],
+    ["a Hangul jungseong filler", "/aᅠb", "/a%E1%85%A0b"],
+    ["a halfwidth Hangul filler", "/aﾠb", "/a%EF%BE%A0b"],
+    ["an emoji family joined with ZWJ", "/👨‍👩‍👧", "/👨‍👩‍👧"],
+    ["a rainbow flag", "/🏳️‍🌈", "/🏳️‍🌈"],
+    ["a Persian word with ZWNJ", "/می‌خواهم", "/می‌خواهم"],
     ["two marks on one letter", "/ệ", "/ệ"],
     ["a pile of marks", "/a" + "̸".repeat(4), "/a̸̸%CC%B8%CC%B8"]
   ])("shows %s safely", (_name, address, shown) => {

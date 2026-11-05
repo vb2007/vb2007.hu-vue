@@ -71,6 +71,13 @@ const percentEncode = (text: string) =>
     .join("");
 
 /**
+ * Whitespace, control and format characters, and the letters that render blank (the Hangul fillers
+ * and the Braille blank), which could pass for spaces. ZWNJ and ZWJ are kept: they join Persian
+ * words and emoji sequences, and can't reorder text.
+ */
+const UNSHOWN = /(?![‌‍])[\s\p{C}ᅟᅠ⠀ㅤﾠ]/gu;
+
+/**
  * A decoded address as it's safe to show in a sentence: anyone can link to one, so whitespace and
  * invisible or control characters (bidi overrides among them) go back to their escapes, which a
  * real address has anyway; so do combining marks past MAX_MARKS on one letter, which couldn't
@@ -78,7 +85,7 @@ const percentEncode = (text: string) =>
  */
 export const readableAddress = (address: string): string => {
   const shown = address
-    .replace(/[\s\p{C}]/gu, percentEncode)
+    .replace(UNSHOWN, percentEncode)
     .replace(new RegExp(`(?<=\\p{M}{${MAX_MARKS}})\\p{M}`, "gu"), percentEncode);
 
   const chars = [...shown];
