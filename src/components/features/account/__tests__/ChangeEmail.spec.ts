@@ -464,9 +464,9 @@ describe("ChangeEmail", () => {
       );
       await flushPromises();
 
-      // A 429 without a retryAfter holds the key for a minute, which the alert says for screen readers.
+      // The 429 holds the key for its retryAfter, which the alert says for screen readers.
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "Too many failed attempts: try again later. Try again in 60 seconds."
+        "Too many failed attempts: try again later. Try again in 15 minutes."
       );
       expect(document.activeElement).toBe(codeInput().element);
     });

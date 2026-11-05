@@ -464,8 +464,8 @@ describe("useChangeEmail", () => {
       expect(email.codeError.value).toBe("");
       expect(pendingEmail.value).toBe("new@example.com");
       expect(userEmail.value).toBe("old@example.com");
-      // A 429 without a retryAfter waits a minute.
-      expect(email.confirmHold.remaining.value).toBe(60);
+      // The hold waits the limiter's retryAfter out.
+      expect(email.confirmHold.remaining.value).toBe(900);
     });
 
     it("holds confirming for the daily cap's wait, but not changing the address", async () => {

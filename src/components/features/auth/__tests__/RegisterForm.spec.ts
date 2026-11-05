@@ -576,9 +576,9 @@ describe("RegisterForm", () => {
 
       await confirm(wrapper);
 
-      // A 429 without a retryAfter holds the key a minute, which the alert says for screen readers.
+      // The 429 holds the key for its retryAfter, which the alert says for screen readers.
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "Too many failed attempts: try again later. Try again in 60 seconds."
+        "Too many failed attempts: try again later. Try again in 15 minutes."
       );
       expect(wrapper.find("input").attributes("aria-invalid")).toBeUndefined();
       // A held key doesn't shake: it says when to try again instead.
