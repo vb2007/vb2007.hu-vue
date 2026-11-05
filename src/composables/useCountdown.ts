@@ -76,8 +76,8 @@ export const useCountdown = (storageKey?: string) => {
 
 /**
  * The seconds to wait after a 429, sent as `retryAfter` in the body by the resend cooldown and the
- * rate limiters alike (vb2007/vb2007.hu-api#242). The Retry-After header isn't exposed to the page,
- * hence `fallback` for a body without it.
+ * rate limiters alike (vb2007/vb2007.hu-api#242), next to the same Retry-After header. Only the body
+ * is read here, and `fallback` stands in for a body without it.
  */
 export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
   const retryAfter = (body as { retryAfter?: unknown } | null | undefined)?.retryAfter;
