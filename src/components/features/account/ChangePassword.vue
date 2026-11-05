@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** The Password row's key, which opens a form in place to change it. */
-import { computed, nextTick, ref, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useChangePassword } from "@/composables/useChangePassword";
@@ -26,6 +26,7 @@ const emit = defineEmits<{ start: [] }>();
 
 const { isChanging, changeError, changed, change, hold } = useChangePassword();
 const isHeld = computed(() => hold.isHeld());
+const errorId = useId();
 
 const open = ref(false);
 const currentPassword = ref("");
@@ -131,7 +132,10 @@ const save = async () => {
       required
       @blur="leave('confirm')"
     />
-    <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
+    <!-- A held key keeps its reason, also once Cancel cleared the error and the form opened again. -->
+    <StatusMessage v-if="hold.shown()" :id="errorId" tone="error" :spoken="hold.spokenFor()">{{
+      hold.shown()
+    }}</StatusMessage>
     <div class="change__actions">
       <BaseButton
         ref="saveKey"
@@ -139,16 +143,11 @@ const save = async () => {
         size="sm"
         :loading="isChanging"
         :disabled="isHeld"
-        :aria-label="isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined"
+        :aria-label="isHeld ? hold.name.value : undefined"
+        :aria-describedby="isHeld ? errorId : undefined"
         :blocked="!isValid"
       >
-        {{
-          isChanging
-            ? "Saving"
-            : isHeld
-              ? Messages.tryAgainIn(hold.remaining.value)
-              : "Save password"
-        }}
+        {{ isChanging ? "Saving" : isHeld ? hold.label.value : "Save password" }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
         Cancel

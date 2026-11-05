@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch, computed, useTemplateRef } from "vue";
+import { nextTick, onMounted, ref, watch, computed, useId, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
 import { LoginStatus } from "@/constants/auth";
 import { Messages } from "@/constants/messages";
@@ -35,7 +35,9 @@ const resetNotice = ref(passwordResetNotice.value);
 passwordResetNotice.value = "";
 // The login limiter counts per address, so another address may be tried during the hold.
 const hold = useRetryHold(loginStatus);
-const isHeld = computed(() => hold.isHeld(normalizeEmail(email.value)));
+const heldId = computed(() => normalizeEmail(email.value));
+const isHeld = computed(() => hold.isHeld(heldId.value));
+const failureId = useId();
 
 let flagTimer: ReturnType<typeof setTimeout> | undefined;
 /** Flashes the submit key red for a second. */
@@ -60,7 +62,7 @@ const handleSubmit = async () => {
     isLoading.value = false;
   }
   if (wait) {
-    hold.start(wait, normalizeEmail(email.value));
+    hold.start(wait, heldId.value);
     // The key is disabled for the wait, which can't keep the focus; the password is what's left.
     await nextTick();
     if (!form.value?.querySelector(":focus:not(:disabled)")) {
@@ -116,19 +118,24 @@ watch(isLoggedIn, (newVal) => {
           />
           <RouterLink class="forgot" to="/reset-password">Forgot password?</RouterLink>
         </div>
-        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage
+          v-if="failure"
+          :id="failureId"
+          tone="error"
+          :spoken="hold.spokenFor(heldId)"
+          >{{ failure }}</StatusMessage
+        >
         <BaseButton
           type="submit"
           block
           :loading="isLoading"
           :disabled="isHeld"
-          :aria-label="isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined"
+          :aria-label="isHeld ? hold.name.value : undefined"
+          :aria-describedby="isHeld && failure ? failureId : undefined"
           :blocked="!isValid"
           :error="isButtonError"
         >
-          {{
-            isLoading ? "Logging in" : isHeld ? Messages.tryAgainIn(hold.remaining.value) : "Log in"
-          }}
+          {{ isLoading ? "Logging in" : isHeld ? hold.label.value : "Log in" }}
         </BaseButton>
       </form>
       <GithubLogin label="Log in with GitHub" />

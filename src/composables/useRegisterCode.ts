@@ -67,7 +67,16 @@ export const useRegisterCode = () => {
    * is refused), Confirm code waits for the address; another address can be confirmed at once.
    */
   const verifyHold = useRetryHold(codeError);
-  const verifyWaiting = computed(() => verifyHold.isHeld(normalizeEmail(email.value)));
+  const heldId = () => normalizeEmail(email.value);
+  const verifyWaiting = computed(() => verifyHold.isHeld(heldId()));
+  /** The error to show: `codeError`, or why Confirm code waits, also once it was cleared. */
+  const shownError = computed(() => verifyHold.shown(heldId()));
+  /** The wait in words, read out with the hold's message. */
+  const verifySpoken = computed(() => verifyHold.spokenFor(heldId()));
+  /** Held past the wrong codes' window: the daily cap, which a new code doesn't lift. */
+  const verifyCapped = computed(
+    () => verifyWaiting.value && verifyHold.seconds.value > Limits.Code.failedChecksWindowSeconds
+  );
 
   /** Shows one problem at a time; an empty message clears both. */
   const showError = (message: string, endsWithCooldown = false) => {
@@ -148,7 +157,7 @@ export const useRegisterCode = () => {
       if (result.status === HttpStatus.Conflict) {
         outcome = "taken";
       } else if (result.status === HttpStatus.TooManyRequests) {
-        verifyHold.start(retryAfterFrom(result.body), normalizeEmail(email.value));
+        verifyHold.start(retryAfterFrom(result.body), heldId());
       }
     }
     isVerifying.value = false;
@@ -198,7 +207,10 @@ export const useRegisterCode = () => {
     cooldown,
     resendWaiting,
     verifyWaiting,
-    verifyIn: verifyHold.remaining,
+    verifyHold,
+    shownError,
+    verifySpoken,
+    verifyCapped,
     open,
     leave,
     verify,

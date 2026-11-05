@@ -107,7 +107,10 @@ const {
   cooldown,
   resendWaiting,
   verifyWaiting,
-  verifyIn,
+  verifyHold,
+  shownError: shownCodeError,
+  verifySpoken,
+  verifyCapped,
   open,
   leave,
   verify,
@@ -120,6 +123,7 @@ const isRegisterHeld = computed(() => registerHold.isHeld());
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
 const codeErrorId = useId();
+const formErrorId = useId();
 
 /** The waiting resend key's spelled-out name, where it keeps the visible label in it. */
 const resendName = computed(() =>
@@ -172,9 +176,9 @@ const noticeText = computed(() => NOTICES[notice.value]);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
-/** A problem that isn't about one field, shown above the Register key. */
+/** A problem that isn't about one field, shown above the Register key; also why it's held. */
 const formError = computed(() => {
-  const status = registerStatus.value;
+  const status = registerHold.shown();
   if (!status || status === RegisterStatus.Success || status === RegisterStatus.NoSession) {
     return "";
   }
@@ -267,7 +271,8 @@ const handleSubmit = async () => {
       registerStatus.value = "";
     }
     if (answer.limitedFor) registerHold.start(answer.limitedFor);
-    flagError();
+    // A held key doesn't shake: it says when to try again instead.
+    else flagError();
     await focusProblem();
   }
 };
@@ -310,7 +315,8 @@ const handleCode = async () => {
       break;
     }
     default:
-      flagError();
+      // A held key doesn't shake: it says when to try again instead.
+      if (!verifyWaiting.value) flagError();
       // Confirm code was disabled while it checked; the code is what to fix.
       await focusStep();
   }
@@ -411,23 +417,21 @@ watch(isLoggedIn, (newVal) => {
         required
         @blur="leaveCode('code')"
       />
-      <StatusMessage v-if="codeError" :id="codeErrorId" tone="error">{{ codeError }}</StatusMessage>
+      <StatusMessage v-if="shownCodeError" :id="codeErrorId" tone="error" :spoken="verifySpoken"
+        >{{ shownCodeError
+        }}{{ verifyCapped ? ` ${Messages.EmailCode.capped}` : "" }}</StatusMessage
+      >
       <BaseButton
         type="submit"
         block
         :loading="isVerifying"
         :disabled="verifyWaiting"
-        :aria-label="verifyWaiting ? Messages.tryAgainIn(verifyIn, 'long') : undefined"
+        :aria-label="verifyWaiting ? verifyHold.name.value : undefined"
+        :aria-describedby="verifyWaiting ? codeErrorId : undefined"
         :blocked="!isCodeValid"
         :error="isButtonError"
       >
-        {{
-          isVerifying
-            ? "Confirming"
-            : verifyWaiting
-              ? Messages.tryAgainIn(verifyIn)
-              : "Confirm code"
-        }}
+        {{ isVerifying ? "Confirming" : verifyWaiting ? verifyHold.label.value : "Confirm code" }}
       </BaseButton>
       <div class="code-actions">
         <BaseButton
@@ -489,25 +493,24 @@ watch(isLoggedIn, (newVal) => {
           required
           @blur="leaveField('confirmPassword')"
         />
-        <StatusMessage v-if="formError" tone="error">{{ formError }}</StatusMessage>
+        <StatusMessage
+          v-if="formError"
+          :id="formErrorId"
+          tone="error"
+          :spoken="registerHold.spokenFor()"
+          >{{ formError }}</StatusMessage
+        >
         <BaseButton
           type="submit"
           block
           :loading="isLoading"
           :disabled="isRegisterHeld"
-          :aria-label="
-            isRegisterHeld ? Messages.tryAgainIn(registerHold.remaining.value, 'long') : undefined
-          "
+          :aria-label="isRegisterHeld ? registerHold.name.value : undefined"
+          :aria-describedby="isRegisterHeld ? formErrorId : undefined"
           :blocked="!isValid"
           :error="isButtonError"
         >
-          {{
-            isLoading
-              ? "Registering"
-              : isRegisterHeld
-                ? Messages.tryAgainIn(registerHold.remaining.value)
-                : "Register"
-          }}
+          {{ isLoading ? "Registering" : isRegisterHeld ? registerHold.label.value : "Register" }}
         </BaseButton>
       </form>
       <GithubLogin label="Register with GitHub" />

@@ -27,6 +27,7 @@ const { isUnlinking, unlinkError, unlink, hold: unlinkHold } = useGithubUnlink()
 const open = ref(false);
 const password = ref("");
 const errorId = useId();
+const keyErrorId = useId();
 const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
@@ -44,10 +45,17 @@ const isBusy = computed(() => isLinking.value || isUnlinking.value);
 const isLeaving = computed(() => isLinking.value && !isStalled.value);
 /** Cancel waits too, but not on a navigation that should have happened by now. */
 const isCancelBlocked = computed(() => isUnlinking.value || isLeaving.value);
-const confirmError = computed(() => (githubLinked.value ? unlinkError.value : linkError.value));
 /** The hold after the password checks' 429 that the key on screen waits for. */
 const hold = computed(() => (githubLinked.value ? unlinkHold : linkHold));
 const isHeld = computed(() => hold.value.isHeld());
+/** The form's refusal, or why its key is held, also once Cancel cleared it and it opened again. */
+const confirmError = computed(() => hold.value.shown());
+/**
+ * The refusal above the key of an account made with GitHub, or why that key is held. A password
+ * account shows it in the form instead, so its closed form shows none.
+ */
+const keyError = computed(() => (hasPassword.value ? linkError.value : linkHold.shown()));
+const keyErrorMessage = useTemplateRef("keyErrorMessage");
 
 const focusField = () => field.value?.$el.querySelector("input").focus();
 
@@ -59,9 +67,10 @@ const start = async () => {
     // A start that stalled is given up on first, so this one can begin.
     stop();
     if (await link()) return;
-    // The key disabled while it worked, which dropped the focus.
+    // The key disabled while it worked, which dropped the focus. A held key stays disabled, so
+    // the message saying why takes it.
     await nextTick();
-    opener.value?.$el.focus();
+    (isHeld.value ? keyErrorMessage.value : opener.value)?.$el.focus();
     return;
   }
   linkError.value = unlinkError.value = "";
@@ -132,9 +141,16 @@ const submit = async () => {
 </script>
 
 <template>
-  <StatusMessage v-if="linkError && !open" class="github__error" tone="error">{{
-    linkError
-  }}</StatusMessage>
+  <StatusMessage
+    v-if="keyError && !open"
+    :id="keyErrorId"
+    ref="keyErrorMessage"
+    class="github__error"
+    tone="error"
+    tabindex="-1"
+    :spoken="linkHold.spokenFor()"
+    >{{ keyError }}</StatusMessage
+  >
 
   <form
     v-if="open"
@@ -157,18 +173,21 @@ const submit = async () => {
       required
       @blur="leave('password')"
     />
-    <StatusMessage v-if="confirmError" :id="errorId" tone="error">{{ confirmError }}</StatusMessage>
+    <StatusMessage v-if="confirmError" :id="errorId" tone="error" :spoken="hold.spokenFor()">{{
+      confirmError
+    }}</StatusMessage>
     <div class="github__actions">
       <BaseButton
         type="submit"
         size="sm"
         :error="githubLinked && isValid && !isHeld"
         :disabled="isHeld"
-        :aria-label="isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined"
+        :aria-label="isHeld ? hold.name.value : undefined"
+        :aria-describedby="isHeld ? errorId : undefined"
         :blocked="!isValid"
         :loading="isBusy"
       >
-        <template v-if="isHeld">{{ Messages.tryAgainIn(hold.remaining.value) }}</template>
+        <template v-if="isHeld">{{ hold.label.value }}</template>
         <template v-else-if="githubLinked">{{
           isUnlinking ? "Unlinking" : "Unlink GitHub"
         }}</template>
@@ -191,15 +210,12 @@ const submit = async () => {
     :variant="githubLinked ? 'secondary' : 'primary'"
     :loading="isLeaving"
     :disabled="!hasPassword && isHeld"
-    :aria-label="
-      !hasPassword && isHeld ? Messages.tryAgainIn(hold.remaining.value, 'long') : undefined
-    "
+    :aria-label="!hasPassword && isHeld ? hold.name.value : undefined"
+    :aria-describedby="!hasPassword && isHeld ? keyErrorId : undefined"
     @click="start"
   >
     <template v-if="githubLinked">Unlink GitHub</template>
-    <template v-else-if="!hasPassword && isHeld">{{
-      Messages.tryAgainIn(hold.remaining.value)
-    }}</template>
+    <template v-else-if="!hasPassword && isHeld">{{ hold.label.value }}</template>
     <template v-else>{{ isLeaving ? "Opening GitHub" : "Link GitHub" }}</template>
   </BaseButton>
 </template>

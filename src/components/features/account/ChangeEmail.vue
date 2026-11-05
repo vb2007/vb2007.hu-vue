@@ -36,6 +36,7 @@ const {
 } = useChangeEmail();
 const { remaining: waitSeconds, active: isWaiting } = cooldown;
 const isConfirmHeld = computed(() => confirmHold.isHeld());
+const confirmErrorId = useId();
 
 const open = ref(false);
 const email = ref("");
@@ -196,25 +197,25 @@ const confirmCode = async () => {
       @update:model-value="codeError = ''"
       @blur="leaveCode('code')"
     />
-    <StatusMessage v-if="confirmError" tone="error">{{ confirmError }}</StatusMessage>
+    <!-- A held key keeps its reason, also once opening the e-mail form cleared the error. -->
+    <StatusMessage
+      v-if="confirmHold.shown()"
+      :id="confirmErrorId"
+      tone="error"
+      :spoken="confirmHold.spokenFor()"
+      >{{ confirmHold.shown() }}</StatusMessage
+    >
     <div class="change__actions">
       <BaseButton
         type="submit"
         size="sm"
         :loading="isConfirming"
         :disabled="isConfirmHeld"
-        :aria-label="
-          isConfirmHeld ? Messages.tryAgainIn(confirmHold.remaining.value, 'long') : undefined
-        "
+        :aria-label="isConfirmHeld ? confirmHold.name.value : undefined"
+        :aria-describedby="isConfirmHeld ? confirmErrorId : undefined"
         :blocked="!isCodeValid"
       >
-        {{
-          isConfirming
-            ? "Confirming"
-            : isConfirmHeld
-              ? Messages.tryAgainIn(confirmHold.remaining.value)
-              : "Confirm code"
-        }}
+        {{ isConfirming ? "Confirming" : isConfirmHeld ? confirmHold.label.value : "Confirm code" }}
       </BaseButton>
       <BaseButton ref="key" size="sm" variant="secondary" :disabled="isConfirming" @click="start">
         Change e-mail
