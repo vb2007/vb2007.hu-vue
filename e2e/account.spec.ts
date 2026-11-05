@@ -467,6 +467,7 @@ test("a session that ended elsewhere logs the account page out, without blaming 
   await expect(page.getByText(/wasn't confirmed/)).toHaveCount(0);
   if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+  if (isMobile) await page.keyboard.press("Escape");
 
   await page.getByRole("main").getByRole("link", { name: "Log in" }).click();
   await expect(page).toHaveURL("/login");
