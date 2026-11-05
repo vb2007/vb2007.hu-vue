@@ -45,6 +45,12 @@ export class Messages {
     /** Shown when registering fails without the API's message. */
     static readonly registerUnknownError: string = "Registration failed. Please try again.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
+    /** The code step's 409 for a name taken since registering: the code still works with another. */
+    static readonly usernameTakenMeanwhile: string =
+      "This username was taken in the meantime. Pick another one: your code still works.";
+    /** The code step's 409 for an address that has an account: the waiting registration is gone. */
+    static readonly accountExists: string =
+      "An account already uses this address. Log in instead, or reset its password if you've forgotten it.";
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
     static readonly invalidEmail: string = "Enter a valid e-mail address.";

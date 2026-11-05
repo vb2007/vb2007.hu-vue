@@ -5,7 +5,12 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
-import { confirmationCodeError, normalizeEmail } from "@/scripts/authentication/register";
+import {
+  confirmationCodeError,
+  normalizeEmail,
+  registerFieldOf,
+  type RegisterField
+} from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 
 /** The API sends at most one code a minute per address. */
@@ -20,10 +25,21 @@ export type RegisterCodeResult =
   | "logged-in"
   /** The account exists, but the browser didn't keep the session cookie. */
   | "created"
-  /** The address or username was taken meanwhile; the waiting registration is gone. */
-  | "taken"
+  /**
+   * The API refused a field of the form (`formProblem`): a username taken meanwhile, or one or a
+   * password outside the length rules. The waiting registration and its code still work.
+   */
+  | "fix-form"
+  /** The address already has an account (`formProblem`); the waiting registration is gone. */
+  | "account-exists"
   /** Nothing changed; `codeFieldError` or `codeError` says why. */
   | "failed";
+
+/** A refusal about one of the register form's fields, to show under it. */
+export interface FormProblem {
+  field: RegisterField;
+  message: string;
+}
 
 /** What the step tells about the address's code. */
 export type CodeNotice =
@@ -35,12 +51,15 @@ export type CodeNotice =
   | "earlier"
   /** Registering again within the minute: the code from then still works. */
   | "recent"
+  /** Back from fixing the form: nothing was sent, and the code typed before is kept. */
+  | "kept"
   /** A resend replaced the code but couldn't mail the new one. */
   | "lost";
 
 /**
  * The register form's second step (vb2007/vb2007.hu-api#28): the code mailed after
- * POST /auth/register's 202 creates the account, and a new one can be sent once a minute.
+ * POST /auth/register's 202 creates the account with the form's username and password
+ * (vb2007/vb2007.hu-api#295), and a new one can be sent once a minute.
  */
 export const useRegisterCode = () => {
   /** Where the code went; empty while the form is shown. */
@@ -52,6 +71,8 @@ export const useRegisterCode = () => {
   const codeError = ref("");
   /** What's wrong with the typed code itself: not 6 digits, or the API's 400. */
   const codeFieldError = ref("");
+  /** Set with a "fix-form" or "account-exists" result: what the form shows, under which field. */
+  const formProblem = ref<FormProblem>();
   const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The address the countdown holds back; any other can be sent a code right away. */
   const cooldownFor = ref("");
@@ -106,7 +127,12 @@ export const useRegisterCode = () => {
     showError("");
   };
 
-  const verify = async (code: string): Promise<RegisterCodeResult> => {
+  /** Confirms `code`, creating the account with `username` and `password` from the form. */
+  const verify = async (
+    code: string,
+    username: string,
+    password: string
+  ): Promise<RegisterCodeResult> => {
     const problem = confirmationCodeError(code);
     if (problem) {
       showCodeProblem(problem);
@@ -114,25 +140,36 @@ export const useRegisterCode = () => {
     }
     isVerifying.value = true;
     showError("");
+    formProblem.value = undefined;
 
     const result = await apiRequest(Endpoints.Auth.registerVerify, {
-      body: { email: email.value, code: code.replace(/\s/g, "") },
+      body: { email: email.value, code: code.replace(/\s/g, ""), username, password },
       failure: Messages.EmailCode.confirmFailed
     });
 
     let outcome: RegisterCodeResult = "failed";
+    const field = result.ok ? undefined : registerFieldOf(result.error);
     if (result.ok) {
       // The 201 set the session cookie; only the API can tell whether the browser kept it.
       outcome = (await fetchUserDetails()) ? "logged-in" : "created";
+    } else if (result.status === HttpStatus.BadRequest && field) {
+      // The username's or password's length rule, checked before the code: no try was spent.
+      formProblem.value = { field, message: result.error };
+      outcome = "fix-form";
     } else if (result.status === HttpStatus.BadRequest) {
       // A wrong, expired or used code.
       showCodeProblem(result.error);
+    } else if (result.status === HttpStatus.Conflict && field === "username") {
+      // Waiting registrations don't hold a name: the code still works with another one.
+      formProblem.value = { field, message: Messages.Auth.usernameTakenMeanwhile };
+      outcome = "fix-form";
+    } else if (result.status === HttpStatus.Conflict && field === "email") {
+      // The address has an account, so the API dropped the waiting registration.
+      formProblem.value = { field, message: Messages.Auth.accountExists };
+      outcome = "account-exists";
     } else {
-      // 409 (taken meanwhile), 429, the server or the network.
+      // 429, the server, the network, or a refusal that names no field.
       showError(result.error);
-      if (result.status === HttpStatus.Conflict) {
-        outcome = "taken";
-      }
     }
     isVerifying.value = false;
 
@@ -178,6 +215,7 @@ export const useRegisterCode = () => {
     isResending,
     codeError,
     codeFieldError,
+    formProblem,
     cooldown,
     resendWaiting,
     open,
