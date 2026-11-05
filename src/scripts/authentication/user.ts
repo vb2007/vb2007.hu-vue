@@ -18,6 +18,9 @@ import {
 } from "@/scripts/authentication/authState";
 import { ref } from "vue";
 
+/** Counts `GET /user` lookups, so an older one that answers late is ignored. */
+let latestLookup = 0;
+
 /** A `LoginStatus`, or the API's message when logging in failed. */
 export const loginStatus = ref("");
 
@@ -26,16 +29,23 @@ export const loginStatus = ref("");
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
 export const fetchUserDetails = async () => {
+  // Lookups can answer out of order (e.g. the page load's and a login's); only the latest counts.
+  const lookup = ++latestLookup;
   const result = await apiRequest(Endpoints.User.get, {
     failure: Messages.Auth.userFailed,
     // A visitor who isn't logged in: the usual answer, not a fault.
     quietStatuses: [HttpStatus.Forbidden]
   });
 
+  if (lookup !== latestLookup) {
+    return result.ok;
+  }
+
   if (!result.ok) {
-    // GET /user answers 403 only for a missing or ended session (a password reset ends them all),
-    // so the page forgets the user; other failures say nothing about the session.
-    if (result.status === HttpStatus.Forbidden) {
+    // GET /user answers 403 only for a missing or ended session, so the page forgets the user.
+    // Only the API's own 403 (with its { error }) counts, not a proxy's block page; other
+    // failures say nothing about the session.
+    if (result.status === HttpStatus.Forbidden && apiErrorOf(result) !== undefined) {
       const hadSession = isLoggedIn.value;
       clearSession();
       sessionEnded.value = hadSession;

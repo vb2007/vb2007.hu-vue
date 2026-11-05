@@ -452,7 +452,7 @@ test("a session that ended elsewhere logs the account page out, without blaming 
   await page.goto("/account");
   await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
 
-  // A password reset on another device ends every session of the account.
+  // A login on another device (or a password reset) ends this one: the API keeps one session.
   api.loggedOut();
   await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
@@ -460,7 +460,7 @@ test("a session that ended elsewhere logs the account page out, without blaming 
   await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
   const ended = page.getByRole("status");
   await expect(ended).toHaveText(
-    "Your session ended, so you're logged out: the password may have been changed or reset elsewhere. Log in again to see your account."
+    "Your session ended, so you're logged out: it expired, or the account was logged in or out elsewhere. Log in again to see your account."
   );
   await expect(ended).toBeFocused();
   await expect(page.getByRole("alert")).toHaveCount(0);

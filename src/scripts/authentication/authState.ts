@@ -19,7 +19,8 @@ export const emailVerified = ref(false);
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */
 export const isSessionChecked = ref(false);
 /**
- * True once the API turned away a session this page had, e.g. after a password reset elsewhere
- * (vb2007/vb2007.hu-api#218), until the next login; logging out here leaves it false.
+ * True once the API turned away a session this page had, until the next login: it expired, or the
+ * account was logged in or out elsewhere (the API keeps one session per account, and a password
+ * reset ends it too, vb2007/vb2007.hu-api#218). Logging out here leaves it false.
  */
 export const sessionEnded = ref(false);
