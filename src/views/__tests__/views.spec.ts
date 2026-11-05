@@ -33,6 +33,7 @@ import PageSection from "@/components/layout/PageSection.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import { Endpoints } from "@/constants/endpoints";
 import { TOOLS_LINE } from "@/constants/stops";
+import { MAX_ADDRESS } from "@/scripts/utility/text";
 import { isLoggedIn, isSessionChecked, isSuperuser } from "@/scripts/authentication/authState";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
@@ -314,7 +315,9 @@ describe("views", () => {
   it.each([
     ["/%C3%A1rv%C3%ADz", "/árvíz"],
     ["/a%E0b", "/a%E0b"],
-    ["/r/", "/r/"]
+    ["/r/", "/r/"],
+    ["/docs/%E2%80%AEfdp.exe", "/docs/%E2%80%AEfdp.exe"],
+    ["/a%20b", "/a%20b"]
   ])("NotFoundView shows %s decoded as %s", async (pushed, shown) => {
     // Vue Router warns that it kept a malformed escape as typed.
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -352,7 +355,7 @@ describe("views", () => {
     const url = '/x"><a href="https://evil.test">click</a><img src=x onerror=alert(1)>';
     const { wrapper } = await apiError(url);
 
-    expect(wrapper.find(".path").text()).toBe(`api.test${url}`);
+    expect(wrapper.find(".path").text()).toBe(`api.test${url.replace(/ /g, "%20")}`);
     expect(wrapper.find(".board__body img").exists()).toBe(false);
     expect(wrapper.find(".board__body a[href='https://evil.test']").exists()).toBe(false);
     expect(wrapper.findAll("a").map((link) => link.attributes("href"))).not.toContain(
@@ -360,46 +363,65 @@ describe("views", () => {
     );
   });
 
+  const noAddress =
+    "The API has no route at the address you opened. The link may be old or mistyped.";
+
   it.each([
-    ["no url", undefined],
-    ["an empty url", ""],
-    ["a url that isn't a path", "Your account is locked, call 555-0100"]
-  ])("ApiErrorView leaves the address out for %s", async (_name, url) => {
-    const { wrapper } = await apiError(url);
+    ["no url", "/apierror"],
+    ["a bare url", "/apierror?url"],
+    ["an empty url", "/apierror?url="],
+    ["a repeated url", "/apierror?url=%2Fa&url=%2Fb"],
+    ["a url that isn't a path", `/apierror?url=${encodeURIComponent("Your account is locked")}`]
+  ])("ApiErrorView leaves the address out for %s", async (_name, path) => {
+    const { wrapper } = await mountWithRouter(ApiErrorView, {}, path);
 
     expect(wrapper.find(".path").exists()).toBe(false);
-    expect(wrapper.find(".board__body p").text()).toBe(
-      "The API has no route at the address you opened. The link may be old or mistyped."
-    );
-  });
-
-  it("ApiErrorView leaves the address out when url is repeated", async () => {
-    const { wrapper } = await mountWithRouter(ApiErrorView, {}, "/apierror?url=%2Fa&url=%2Fb");
-
-    expect(wrapper.find(".path").exists()).toBe(false);
+    expect(wrapper.find(".board__body p").text()).toBe(noAddress);
   });
 
   it.each([
     ["/%C3%A1rv%C3%ADz?q=%C3%A9", "/árvíz?q=é"],
     ["/a%2Fb?c=%26", "/a%2Fb?c=%26"],
-    ["/a%E0b", "/a%E0b"]
+    ["/a%E0b", "/a%E0b"],
+    ["/docs/%E2%80%AEfdp.exe", "/docs/%E2%80%AEfdp.exe"],
+    ["/%E2%80%AEabc", "/%E2%80%AEabc"]
   ])("ApiErrorView shows %s as %s", async (url, shown) => {
     const { wrapper } = await apiError(url);
 
     expect(wrapper.find(".path").text()).toBe(`api.test${shown}`);
   });
 
-  it("ApiErrorView cuts a very long address short", async () => {
-    const long = "/" + "é".repeat(500);
-    const { wrapper } = await apiError(long);
+  it.each([
+    [
+      "escaped",
+      "/%0A%0AYour%20session%20expired.%20Log%20in%20again%20at%20vb2007-login.example",
+      "/%0A%0AYour%20session%20expired.%20Log%20in%20again%20at%20vb2007-login.example"
+    ],
+    [
+      "raw",
+      "/ Your account is locked, call 555-0100",
+      "/%20Your%20account%20is%20locked,%20call%20555-0100"
+    ]
+  ])("ApiErrorView shows a made-up sentence (%s) as an escaped address", async (_n, url, shown) => {
+    const { wrapper } = await apiError(url);
 
-    expect(wrapper.find(".path").text()).toBe(`api.test/${"é".repeat(199)}…`);
+    expect(wrapper.find(".board__body p").text()).toBe(
+      `The API has no route at api.test${shown}. The link may be old or mistyped.`
+    );
   });
 
-  it("ApiErrorView keeps an address at the limit whole", async () => {
-    const atLimit = "/" + "a".repeat(199);
-    const { wrapper } = await apiError(atLimit);
+  it("ApiErrorView cuts a very long address short by character", async () => {
+    const { wrapper } = await apiError("/" + "😀".repeat(500));
 
-    expect(wrapper.find(".path").text()).toBe(`api.test${atLimit}`);
+    expect(wrapper.find(".path").text()).toBe(`api.test/${"😀".repeat(MAX_ADDRESS - 1)}…`);
+  });
+
+  it("ApiErrorView escapes a pile of combining marks, so the address still wraps", async () => {
+    const { wrapper } = await apiError("/a" + "%CC%B8".repeat(150));
+    const text = wrapper.find(".path").text();
+
+    expect(text.startsWith("api.test/a\u0338\u0338%CC%B8")).toBe(true);
+    expect(text).not.toMatch(/\p{M}{3}/u);
+    expect(text.endsWith("…")).toBe(true);
   });
 });
