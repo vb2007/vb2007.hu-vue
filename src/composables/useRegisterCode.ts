@@ -29,7 +29,7 @@ export type RegisterCodeResult =
 export type CodeNotice =
   /** The register form just had it mailed. */
   | "sent"
-  /** A resend mailed a new one. */
+  /** A resend the API accepted: it mailed a new code only if a registration was waiting. */
   | "resent"
   /** The user already has one, e.g. after a reload; nothing was sent. */
   | "earlier"
@@ -147,7 +147,10 @@ export const useRegisterCode = () => {
     return outcome;
   };
 
-  /** Mails a new code, which replaces the old one. Returns whether it worked. */
+  /**
+   * Asks for a new code, which replaces the old one if a registration is waiting. Returns whether
+   * the API accepted it.
+   */
   const resend = async () => {
     isResending.value = true;
     showError("");
