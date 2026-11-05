@@ -118,7 +118,7 @@ export const confirmPasswordResetLink = async (
   });
 
   if (!result.ok) {
-    // Too many rejected links from this address: this one isn't used up and works again later.
+    // Too many rejected links from this network: this one isn't used up and works again later.
     if (result.status === HttpStatus.TooManyRequests) {
       return { error: result.error, retryAfter: retryAfterFrom(result.body) };
     }

@@ -691,6 +691,8 @@ describe("PasswordResetForm", () => {
         error: tooShort,
         passwordRefused: true
       });
+      // Where focus is when the key is pressed: the field has to take it back.
+      (submitButton(wrapper).element as HTMLButtonElement).focus();
 
       await wrapper.find("form").trigger("submit");
       await flushPromises();
@@ -728,6 +730,8 @@ describe("PasswordResetForm", () => {
         error: "Too many failed attempts: try again later.",
         retryAfter: 900
       });
+      // Where focus is when the key is pressed: the key's disabled next, so the field takes it.
+      (submitButton(wrapper).element as HTMLButtonElement).focus();
 
       await wrapper.find("form").trigger("submit");
       await flushPromises();
@@ -740,6 +744,7 @@ describe("PasswordResetForm", () => {
       expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
       expect(submitButton(wrapper).attributes("aria-label")).toBe("Reset password in 15 minutes");
       expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(submitButton(wrapper).classes()).toContain("link-reset__key--waiting");
       expect(document.activeElement).toBe(linkPassword(wrapper).element);
       expect(wrapper.find(".alt p").text()).toBe("Can't wait? Get a code instead");
 
@@ -755,6 +760,7 @@ describe("PasswordResetForm", () => {
       expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
       expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
       expect(submitButton(wrapper).attributes("aria-describedby")).toBeUndefined();
+      expect(submitButton(wrapper).classes()).not.toContain("link-reset__key--waiting");
       expect(wrapper.find(".alt p").text()).toBe("Link not working? Request a new one");
 
       const { answer, settle } = pendingAnswer();
@@ -780,19 +786,56 @@ describe("PasswordResetForm", () => {
 
     it("ends the link limit's wait when the link is left for a code", async () => {
       const { wrapper } = await mountLimitedLink();
+      // The failed try's shake runs out, so only the countdown's interval could be left.
+      vi.advanceTimersByTime(1000);
+      expect(vi.getTimerCount()).toBe(1);
 
       await wrapper.find(".alt button").trigger("click");
       await flushPromises();
-
+      // Runs what was only put off to the next turn, so a timer left is a running one.
+      vi.advanceTimersByTime(0);
+      expect(vi.getTimerCount()).toBe(0);
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(submitButton(wrapper).text()).toBe("Send code");
     });
 
+    it("doesn't carry the failed try's shake over to the e-mail step's key", async () => {
+      const { wrapper } = await mountLimitedLink();
+      expect(submitButton(wrapper).classes()).toContain("btn--error");
+
+      // Left within the shake's second.
+      await wrapper.find(".alt button").trigger("click");
+      await flushPromises();
+
+      expect(submitButton(wrapper).text()).toBe("Send code");
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+      // Nor is the shake's timeout left to run: only what's put off to the next turn goes first.
+      vi.advanceTimersByTime(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("names the waiting key by what it shows while a try still goes out", async () => {
+      const { wrapper } = await mountLimitedLink();
+      const { answer, settle } = pendingAnswer();
+      vi.mocked(confirmPasswordResetLink).mockReturnValueOnce(answer);
+
+      // A submit the disabled key didn't send, e.g. from a script: it shows as resetting.
+      await wrapper.find("form").trigger("submit");
+
+      expect(submitButton(wrapper).text()).toBe("Resetting");
+      expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
+      settle({ message: "Password reset successfully: log in with the new password." });
+      await flushPromises();
+    });
+
     it("tries a new link in the same tab afresh, without the last one's wait", async () => {
       const { wrapper, router } = await mountLimitedLink();
+      vi.advanceTimersByTime(1000);
 
       await router.push(`/reset-password#token=${TOKEN}`);
       await flushPromises();
+
+      expect(vi.getTimerCount()).toBe(0);
 
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(submitButton(wrapper).text()).toBe("Reset password");

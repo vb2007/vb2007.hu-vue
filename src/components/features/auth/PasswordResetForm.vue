@@ -57,7 +57,7 @@ const router = useRouter();
 const linkToken = ref("");
 /**
  * What the API made of the link: `refused` it (wrong, expired or used, so only a new one helps), or
- * `limited` it after too many rejected links from this address, without using it up.
+ * `limited` it after too many rejected links from this network, without using it up.
  */
 const linkAnswer = ref<"" | "refused" | "limited">("");
 /**
@@ -138,9 +138,9 @@ const failureIsWait = computed(
   () => isResendWaiting.value && !!failure.value && failure.value === resend.note.value
 );
 
-/** The link step's waiting key's spelled-out name, like the resend key's; it can't be resetting then. */
+/** The link step's waiting key's spelled-out name, like the resend key's; not while it resets. */
 const linkResetName = computed(() =>
-  linkWait.active.value
+  linkWait.active.value && !isResetting.value
     ? spokenWait(
         Messages.Auth.resetPasswordIn(linkWait.remaining.value),
         Messages.Auth.resetPasswordIn(linkWait.remaining.value, "long")
@@ -156,9 +156,18 @@ watch(linkWait.active, (waiting) => {
   }
 });
 
+let errorFlash: ReturnType<typeof setTimeout> | undefined;
+
+/** Stops the key's error shake, so it doesn't carry over to the next step's key. */
+const clearErrorFlash = () => {
+  clearTimeout(errorFlash);
+  isButtonError.value = false;
+};
+
 const flagError = () => {
+  clearErrorFlash();
   isButtonError.value = true;
-  setTimeout(() => {
+  errorFlash = setTimeout(() => {
     isButtonError.value = false;
   }, 1000);
 };
@@ -370,6 +379,8 @@ const requestNewLink = async () => {
   linkToken.value = "";
   linkAnswer.value = "";
   linkWait.stop();
+  // The link's last failed try shook its key; the e-mail step's key has failed nothing.
+  clearErrorFlash();
   clearPasswordSteps();
   await focusFirstField();
 };
@@ -446,6 +457,7 @@ watch(
           <template v-if="linkAnswer === 'limited'">{{ linkStillWorks }}</template>
         </StatusMessage>
         <BaseButton
+          :class="{ 'link-reset__key--waiting': linkWait.active.value }"
           type="submit"
           block
           :loading="isResetting"
@@ -666,7 +678,8 @@ watch(
   color: var(--c-ink-soft);
 }
 
-.resend__key {
+.resend__key,
+.link-reset__key--waiting {
   font-variant-numeric: tabular-nums;
 }
 </style>
