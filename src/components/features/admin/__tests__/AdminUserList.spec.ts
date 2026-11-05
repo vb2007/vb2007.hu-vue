@@ -4,6 +4,7 @@ import { nextTick } from "vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
 import { SEARCH_DELAY_MS } from "@/composables/useAdminUsers";
+import { Limits } from "@/constants/limits";
 import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
@@ -71,6 +72,8 @@ describe("AdminUserList", () => {
     const wrapper = mount(AdminUserList, { global });
     await flushPromises();
     expect(wrapper.find(".count").text()).toBe("1 user");
+    // The API refuses a longer q with a 400.
+    expect(wrapper.find("input").attributes("maxlength")).toBe(String(Limits.Search.maxLength));
 
     vi.useFakeTimers();
     fetchMock.mockResolvedValueOnce(listing([]));

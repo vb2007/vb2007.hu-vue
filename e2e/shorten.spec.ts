@@ -53,6 +53,42 @@ test("an already logged-in user goes straight to the form", async ({ page, api }
   await expect(page.getByLabel("URL")).toBeVisible();
 });
 
+test("a URL over 2000 characters is refused before it's sent", async ({ page, api }) => {
+  api.loggedInAs("someone@example.com");
+  api.shortenReturns("abc123");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/shortenUrl/create") sent.push(request.url());
+  });
+  await page.goto("/shorten");
+  const url = page.getByLabel("URL");
+  const ofLength = (length: number) =>
+    `https://example.com/${"a".repeat(length - "https://example.com/".length)}`;
+
+  // Numbers are written the browser's way, e.g. "2,430".
+  const [length, limit] = await page.evaluate(() =>
+    [2430, 2000].map((value) => value.toLocaleString())
+  );
+  const tooLong = `This URL is ${length} characters; the limit is ${limit}.`;
+
+  await url.fill(ofLength(2430));
+  await expect(url).toHaveAccessibleDescription(tooLong);
+  await expect(url).toHaveValue(ofLength(2430));
+  await expect(page.getByRole("button", { name: "Shorten", exact: true })).toHaveAttribute(
+    "aria-disabled",
+    "true"
+  );
+  await url.press("Enter");
+  await expect(url).toHaveAccessibleDescription(tooLong);
+  expect(sent).toEqual([]);
+
+  await url.fill(ofLength(2000));
+  await expect(url).not.toHaveAttribute("aria-invalid", "true");
+  await page.getByRole("button", { name: "Shorten", exact: true }).click();
+  await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+  expect(sent).toHaveLength(1);
+});
+
 test("the URL is checked once it's left", async ({ page, api }) => {
   api.loggedInAs("someone@example.com");
   await page.goto("/shorten");
