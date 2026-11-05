@@ -618,7 +618,7 @@ describe("PasswordResetForm", () => {
       await linkPassword(wrapper).setValue("new password");
       vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
         error: "Too many failed attempts: try again later.",
-        retryAfter: 900
+        linkLimited: true
       });
 
       await wrapper.find("form").trigger("submit");

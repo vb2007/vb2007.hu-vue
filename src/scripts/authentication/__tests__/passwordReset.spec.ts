@@ -268,7 +268,7 @@ describe("confirmPasswordResetLink", () => {
 
     await expect(confirmPasswordResetLink(TOKEN, "new password")).resolves.toEqual({
       error: "Too many failed attempts: try again later.",
-      retryAfter: 900
+      linkLimited: true
     });
   });
 

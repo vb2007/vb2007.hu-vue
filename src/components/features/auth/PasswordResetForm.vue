@@ -265,7 +265,7 @@ const handleLinkReset = async () => {
     const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
     if (answer.linkRefused) {
       linkAnswer.value = "refused";
-    } else if (answer.retryAfter !== undefined) {
+    } else if (answer.linkLimited) {
       linkAnswer.value = "limited";
     } else if (answer.passwordRefused) {
       passwordRefusal = answer.error!;

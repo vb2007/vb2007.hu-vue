@@ -3,7 +3,6 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
@@ -18,8 +17,11 @@ export interface PasswordResetAnswer {
   message?: string;
   /** What went wrong otherwise. */
   error?: string;
-  /** Seconds before the same link can be tried again, after the API's 429 for too many links. */
-  retryAfter?: number;
+  /**
+   * The API's rate limiter turned the link away (a 429): it isn't used up, and works again later.
+   * Like the code path's mail limit, its wait isn't counted down: the limiter's error says enough.
+   */
+  linkLimited?: boolean;
   /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
   linkRefused?: boolean;
   /** The API refused the new password, which leaves the link usable with another one. */
@@ -114,7 +116,7 @@ export const confirmPasswordResetLink = async (
   if (!result.ok) {
     // Too many rejected links from this address: this one isn't used up and works again later.
     if (result.status === HttpStatus.TooManyRequests) {
-      return { error: result.error, retryAfter: retryAfterFrom(result.body) };
+      return { error: result.error, linkLimited: true };
     }
     if (result.status === HttpStatus.BadRequest) {
       if (passwordLengthErrors().includes(result.error)) {
