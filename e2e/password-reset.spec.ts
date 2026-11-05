@@ -440,13 +440,14 @@ test.describe("the mailed link", () => {
     await page.getByLabel("New password").fill("a new password");
     await page.getByRole("button", { name: "Reset password" }).click();
 
+    // The wait in words at the end is for screen readers, as on every held key.
     const limited =
-      "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent.";
+      "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent. Try again in 15 minutes.";
     await expect(page.getByRole("alert")).toHaveText(limited);
-    const key = page.getByRole("button", { name: /^Reset password/ });
-    await expect(key).toHaveText("Reset password in 15 min");
+    const key = page.locator("form").getByRole("button");
+    await expect(key).toHaveText("Try again in 15 min");
     await expect(key).toBeDisabled();
-    await expect(key).toHaveAccessibleName("Reset password in 15 minutes");
+    await expect(key).toHaveAccessibleName("Try again in 15 minutes");
     await expect(key).toHaveAccessibleDescription(limited);
     await expect(page.getByLabel("New password")).toBeFocused();
     await expect(page.getByRole("main")).toContainText("Can't wait? Get a code instead");

@@ -859,12 +859,16 @@ describe("PasswordResetForm", () => {
       await flushPromises();
 
       const alert = wrapper.find('[role="alert"]');
+      // The wait in words is for screen readers only (visually hidden), fixed as the hold starts.
       expect(alert.text()).toBe(
-        "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent."
+        "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent. Try again in 15 minutes."
       );
-      expect(submitButton(wrapper).text()).toBe("Reset password in 15 min");
+      expect(alert.find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
+      expect(submitButton(wrapper).text()).toBe("Try again in 15 min");
       expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
-      expect(submitButton(wrapper).attributes("aria-label")).toBe("Reset password in 15 minutes");
+      expect(submitButton(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
+      // A held key doesn't shake: it says when to try again instead.
+      expect(submitButton(wrapper).classes()).not.toContain("btn--error");
       expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
       expect(submitButton(wrapper).classes()).toContain("link-reset__key--waiting");
       expect(document.activeElement).toBe(linkPassword(wrapper).element);
@@ -872,7 +876,7 @@ describe("PasswordResetForm", () => {
 
       vi.advanceTimersByTime(899_000);
       await flushPromises();
-      expect(submitButton(wrapper).text()).toBe("Reset password in 1 sec");
+      expect(submitButton(wrapper).text()).toBe("Try again in 1 sec");
 
       // The wait over, the limit's message and the code it offered go with it.
       vi.advanceTimersByTime(1000);
@@ -908,8 +912,8 @@ describe("PasswordResetForm", () => {
 
     it("ends the link limit's wait when the link is left for a code", async () => {
       const { wrapper } = await mountLimitedLink();
-      // The failed try's shake runs out, so only the countdown's interval could be left.
-      vi.advanceTimersByTime(1000);
+      // Runs what was only put off to the next turn: the hold's interval is what's left.
+      vi.advanceTimersByTime(0);
       expect(vi.getTimerCount()).toBe(1);
 
       await wrapper.find(".alt button").trigger("click");
@@ -942,27 +946,25 @@ describe("PasswordResetForm", () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it("names the waiting key by what it shows while a try still goes out", async () => {
+    it("sends nothing while the link's key is held", async () => {
       const { wrapper } = await mountLimitedLink();
-      const { answer, settle } = pendingAnswer();
-      vi.mocked(confirmPasswordResetLink).mockReturnValueOnce(answer);
 
-      // A submit the disabled key didn't send, e.g. from a script: it shows as resetting.
+      // A submit the disabled key didn't send, e.g. Enter in the field.
       await wrapper.find("form").trigger("submit");
-
-      expect(submitButton(wrapper).text()).toBe("Resetting");
-      expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
-      settle({ message: "Password reset successfully: log in with the new password." });
       await flushPromises();
+
+      expect(confirmPasswordResetLink).toHaveBeenCalledTimes(1);
+      expect(submitButton(wrapper).text()).toBe("Try again in 15 min");
+      expect(submitButton(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
     });
 
     it("tries a new link in the same tab afresh, without the last one's wait", async () => {
       const { wrapper, router } = await mountLimitedLink();
-      vi.advanceTimersByTime(1000);
 
       await router.push(`/reset-password#token=${TOKEN}`);
       await flushPromises();
-
+      // Runs what was only put off to the next turn, so a timer left is a running one.
+      vi.advanceTimersByTime(0);
       expect(vi.getTimerCount()).toBe(0);
 
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);

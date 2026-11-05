@@ -61,11 +61,6 @@ const linkToken = ref("");
  * `limited` it after too many rejected links from this network, without using it up.
  */
 const linkAnswer = ref<"" | "refused" | "limited">("");
-/**
- * The link limit's wait, which the Reset password key counts down like the code keys' waits. It
- * isn't kept past a reload, which drops the link anyway.
- */
-const linkWait = useCountdown();
 /** Why a link that came in can't work, shown on the e-mail step it falls back to. */
 const linkError = ref("");
 /** The logged-in user's address when the link is theirs, for password managers; "" otherwise. */
@@ -93,6 +88,14 @@ const sentMessageId = useId();
 const refusedMessageId = useId();
 const failureId = useId();
 const resend = useCountdown("password-reset-cooldown");
+/**
+ * After the link limit's 429 (too many rejected links from this network), the link step's Reset
+ * password waits like a held code key. It's for the link on show: leaving it, or a new link, ends it.
+ */
+const linkHold = useRetryHold(failure);
+const isLinkHeld = computed(() => linkHold.isHeld());
+/** The link step's error, or why its key is held. */
+const linkFailure = computed(() => linkHold.shown());
 /** After the code checks' 429, Reset password waits for the address; another can go at once. */
 const resetHold = useRetryHold(failure);
 const resetHeldId = computed(() => normalizeEmail(sentTo.value));
@@ -162,22 +165,9 @@ const failureIsWait = computed(
   () => isResendWaiting.value && !!failure.value && failure.value === resend.note.value
 );
 
-/** The link step's waiting key's spelled-out name, like the resend key's; not while it resets. */
-const linkResetName = computed(() =>
-  linkWait.active.value && !isResetting.value
-    ? spokenWait(
-        Messages.Auth.resetPasswordIn(linkWait.remaining.value),
-        Messages.Auth.resetPasswordIn(linkWait.remaining.value, "long")
-      )
-    : undefined
-);
-
-// The link limit's message, and the code it offers meanwhile, only hold until its wait ends.
-watch(linkWait.active, (waiting) => {
-  if (!waiting && linkAnswer.value === "limited") {
-    linkAnswer.value = "";
-    failure.value = "";
-  }
+// The code the link step offers while it's held only stands until the hold ends, like its message.
+watch(isLinkHeld, (held) => {
+  if (!held && linkAnswer.value === "limited") linkAnswer.value = "";
 });
 
 let errorFlash: ReturnType<typeof setTimeout> | undefined;
@@ -334,10 +324,10 @@ const changeAddress = async () => {
 const submitReset = async (
   checks: typeof resetChecks | typeof linkChecks,
   send: () => Promise<PasswordResetAnswer>,
-  hold?: typeof resetHold,
+  hold: typeof resetHold,
   heldId = ""
 ) => {
-  if (hold?.isHeld(heldId)) return;
+  if (hold.isHeld(heldId)) return;
   if (!(await checks.validate(step.value))) {
     flagError();
     return;
@@ -353,7 +343,7 @@ const submitReset = async (
       if (answer.retryAfter) {
         // A held key doesn't shake: it says when to try again instead. It's disabled for the
         // wait, which drops its focus.
-        hold?.start(answer.retryAfter, heldId);
+        hold.start(answer.retryAfter, heldId);
         await focusFirstField();
       } else {
         flagError();
@@ -384,12 +374,11 @@ const handleLinkReset = async () => {
       linkAnswer.value = "refused";
     } else if (answer.retryAfter !== undefined) {
       linkAnswer.value = "limited";
-      linkWait.start(answer.retryAfter);
     } else if (answer.passwordRefused) {
       passwordRefusal = answer.error!;
     }
     return answer;
-  });
+  }, linkHold);
 
   // The link still works: the refusal belongs to the field, which gets the cursor for another one.
   if (passwordRefusal) {
@@ -403,11 +392,6 @@ const handleLinkReset = async () => {
   if (linkAnswer.value === "refused") {
     await nextTick();
     step.value?.querySelector("button")?.focus();
-  }
-
-  // The key is disabled for the wait, which drops focus; the password is what's tried again.
-  if (linkAnswer.value === "limited") {
-    await focusFirstField();
   }
 };
 
@@ -428,7 +412,7 @@ const requestNewLink = async () => {
   email.value = linkUsername.value || email.value;
   linkToken.value = "";
   linkAnswer.value = "";
-  linkWait.stop();
+  linkHold.stop();
   // The link's last failed try shook its key; the e-mail step's key has failed nothing.
   clearErrorFlash();
   clearPasswordSteps();
@@ -454,7 +438,7 @@ watch(
     linkError.value = isWellFormed ? "" : Messages.Auth.resetLinkMalformed;
     linkAnswer.value = "";
     // A new link is tried afresh: the API says again if the limit still holds.
-    linkWait.stop();
+    linkHold.stop();
     sentTo.value = "";
     sentMessage.value = "";
     clearPasswordSteps();
@@ -502,28 +486,27 @@ watch(
           required
           @blur="leaveLink('newPassword')"
         />
-        <StatusMessage v-if="failure" :id="failureId" tone="error">
-          {{ failure }}
+        <StatusMessage
+          v-if="linkFailure"
+          :id="failureId"
+          tone="error"
+          :spoken="linkHold.spokenFor()"
+        >
+          {{ linkFailure }}
           <template v-if="linkAnswer === 'limited'">{{ linkStillWorks }}</template>
         </StatusMessage>
         <BaseButton
-          :class="{ 'link-reset__key--waiting': linkWait.active.value }"
+          :class="{ 'link-reset__key--waiting': isLinkHeld }"
           type="submit"
           block
           :loading="isResetting"
-          :disabled="linkWait.active.value"
+          :disabled="isLinkHeld"
           :blocked="!isLinkValid"
           :error="isButtonError"
-          :aria-label="linkResetName"
-          :aria-describedby="linkAnswer === 'limited' ? failureId : undefined"
+          :aria-label="isLinkHeld ? linkHold.name.value : undefined"
+          :aria-describedby="isLinkHeld ? failureId : undefined"
         >
-          {{
-            isResetting
-              ? "Resetting"
-              : linkWait.active.value
-                ? Messages.Auth.resetPasswordIn(linkWait.remaining.value)
-                : "Reset password"
-          }}
+          {{ isResetting ? "Resetting" : isLinkHeld ? linkHold.label.value : "Reset password" }}
         </BaseButton>
       </form>
       <div class="alt">

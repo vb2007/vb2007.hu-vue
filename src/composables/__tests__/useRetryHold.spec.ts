@@ -120,6 +120,20 @@ describe("useRetryHold", () => {
     expect(hold.name.value).toBeUndefined();
   });
 
+  it("ends early when stopped, taking its message along at once", () => {
+    const { error, hold } = mountHold();
+    error.value = LIMITED;
+    hold.start(900);
+
+    hold.stop();
+
+    expect(hold.isHeld()).toBe(false);
+    expect(hold.shown()).toBe("");
+    expect(hold.spokenFor()).toBe("");
+    expect(error.value).toBe("");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("holds only the id it was started for", () => {
     const { hold } = mountHold();
 

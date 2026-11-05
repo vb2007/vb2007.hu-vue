@@ -26,10 +26,14 @@ export const useRetryHold = (error: Ref<string>) => {
   /** How long the hold was when it started. */
   const seconds = ref(0);
 
-  watch(countdown.active, (active) => {
-    if (active) return;
+  /** Lets go of the message, from `error` too unless something else replaced it meanwhile. */
+  const release = () => {
     if (note.value && error.value === note.value) error.value = "";
     note.value = spoken.value = "";
+  };
+
+  watch(countdown.active, (active) => {
+    if (!active) release();
   });
 
   /** Holds the submit for `wait` seconds, with the message `error` shows now; for `id`, if given. */
@@ -39,6 +43,15 @@ export const useRetryHold = (error: Ref<string>) => {
     spoken.value = Messages.tryAgainSpoken(wait);
     seconds.value = wait;
     countdown.start(wait);
+  };
+
+  /**
+   * Ends the hold early, e.g. when what it held is gone from the page; its message goes as at the
+   * end of the count.
+   */
+  const stop = () => {
+    countdown.stop();
+    release();
   };
 
   /** Whether the submit waits: for `id`, when the hold is for one. */
@@ -67,6 +80,7 @@ export const useRetryHold = (error: Ref<string>) => {
     isHeld,
     shown,
     spokenFor,
-    start
+    start,
+    stop
   };
 };
