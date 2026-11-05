@@ -1,5 +1,10 @@
 /** The API's limits, checked here too so a request that would fail isn't sent. */
 export class Limits {
+  /** Mirrors the API's `SHORT_URL_MAX_LENGTH`: the URL as sent, in UTF-16 units (JS `.length`). */
+  static readonly ShortUrl = class {
+    static readonly maxLength: number = 2000;
+  };
+
   static readonly Paste = class {
     static readonly minLength: number = 2;
     static readonly maxLength: number = 10000;
@@ -17,8 +22,11 @@ export class Limits {
     static readonly maxLength: number = 128;
   };
 
+  /** Counted after trimming and lowercasing, like the API's `isValidEmail`. */
   static readonly Email = class {
     static readonly maxLength: number = 254;
+    /** The part before the @. */
+    static readonly localPartMaxLength: number = 64;
   };
 
   /** The codes the API mails to confirm an address or reset a password. */
@@ -30,6 +38,16 @@ export class Limits {
     static readonly registerValidMinutes: number = 15;
     static readonly emailChangeValidMinutes: number = 15;
     static readonly passwordResetValidMinutes: number = 30;
+    /**
+     * The token in a mailed reset link (vb2007/vb2007.hu-api#256): the account's 24-hex id, a dot,
+     * and a 43-character base64url secret. It works as long as the code.
+     */
+    static readonly resetLinkToken: RegExp = /^[0-9a-f]{24}\.[\w-]{43}$/;
+    /**
+     * The window for wrong codes (the API's `FAILED_ATTEMPTS_WINDOW_MS`, vb2007/vb2007.hu-api#254).
+     * A longer wait is the daily cap of rejected codes per address, which a new code doesn't lift.
+     */
+    static readonly failedChecksWindowSeconds: number = 15 * 60;
   };
 
   static readonly Github = class {
@@ -47,5 +65,13 @@ export class Limits {
     static readonly maxLength: number = 255;
     /** Slashes and control characters. */
     static readonly forbiddenCharacters: RegExp = /[/\\\u0000-\u001f\u007f]/;
+  };
+
+  /**
+   * The `q` that searches a list of uploads or, for the admin, of users. Counted in UTF-16 units,
+   * untrimmed, like the input's maxlength.
+   */
+  static readonly Search = class {
+    static readonly maxLength: number = 100;
   };
 }

@@ -10,9 +10,20 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 
 const props = defineProps<{ id: string }>();
 
+/**
+ * The name the admin's "Browse uploads" key sends along in the history state. A direct visit has
+ * none, so the list says "this user's" until the API names them.
+ */
+const ownerFromState = () => {
+  const name: unknown = (window.history.state as { uploadsOwner?: unknown } | null)?.uploadsOwner;
+  return typeof name === "string" && name ? name : undefined;
+};
+
+// Read again per user: by the time the id changes, the history state is the new entry's.
 const listing = computed<UploadListing>(() => ({
   endpoint: Endpoints.Admin.userUploads,
-  params: { id: props.id }
+  params: { id: props.id },
+  ownerHint: ownerFromState()
 }));
 </script>
 

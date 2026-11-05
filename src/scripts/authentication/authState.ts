@@ -2,6 +2,8 @@ import { ref } from "vue";
 
 export const isLoggedIn = ref(false);
 export const userEmail = ref("");
+/** The account's id, which a mailed password reset link starts with. */
+export const userId = ref("");
 /** Needed for the per-user API routes, e.g. listing a user's pastes. */
 export const username = ref("");
 /** The site's superuser (vb2007/vb2007.hu-api#117); opens the admin page. */
@@ -18,3 +20,9 @@ export const pendingEmail = ref("");
 export const emailVerified = ref(false);
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */
 export const isSessionChecked = ref(false);
+/**
+ * True once the API turned away a session this page had, until the next login: it expired, the
+ * password was reset (vb2007/vb2007.hu-api#218), or the account was logged in or out elsewhere (the
+ * API keeps one session per account). Logging out here leaves it false.
+ */
+export const sessionEnded = ref(false);

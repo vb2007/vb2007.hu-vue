@@ -67,7 +67,8 @@ describe("useSetPassword", () => {
   it.each([
     [400, "The password's too short: it must be between 8 and 128 characters."],
     [403, "You must be logged in to perform this action."],
-    [429, "Too many failed attempts: try again later."]
+    // POST /user/password has no rate limiter, so it never answers 429.
+    [500, "Something went wrong on the server: please try again later."]
   ])("shows the API's %i error without asking for GitHub", async (status, error) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
     const password = useSetPassword();
@@ -98,7 +99,7 @@ describe("useSetPassword", () => {
   it("keeps the 409 as an error when the lookup can't confirm the password", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
-      .mockResolvedValueOnce(jsonResponse(401));
+      .mockResolvedValueOnce(jsonResponse(500));
     const password = useSetPassword();
 
     expect(await password.setPassword("correct horse")).toBe(false);

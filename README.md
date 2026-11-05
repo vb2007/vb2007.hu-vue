@@ -70,6 +70,8 @@ The app ships as a compose stack with two services: `frontend` (the production b
 
 Besides the SPA, `docker/nginx.conf` answers `/.well-known/matrix/server` and `/.well-known/matrix/client` (Matrix delegation to `matrix.vb2007.hu`, so `@user:vb2007.hu` federates) and `/robots.txt` (empty `200` for bots, `403` for everyone else). These routes must stay above the SPA fallback (`location /`).
 
+Every response carries `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` from `docker/security-headers.conf`. nginx drops server-level `add_header`s in a location that sets its own, so each such block includes that file again.
+
 ### Running the stack by hand (Debian)
 
 The server is normally deployed automatically (see [Releases & deployment](#releases--deployment)); this is the manual route, e.g. for a second machine or local testing.

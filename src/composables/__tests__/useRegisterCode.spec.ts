@@ -7,6 +7,7 @@ import {
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode
 } from "@/composables/useRegisterCode";
+import { Messages } from "@/constants/messages";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -101,9 +102,25 @@ describe("useRegisterCode", () => {
   });
 
   it.each([
-    ["a resend", 200, {}, 60],
-    ["a refused resend", 429, { error: "Wait.", retryAfter: 42 }, 42]
-  ])("keeps the countdown after %s", async (_, status, body, seconds) => {
+    ["a resend, without a note", 200, {}, 60, {}],
+    [
+      "the cooldown's 429, with its own message",
+      429,
+      {
+        error: "A code was sent just now: wait 42 seconds before requesting another one.",
+        retryAfter: 42
+      },
+      42,
+      { note: Messages.EmailCode.cooldown }
+    ],
+    [
+      "a rate limiter's 429, with its message",
+      429,
+      { error: "Too many e-mails requested: try again later.", retryAfter: 3412 },
+      3412,
+      { note: "Too many e-mails requested: try again later." }
+    ]
+  ])("keeps the countdown after %s", async (_, status, body, seconds, note) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, body));
     const step = openStep();
     vi.advanceTimersByTime(60_000);
@@ -111,7 +128,60 @@ describe("useRegisterCode", () => {
     await step.resend();
 
     const kept = JSON.parse(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)!);
-    expect(kept).toEqual({ id: "me@example.com", deadline: Date.now() + seconds * 1000 });
+    expect(kept).toStrictEqual({
+      id: "me@example.com",
+      deadline: Date.now() + seconds * 1000,
+      ...note
+    });
+  });
+
+  it("explains a wait still running in the page when storage is off", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage is off");
+    });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
+    );
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+    await step.resend();
+    step.leave();
+
+    step.open("me@example.com", "earlier");
+
+    expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBeNull();
+    expect(step.resendWaiting.value).toBe(true);
+    expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+    setItem.mockRestore();
+  });
+
+  it("explains a rate limited wait it picks up after a reload, until it ends", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error: "Too many e-mails requested: try again later.", retryAfter: 3412 })
+    );
+    const step = openStep();
+    vi.advanceTimersByTime(60_000);
+    await step.resend();
+
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.codeError.value).toBe("Too many e-mails requested: try again later.");
+    await nextTick();
+    vi.advanceTimersByTime(3_412_000);
+    await nextTick();
+    expect(reloaded.codeError.value).toBe("");
+  });
+
+  it("picks up a wait after a sent code without an error", () => {
+    openStep();
+
+    const { api: reloaded } = mountComposable(useRegisterCode);
+    reloaded.open("me@example.com", "earlier");
+
+    expect(reloaded.resendWaiting.value).toBe(true);
+    expect(reloaded.codeError.value).toBe("");
   });
 
   it("forgets an old error when opened again", () => {
@@ -145,14 +215,19 @@ describe("useRegisterCode", () => {
       vi.mocked(fetchUserDetails).mockResolvedValueOnce(true);
       const step = openStep();
 
-      const pending = step.verify(" 123 456 ");
+      const pending = step.verify(" 123 456 ", "vb", "password");
       expect(step.isVerifying.value).toBe(true);
 
       expect(await pending).toBe("logged-in");
       expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/register/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "me@example.com", code: "123456" }),
+        body: JSON.stringify({
+          email: "me@example.com",
+          code: "123456",
+          username: "vb",
+          password: "password"
+        }),
         credentials: "include"
       });
       expect(fetchUserDetails).toHaveBeenCalled();
@@ -165,7 +240,7 @@ describe("useRegisterCode", () => {
       vi.mocked(fetchUserDetails).mockResolvedValueOnce(false);
       const step = openStep();
 
-      expect(await step.verify("123456")).toBe("created");
+      expect(await step.verify("123456", "vb", "password")).toBe("created");
     });
 
     it.each([
@@ -176,7 +251,7 @@ describe("useRegisterCode", () => {
     ])("doesn't spend a try on %s", async (_, code) => {
       const step = openStep();
 
-      expect(await step.verify(code)).toBe("failed");
+      expect(await step.verify(code, "vb", "password")).toBe("failed");
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(step.codeFieldError.value).toBe("Enter the 6-digit code from the e-mail.");
@@ -184,40 +259,152 @@ describe("useRegisterCode", () => {
     });
 
     it.each([
-      [400, invalidCode, "codeFieldError"],
-      [429, "Too many failed attempts: try again later.", "codeError"]
+      [400, invalidCode, "codeFieldError", false],
+      [429, "Too many failed attempts: try again later.", "codeError", true]
     ] as const)(
       "shows the API's message for a %i response as %s",
-      async (status, error, shownAs) => {
-        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+      async (status, error, shownAs, logged) => {
+        fetchMock.mockResolvedValueOnce(jsonResponse(status, { error, retryAfter: 900 }));
         const step = openStep();
         step.codeError.value = "old";
 
-        expect(await step.verify("123456")).toBe("failed");
+        expect(await step.verify("123456", "vb", "password")).toBe("failed");
 
         expect(step[shownAs].value).toBe(error);
         expect(step[shownAs === "codeError" ? "codeFieldError" : "codeError"].value).toBe("");
         expect(fetchUserDetails).not.toHaveBeenCalled();
-        expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", status);
+        // A wrong code is an answer, not a fault: only the rate limit is logged.
+        if (logged) {
+          expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", status);
+        } else {
+          expect(console.error).not.toHaveBeenCalled();
+        }
         expect(step.isVerifying.value).toBe(false);
       }
     );
 
-    it("reports a name taken meanwhile, which ends the waiting registration", async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(409, { error: "This username is already taken." })
-      );
+    it("holds confirming for the address until the code checks' wait ends", async () => {
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const step = openStep();
+      expect(step.verifyWaiting.value).toBe(false);
+
+      await step.verify("123456", "vb", "password");
+
+      expect(step.verifyWaiting.value).toBe(true);
+      expect(step.verifyHold.remaining.value).toBe(86_400);
+      expect(step.verifyCapped.value).toBe(true);
+
+      // The limiter counts per address, so another one can be confirmed at once.
+      step.open("ME@example.com", "earlier");
+      expect(step.verifyWaiting.value).toBe(true);
+      step.open("you@example.com", "earlier");
+      expect(step.verifyWaiting.value).toBe(false);
+
+      step.open("me@example.com", "earlier");
+      step.codeError.value = error;
+      vi.advanceTimersByTime(86_400_000);
+      await nextTick();
+      expect(step.verifyWaiting.value).toBe(false);
+      expect(step.codeError.value).toBe("");
+    });
+
+    it.each([
+      [
+        "a username taken meanwhile, whose code still works",
+        409,
+        "This username is already taken.",
+        "fix-form",
+        {
+          field: "username",
+          message:
+            "That username was taken in the meantime: pick another one. Your code works for up to 15 minutes after it was sent."
+        }
+      ],
+      [
+        "an address that already has an account",
+        409,
+        "An account with this E-mail address already exists.",
+        "account-exists",
+        {
+          field: "email",
+          message:
+            "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
+        }
+      ],
+      [
+        "a username outside the length rule",
+        400,
+        "The username's too long: it must be between 2 and 16 characters.",
+        "fix-form",
+        {
+          field: "username",
+          message: "The username's too long: it must be between 2 and 16 characters."
+        }
+      ],
+      [
+        "a password outside the length rule",
+        400,
+        "The password's too short: it must be between 8 and 128 characters.",
+        "fix-form",
+        {
+          field: "password",
+          message: "The password's too short: it must be between 8 and 128 characters."
+        }
+      ]
+    ] as const)("sends the form back for %s", async (_, status, error, outcome, problem) => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
       const step = openStep();
 
-      expect(await step.verify("123456")).toBe("taken");
-      expect(step.codeError.value).toBe("This username is already taken.");
+      expect(await step.verify("123456", "vb", "password")).toBe(outcome);
+
+      expect(step.formProblem.value).toEqual(problem);
+      expect(step.codeError.value).toBe("");
+      expect(step.codeFieldError.value).toBe("");
+      expect(step.isVerifying.value).toBe(false);
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it("forgets the last form problem on the next try", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(409, { error: "This username is already taken." }))
+        .mockResolvedValueOnce(jsonResponse(400, { error: invalidCode }));
+      const step = openStep();
+      await step.verify("123456", "vb", "password");
+
+      expect(await step.verify("654321", "vb2", "password")).toBe("failed");
+
+      expect(step.formProblem.value).toBeUndefined();
+      expect(step.codeFieldError.value).toBe(invalidCode);
+    });
+
+    it("keeps the API's missing-fields refusal on the step, not under a form field", async () => {
+      const error =
+        "You must provide an E-mail address, the confirmation code, a username and a password.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(400, { error }));
+      const step = openStep();
+
+      expect(await step.verify("123456", "vb", "password")).toBe("failed");
+
+      expect(step.formProblem.value).toBeUndefined();
+      expect(step.codeFieldError.value).toBe(error);
+    });
+
+    it("keeps a conflict that names no field on the step", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: "Already registered." }));
+      const step = openStep();
+
+      expect(await step.verify("123456", "vb", "password")).toBe("failed");
+
+      expect(step.codeError.value).toBe("Already registered.");
+      expect(step.formProblem.value).toBeUndefined();
     });
 
     it("falls back to the status, and logs it, when the server fails", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Internal Server Error"));
       const step = openStep();
 
-      expect(await step.verify("123456")).toBe("failed");
+      expect(await step.verify("123456", "vb", "password")).toBe("failed");
       expect(step.codeError.value).toBe("Failed to confirm the code: Internal Server Error");
       expect(console.error).toHaveBeenCalledWith("Failed to confirm the code: ", 500);
     });
@@ -226,7 +413,7 @@ describe("useRegisterCode", () => {
       fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
       const step = openStep();
 
-      expect(await step.verify("123456")).toBe("failed");
+      expect(await step.verify("123456", "vb", "password")).toBe("failed");
       expect(step.codeError.value).toBe("Error connecting to server");
       expect(step.isVerifying.value).toBe(false);
     });
@@ -247,7 +434,7 @@ describe("useRegisterCode", () => {
       const pending = step.resend();
       expect(step.isResending.value).toBe(true);
 
-      expect(await pending).toBe(true);
+      expect(await pending).toBe("sent");
       expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/register/resend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -269,7 +456,7 @@ describe("useRegisterCode", () => {
       const step = openStep();
       step.cooldown.stop();
 
-      expect(await step.resend()).toBe(false);
+      expect(await step.resend()).toBe("failed");
 
       expect(step.codeError.value).toBe(
         "A code was sent just now. You can send another once the countdown ends."
@@ -282,7 +469,29 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
     });
 
-    it("waits a minute after a rate limiter's 429, which has no retryAfter", async () => {
+    it("shows a rate limiter's 429 as the API says it, and waits its retryAfter", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, {
+          error: "Too many e-mails requested: try again later.",
+          retryAfter: 3412
+        })
+      );
+      const step = openStep();
+      step.cooldown.stop();
+
+      expect(await step.resend()).toBe("failed");
+
+      // No code went out: the code from before still works, and the key waits the limit out.
+      expect(step.codeError.value).toBe("Too many e-mails requested: try again later.");
+      expect(step.cooldown.remaining.value).toBe(3412);
+      expect(step.notice.value).toBe("sent");
+
+      vi.advanceTimersByTime(3_412_000);
+      await nextTick();
+      expect(step.codeError.value).toBe("");
+    });
+
+    it("waits a minute after a 429 without a retryAfter", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, { error: "Too many e-mails requested: try again later." })
       );
@@ -298,7 +507,7 @@ describe("useRegisterCode", () => {
     it("keeps other errors when the countdown ends", async () => {
       const step = openStep();
       fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: invalidCode }));
-      await step.verify("123456");
+      await step.verify("123456", "vb", "password");
 
       vi.advanceTimersByTime(60_000);
       await nextTick();
@@ -313,7 +522,7 @@ describe("useRegisterCode", () => {
       const step = openStep();
       step.cooldown.stop();
 
-      expect(await step.resend()).toBe(false);
+      expect(await step.resend()).toBe("lost");
 
       expect(step.codeError.value).toBe("The e-mail couldn't be sent: please try again later.");
       expect(step.notice.value).toBe("lost");
@@ -347,7 +556,7 @@ describe("useRegisterCode", () => {
       fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
       const step = openStep();
 
-      expect(await step.resend()).toBe(false);
+      expect(await step.resend()).toBe("failed");
       expect(step.codeError.value).toBe("Error connecting to server");
       expect(step.isResending.value).toBe(false);
     });

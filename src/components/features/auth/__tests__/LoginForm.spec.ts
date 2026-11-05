@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
@@ -31,7 +32,7 @@ describe("LoginForm", () => {
   });
 
   it("submits the credentials and shows progress meanwhile", async () => {
-    let finishLogin!: () => void;
+    let finishLogin!: (wait?: number) => void;
     vi.mocked(login).mockReturnValueOnce(new Promise((resolve) => (finishLogin = resolve)));
     const { wrapper } = await mountWithRouter(LoginForm);
     const [email, password] = wrapper.findAll("input");
@@ -126,10 +127,25 @@ describe("LoginForm", () => {
   });
 
   it("shows other errors as they came from the API", async () => {
-    loginStatus.value = "Wrong password.";
+    loginStatus.value =
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
     const { wrapper } = await mountWithRouter(LoginForm);
 
-    expect(wrapper.find('[role="alert"]').text()).toBe("Wrong password.");
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+    );
+  });
+
+  it("shows a lockout's wait above the GitHub login it points to", async () => {
+    loginStatus.value = Messages.Auth.loginLockedOut(15);
+    const { wrapper } = await mountWithRouter(LoginForm);
+
+    const alert = wrapper.find('[role="alert"]');
+    expect(alert.text()).toBe(
+      "Too many failed attempts. Try again in 15 minutes, or log in with GitHub below if it's linked to your account."
+    );
+    const github = wrapper.find('a[href="https://api.test/auth/github"]').element;
+    expect(alert.element.compareDocumentPosition(github)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("replaces the form with a success message when logged in", async () => {
@@ -195,6 +211,7 @@ describe("LoginForm", () => {
     vi.mocked(login).mockImplementationOnce(async () => {
       isLoggedIn.value = true;
       loginStatus.value = "success";
+      return undefined;
     });
     const { wrapper } = await mountWithRouter(LoginForm);
     const [email, password] = wrapper.findAll("input");
@@ -247,6 +264,90 @@ describe("LoginForm", () => {
     await flushPromises();
 
     expect(loginStatus.value).toBe("");
+  });
+
+  describe("over the login limiter", () => {
+    /** What `login` shows for the lockout, which says its wait in words already. */
+    const LIMITED = Messages.Auth.loginLockedOut(15);
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      vi.mocked(login).mockImplementationOnce(async () => {
+        loginStatus.value = LIMITED;
+        return 900;
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      document.body.innerHTML = "";
+    });
+
+    const tryLogin = async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      (wrapper.find('button[type="submit"]').element as HTMLElement).focus();
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      return { wrapper, email, password, key: () => wrapper.find('button[type="submit"]') };
+    };
+
+    it("holds the key for the wait with the API's message, then lets the user try again", async () => {
+      const { wrapper, password, key } = await tryLogin();
+
+      // No spoken wait is added: the message already says it.
+      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      expect(key().text()).toBe("Try again in 15 min");
+      expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
+      expect(key().attributes("disabled")).toBeDefined();
+      expect(key().attributes("aria-describedby")).toBe(
+        wrapper.find('[role="alert"]').attributes("id")
+      );
+      // The disabled key can't keep the focus.
+      expect(document.activeElement).toBe(password.element);
+
+      // Enter in a field can't send it either.
+      await wrapper.find("form").trigger("submit");
+      expect(login).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(899_000);
+      await flushPromises();
+      expect(key().text()).toBe("Try again in 1 sec");
+
+      vi.advanceTimersByTime(1000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(key().text()).toBe("Log in");
+      expect(key().attributes("disabled")).toBeUndefined();
+      expect(key().attributes("aria-label")).toBeUndefined();
+    });
+
+    it("only holds the address the limiter counted", async () => {
+      const { email, key } = await tryLogin();
+
+      await email.setValue("other@example.com");
+      expect(key().text()).toBe("Log in");
+      expect(key().attributes("disabled")).toBeUndefined();
+
+      // The same address, however it's typed, waits on.
+      await email.setValue(" Me@Example.com ");
+      expect(key().text()).toBe("Try again in 15 min");
+    });
+
+    it("leaves the focus in the form where it stayed", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      (email.element as HTMLElement).focus();
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(email.element);
+    });
   });
 
   it("keeps the status when logging in", async () => {

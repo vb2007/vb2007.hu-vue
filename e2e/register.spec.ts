@@ -2,13 +2,18 @@ import type { Page } from "@playwright/test";
 import { expect, REGISTRATION_CODE, test } from "./fixtures";
 
 // Registering mails a code first (vb2007/vb2007.hu-api#28); the mock "mails" REGISTRATION_CODE.
+// Confirming it creates the account with the form's username and password (vb2007/vb2007.hu-api#295).
 
-const fillForm = async (page: Page, email = "new@example.com") => {
-  await page.goto("/register");
+const fillFields = async (page: Page, email = "new@example.com") => {
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Username").fill("newbie");
   await page.getByLabel("Password", { exact: true }).fill("correct horse");
   await page.getByLabel("Confirm password").fill("correct horse");
+};
+
+const fillForm = async (page: Page, email = "new@example.com") => {
+  await page.goto("/register");
+  await fillFields(page, email);
   await page.getByRole("button", { name: "Register", exact: true }).click();
 };
 
@@ -54,38 +59,40 @@ test("registering asks for the mailed code, then logs the new account in", async
   await expect(page.getByLabel("URL")).toBeVisible();
 });
 
-test("a new code can be sent once a minute", async ({ page }) => {
+test("a new code can be sent once a minute", async ({ page, api }) => {
   await page.clock.install();
   await fillForm(page);
 
   const resend = page.getByRole("button", { name: /^Resend/ });
-  await expect(resend).toHaveText("Resend in 60 s");
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 
   await page.clock.runFor(60_000);
+  // The API's minute runs out too, so it takes the resend.
+  api.clockRunsFor(60_000);
   await expect(resend).toHaveText("Resend code");
   await resend.click();
 
   await expect(page.getByRole("status")).toHaveText(
-    "A new code is on its way to new@example.com. The previous one no longer works."
+    "If a registration is waiting for new@example.com, a new code is on its way, and the one before no longer works."
   );
-  await expect(resend).toHaveText("Resend in 60 s");
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 });
 
-test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
-  await page.route("**/auth/register/resend", (route) =>
+/** Answers `path` with the API's 429 carrying `json`, e.g. the code cooldown's. */
+const refuse = (page: Page, path: string, json: { error: string; retryAfter: number }) =>
+  page.route(`**${path}`, (route) =>
     route.request().method() === "OPTIONS"
       ? route.fallback()
-      : route.fulfill({
-          status: 429,
-          headers: { "Access-Control-Allow-Origin": "*" },
-          json: {
-            error: "A code was sent just now: wait 42 seconds before requesting another one.",
-            retryAfter: 42
-          }
-        })
+      : route.fulfill({ status: 429, headers: { "Access-Control-Allow-Origin": "*" }, json })
   );
+
+test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
+  await refuse(page, "/auth/register/resend", {
+    error: "A code was sent just now: wait 42 seconds before requesting another one.",
+    retryAfter: 42
+  });
   await page.clock.install();
   await fillForm(page);
   // The minute only starts once the code step is up.
@@ -97,7 +104,7 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("alert")).toHaveText(
     "A code was sent just now. You can send another once the countdown ends."
   );
-  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 42 s");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText(/^Resend in [1-4]\d sec$/);
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
 
   await page.clock.runFor(42_000);
@@ -105,19 +112,138 @@ test("a refused resend counts down from the API's retryAfter", async ({ page }) 
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
+test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  await fillForm(page);
+  await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
+  await page.clock.runFor(60_000);
+  // The first code went out; the next one is over the limit.
+  api.limitsMailSends();
+
+  await page.getByRole("button", { name: "Resend code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveAccessibleName(
+    "Resend in 57 minutes"
+  );
+  await expect(page.getByRole("button", { name: /^Resend/ })).toBeDisabled();
+
+  // After a reload, the wait it picks up still says why.
+  await page.reload();
+  await fillFields(page);
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
+  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText("Resend in 57 min");
+});
+
+test("registering over the mail limit stays on the form, since no code was sent", async ({
+  page,
+  api
+}) => {
+  api.limitsMailSends();
+  await fillForm(page);
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many e-mails requested: try again later. Try again in 57 minutes."
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByText(/a code went to/)).toHaveCount(0);
+  await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
+  // The limit is per IP, so Register waits it out whatever the address.
+  const key = page.locator("form").getByRole("button", { name: /^(Register|Try again)/ });
+  await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+});
+
+test("a code past the daily cap of wrong codes holds Confirm code for hours", async ({
+  page,
+  api
+}) => {
+  await fillForm(page);
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  // Even the right code is refused once 20 were wrong today.
+  api.capsCodeChecks();
+
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends. Try again in 23 hours 45 minutes."
+  );
+  const key = page.getByRole("button", { name: /^Try again in/ });
+  await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
+  // it points at says the wait in words.
+  await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
+  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
+  await expect(key).toBeDisabled();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await expect(page.getByText("Registration successful!")).toHaveCount(0);
+});
+
+test("username checks over the API's limit stop quietly until its wait passed", async ({
+  page,
+  api
+}) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.clock.install();
+  api.limitsUsernameChecks();
+  api.hasUser("anna4");
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const registerKey = page.getByRole("button", { name: "Register", exact: true });
+
+  const limited = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
+  await username.fill("anna");
+  await page.clock.runFor(500);
+  // The 429 has to arrive before the next typing, which would abort a check still on its way.
+  await (await limited).finished();
+  expect(api.usernameChecks).toBe(1);
+  // The 429 says nothing: the name is just unknown, which registering still checks.
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  // Within the wait, nothing more is asked.
+  await username.fill("anna2");
+  await page.clock.runFor(500);
+  expect(api.usernameChecks).toBe(1);
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+
+  api.limitsUsernameChecks(false);
+  await page.clock.runFor(42_000);
+  await username.fill("anna4");
+  await page.clock.runFor(500);
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
+  await expect(registerKey).toHaveAttribute("aria-disabled", "true");
+  expect(api.usernameChecks).toBe(2);
+  // The expected 429 isn't logged as an error (the browser's own failed-request line aside).
+  expect(errors.filter((error) => error.includes("username"))).toEqual([]);
+});
+
 test("a code that already arrived can be entered after a reload", async ({ page }) => {
   await fillForm(page);
   await expect(page.getByLabel("Confirmation code")).toBeVisible();
 
   await page.reload();
-  await page.getByLabel("E-mail").fill("new@example.com");
+  // The form is empty again, and confirming needs its username and password too.
+  await fillFields(page);
   await page.getByRole("button", { name: "Enter it" }).click();
 
-  await expect(page.getByRole("status")).toContainText(
-    "Enter the code that was mailed to new@example.com."
+  await expect(page.getByRole("status")).toHaveText(
+    "Enter the code that was mailed to new@example.com. It works for 15 minutes after sending, and registers you as newbie with the password you entered."
   );
   // The minute since the code was sent survives the reload, so no click is wasted on a 429.
-  await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
@@ -135,7 +261,7 @@ test("registering the same address again within the minute keeps the code sent",
   await expect(page.getByRole("status")).toContainText(
     "Less than a minute ago, a code went to new@example.com. It still works"
   );
-  await expect(page.getByRole("button", { name: /^Resend in \d+ s$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
@@ -159,18 +285,7 @@ test("a mistyped address can be fixed from the code step", async ({ page }) => {
 });
 
 test("the API's reason for refusing an address is shown on the form", async ({ page }) => {
-  await page.route("**/auth/register", (route) =>
-    route.request().method() === "OPTIONS"
-      ? route.fallback()
-      : route.fulfill({
-          status: 400,
-          headers: { "Access-Control-Allow-Origin": "*" },
-          json: {
-            error: "Disposable (temporary) e-mail addresses can't be used: use a permanent one."
-          }
-        })
-  );
-
+  // The mock refuses a disposable domain like the API does.
   await fillForm(page, "someone@mailinator.com");
 
   // It's about the address, so it shows under the E-mail field, which takes focus.
@@ -205,18 +320,81 @@ test("a taken username is shown at the Username field, which takes focus", async
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
 });
 
-test("entering a code needs the address first, without failing Register", async ({ page }) => {
+test("entering a code needs the whole form first, without failing Register", async ({ page }) => {
   await page.goto("/register");
 
   await page.getByRole("button", { name: "Enter it" }).click();
 
   const email = page.getByLabel("E-mail");
   await expect(email).toHaveAccessibleDescription("Enter a valid e-mail address.");
+  await expect(page.getByLabel("Username")).toHaveAccessibleDescription(
+    "The username's too short: it must be between 2 and 16 characters."
+  );
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAccessibleDescription(
+    /The password's too short/
+  );
   await expect(email).toBeFocused();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Register", exact: true })).not.toHaveClass(
     /btn--error/
   );
+});
+
+test("a username taken meanwhile keeps the code, which finishes with another name", async ({
+  page,
+  api
+}) => {
+  await fillForm(page);
+  await expect(page.getByLabel("Confirmation code")).toBeVisible();
+  // Waiting registrations don't hold a name: someone else takes it before the code is entered.
+  api.hasUser("Newbie");
+
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  const username = page.getByLabel("Username");
+  await expect(username).toHaveAccessibleDescription(
+    "That username was taken in the meantime: pick another one. Your code works for up to 15 minutes after it was sent."
+  );
+  await expect(username).toBeFocused();
+  await expect(page.getByLabel("E-mail")).toHaveValue("new@example.com");
+
+  await username.fill("newbie2");
+  // The key says it goes on rather than registering again.
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+
+  // No new code is mailed: the step comes back with the one typed before and its countdown.
+  await expect(page.getByRole("status")).toHaveText(
+    "Your code for new@example.com works for up to 15 minutes after it was sent: confirm it to register as newbie2."
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveValue(REGISTRATION_CODE);
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByText("Registration successful!")).toBeVisible();
+  await page.goto("/account");
+  await expect(page.getByText("newbie2", { exact: true })).toBeVisible();
+});
+
+test("an address that already has an account is only refused at the code", async ({
+  page,
+  api
+}) => {
+  api.hasUser("anna");
+
+  // Registering answers like for any address, so it doesn't reveal which ones have accounts.
+  await fillForm(page, "anna@example.com");
+  await expect(page.getByRole("status")).toContainText("on its way to anna@example.com.");
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  const email = page.getByLabel("E-mail");
+  await expect(email).toHaveAccessibleDescription(
+    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
+  );
+  await expect(email).toBeFocused();
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
 });
 
 test("logging out after registering leaves an empty form", async ({ page, isMobile }) => {
@@ -275,7 +453,7 @@ test("a taken username is said while it's typed", async ({ page, api }) => {
   const username = page.getByLabel("Username");
 
   await username.fill("anna");
-  await expect(username).toHaveAccessibleDescription("That username is taken.");
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
   await expect(page.getByRole("button", { name: "Register", exact: true })).toHaveAttribute(
     "aria-disabled",
     "true"

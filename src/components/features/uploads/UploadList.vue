@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { useUploads, type UploadListing } from "@/composables/useUploads";
+import { Limits } from "@/constants/limits";
 import type { SortOrder } from "@/types/api/common";
 import type { UploadSortBy, UploadVisibility } from "@/types/api/uploads";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -25,6 +26,7 @@ const {
   uploads,
   pagination,
   owner,
+  ownerName,
   page,
   sortBy,
   sortOrder,
@@ -48,7 +50,11 @@ const {
 const isOthers = computed(() => Boolean(props.listing));
 const title = computed(() => {
   if (!isOthers.value) return "Your uploads";
-  return owner.value ? `${owner.value.username}'s uploads` : "Uploads";
+  return ownerName.value ? `${ownerName.value}'s uploads` : "Uploads";
+});
+const loadingNote = computed(() => {
+  if (!isOthers.value) return "Loading your uploads…";
+  return ownerName.value ? `Loading ${ownerName.value}'s uploads…` : "Loading this user's uploads…";
 });
 
 type SortKey = `${UploadSortBy}:${SortOrder}`;
@@ -101,7 +107,13 @@ defineExpose({ refresh: () => goToPage(1) });
 <template>
   <StationBoard :title="title" :as="as">
     <div class="filters">
-      <BaseInput v-model="query" class="filters__search" type="search" label="Search by name" />
+      <BaseInput
+        v-model="query"
+        class="filters__search"
+        type="search"
+        label="Search by name"
+        :maxlength="Limits.Search.maxLength"
+      />
       <SegmentedControl v-model="filter" legend="Show" :options="FILTER_OPTIONS" size="sm" />
       <BaseSelect v-model="sort" label="Sort" :options="SORT_OPTIONS" size="sm" />
     </div>
@@ -113,7 +125,7 @@ defineExpose({ refresh: () => goToPage(1) });
 
     <StatusMessage v-if="errorMessage" tone="error">{{ errorMessage }}</StatusMessage>
 
-    <p v-if="isLoading && !pagination" class="note">Loading your uploads…</p>
+    <p v-if="isLoading && !pagination" class="note">{{ loadingNote }}</p>
     <div v-else-if="pagination && pagination.total === 0" class="empty">
       <template v-if="isNarrowed">
         <p class="note">No uploads match. Try another name, or show all of them.</p>

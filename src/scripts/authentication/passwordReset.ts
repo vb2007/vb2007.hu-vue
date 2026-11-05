@@ -1,12 +1,14 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
+import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
-import { apiRequest } from "@/scripts/api/client";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { apiRequest, type ApiResult } from "@/scripts/api/client";
+import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { clearSession } from "@/scripts/authentication/user";
+import type { MessageResponse } from "@/types/api/common";
 
 /** The API's message after a reset, shown once on /login (see LoginForm). */
 export const passwordResetNotice = ref("");
@@ -16,13 +18,29 @@ export interface PasswordResetAnswer {
   message?: string;
   /** What went wrong otherwise. */
   error?: string;
-  /** Seconds before another code can be asked for, after a 429. */
+  /**
+   * Seconds to wait after a 429: before the mail limit takes another request, before the code
+   * checks take another code (too many wrong ones, or the daily cap, where even the right one is
+   * refused), or before the link limit takes the same link again (it isn't used up).
+   */
   retryAfter?: number;
+  /** The API refused the link itself: it's wrong, expired or used, so trying it again can't work. */
+  linkRefused?: boolean;
+  /** The API refused the new password, which leaves the link usable with another one. */
+  passwordRefused?: boolean;
 }
+
+/** The API's 400s for a new password's length, by the rules `Limits` mirrors. */
+const passwordLengthErrors = () => [
+  Messages.Auth.passwordTooShort(Limits.Password.minLength, Limits.Password.maxLength),
+  Messages.Auth.passwordTooLong(Limits.Password.minLength, Limits.Password.maxLength)
+];
 
 /**
  * Asks for a code (vb2007/vb2007.hu-api#163). The API answers the same 200 whether or not an
- * account uses the address, so the message is all there is to show.
+ * account uses the address, so the message is all there is to show. It also answers it within the
+ * minute, sending nothing: its only 429 is the mail limit's, which sent no code either but says how
+ * long it holds.
  */
 export const requestPasswordReset = async (email: string): Promise<PasswordResetAnswer> => {
   const result = await apiRequest(Endpoints.Auth.passwordReset, {
@@ -40,28 +58,80 @@ export const requestPasswordReset = async (email: string): Promise<PasswordReset
 };
 
 /**
- * Sets the new password with the code. The API ends every session of the account, so a user who
- * was logged in here as that account is logged out too; only locally, as the API already ended
- * the session.
+ * After a reset the API ends every session of the account, so a user logged in here as that
+ * account (`isThatAccount`) is logged out too; only locally, as the API already ended the session.
  */
-export const confirmPasswordReset = async (
-  email: string,
-  code: string,
-  newPassword: string
-): Promise<PasswordResetAnswer> => {
-  const result = await apiRequest(Endpoints.Auth.passwordResetConfirm, {
-    body: { email, code, newPassword },
-    failure: Messages.Auth.passwordResetFailed
-  });
-
+const finishReset = (
+  result: ApiResult<MessageResponse>,
+  isThatAccount: () => boolean
+): PasswordResetAnswer => {
   if (!result.ok) {
-    return { error: result.error };
+    return result.status === HttpStatus.TooManyRequests
+      ? { error: result.error, retryAfter: retryAfterFrom(result.body) }
+      : { error: result.error };
   }
 
   const message = result.data.message ?? "";
-  if (isLoggedIn.value && normalizeEmail(email) === normalizeEmail(userEmail.value)) {
+  if (isLoggedIn.value && isThatAccount()) {
     clearSession();
   }
   passwordResetNotice.value = message;
   return { message };
+};
+
+/** Sets the new password with the code. */
+export const confirmPasswordReset = async (
+  email: string,
+  code: string,
+  newPassword: string
+): Promise<PasswordResetAnswer> =>
+  finishReset(
+    await apiRequest(Endpoints.Auth.passwordResetConfirm, {
+      body: { email, code, newPassword },
+      failure: Messages.Auth.passwordResetFailed
+    }),
+    () => normalizeEmail(email) === normalizeEmail(userEmail.value)
+  );
+
+/**
+ * The token of a mailed reset link, `/reset-password#token=<token>` (vb2007/vb2007.hu-api#256), or
+ * null when the fragment has none.
+ */
+export const resetLinkTokenFrom = (hash: string) =>
+  new URLSearchParams(hash.replace(/^#/, "")).get("token");
+
+/** Whether `token` has the shape of one the API mails; any other is refused without asking it. */
+export const isResetLinkToken = (token: string) => Limits.Code.resetLinkToken.test(token);
+
+/** The id of the account a well-formed token belongs to: the part before the dot. */
+export const resetLinkUserId = (token: string) => token.slice(0, token.indexOf("."));
+
+/** Sets the new password with the mailed link's token, which stands in for the address and code. */
+export const confirmPasswordResetLink = async (
+  token: string,
+  newPassword: string
+): Promise<PasswordResetAnswer> => {
+  if (!isResetLinkToken(token)) {
+    return { error: Messages.Auth.resetLinkMalformed };
+  }
+
+  const result = await apiRequest(Endpoints.Auth.passwordResetConfirmLink, {
+    body: { token, newPassword },
+    failure: Messages.Auth.passwordResetFailed
+  });
+
+  if (!result.ok && result.status === HttpStatus.BadRequest) {
+    if (passwordLengthErrors().includes(result.error)) {
+      return { error: result.error, passwordRefused: true };
+    }
+    // Only the API's own word for a used-up link gives the link up: any other 400 (e.g. a
+    // password rule that changed on the API) leaves it to try again.
+    if (result.error === Messages.Auth.resetLinkRefused) {
+      return { error: result.error, linkRefused: true };
+    }
+  }
+
+  // A 429 (too many rejected links from this network) leaves the link usable later: like the
+  // code checks', `finishReset` returns its wait.
+  return finishReset(result, () => resetLinkUserId(token) === userId.value);
 };

@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { SEARCH_DELAY_MS, useUploads } from "@/composables/useUploads";
+import { SEARCH_DELAY_MS, useUploads, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { anUpload } from "@/__tests__/helpers/uploads";
 import type { Upload } from "@/types/api/uploads";
@@ -11,6 +12,20 @@ const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.lengt
   jsonResponse(200, {
     uploads,
     pagination: { limit: 10, page, total, pages, sortBy: "uploadedOn", sortOrder: "desc" }
+  });
+
+/** One user's uploads for the admin, as the admin's page builds it. */
+const usersUploads = (ownerHint?: string): UploadListing => ({
+  endpoint: Endpoints.Admin.userUploads,
+  params: { id: "u9" },
+  ownerHint
+});
+
+const annasListing = () =>
+  jsonResponse(200, {
+    user: { id: "u9", username: "anna" },
+    uploads: [anUpload("a")],
+    pagination: { limit: 10, page: 1, total: 1, pages: 1, sortBy: "uploadedOn", sortOrder: "desc" }
   });
 
 const lastUrl = (fetchMock: ReturnType<typeof mockFetch>) =>
@@ -34,7 +49,7 @@ describe("useUploads", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/uploads?limit=10&page=1&sortBy=uploadedOn&sortOrder=desc",
-      { method: "GET", credentials: "include" }
+      { method: "GET", credentials: "include", signal: expect.any(AbortSignal) }
     );
     expect(api.uploads.value).toEqual([anUpload("a")]);
     expect(api.pagination.value?.total).toBe(1);
@@ -42,24 +57,10 @@ describe("useUploads", () => {
   });
 
   it("reads another listing, and who its uploads belong to, when given one", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, {
-        user: { id: "u9", username: "anna" },
-        uploads: [anUpload("a")],
-        pagination: {
-          limit: 10,
-          page: 1,
-          total: 1,
-          pages: 1,
-          sortBy: "uploadedOn",
-          sortOrder: "desc"
-        }
-      })
-    );
-    const { api } = mountComposable(() =>
-      useUploads(10, { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } })
-    );
+    fetchMock.mockResolvedValueOnce(annasListing());
+    const { api } = mountComposable(() => useUploads(10, usersUploads()));
     expect(api.owner.value).toBeNull();
+    expect(api.ownerName.value).toBeUndefined();
 
     await api.load();
 
@@ -67,6 +68,43 @@ describe("useUploads", () => {
       "https://api.test/admin/users/u9/uploads?limit=10&page=1&sortBy=uploadedOn&sortOrder=desc"
     );
     expect(api.owner.value).toEqual({ id: "u9", username: "anna" });
+    expect(api.ownerName.value).toBe("anna");
+  });
+
+  it("names the owner by its hint until the listing names them", async () => {
+    fetchMock.mockResolvedValueOnce(annasListing());
+    const { api } = mountComposable(() => useUploads(10, usersUploads("ann")));
+    expect(api.ownerName.value).toBe("ann");
+
+    await api.load();
+
+    expect(api.ownerName.value).toBe("anna");
+  });
+
+  it("says whose uploads failed to load, as best it knows", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"));
+    const unnamed = mountComposable(() => useUploads(10, usersUploads())).api;
+    await unnamed.load();
+    expect(unnamed.errorMessage.value).toBe("Failed to load this user's uploads: Server Error");
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"))
+      .mockResolvedValueOnce(annasListing())
+      .mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"));
+    const hinted = mountComposable(() => useUploads(10, usersUploads("ann"))).api;
+    await hinted.load();
+    expect(hinted.errorMessage.value).toBe("Failed to load ann's uploads: Server Error");
+
+    // Once the listing has named its owner, that name wins over the hint.
+    await hinted.load();
+    await hinted.goToPage(2);
+    expect(hinted.errorMessage.value).toBe("Failed to load anna's uploads: Server Error");
+  });
+
+  it("knows no owner for the user's own uploads", () => {
+    const { api } = mountComposable(() => useUploads());
+
+    expect(api.ownerName.value).toBeUndefined();
   });
 
   it("sends the filter, the trimmed search and the sort, and goes back to page 1", async () => {
@@ -130,6 +168,85 @@ describe("useUploads", () => {
     vi.runAllTimers();
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts a load when a newer one starts, and leaves the list to the newer one", async () => {
+    deferResponse(fetchMock);
+    const newer = deferResponse(fetchMock);
+    const { api } = mountComposable(() =>
+      useUploads(10, { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } })
+    );
+
+    const older = api.load();
+    const pending = api.setVisibilityFilter("private");
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(fetchMock.mock.calls[1][1]!.signal!.aborted).toBe(false);
+
+    await older;
+    expect(api.uploads.value).toEqual([]);
+    expect(api.owner.value).toBeNull();
+    expect(api.errorMessage.value).toBe("");
+    expect(api.isLoading.value).toBe(true);
+
+    newer.respond(
+      jsonResponse(200, {
+        user: { id: "u9", username: "anna" },
+        uploads: [anUpload("b")],
+        pagination: {
+          limit: 10,
+          page: 1,
+          total: 1,
+          pages: 1,
+          sortBy: "uploadedOn",
+          sortOrder: "desc"
+        }
+      })
+    );
+    await pending;
+    expect(api.uploads.value).toEqual([anUpload("b")]);
+    expect(api.owner.value).toEqual({ id: "u9", username: "anna" });
+    expect(api.isLoading.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older search's answer that arrives after the newer one", async () => {
+    const older = deferResponse(fetchMock, { ignoreAbort: true });
+    const newer = deferResponse(fetchMock);
+    vi.useFakeTimers();
+    const { api } = mountComposable(() => useUploads());
+
+    api.query.value = "hol";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    api.query.value = "holiday";
+    await nextTick();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(lastUrl(fetchMock)).toContain("&q=holiday");
+    vi.useRealTimers();
+
+    newer.respond(listing([anUpload("holiday")]));
+    await flushPromises();
+    older.respond(listing([anUpload("hol"), anUpload("holly")], { pages: 2, total: 12 }));
+    await flushPromises();
+
+    expect(api.uploads.value).toEqual([anUpload("holiday")]);
+    expect(api.pagination.value?.total).toBe(1);
+    expect(api.errorMessage.value).toBe("");
+    expect(api.isLoading.value).toBe(false);
+  });
+
+  it("aborts the load in flight when unmounted", async () => {
+    deferResponse(fetchMock);
+    const { api, wrapper } = mountComposable(() => useUploads());
+
+    const pending = api.load();
+    wrapper.unmount();
+    await pending;
+
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(api.errorMessage.value).toBe("");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("shows the API's error when loading fails", async () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { useChangeEmail } from "@/composables/useChangeEmail";
 import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import {
@@ -11,6 +12,7 @@ import {
   requiredError
 } from "@/scripts/authentication/register";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { spokenWait } from "@/scripts/utility/durationUtil";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -28,9 +30,13 @@ const {
   codeError,
   confirmError,
   confirm,
-  cooldown
+  cooldown,
+  showWait,
+  confirmHold
 } = useChangeEmail();
 const { remaining: waitSeconds, active: isWaiting } = cooldown;
+const isConfirmHeld = computed(() => confirmHold.isHeld());
+const confirmErrorId = useId();
 
 const open = ref(false);
 const email = ref("");
@@ -65,6 +71,21 @@ const { errors: codeErrors, isValid: isCodeValid, leave: leaveCode } = codeCheck
 
 /** Ties the code field to the waiting address it confirms. */
 const pendingId = useId();
+const changeErrorId = useId();
+
+/** The waiting key's spelled-out name, where it keeps the visible label in it. */
+const sendName = computed(() =>
+  isWaiting.value && !isChanging.value
+    ? spokenWait(
+        Messages.EmailCode.sendCodeIn(waitSeconds.value),
+        Messages.EmailCode.sendCodeIn(waitSeconds.value, "long")
+      )
+    : undefined
+);
+/** Whether the error on show is why the key waits, which then describes the key. */
+const errorIsWait = computed(
+  () => isWaiting.value && !!changeError.value && changeError.value === cooldown.note.value
+);
 
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
@@ -84,6 +105,8 @@ const start = async () => {
   email.value = pendingEmail.value;
   changeChecks.reset();
   codeChecks.reset();
+  // A key that still waits (e.g. after a reload, or the form was closed) says why again.
+  showWait();
   open.value = true;
   emit("start");
   await nextTick();
@@ -125,6 +148,7 @@ const save = async () => {
 };
 
 const confirmCode = async () => {
+  if (isConfirmHeld.value) return;
   if (!(await codeChecks.validate(codeForm.value))) return;
   emit("start");
   if (await confirm(code.value.replace(/\s/g, ""))) {
@@ -134,7 +158,7 @@ const confirmCode = async () => {
   await nextTick();
   // Confirmed, dropped or expired: the code step is gone, and its key is left.
   if (!pendingEmail.value) return key.value?.$el.focus();
-  if (!codeForm.value?.contains(document.activeElement)) focusField(codeField.value);
+  if (!codeForm.value?.querySelector(":focus:not(:disabled)")) focusField(codeField.value);
 };
 </script>
 
@@ -173,10 +197,25 @@ const confirmCode = async () => {
       @update:model-value="codeError = ''"
       @blur="leaveCode('code')"
     />
-    <StatusMessage v-if="confirmError" tone="error">{{ confirmError }}</StatusMessage>
+    <!-- A held key keeps its reason, also once opening the e-mail form cleared the error. -->
+    <StatusMessage
+      v-if="confirmHold.shown()"
+      :id="confirmErrorId"
+      tone="error"
+      :spoken="confirmHold.spokenFor()"
+      >{{ confirmHold.shown() }}</StatusMessage
+    >
     <div class="change__actions">
-      <BaseButton type="submit" size="sm" :loading="isConfirming" :blocked="!isCodeValid">
-        {{ isConfirming ? "Confirming" : "Confirm code" }}
+      <BaseButton
+        type="submit"
+        size="sm"
+        :loading="isConfirming"
+        :disabled="isConfirmHeld"
+        :aria-label="isConfirmHeld ? confirmHold.name.value : undefined"
+        :aria-describedby="isConfirmHeld ? confirmErrorId : undefined"
+        :blocked="!isCodeValid"
+      >
+        {{ isConfirming ? "Confirming" : isConfirmHeld ? confirmHold.label.value : "Confirm code" }}
       </BaseButton>
       <BaseButton ref="key" size="sm" variant="secondary" :disabled="isConfirming" @click="start">
         Change e-mail
@@ -217,16 +256,26 @@ const confirmCode = async () => {
       required
       @blur="leaveChange('password')"
     />
-    <StatusMessage v-if="changeError" tone="error">{{ changeError }}</StatusMessage>
+    <StatusMessage v-if="changeError" :id="changeErrorId" tone="error">{{
+      changeError
+    }}</StatusMessage>
     <div class="change__actions">
       <BaseButton
         type="submit"
         size="sm"
         :loading="isChanging"
         :disabled="isWaiting"
+        :aria-label="sendName"
+        :aria-describedby="errorIsWait ? changeErrorId : undefined"
         :blocked="!isChangeValid"
       >
-        {{ isChanging ? "Sending" : isWaiting ? `Send code in ${waitSeconds} s` : "Send code" }}
+        {{
+          isChanging
+            ? "Sending"
+            : isWaiting
+              ? Messages.EmailCode.sendCodeIn(waitSeconds)
+              : "Send code"
+        }}
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
         Cancel

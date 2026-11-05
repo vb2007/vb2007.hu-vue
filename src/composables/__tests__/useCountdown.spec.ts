@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import type { ApiFailure } from "@/scripts/api/client";
 
 describe("useCountdown", () => {
   // Fake timers mock Date.now too, so the deadline moves with advanceTimersByTime.
@@ -134,6 +135,38 @@ describe("useCountdown with a storage key", () => {
     expect(api.active.value).toBe(false);
   });
 
+  it("keeps why it waits with the deadline, and gives it back on resume", () => {
+    const first = mountComposable(keyed);
+    first.api.start(900, "me@example.com", "Too many failed attempts: try again later.");
+    expect(first.api.note.value).toBe("Too many failed attempts: try again later.");
+    expect(JSON.parse(sessionStorage.getItem(KEY)!).note).toBe(
+      "Too many failed attempts: try again later."
+    );
+    first.wrapper.unmount();
+
+    const { api } = mountComposable(keyed);
+    expect(api.note.value).toBe("");
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.note.value).toBe("Too many failed attempts: try again later.");
+
+    // A new countdown without a reason replaces it, and keeps none.
+    api.start(60, "me@example.com");
+    expect(api.note.value).toBe("");
+    expect(JSON.parse(sessionStorage.getItem(KEY)!)).not.toHaveProperty("note");
+  });
+
+  it.each([
+    ["no note", { id: "me@example.com", deadline: 0 }],
+    ["a note that isn't text", { id: "me@example.com", deadline: 0, note: 42 }]
+  ])("resumes a kept deadline with %s as nothing to say", (_, saved) => {
+    sessionStorage.setItem(KEY, JSON.stringify({ ...saved, deadline: Date.now() + 30_000 }));
+    const { api } = mountComposable(keyed);
+    api.start(10, undefined, "stale");
+
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.note.value).toBe("");
+  });
+
   it("doesn't resume another id's countdown, and leaves the running one alone", () => {
     const { api } = mountComposable(keyed);
     api.start(60, "me@example.com");
@@ -216,7 +249,7 @@ describe("retryAfterFrom", () => {
   });
 
   it.each([
-    ["a rate limiter's body without one", { error: "Too many requests." }],
+    ["a body without one", { error: "Too many requests." }],
     ["zero", { retryAfter: 0 }],
     ["a negative number", { retryAfter: -3 }],
     ["infinity", { retryAfter: Infinity }],
@@ -228,5 +261,43 @@ describe("retryAfterFrom", () => {
   ])("falls back for %s", (_, body) => {
     expect(retryAfterFrom(body)).toBe(60);
     expect(retryAfterFrom(body, 15)).toBe(15);
+  });
+});
+
+describe("codeCooldownOf", () => {
+  const cooldownError = "A code was sent just now: wait 42 seconds before requesting another one.";
+  /** A failure as `apiRequest` returns it; `error` is the API's message or the fallback. */
+  const http = (
+    status: number,
+    body: { error?: string; retryAfter?: number } | null
+  ): ApiFailure => ({
+    ok: false,
+    kind: "http",
+    status,
+    error: body?.error ?? `Failed: ${status}`,
+    body
+  });
+
+  it("takes the cooldown's retryAfter: a code went out moments ago", () => {
+    expect(codeCooldownOf(http(429, { error: cooldownError, retryAfter: 41.5 }))).toBe(42);
+  });
+
+  it("waits a minute for a cooldown's 429 without a retryAfter", () => {
+    expect(codeCooldownOf(http(429, { error: cooldownError }))).toBe(60);
+  });
+
+  it.each([
+    [
+      "a rate limiter's 429, though it has a retryAfter",
+      http(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+    ],
+    ["a 429 without a body", http(429, null)],
+    ["the cooldown's text on another status", http(503, { error: cooldownError, retryAfter: 42 })],
+    [
+      "a network failure",
+      { ok: false, kind: "network", status: 0, error: "Error connecting to server" } as ApiFailure
+    ]
+  ])("is undefined for %s", (_, failure) => {
+    expect(codeCooldownOf(failure)).toBeUndefined();
   });
 });

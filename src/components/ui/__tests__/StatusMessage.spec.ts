@@ -15,5 +15,18 @@ describe("StatusMessage", () => {
     expect(wrapper.attributes("role")).toBe(role);
     expect(wrapper.findComponent(AppIcon).props("name")).toBe(icon);
     expect(wrapper.text()).toBe("Hello");
+    expect(wrapper.find(".visually-hidden").exists()).toBe(false);
+  });
+
+  it("reads out its spoken text after the message without showing it", () => {
+    const wrapper = mount(StatusMessage, {
+      props: { tone: "error", spoken: "Try again in 15 minutes." },
+      slots: { default: "Too many failed attempts: try again later." }
+    });
+
+    expect(wrapper.text()).toBe(
+      "Too many failed attempts: try again later. Try again in 15 minutes."
+    );
+    expect(wrapper.find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
   });
 });

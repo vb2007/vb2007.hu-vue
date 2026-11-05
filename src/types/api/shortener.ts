@@ -15,7 +15,10 @@ export interface ShortenUrlBody {
   url: string;
 }
 
-/** `POST /shortenUrl/create`: 201 for a new link, 200 when the URL was already shortened. */
+/**
+ * `POST /shortenUrl/create`: 201 for a new link, 200 with their existing link when this user
+ * already shortened the URL (vb2007/vb2007.hu-api#247).
+ */
 export interface ShortenUrlResponse extends MessageResponse {
   data: ShortUrl;
 }

@@ -11,10 +11,16 @@ export interface RegisterBody {
   password: string;
 }
 
-/** `POST /auth/register/verify`, answered with a 201 and a session. */
+/**
+ * `POST /auth/register/verify`, answered with a 201 and a session. The waiting registration only
+ * holds the address and code: the account gets the username and password sent here
+ * (vb2007/vb2007.hu-api#295).
+ */
 export interface RegisterVerifyBody {
   email: string;
   code: string;
+  username: string;
+  password: string;
 }
 
 /** `POST /auth/register/resend` (vb2007/vb2007.hu-api#30) and `POST /auth/password-reset` */
@@ -36,6 +42,15 @@ export interface UsernameAvailableResponse {
 export interface PasswordResetConfirmBody {
   email: string;
   code: string;
+  newPassword: string;
+}
+
+/**
+ * `POST /auth/password-reset/confirm-link` (vb2007/vb2007.hu-api#256): the token from the mailed
+ * link (`/reset-password#token=…`) stands in for the address and the code.
+ */
+export interface PasswordResetLinkBody {
+  token: string;
   newPassword: string;
 }
 

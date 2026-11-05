@@ -1,6 +1,7 @@
-import { onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import type { ParamsOf } from "@/scripts/api/endpoint";
 import type { Pagination, SortOrder } from "@/types/api/common";
@@ -27,6 +28,8 @@ export type UploadListing =
   | {
       endpoint: typeof Endpoints.Admin.userUploads;
       params: ParamsOf<typeof Endpoints.Admin.userUploads>;
+      /** The owner's name before the first answer names them, e.g. from the link that led here. */
+      ownerHint?: string;
     };
 
 const OWN_UPLOADS: UploadListing = { endpoint: Endpoints.Uploads.list };
@@ -46,6 +49,10 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
   const pagination = ref<Pagination<UploadSortBy> | null>(null);
   /** Set when the listing says whose uploads they are; the user's own listing doesn't. */
   const owner = ref<UploadOwner | null>(null);
+  /** The owner's name as best known: from the listing once it answers, else from its hint. */
+  const ownerName = computed(() =>
+    "params" in listing ? (owner.value?.username ?? listing.ownerHint) : undefined
+  );
   const page = ref(1);
   const sortBy = ref<UploadSortBy>("uploadedOn");
   const sortOrder = ref<SortOrder>("desc");
@@ -61,29 +68,46 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
 
   /** The search the list was last loaded with. */
   let loadedSearch = "";
+  const latest = useLatestRequest();
 
-  const fetchListing = (listQuery: UploadListQuery) => {
-    const failure = Messages.Uploads.listFailed;
-    return "params" in listing
-      ? apiRequest(listing.endpoint, { params: listing.params, query: listQuery, failure })
-      : apiRequest(listing.endpoint, { query: listQuery, failure });
+  const fetchListing = (listQuery: UploadListQuery, signal: AbortSignal) => {
+    if (!("params" in listing)) {
+      return apiRequest(listing.endpoint, {
+        query: listQuery,
+        failure: Messages.Uploads.listFailed,
+        signal
+      });
+    }
+    const failure = Messages.Admin.userUploadsFailed(ownerName.value);
+    return apiRequest(listing.endpoint, {
+      params: listing.params,
+      query: listQuery,
+      failure,
+      signal
+    });
   };
 
   const load = async () => {
     const search = query.value.trim();
     loadedSearch = search;
+    const signal = latest.next();
 
     isLoading.value = true;
     errorMessage.value = "";
 
-    const result = await fetchListing({
-      limit,
-      page: page.value,
-      sortBy: sortBy.value,
-      sortOrder: sortOrder.value,
-      visibility: visibilityFilter.value || undefined,
-      q: search || undefined
-    });
+    const result = await fetchListing(
+      {
+        limit,
+        page: page.value,
+        sortBy: sortBy.value,
+        sortOrder: sortOrder.value,
+        visibility: visibilityFilter.value || undefined,
+        q: search || undefined
+      },
+      signal
+    );
+    // A newer load replaced this one, or the list is gone.
+    if (signal.aborted) return;
 
     if (result.ok) {
       uploads.value = result.data.uploads;
@@ -184,6 +208,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
     uploads,
     pagination,
     owner,
+    ownerName,
     page,
     sortBy,
     sortOrder,

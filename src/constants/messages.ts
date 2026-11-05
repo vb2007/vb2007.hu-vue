@@ -1,3 +1,6 @@
+import { SITE_LOCALE } from "@/constants/locale";
+import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
+
 /**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
  * shown when it sends one, these otherwise. A `failure` text is followed by the status
@@ -8,9 +11,29 @@ export class Messages {
   static readonly connectionError: string = "Error connecting to server";
   /** The caller aborted the request, e.g. a check that newer typing replaced; never shown. */
   static readonly requestAborted: string = "The request was aborted";
+  /**
+   * A submit key held after a rate limiter's 429 (see `useRetryHold`), counting its `retryAfter`
+   * down. The key's own verb would read as a promise ("Delete account in 15 min"), so it says this.
+   * `units: "long"` spells the units out for the key's accessible name ("Try again in 15 minutes").
+   */
+  static tryAgainIn(seconds: number, units: WaitUnits = "short"): string {
+    return `Try again in ${formatWait(seconds, SITE_LOCALE, units)}`;
+  }
+  /**
+   * The held key's wait in words, read out with the 429's message ("Try again in 23 hours 45
+   * minutes."): the counting key is disabled, so a screen reader would never reach it. It's fixed
+   * when the hold starts, so it's only in the message for screen readers, not shown beside the key.
+   */
+  static tryAgainSpoken(seconds: number): string {
+    return `${this.tryAgainIn(seconds, "long")}.`;
+  }
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";
+    /** Names the length too, so a pasted link shows how much has to go. */
+    static tooLong(length: number, max: number): string {
+      return `This URL is ${length.toLocaleString()} characters; the limit is ${max.toLocaleString()}.`;
+    }
     static readonly shortenFailed: string = "Failed to shorten URL";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";
@@ -40,18 +63,59 @@ export class Messages {
       "An unknown error occurred. Please try again later.";
     static readonly sessionNotKept: string =
       "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
+    /**
+     * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204), with the wait in whole
+     * minutes; 0 or less means the API sent no usable `retryAfter`. GitHub login isn't locked out,
+     * but only gets into an account it's linked to.
+     */
+    static loginLockedOut(minutes: number): string {
+      const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
+      return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
+    }
+    /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
+    static readonly sessionEnded: string =
+      "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
     static readonly registerUnknownError: string = "Registration failed. Please try again.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
+    /** `GET /auth/username-available` said the typed name is taken. */
+    static readonly usernameTaken: string = "That username is taken: pick another one.";
+    /**
+     * The code step's 409 for a name taken since registering: the code works with another, unless
+     * it expired or ran out of tries meanwhile (each confirmation spends one).
+     */
+    static usernameTakenMeanwhile(minutes: number): string {
+      return `That username was taken in the meantime: pick another one. Your code works for up to ${minutes} minutes after it was sent.`;
+    }
+    /**
+     * The code step's 409 for an address that has an account: the waiting registration is gone.
+     * GitHub login only reaches an account that uses GitHub; resetting the password works for
+     * every account, and gives one made with GitHub a password.
+     */
+    static readonly accountExists: string =
+      "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.";
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
+    /** A reset link whose token can't be one the API mailed. */
+    static readonly resetLinkMalformed: string =
+      "This reset link isn't complete or was changed: request a new one.";
+    /** The API's 400 for a reset link that's used up (its `invalidPasswordResetLink`). */
+    static readonly resetLinkRefused: string =
+      "The reset link is wrong, expired or already used: request a new one.";
+    /** After the API's 429 on a reset link, which doesn't use the link up. */
+    static resetLinkStillWorks(validMinutes: number): string {
+      return `The link wasn't used up: it works until ${validMinutes} minutes after it was sent.`;
+    }
     static readonly invalidEmail: string = "Enter a valid e-mail address.";
     /** An account's own password left out where it's asked for: logging in, or confirming it's them. */
     static readonly passwordMissing: string = "Enter your password.";
     static emailTooLong(max: number): string {
       return `Your e-mail address can't be longer than ${max} characters.`;
+    }
+    static emailLocalPartTooLong(max: number): string {
+      return `The part of your e-mail address before the @ can't be longer than ${max} characters.`;
     }
     static usernameTooShort(min: number, max: number): string {
       return `The username's too short: it must be between ${min} and ${max} characters.`;
@@ -75,11 +139,37 @@ export class Messages {
   static readonly EmailCode = class {
     static readonly confirmFailed: string = "Failed to confirm the code";
     static readonly resendFailed: string = "Failed to send a new code";
+    /**
+     * How the API's 429 starts when a code went out less than a minute ago (its
+     * `EmailCodes.resendTooSoon`); the rate limiters' 429s send `retryAfter` too, but no code went.
+     */
+    static readonly cooldownPrefix: string = "A code was sent just now:";
     /** The cooldown's own message names its seconds, which would freeze next to the countdown. */
     static readonly cooldown: string =
       "A code was sent just now. You can send another once the countdown ends.";
+    /**
+     * Under a code checks' hold longer than their window: the daily cap of wrong codes, which
+     * counts per address, so a new code would be refused too (see `Limits.Code.failedChecksWindowSeconds`).
+     */
+    static readonly capped: string =
+      "A new code won't help: no code is accepted for this address until the wait ends.";
     static invalid(digits: number): string {
       return `Enter the ${digits}-digit code from the e-mail.`;
+    }
+    /**
+     * The register step's resend key while it waits. Like the two below, `units: "long"` spells
+     * the units out for the key's accessible name ("Resend in 57 minutes").
+     */
+    static resendIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Resend in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
+    /** The change e-mail form's key while it waits. */
+    static sendCodeIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Send code in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
+    /** The password reset's resend key while it waits. */
+    static sendAgainIn(seconds: number, units: WaitUnits = "short"): string {
+      return `Send again in ${formatWait(seconds, SITE_LOCALE, units)}`;
     }
   };
 
@@ -156,5 +246,9 @@ export class Messages {
     static readonly quotaFailed: string = "Failed to change the quota";
     static readonly invalidQuota: string = "Enter a size of 0 or more.";
     static readonly quotaTooLarge: string = "That's more than the API can store.";
+    /** `name` is the account's username, when it's known. */
+    static userUploadsFailed(name?: string): string {
+      return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
+    }
   };
 }

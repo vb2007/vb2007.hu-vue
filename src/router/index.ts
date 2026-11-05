@@ -70,6 +70,19 @@ export const routes: RouteRecordRaw[] = [
     path: "/reset-password",
     name: "reset-password",
     component: () => import("../views/PasswordResetView.vue")
+  },
+  // The API redirects a browser that opens a route it doesn't have here, with `?url=` the path it
+  // asked for (vb2007/vb2007.hu-api#305).
+  {
+    path: "/apierror",
+    name: "api-error",
+    component: () => import("../views/ApiErrorView.vue")
+  },
+  // Any path no route above matches gets the not-found board (a catch-all ranks below them all).
+  {
+    path: "/:pathMatch(.*)*",
+    name: "not-found",
+    component: () => import("../views/NotFoundView.vue")
   }
 ];
 

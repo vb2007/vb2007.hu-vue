@@ -3,8 +3,9 @@ import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/t
 import { nextTick } from "vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
-import { SEARCH_DELAY_MS } from "@/composables/useUploads";
+import { SEARCH_DELAY_MS, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
 import type { Upload } from "@/types/api/uploads";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { anUpload } from "@/__tests__/helpers/uploads";
@@ -14,6 +15,13 @@ const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.lengt
     uploads,
     pagination: { limit: 10, page, total, pages, sortBy: "uploadedOn", sortOrder: "desc" }
   });
+
+/** One user's uploads for the admin, as the admin's page builds it. */
+const usersUploads = (ownerHint?: string): UploadListing => ({
+  endpoint: Endpoints.Admin.userUploads,
+  params: { id: "u9" },
+  ownerHint
+});
 
 const buttonNamed = (wrapper: VueWrapper, name: string) =>
   wrapper.findAll("button").find((button) => button.text().includes(name))!;
@@ -57,11 +65,12 @@ describe("UploadList", () => {
     let respond!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
     const wrapper = mount(UploadList, {
-      props: { listing: { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } }, as: "h1" }
+      props: { listing: usersUploads(), as: "h1" }
     });
     await flushPromises();
     expect(lastUrl(fetchMock)).toMatch(/^https:\/\/api\.test\/admin\/users\/u9\/uploads\?/);
     expect(wrapper.find("h1").text()).toBe("Uploads");
+    expect(wrapper.find(".note").text()).toBe("Loading this user's uploads…");
 
     respond(
       jsonResponse(200, {
@@ -83,6 +92,21 @@ describe("UploadList", () => {
     expect(wrapper.findComponent(UploadRow).props("ownerName")).toBe("anna");
   });
 
+  it("names the owner from its hint while their uploads load, and when they fail", async () => {
+    fetchMock.mockReturnValueOnce(new Promise(() => {}));
+    const loading = mount(UploadList, { props: { listing: usersUploads("anna"), as: "h1" } });
+    await flushPromises();
+
+    expect(loading.find("h1").text()).toBe("anna's uploads");
+    expect(loading.find(".note").text()).toBe("Loading anna's uploads…");
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"));
+    const failed = mount(UploadList, { props: { listing: usersUploads("anna") } });
+    await flushPromises();
+
+    expect(failed.text()).toContain("Failed to load anna's uploads: Server Error");
+  });
+
   it("says plainly when another user has no uploads", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
@@ -99,7 +123,7 @@ describe("UploadList", () => {
       })
     );
     const wrapper = mount(UploadList, {
-      props: { listing: { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } } }
+      props: { listing: usersUploads() }
     });
     await flushPromises();
 
@@ -129,6 +153,10 @@ describe("UploadList", () => {
     fetchMock.mockResolvedValue(listing([anUpload("a")]));
     const wrapper = mount(UploadList);
     await flushPromises();
+    // The API refuses a longer q with a 400.
+    expect(wrapper.find("input[type=search]").attributes("maxlength")).toBe(
+      String(Limits.Search.maxLength)
+    );
 
     await wrapper.find("select").setValue("fileSize:desc");
     await flushPromises();

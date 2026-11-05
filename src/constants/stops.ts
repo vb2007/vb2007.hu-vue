@@ -18,7 +18,7 @@ export interface Line {
 /**
  * The site's tools as a metro line. Open stops are routes that exist today,
  * planned stops are tools that have not been built yet.
- * Add a new tool by appending a stop here; the navbar strip and the home tools directory follow.
+ * Add a new tool by appending a stop here; the navbar strip, the home tools directory and the footer follow.
  */
 export const TOOLS_LINE: Line = {
   id: "tools",

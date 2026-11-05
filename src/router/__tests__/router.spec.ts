@@ -11,7 +11,8 @@ describe("router", () => {
     ["account", "/account"],
     ["login", "/login"],
     ["register", "/register"],
-    ["reset-password", "/reset-password"]
+    ["reset-password", "/reset-password"],
+    ["api-error", "/apierror"]
   ])("resolves the %s route to %s", (name, path) => {
     expect(router.resolve({ name }).path).toBe(path);
   });
@@ -43,6 +44,27 @@ describe("router", () => {
 
     expect(resolved.path).toBe("/r/abc123");
     expect(resolved.matched[0].props.default).toBe(true);
+  });
+
+  it.each([
+    ["/no-such-page", ["no-such-page"]],
+    ["/no/such/page", ["no", "such", "page"]],
+    ["/pastebin/abc/extra", ["pastebin", "abc", "extra"]]
+  ])("sends the unknown path %s to the not-found page", (path, segments) => {
+    const resolved = router.resolve(path);
+
+    expect(resolved.name).toBe("not-found");
+    expect(resolved.params.pathMatch).toEqual(segments);
+  });
+
+  it.each([
+    ["/pastebin/abc", "paste"],
+    ["/r/abc", "redirect"],
+    ["/r/abc/preview", "redirect-preview"],
+    ["/admin/users/1/uploads", "admin-user-uploads"],
+    ["/apierror?url=%2Ffoo", "api-error"]
+  ])("still resolves %s to its own route, not the catch-all", (path, name) => {
+    expect(router.resolve(path).name).toBe(name);
   });
 
   it.each(routes.map((route) => [route.path, route] as const))(
