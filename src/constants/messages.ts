@@ -53,6 +53,9 @@ export class Messages {
     static emailTooLong(max: number): string {
       return `Your e-mail address can't be longer than ${max} characters.`;
     }
+    static emailLocalPartTooLong(max: number): string {
+      return `The part of your e-mail address before the @ can't be longer than ${max} characters.`;
+    }
     static usernameTooShort(min: number, max: number): string {
       return `The username's too short: it must be between ${min} and ${max} characters.`;
     }

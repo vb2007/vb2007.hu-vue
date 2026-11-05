@@ -12,11 +12,16 @@ export const registerStatus = ref("");
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
-const hasEmailFormat = (email: string) =>
-  /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalizeEmail(email));
+/** One dot-separated piece of an address's local part: no quotes, comments or commas. */
+const EMAIL_ATOM = /[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+/.source;
+/** A hostname label: 1 to 63 characters, no hyphen at either end. */
+const EMAIL_DOMAIN_LABEL = /[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?/.source;
+const EMAIL_PATTERN = new RegExp(
+  `^${EMAIL_ATOM}(?:\\.${EMAIL_ATOM})*@${EMAIL_DOMAIN_LABEL}(?:\\.${EMAIL_DOMAIN_LABEL})+$`
+);
 
-export const isValidEmail = (email: string) =>
-  hasEmailFormat(email) && normalizeEmail(email).length <= Limits.Email.maxLength;
+/** Only a plain address, with a dotted hostname: the API's `isValidEmail` short of the lengths. */
+const hasEmailFormat = (email: string) => EMAIL_PATTERN.test(normalizeEmail(email));
 
 const { minLength: USERNAME_MIN, maxLength: USERNAME_MAX } = Limits.Username;
 const { minLength: PASSWORD_MIN, maxLength: PASSWORD_MAX } = Limits.Password;
@@ -49,12 +54,23 @@ export const passwordLengthError = (password: string) => {
   return;
 };
 
-/** The e-mail field's problem, or "" when the address is fine: the API's format and length rule. */
+/**
+ * The e-mail field's problem, or "" when the address is fine: the API's `isValidEmail`
+ * (vb2007/vb2007.hu-api#288), which a new or changed address has to pass. A too long part
+ * before the @ is named first, since shortening it is the fix in most cases.
+ */
 export const emailError = (email: string) => {
-  if (isValidEmail(email)) return "";
-  return hasEmailFormat(email)
-    ? Messages.Auth.emailTooLong(Limits.Email.maxLength)
-    : Messages.Auth.invalidEmail;
+  if (!hasEmailFormat(email)) return Messages.Auth.invalidEmail;
+
+  const normalized = normalizeEmail(email);
+  if (normalized.indexOf("@") > Limits.Email.localPartMaxLength) {
+    return Messages.Auth.emailLocalPartTooLong(Limits.Email.localPartMaxLength);
+  }
+  if (normalized.length > Limits.Email.maxLength) {
+    return Messages.Auth.emailTooLong(Limits.Email.maxLength);
+  }
+
+  return "";
 };
 
 /**

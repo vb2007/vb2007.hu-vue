@@ -17,8 +17,11 @@ export class Limits {
     static readonly maxLength: number = 128;
   };
 
+  /** Counted after trimming and lowercasing, like the API's `isValidEmail`. */
   static readonly Email = class {
     static readonly maxLength: number = 254;
+    /** The part before the @. */
+    static readonly localPartMaxLength: number = 64;
   };
 
   /** The codes the API mails to confirm an address or reset a password. */
