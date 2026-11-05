@@ -33,6 +33,7 @@ import {
 import { restoreSession } from "@/scripts/authentication/user";
 import { spokenWait } from "@/scripts/utility/durationUtil";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { useRetryHold } from "@/composables/useRetryHold";
 import {
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode,
@@ -112,15 +113,27 @@ const {
   formProblem,
   cooldown,
   resendWaiting,
+  verifyWaiting,
+  verifyHold,
+  shownError: shownCodeError,
+  verifySpoken,
+  verifyCapped,
   open,
   leave,
   verify,
   resend
 } = useRegisterCode();
 const { remaining: resendIn } = cooldown;
+/**
+ * After the mail limit's 429 (per IP), Register waits its `retryAfter`, whatever the address.
+ * "Continue" with a kept code mails nothing, so it isn't held, like "Enter it".
+ */
+const registerHold = useRetryHold(registerStatus);
+const isRegisterHeld = computed(() => registerHold.isHeld() && !hasKeptCode.value);
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
 const codeErrorId = useId();
+const formErrorId = useId();
 
 /** The waiting resend key's spelled-out name, where it keeps the visible label in it. */
 const resendName = computed(() =>
@@ -187,9 +200,9 @@ const noticeText = computed(() => notices(username.value.trim())[notice.value]);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
-/** A problem that isn't about one field, shown above the Register key. */
+/** A problem that isn't about one field, shown above the Register key; also why it's held. */
 const formError = computed(() => {
-  const status = registerStatus.value;
+  const status = registerHold.shown();
   if (!status || status === RegisterStatus.Success || status === RegisterStatus.NoSession) {
     return "";
   }
@@ -223,13 +236,15 @@ const focusStep = async () => {
 
 /**
  * After the API's refusal the focused key may have been disabled while it loaded, which drops
- * focus: it goes to the field the refusal is about, or back to the key.
+ * focus: it goes to the field the refusal is about, or back to the key, or to the first field
+ * while the key waits out a rate limit.
  */
 const focusProblem = async () => {
   await nextTick();
   const target =
     step.value?.querySelector<HTMLElement>("[aria-invalid='true']") ??
-    step.value?.querySelector<HTMLButtonElement>("button[type=submit]");
+    step.value?.querySelector<HTMLButtonElement>("button[type=submit]:not(:disabled)") ??
+    step.value?.querySelector("input");
   target?.focus();
 };
 
@@ -257,6 +272,7 @@ const openCodeStep = async (kind: CodeNotice, waitSeconds?: number) => {
 };
 
 const handleSubmit = async () => {
+  if (isRegisterHeld.value) return;
   if (!(await validate(step.value))) {
     flagError();
     return;
@@ -285,7 +301,9 @@ const handleSubmit = async () => {
       setError(answer.field, registerStatus.value);
       registerStatus.value = "";
     }
-    flagError();
+    if (answer.limitedFor) registerHold.start(answer.limitedFor);
+    // A held key doesn't shake: it says when to try again instead.
+    else flagError();
     await focusProblem();
   }
 };
@@ -302,6 +320,7 @@ const enterCode = async () => {
 };
 
 const handleCode = async () => {
+  if (verifyWaiting.value) return;
   if (!(await validateCode(step.value))) {
     flagError();
     return;
@@ -334,7 +353,8 @@ const handleCode = async () => {
       break;
     }
     default:
-      flagError();
+      // A held key doesn't shake: it says when to try again instead.
+      if (!verifyWaiting.value) flagError();
       // Confirm code was disabled while it checked; the code is what to fix.
       await focusStep();
   }
@@ -441,17 +461,22 @@ watch(isLoggedIn, (newVal) => {
         required
         @blur="leaveCode('code')"
       />
-      <StatusMessage v-if="codeError" :id="codeErrorId" tone="error">{{ codeError }}</StatusMessage>
+      <StatusMessage v-if="shownCodeError" :id="codeErrorId" tone="error" :spoken="verifySpoken"
+        >{{ shownCodeError
+        }}{{ verifyCapped ? ` ${Messages.EmailCode.capped}` : "" }}</StatusMessage
+      >
       <!-- Waits while a resend may replace the code it would spend a try on. -->
       <BaseButton
         type="submit"
         block
         :loading="isVerifying"
-        :disabled="isResending"
+        :disabled="isResending || verifyWaiting"
+        :aria-label="verifyWaiting ? verifyHold.name.value : undefined"
+        :aria-describedby="verifyWaiting ? codeErrorId : undefined"
         :blocked="!isCodeValid"
         :error="isButtonError"
       >
-        {{ isVerifying ? "Confirming" : "Confirm code" }}
+        {{ isVerifying ? "Confirming" : verifyWaiting ? verifyHold.label.value : "Confirm code" }}
       </BaseButton>
       <!-- Both wait while a code is being confirmed: its answer is about this address and code. -->
       <div class="code-actions">
@@ -515,15 +540,32 @@ watch(isLoggedIn, (newVal) => {
           required
           @blur="leaveField('confirmPassword')"
         />
-        <StatusMessage v-if="formError" tone="error">{{ formError }}</StatusMessage>
+        <StatusMessage
+          v-if="formError"
+          :id="formErrorId"
+          tone="error"
+          :spoken="registerHold.spokenFor()"
+          >{{ formError }}</StatusMessage
+        >
         <BaseButton
           type="submit"
           block
           :loading="isLoading"
+          :disabled="isRegisterHeld"
+          :aria-label="isRegisterHeld ? registerHold.name.value : undefined"
+          :aria-describedby="isRegisterHeld ? formErrorId : undefined"
           :blocked="!isValid"
           :error="isButtonError"
         >
-          {{ isLoading ? "Registering" : hasKeptCode ? "Continue" : "Register" }}
+          {{
+            isLoading
+              ? "Registering"
+              : isRegisterHeld
+                ? registerHold.label.value
+                : hasKeptCode
+                  ? "Continue"
+                  : "Register"
+          }}
         </BaseButton>
       </form>
       <GithubLogin label="Register with GitHub" />

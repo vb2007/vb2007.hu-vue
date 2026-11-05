@@ -2,6 +2,8 @@ import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
+import { retryAfterFrom } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
 
@@ -12,6 +14,8 @@ import { githubLinked, githubLogin } from "@/scripts/authentication/authState";
 export const useGithubUnlink = () => {
   const isUnlinking = ref(false);
   const unlinkError = ref("");
+  /** After the password checks' 429 (too many wrong passwords), unlinking waits its `retryAfter`. */
+  const hold = useRetryHold(unlinkError);
 
   /** Returns whether it worked. */
   const unlink = async (password: string) => {
@@ -28,6 +32,7 @@ export const useGithubUnlink = () => {
       githubLogin.value = "";
     } else if (result.status === HttpStatus.TooManyRequests) {
       unlinkError.value = apiErrorOf(result) ?? Messages.Account.tooManyRequests;
+      hold.start(retryAfterFrom(result.body));
     } else {
       unlinkError.value = result.error;
     }
@@ -36,5 +41,5 @@ export const useGithubUnlink = () => {
     return result.ok;
   };
 
-  return { isUnlinking, unlinkError, unlink };
+  return { isUnlinking, unlinkError, unlink, hold };
 };

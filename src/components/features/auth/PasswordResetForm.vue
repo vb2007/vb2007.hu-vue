@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from "vue-router";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { confirmPasswordReset, requestPasswordReset } from "@/scripts/authentication/passwordReset";
 import {
   confirmationCodeEarlyError,
@@ -57,6 +58,29 @@ const step = ref<HTMLFormElement>();
 const sentMessageId = useId();
 const failureId = useId();
 const resend = useCountdown("password-reset-cooldown");
+/** After the code checks' 429, Reset password waits for the address; another can go at once. */
+const resetHold = useRetryHold(failure);
+const resetHeldId = computed(() => normalizeEmail(sentTo.value));
+const isResetHeld = computed(() => resetHold.isHeld(resetHeldId.value));
+/** Held past the wrong codes' window: the daily cap, which a new code doesn't lift. */
+const isResetCapped = computed(
+  () => isResetHeld.value && resetHold.seconds.value > Limits.Code.failedChecksWindowSeconds
+);
+/**
+ * After the mail limit's 429 (per IP) on the e-mail step, Send code waits its `retryAfter`, for
+ * any address. Nothing was sent, so it isn't the resend countdown, which means a code went out.
+ * An address with a recent code needs no request to go back to its code step, so it isn't held.
+ */
+const sendHold = useRetryHold(failure);
+const emailFailureId = useId();
+const isSendHeld = computed(
+  () =>
+    sendHold.isHeld() &&
+    !(resend.active.value && normalizeEmail(email.value) === normalizeEmail(lastSentTo.value))
+);
+/** Each step's error, or why its key is held, also once the error was cleared (Change, a reload of the step). */
+const emailFailure = computed(() => sendHold.shown());
+const codeFailure = computed(() => resetHold.shown(resetHeldId.value));
 
 const emailChecks = useFormValidation({
   email: { value: email, check: () => emailShapeError(email.value) }
@@ -156,10 +180,12 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
 
     if (answer.error) {
       failure.value = answer.error;
-      // Only the code step has a key to hold back; the e-mail step just shows the error.
-      if (onCodeStep && answer.retryAfter) {
-        waitBeforeResend(address, answer.retryAfter, answer.error);
+      if (answer.retryAfter && !onCodeStep) {
+        // A held key doesn't shake: it says when to try again instead.
+        sendHold.start(answer.retryAfter);
+        return null;
       }
+      if (answer.retryAfter) waitBeforeResend(address, answer.retryAfter, answer.error);
       flagError();
       return null;
     }
@@ -179,16 +205,21 @@ const handleSend = async () => {
   }
 
   // A code went to this address moments ago and the API wouldn't send another yet. A wait for
-  // the mail limit says so instead: the last code may be older than a minute.
+  // the mail limit says so instead: the last code may be older than a minute. Either way it goes
+  // back to the code step without a request, so the mail limit's hold doesn't stand in the way.
   if (isWaitingFor(email.value)) {
     const limit = resend.note.value;
     await showCodeStep(lastMessage.value || (limit ? "" : RECENT_MESSAGE), limit);
     return;
   }
+  if (isSendHeld.value) return;
 
   const message = await askForCode(email.value, false);
   if (message !== null) {
     await showCodeStep(message);
+  } else if (isSendHeld.value) {
+    // The key is disabled for the wait, which drops its focus.
+    await focusFirstField();
   }
 };
 
@@ -225,6 +256,7 @@ const changeAddress = async () => {
 };
 
 const handleReset = async () => {
+  if (isResetHeld.value) return;
   if (!(await resetChecks.validate(step.value))) {
     flagError();
     return;
@@ -237,7 +269,14 @@ const handleReset = async () => {
 
     if (answer.error) {
       failure.value = answer.error;
-      flagError();
+      if (answer.retryAfter) {
+        // A held key doesn't shake: it says when to try again instead. It's disabled for the
+        // wait, which drops its focus.
+        resetHold.start(answer.retryAfter, resetHeldId.value);
+        await focusFirstField();
+      } else {
+        flagError();
+      }
       return;
     }
 
@@ -262,15 +301,24 @@ const handleReset = async () => {
           required
           @blur="leaveEmail('email')"
         />
-        <StatusMessage v-if="failure" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage
+          v-if="emailFailure"
+          :id="emailFailureId"
+          tone="error"
+          :spoken="sendHold.spokenFor()"
+          >{{ emailFailure }}</StatusMessage
+        >
         <BaseButton
           type="submit"
           block
           :loading="isSending"
+          :disabled="isSendHeld"
+          :aria-label="isSendHeld ? sendHold.name.value : undefined"
+          :aria-describedby="isSendHeld ? emailFailureId : undefined"
           :blocked="!isEmailValid"
           :error="isButtonError"
         >
-          {{ isSending ? "Sending" : "Send code" }}
+          {{ isSending ? "Sending" : isSendHeld ? sendHold.label.value : "Send code" }}
         </BaseButton>
       </form>
       <div class="alt">
@@ -328,15 +376,25 @@ const handleReset = async () => {
           required
           @blur="leaveReset('newPassword')"
         />
-        <StatusMessage v-if="failure" :id="failureId" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage
+          v-if="codeFailure"
+          :id="failureId"
+          tone="error"
+          :spoken="resetHold.spokenFor(resetHeldId)"
+          >{{ codeFailure
+          }}{{ isResetCapped ? ` ${Messages.EmailCode.capped}` : "" }}</StatusMessage
+        >
         <BaseButton
           type="submit"
           block
           :loading="isResetting"
+          :disabled="isResetHeld"
+          :aria-label="isResetHeld ? resetHold.name.value : undefined"
+          :aria-describedby="isResetHeld ? failureId : undefined"
           :blocked="!isResetValid"
           :error="isButtonError"
         >
-          {{ isResetting ? "Resetting" : "Reset password" }}
+          {{ isResetting ? "Resetting" : isResetHeld ? resetHold.label.value : "Reset password" }}
         </BaseButton>
       </form>
       <div class="resend">

@@ -283,6 +283,32 @@ describe("useRegisterCode", () => {
       }
     );
 
+    it("holds confirming for the address until the code checks' wait ends", async () => {
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const step = openStep();
+      expect(step.verifyWaiting.value).toBe(false);
+
+      await step.verify("123456", "vb", "password");
+
+      expect(step.verifyWaiting.value).toBe(true);
+      expect(step.verifyHold.remaining.value).toBe(86_400);
+      expect(step.verifyCapped.value).toBe(true);
+
+      // The limiter counts per address, so another one can be confirmed at once.
+      step.open("ME@example.com", "earlier");
+      expect(step.verifyWaiting.value).toBe(true);
+      step.open("you@example.com", "earlier");
+      expect(step.verifyWaiting.value).toBe(false);
+
+      step.open("me@example.com", "earlier");
+      step.codeError.value = error;
+      vi.advanceTimersByTime(86_400_000);
+      await nextTick();
+      expect(step.verifyWaiting.value).toBe(false);
+      expect(step.codeError.value).toBe("");
+    });
+
     it.each([
       [
         "a username taken meanwhile, whose code still works",

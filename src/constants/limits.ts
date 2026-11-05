@@ -38,6 +38,11 @@ export class Limits {
     static readonly registerValidMinutes: number = 15;
     static readonly emailChangeValidMinutes: number = 15;
     static readonly passwordResetValidMinutes: number = 30;
+    /**
+     * The window for wrong codes (the API's `FAILED_ATTEMPTS_WINDOW_MS`, vb2007/vb2007.hu-api#254).
+     * A longer wait is the daily cap of rejected codes per address, which a new code doesn't lift.
+     */
+    static readonly failedChecksWindowSeconds: number = 15 * 60;
   };
 
   static readonly Github = class {

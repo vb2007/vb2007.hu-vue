@@ -4,6 +4,7 @@ import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
 import {
   confirmationCodeError,
@@ -88,6 +89,21 @@ export const useRegisterCode = () => {
 
   const resendWaiting = computed(
     () => cooldown.active.value && normalizeEmail(cooldownFor.value) === normalizeEmail(email.value)
+  );
+  /**
+   * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
+   * is refused), Confirm code waits for the address; another address can be confirmed at once.
+   */
+  const verifyHold = useRetryHold(codeError);
+  const heldId = () => normalizeEmail(email.value);
+  const verifyWaiting = computed(() => verifyHold.isHeld(heldId()));
+  /** The error to show: `codeError`, or why Confirm code waits, also once it was cleared. */
+  const shownError = computed(() => verifyHold.shown(heldId()));
+  /** The wait in words, read out with the hold's message. */
+  const verifySpoken = computed(() => verifyHold.spokenFor(heldId()));
+  /** Held past the wrong codes' window: the daily cap, which a new code doesn't lift. */
+  const verifyCapped = computed(
+    () => verifyWaiting.value && verifyHold.seconds.value > Limits.Code.failedChecksWindowSeconds
   );
 
   /** Shows one problem at a time; an empty message clears both. */
@@ -190,6 +206,9 @@ export const useRegisterCode = () => {
     } else {
       // 429, the server, the network, or a refusal that names no field.
       showError(result.error);
+      if (result.status === HttpStatus.TooManyRequests) {
+        verifyHold.start(retryAfterFrom(result.body), heldId());
+      }
     }
     isVerifying.value = false;
 
@@ -245,6 +264,11 @@ export const useRegisterCode = () => {
     formProblem,
     cooldown,
     resendWaiting,
+    verifyWaiting,
+    verifyHold,
+    shownError,
+    verifySpoken,
+    verifyCapped,
     open,
     leave,
     verify,
