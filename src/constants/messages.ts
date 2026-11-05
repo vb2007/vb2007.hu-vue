@@ -49,6 +49,9 @@ export class Messages {
       const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
       return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
     }
+    /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
+    static readonly sessionEnded: string =
+      "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
@@ -61,6 +64,9 @@ export class Messages {
     static readonly passwordMissing: string = "Enter your password.";
     static emailTooLong(max: number): string {
       return `Your e-mail address can't be longer than ${max} characters.`;
+    }
+    static emailLocalPartTooLong(max: number): string {
+      return `The part of your e-mail address before the @ can't be longer than ${max} characters.`;
     }
     static usernameTooShort(min: number, max: number): string {
       return `The username's too short: it must be between ${min} and ${max} characters.`;
@@ -84,6 +90,11 @@ export class Messages {
   static readonly EmailCode = class {
     static readonly confirmFailed: string = "Failed to confirm the code";
     static readonly resendFailed: string = "Failed to send a new code";
+    /**
+     * How the API's 429 starts when a code went out less than a minute ago (its
+     * `EmailCodes.resendTooSoon`); the rate limiters' 429s send `retryAfter` too, but no code went.
+     */
+    static readonly cooldownPrefix: string = "A code was sent just now:";
     /** The cooldown's own message names its seconds, which would freeze next to the countdown. */
     static readonly cooldown: string =
       "A code was sent just now. You can send another once the countdown ends.";

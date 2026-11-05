@@ -10,7 +10,7 @@ export interface MessageResponse {
 /** What the API sends when a request fails; a bare 500 sends no body at all. */
 export interface ApiErrorBody {
   error?: string;
-  /** Seconds before trying again, on a 429 from the per-address code cooldown. */
+  /** Seconds before trying again, on any 429: the code cooldown's or a rate limiter's. */
   retryAfter?: number;
 }
 

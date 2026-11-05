@@ -112,7 +112,12 @@ describe("RegisterForm", () => {
   it.each([
     [{ email: "nope" }, "Enter a valid e-mail address.", 0],
     [
-      { email: `${"a".repeat(243)}@example.com` },
+      { email: `${"a".repeat(65)}@example.com` },
+      "The part of your e-mail address before the @ can't be longer than 64 characters.",
+      0
+    ],
+    [
+      { email: `${"a".repeat(51)}@${`${"b".repeat(63)}.`.repeat(3)}example.com` },
       "Your e-mail address can't be longer than 254 characters.",
       0
     ],
@@ -533,7 +538,7 @@ describe("RegisterForm", () => {
 
     it("keeps a problem that isn't the code's above the key", async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, { error: "Too many failed attempts: try again later." })
+        jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
       );
       const wrapper = await atCodeStep();
 
@@ -638,7 +643,7 @@ describe("RegisterForm", () => {
         expect.objectContaining({ body: JSON.stringify({ email: "me@example.com" }) })
       );
       expect(wrapper.find('[role="status"]').text()).toBe(
-        "A new code is on its way to me@example.com. The previous one no longer works."
+        "If a registration is waiting for me@example.com, a new code is on its way, and the one before no longer works."
       );
       expect(resendButton(wrapper).text()).toBe("Resend in 60 s");
       // The key it was on is disabled now; the code is what comes next.

@@ -17,8 +17,11 @@ export class Limits {
     static readonly maxLength: number = 128;
   };
 
+  /** Counted after trimming and lowercasing, like the API's `isValidEmail`. */
   static readonly Email = class {
     static readonly maxLength: number = 254;
+    /** The part before the @. */
+    static readonly localPartMaxLength: number = 64;
   };
 
   /** The codes the API mails to confirm an address or reset a password. */
@@ -47,5 +50,13 @@ export class Limits {
     static readonly maxLength: number = 255;
     /** Slashes and control characters. */
     static readonly forbiddenCharacters: RegExp = /[/\\\u0000-\u001f\u007f]/;
+  };
+
+  /**
+   * The `q` that searches a list of uploads or, for the admin, of users. Counted in UTF-16 units,
+   * untrimmed, like the input's maxlength.
+   */
+  static readonly Search = class {
+    static readonly maxLength: number = 100;
   };
 }

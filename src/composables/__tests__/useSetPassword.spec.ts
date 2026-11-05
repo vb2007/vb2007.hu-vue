@@ -98,7 +98,7 @@ describe("useSetPassword", () => {
   it("keeps the 409 as an error when the lookup can't confirm the password", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
-      .mockResolvedValueOnce(jsonResponse(401));
+      .mockResolvedValueOnce(jsonResponse(500));
     const password = useSetPassword();
 
     expect(await password.setPassword("correct horse")).toBe(false);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { useAdminUsers } from "@/composables/useAdminUsers";
+import { Limits } from "@/constants/limits";
 import type { AdminUserSortBy } from "@/types/api/admin";
 import type { SortOrder } from "@/types/api/common";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -54,7 +55,12 @@ onMounted(load);
 <template>
   <StationBoard title="Upload quotas" :as="as">
     <div class="filters">
-      <BaseInput v-model="query" type="search" label="Search by username" />
+      <BaseInput
+        v-model="query"
+        type="search"
+        label="Search by username"
+        :maxlength="Limits.Search.maxLength"
+      />
       <BaseSelect v-model="sort" label="Sort" :options="SORT_OPTIONS" />
     </div>
 

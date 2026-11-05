@@ -14,6 +14,11 @@ import { test as base, expect, type Route } from "@playwright/test";
  * "mails" `MOCK_EMAIL_CODE` to the new one and answers 202, and `POST /user/email/confirm` with that code switches to it,
  * like the API (vb2007/vb2007.hu-api#215). `api.hasPendingEmail(...)` arranges a change that's already waiting; a new code
  * within a minute of the last one gets the API's 429 with `retryAfter`, and one sent over 15 minutes ago has expired.
+ * Confirming a change to `SUPERUSER_EMAIL` is refused, and like the API's domain checks (vb2007/vb2007.hu-api#217) the mock refuses
+ * addresses on `DISPOSABLE_DOMAINS` and `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
+ * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
+ * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
+ * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
@@ -25,6 +30,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * Registering mails `REGISTRATION_CODE`, which `POST /auth/register/verify` takes to create and log in the account (with the registered password as `api.password`).
+ * Each address waits for its own code, and a resend within a minute of the last code gets the API's 429.
+ * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
+ * The code works once, for 30 minutes, and confirms the address for the account's next login.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -65,6 +73,15 @@ export interface MockAdminUser {
 /** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
+/**
+ * The API's 429 once its password checks are limited. Like every rate limiter's, it says how long to
+ * wait (vb2007/vb2007.hu-api#242), though no code was sent: only the code cooldown's means one was.
+ */
+const PASSWORD_CHECKS_LIMITED: MockResponse = {
+  status: 429,
+  body: { error: "Too many failed attempts: try again later.", retryAfter: 900 }
+};
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -86,6 +103,38 @@ const DEFAULT_QUOTA = 10 * 1024 * MB;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
+
+/** The API's `SUPERUSER_EMAIL`: no other account may confirm a change to it. */
+export const SUPERUSER_EMAIL = "admin@example.com";
+/** The API refuses these domains and their subdomains (vb2007/vb2007.hu-api#217). */
+export const DISPOSABLE_DOMAINS = ["mailinator.com"];
+/** Domains whose DNS takes no mail, which the API refuses too. */
+export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const normalizeCode = (code?: string) => code?.replace(/\s/g, "");
+
+/** The API's refusal of an address's domain, if it has one. */
+const domainError = (email: string) => {
+  const domain = email.split("@").pop()!;
+  const isOn = (domains: string[]) =>
+    domains.some((listed) => domain === listed || domain.endsWith(`.${listed}`));
+  if (isOn(DISPOSABLE_DOMAINS)) {
+    return "Disposable (temporary) e-mail addresses can't be used: use a permanent one.";
+  }
+  if (isOn(UNDELIVERABLE_DOMAINS)) {
+    return "This e-mail address's domain can't receive e-mail: check it for typos.";
+  }
+};
+
+/** A mailed code, like the API's (vb2007/vb2007.hu-api#220): one a minute, 5 tries. */
+type MockCode = { sentAt: number; expiresAt: number; attempts: number };
+const CODE_TRIES = 5;
+const CODE_COOLDOWN_MS = 60_000;
+const invalidCode = (): MockResponse => ({
+  status: 400,
+  body: { error: "The code is wrong, expired or already used: check it or request a new one." }
+});
 
 /** 1×1 PNG served for every cdn file, so thumbnails and previews load. */
 const PIXEL = Buffer.from(
@@ -120,8 +169,8 @@ export class MockApi {
     githubId?: string;
     githubLogin?: string;
   } | null = null;
-  /** A new address waiting for `MOCK_EMAIL_CODE`, and when its code was sent. */
-  private emailChange: { email: string; sentAt: number } | null = null;
+  /** A new address waiting for `MOCK_EMAIL_CODE`. */
+  private emailChange: (MockCode & { email: string }) | null = null;
   /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
   private emailCooldownOnSend: number | null = null;
   private shortCode = "e2e123";
@@ -143,13 +192,18 @@ export class MockApi {
   /** The only `VB-AUTH` value still accepted; each new session replaces it. */
   private session = "";
   private sessionCount = 0;
-  /** The registration waiting for its code, by `POST /auth/register`. */
-  private pendingRegistration: {
-    email: string;
-    username: string;
-    password: string;
-    sentAt: number;
-  } | null = null;
+  /** Registrations waiting for their code, by address, like the API's. */
+  private readonly pendingRegistrations = new Map<
+    string,
+    MockCode & { username: string; password: string }
+  >();
+  /** Password reset codes waiting, by account address. */
+  private readonly resetCodes = new Map<string, MockCode>();
+  /** Addresses a password reset confirmed, verified at their next login. */
+  private readonly verifiedAddresses = new Set<string>();
+  private mailFails = false;
+  /** How far `clockRunsFor` moved the mock's clock past real time. */
+  private clockOffset = 0;
   private cdnOrigin = "https://cdn.e2e.invalid";
   private appOrigin = "";
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
@@ -266,8 +320,54 @@ export class MockApi {
       cooldownLeftOnSend
     }: { sentSecondsAgo?: number; cooldownLeftOnSend?: number } = {}
   ) {
-    this.emailChange = { email, sentAt: Date.now() - sentSecondsAgo * 1000 };
+    this.emailChange = { email, ...this.newCode(15, this.now() - sentSecondsAgo * 1000) };
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
+  }
+
+  /** Answers the next code `PATCH /user/email` mails with the API's 503, like a mail server that's down. */
+  failsNextMail() {
+    this.mailFails = true;
+  }
+
+  /** Moves the mock's clock on, e.g. along with `page.clock.runFor(ms)`, which only moves the page's. */
+  clockRunsFor(ms: number) {
+    this.clockOffset += ms;
+  }
+
+  private now() {
+    return Date.now() + this.clockOffset;
+  }
+
+  private newCode(validMinutes: number, sentAt = this.now()): MockCode {
+    return { sentAt, expiresAt: sentAt + validMinutes * 60_000, attempts: 0 };
+  }
+
+  /** Like the API's claim: a code that's still live, with tries left, uses one up. */
+  private claims(code: MockCode | null | undefined): code is MockCode {
+    if (!code || this.now() >= code.expiresAt || code.attempts >= CODE_TRIES) return false;
+    code.attempts++;
+    return true;
+  }
+
+  /** The API's 429 for a code asked for within a minute of the last one. */
+  private resendTooSoon(sentAt = 0): MockResponse | undefined {
+    const retryAfter = Math.ceil((sentAt + CODE_COOLDOWN_MS - this.now()) / 1000);
+    if (retryAfter > 0) {
+      return {
+        status: 429,
+        body: {
+          error: `A code was sent just now: wait ${retryAfter} seconds before requesting another one.`,
+          retryAfter
+        }
+      };
+    }
+  }
+
+  /** Whether an account uses the address: the logged-in user's or a `hasUser(...)` one. */
+  private hasAccount(email: string) {
+    return [this.user?.email, ...this.users.map((user) => user.email)].some(
+      (address) => address !== undefined && normalizeEmail(address) === email
+    );
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -346,7 +446,7 @@ export class MockApi {
     const sentSession = cookie.match(/(?:^|;\s*)VB-AUTH=([^;]+)/)?.[1];
     const response =
       sentSession && sentSession !== this.session
-        ? this.staleSession(`${request.method()} ${url.pathname}`)
+        ? this.staleSession()
         : this.respond(
             `${request.method()} ${url.pathname}`,
             request.postDataJSON(),
@@ -372,10 +472,8 @@ export class MockApi {
   }
 
   /** What the API answers a session it has replaced: logged out. */
-  private staleSession(endpoint: string): MockResponse {
-    return endpoint === "GET /user"
-      ? { status: 401 }
-      : { status: 403, body: { error: "You are not logged in." } };
+  private staleSession(): MockResponse {
+    return { status: 403, body: { error: "You must be logged in to perform this action." } };
   }
 
   private respond(
@@ -456,7 +554,7 @@ export class MockApi {
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
               }
             }
-          : { status: 401 };
+          : { status: 403, body: { error: "You must be logged in to perform this action." } };
       case "POST /auth/login":
         if (this.loginLockout) {
           const { retryAfter } = this.loginLockout;
@@ -470,7 +568,7 @@ export class MockApi {
           username: "e2e",
           isSuperuser: false,
           hasPassword: true,
-          emailVerified: false
+          emailVerified: this.verifiedAddresses.has(normalizeEmail(body?.email ?? ""))
         };
         return { status: 200, newSession: true };
       case "DELETE /user":
@@ -527,79 +625,29 @@ export class MockApi {
         );
         return { status: 200, body: { available: !taken } };
       }
-      case "POST /auth/register": {
-        // Like the API, one code a minute per address; the one sent then still works.
-        const waited = this.pendingRegistration
-          ? Math.ceil(60 - (Date.now() - this.pendingRegistration.sentAt) / 1000)
-          : 0;
-        if (this.pendingRegistration?.email === body?.email && waited > 0) {
-          return {
-            status: 429,
-            body: {
-              error: `A code was sent just now: wait ${waited} seconds before requesting another one.`,
-              retryAfter: waited
-            }
-          };
-        }
-        this.pendingRegistration = {
-          email: body?.email ?? "",
-          username: body?.username ?? "",
-          password: body?.password ?? "",
-          sentAt: Date.now()
-        };
-        return {
-          status: 202,
-          body: { message: `A confirmation code was sent to ${body?.email}.` }
-        };
-      }
+      case "POST /auth/register":
+        return this.register(body);
       case "POST /auth/register/verify":
-        if (
-          !this.pendingRegistration ||
-          body?.email !== this.pendingRegistration.email ||
-          body?.code !== REGISTRATION_CODE
-        ) {
-          return {
-            status: 400,
-            body: {
-              error: "The code is wrong, expired or already used: check it or request a new one."
-            }
-          };
-        }
-        this.user = {
-          email: this.pendingRegistration.email,
-          username: this.pendingRegistration.username,
-          isSuperuser: false,
-          hasPassword: true,
-          // Entering the mailed code confirms the address.
-          emailVerified: true
-        };
-        this.password = this.pendingRegistration.password;
-        this.pendingRegistration = null;
-        // Like logging in, confirming the code starts a session.
-        return {
-          status: 201,
-          body: { message: `User ${this.user.username} registered successfully.` },
-          newSession: true
-        };
+        return this.verifyRegistration(body);
       case "POST /auth/register/resend":
-        return {
-          status: 200,
-          body: {
-            message:
-              "If a registration is waiting for this address, a new confirmation code was sent to it."
-          }
-        };
-      case "POST /auth/password-reset":
+        return this.resendRegistrationCode(body?.email);
+      case "POST /auth/password-reset": {
         if (!body?.email) {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
         this.passwordResets.push(body.email);
+        // Like the API, only an account's address gets a code, at most one a minute.
+        const email = normalizeEmail(body.email);
+        if (this.hasAccount(email) && !this.resendTooSoon(this.resetCodes.get(email)?.sentAt)) {
+          this.resetCodes.set(email, this.newCode(30));
+        }
         return {
           status: 200,
           body: {
             message: "If an account uses this address, a password reset code was sent to it."
           }
         };
+      }
       case "POST /auth/password-reset/confirm":
         return this.confirmPasswordReset(body);
       case "POST /shortenUrl/create":
@@ -634,7 +682,7 @@ export class MockApi {
   /** The password linking and unlinking GitHub take (vb2007/vb2007.hu-api#243); undefined when it's right. */
   private checkGithubPassword(password?: string): MockResponse | undefined {
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!password) {
       return {
@@ -659,16 +707,77 @@ export class MockApi {
     return { status: 200, body: { url: `${this.apiOrigin}/e2e-github/authorize?state=e2e` } };
   }
 
+  /** Like the API, one code a minute per address; the one sent then still works. */
+  private register(body: { email?: string; username?: string; password?: string } | null) {
+    const email = normalizeEmail(body?.email ?? "");
+    const refusal = domainError(email);
+    if (refusal) return { status: 400, body: { error: refusal } };
+    const tooSoon = this.resendTooSoon(this.pendingRegistrations.get(email)?.sentAt);
+    if (tooSoon) return tooSoon;
+    this.pendingRegistrations.set(email, {
+      username: body?.username ?? "",
+      password: body?.password ?? "",
+      ...this.newCode(15)
+    });
+    return {
+      status: 202,
+      body: {
+        message: `A confirmation code was sent to ${email}: send it to POST /auth/register/verify to finish registering.`
+      }
+    };
+  }
+
+  private verifyRegistration(body: { email?: string; code?: string } | null): MockResponse {
+    const email = normalizeEmail(body?.email ?? "");
+    const pending = this.pendingRegistrations.get(email);
+    if (!this.claims(pending) || normalizeCode(body?.code) !== REGISTRATION_CODE) {
+      return invalidCode();
+    }
+    this.user = {
+      email,
+      username: pending.username,
+      isSuperuser: false,
+      hasPassword: true,
+      // Entering the mailed code confirms the address.
+      emailVerified: true
+    };
+    this.password = pending.password;
+    this.pendingRegistrations.delete(email);
+    // Like logging in, confirming the code starts a session.
+    return {
+      status: 201,
+      body: { message: `User ${this.user.username} registered successfully.` },
+      newSession: true
+    };
+  }
+
+  /** A waiting registration gets a new code, at most one a minute; the answer doesn't say whether one waits. */
+  private resendRegistrationCode(address?: string) {
+    const pending = this.pendingRegistrations.get(normalizeEmail(address ?? ""));
+    if (pending) {
+      const tooSoon = this.resendTooSoon(pending.sentAt);
+      if (tooSoon) return tooSoon;
+      Object.assign(pending, this.newCode(15));
+    }
+    return {
+      status: 200,
+      body: {
+        message:
+          "If a registration is waiting for this address, a new confirmation code was sent to it."
+      }
+    };
+  }
+
   /**
-   * Checks in the API's order (vb2007/vb2007.hu-api#162 and #215), short of the superuser-reserved
-   * address and the domain checks.
+   * Checks in the API's order (vb2007/vb2007.hu-api#162, #215 and #217), plus a 409 for a taken
+   * address, which the API now leaves to the confirm (see #160).
    */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!email || !password) {
       return {
@@ -677,7 +786,11 @@ export class MockApi {
       };
     }
     const normalized = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(normalized)) {
+    // The API's isValidEmail (vb2007/vb2007.hu-api#288): plain addresses only.
+    const atom = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+";
+    const label = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+    const plain = new RegExp(`^${atom}(?:\\.${atom})*@${label}(?:\\.${label})+$`);
+    if (normalized.length > 254 || normalized.indexOf("@") > 64 || !plain.test(normalized)) {
       return {
         status: 400,
         body: { error: "The e-mail address is invalid: must match name@provider.com format." }
@@ -686,11 +799,19 @@ export class MockApi {
     if (this.user.isSuperuser) {
       return {
         status: 403,
-        body: { error: "The superuser's e-mail address can't be changed here." }
+        body: {
+          error:
+            "The superuser's e-mail address can't be changed here: change SUPERUSER_EMAIL in .env instead."
+        }
       };
     }
     if (!this.user.hasPassword) {
-      return { status: 409, body: { error: "This account has no password." } };
+      return {
+        status: 409,
+        body: {
+          error: "This account has no password: set one before changing the e-mail address."
+        }
+      };
     }
     if (password !== this.password) {
       return { status: 403, body: { error: "The provided password is incorrect." } };
@@ -704,21 +825,23 @@ export class MockApi {
         body: { error: "An account with this E-mail address already exists." }
       };
     }
+    const refusal = domainError(normalized);
+    if (refusal) return { status: 400, body: { error: refusal } };
     if (this.emailChange && this.emailCooldownOnSend !== null) {
-      this.emailChange.sentAt = Date.now() - (60 - this.emailCooldownOnSend) * 1000;
+      this.emailChange.sentAt = this.now() - (60 - this.emailCooldownOnSend) * 1000;
       this.emailCooldownOnSend = null;
     }
-    const retryAfter = Math.ceil(((this.emailChange?.sentAt ?? 0) + 60_000 - Date.now()) / 1000);
-    if (retryAfter > 0) {
+    const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
+    if (tooSoon) return tooSoon;
+    if (this.mailFails) {
+      // Like the API, the change that waited before (if any) stays, so a new code may go at once.
+      this.mailFails = false;
       return {
-        status: 429,
-        body: {
-          error: `A code was sent just now: wait ${retryAfter} seconds before requesting another one.`,
-          retryAfter
-        }
+        status: 503,
+        body: { error: "The e-mail couldn't be sent: please try again later." }
       };
     }
-    this.emailChange = { email: normalized, sentAt: Date.now() };
+    this.emailChange = { email: normalized, ...this.newCode(15) };
     return {
       status: 202,
       body: {
@@ -729,22 +852,22 @@ export class MockApi {
 
   /** A waiting change's code works for 15 minutes; after that, GET /user leaves it out. */
   private isEmailChangeLive() {
-    return this.emailChange !== null && Date.now() < this.emailChange.sentAt + 15 * 60_000;
+    return this.emailChange !== null && this.now() < this.emailChange.expiresAt;
   }
 
   private confirmEmail(code?: string) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
-    if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
-    if (!this.isEmailChangeLive() || code.replace(/\s/g, "") !== MOCK_EMAIL_CODE) {
-      return {
-        status: 400,
-        body: {
-          error: "The code is wrong, expired or already used: check it or request a new one."
-        }
-      };
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
-    const { email } = this.emailChange!;
+    if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
+    if (!this.claims(this.emailChange) || normalizeCode(code) !== MOCK_EMAIL_CODE) {
+      return invalidCode();
+    }
+    const { email } = this.emailChange;
     this.emailChange = null;
+    if (email === SUPERUSER_EMAIL) {
+      return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
+    }
     if (this.users.some((user) => user.email === email)) {
       return {
         status: 409,
@@ -759,7 +882,7 @@ export class MockApi {
   private changePassword(currentPassword?: string, newPassword?: string) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (!currentPassword || !newPassword) {
       return {
@@ -825,7 +948,7 @@ export class MockApi {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
     if (this.passwordChecksLimited) {
-      return { status: 429, body: { error: "Too many failed attempts: try again later." } };
+      return PASSWORD_CHECKS_LIMITED;
     }
     if (this.user.hasPassword) {
       if (!body?.password) {
@@ -866,13 +989,19 @@ export class MockApi {
   }
 
   /**
-   * Like the API: the right code for an address that asked for one sets the password and ends
-   * every session of the account.
+   * Like the API: the right code for an account that asked for one sets the password, confirms the
+   * address and ends every session of the account. The code works once.
    */
   private confirmPasswordReset(
     body: { email?: string; code?: string; newPassword?: string } | null
-  ) {
-    const length = [...(body?.newPassword ?? "")].length;
+  ): MockResponse {
+    if (!body?.email || !body.code || !body.newPassword) {
+      return {
+        status: 400,
+        body: { error: "You must provide the E-mail address, the code and a new password." }
+      };
+    }
+    const length = [...body.newPassword].length;
     if (length < 8 || length > 128) {
       const problem = length < 8 ? "too short" : "too long";
       return {
@@ -880,20 +1009,17 @@ export class MockApi {
         body: { error: `The password's ${problem}: it must be between 8 and 128 characters.` }
       };
     }
-    const normalize = (email: string) => email.trim().toLowerCase();
-    const asked = this.passwordResets.some(
-      (email) => normalize(email) === normalize(body?.email ?? "")
-    );
-    if (!asked || body?.code?.replace(/\s/g, "") !== this.passwordResetCode) {
-      return {
-        status: 400,
-        body: {
-          error: "The code is wrong, expired or already used: check it or request a new one."
-        }
-      };
+    const email = normalizeEmail(body.email);
+    if (
+      !this.claims(this.resetCodes.get(email)) ||
+      normalizeCode(body.code) !== this.passwordResetCode
+    ) {
+      return invalidCode();
     }
-    this.password = body.newPassword!;
-    if (this.user && normalize(this.user.email) === normalize(body.email!)) {
+    this.resetCodes.delete(email);
+    this.password = body.newPassword;
+    this.verifiedAddresses.add(email);
+    if (this.user && normalizeEmail(this.user.email) === email) {
       this.user = null;
     }
     return {

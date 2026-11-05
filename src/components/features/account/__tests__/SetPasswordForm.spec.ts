@@ -148,8 +148,8 @@ describe("SetPasswordForm", () => {
   it("shows the API's error", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(409, { error: "This account already has a password." }))
-      // The 409 looks the account up again, which finds no session.
-      .mockResolvedValueOnce(jsonResponse(401));
+      // The 409 looks the account up again, which fails.
+      .mockResolvedValueOnce(jsonResponse(500));
     const wrapper = mount(SetPasswordForm);
     await fill(wrapper, "correct horse");
 
