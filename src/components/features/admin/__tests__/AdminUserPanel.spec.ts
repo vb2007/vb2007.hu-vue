@@ -83,8 +83,8 @@ describe("AdminUserPanel", () => {
     await flushPromises();
 
     expect(facts(wrapper)).toMatchObject({
-      // The badge waits out the change, so it can't be read as being about the new address.
-      "E-mail": "a@example.com",
+      // The current address keeps its badge: the new one has a row of its own.
+      "E-mail": "a@example.com Confirmed",
       "Changing to": "new@example.com (waiting for its code)",
       Password: "None: logs in with GitHub only",
       GitHub: "@octo-cat",
@@ -225,6 +225,23 @@ describe("AdminUserPanel", () => {
     expect(wrapper.find("h1").text()).toBe("Account");
     expect(wrapper.find(".status").text()).toBe(message);
     expect(wrapper.find(".facts").exists()).toBe(false);
+    // Trying again leads to the same nowhere.
+    expect(wrapper.find("button").exists()).toBe(false);
+  });
+
+  it("offers another try after a failure that isn't about the link", async () => {
+    const wrapper = await mountPanel(jsonResponse(500, undefined, "Server Error"));
+    await flushPromises();
+
+    expect(wrapper.find(".status").text()).toBe(`${Messages.Admin.userFailed}: Server Error`);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("a") }));
+    const retry = wrapper.findAll("button").find((button) => button.text() === "Try again")!;
+    await retry.trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toBe("https://api.test/admin/users/a");
+    expect(wrapper.find("h1").text()).toBe("user-a");
   });
 
   it("loads the next account when the ID changes", async () => {

@@ -43,6 +43,8 @@ describe("useAdminUser", () => {
 
     expect(api.user.value).toBeNull();
     expect(api.errorMessage.value).toBe(message);
+    // Another try leads to the same nowhere.
+    expect(api.canRetry.value).toBe(false);
     expect(api.isLoading.value).toBe(false);
     expect(consoleError).not.toHaveBeenCalled();
   });
@@ -54,7 +56,18 @@ describe("useAdminUser", () => {
     await api.load("a");
 
     expect(api.errorMessage.value).toBe(`${Messages.Admin.userFailed}: Server Error`);
+    expect(api.canRetry.value).toBe(true);
     expect(consoleError).toHaveBeenCalled();
+
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await api.load("a");
+    expect(api.errorMessage.value).toBe(Messages.connectionError);
+    expect(api.canRetry.value).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("a") }));
+    await api.load("a");
+    expect(api.errorMessage.value).toBe("");
+    expect(api.canRetry.value).toBe(false);
   });
 
   it("drops an earlier account's answer once another one is asked for", async () => {
@@ -98,8 +111,11 @@ describe("useAdminUser", () => {
   });
 
   it("keeps a failed quota save to show it, until the next load", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: "Invalid quota." }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("a") }));
     const { api } = mountComposable(() => useAdminUser());
+    await api.load("a");
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: "Invalid quota." }));
 
     expect(await api.setQuota("a", -1)).toBe(false);
     expect(api.quotaError.value).toBe("Invalid quota.");
@@ -108,6 +124,33 @@ describe("useAdminUser", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("a") }));
     await api.load("a");
     expect(api.quotaError.value).toBe("");
+  });
+
+  it("leaves the next account alone when a save lands after switching to it", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("a") }));
+    const { api } = mountComposable(() => useAdminUser());
+    await api.load("a");
+
+    const failedSave = deferResponse(fetchMock);
+    const failing = api.setQuota("a", 5);
+    expect(api.isSavingQuota.value).toBe(true);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("b") }));
+    await api.load("b");
+    expect(api.isSavingQuota.value).toBe(false);
+
+    failedSave.respond(jsonResponse(500, { error: "Database down." }));
+    expect(await failing).toBe(false);
+    expect(api.quotaError.value).toBe("");
+
+    // One that worked doesn't saving-lock or change it either.
+    const savingB = deferResponse(fetchMock);
+    const saving = api.setQuota("b", 7);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUserDetails("c") }));
+    await api.load("c");
+    savingB.respond(jsonResponse(200, { user: anAdminUser("b", { uploads: { quotaBytes: 7 } }) }));
+    expect(await saving).toBe(true);
+    expect(api.user.value).toEqual(anAdminUserDetails("c"));
+    expect(api.isSavingQuota.value).toBe(false);
   });
 
   it("only takes an answer about the account on show", async () => {
