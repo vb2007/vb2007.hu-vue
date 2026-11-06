@@ -1,4 +1,5 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
+import type { PasteSortBy } from "@/types/api/pastebin";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -59,4 +60,34 @@ export interface SetUploadQuotaBody {
 /** `PATCH /admin/users/:id/upload-quota` */
 export interface UploadQuotaResponse extends MessageResponse {
   user: AdminUser;
+}
+
+/** Who owns an item in the admin's site-wide lists. */
+export interface AdminOwner {
+  id: string;
+  username: string;
+}
+
+/** A paste as `GET /admin/pastes` lists it (vb2007/vb2007.hu-api#277). */
+export interface AdminPaste {
+  id: string;
+  /** A PASTE_LANGUAGES id, or `null` for a paste without one (plain text). */
+  language: string | null;
+  /** The paste's first 100 characters (code points); the rest stays on `GET /paste/:id`. */
+  preview: string;
+  addedOn: string;
+  /** `null` once the owner's account no longer exists. */
+  owner: AdminOwner | null;
+}
+
+/** `GET /admin/pastes` */
+export type AdminPasteListQuery = ListQuery<PasteSortBy> & {
+  /** Matches part of the owner's username or of the language id, whatever its case. */
+  q?: string;
+};
+
+/** `GET /admin/pastes` */
+export interface AdminPastesResponse {
+  pastes: AdminPaste[];
+  pagination: Pagination<PasteSortBy>;
 }

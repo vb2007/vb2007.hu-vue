@@ -1,6 +1,8 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
+  AdminPasteListQuery,
+  AdminPastesResponse,
   AdminUserListQuery,
   AdminUserResponse,
   AdminUsersResponse,
@@ -301,6 +303,12 @@ export class Endpoints {
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    /** Every paste on the site; delete one with `Pastebin.remove`, which lets the superuser through. */
+    static readonly pastes = defineEndpoint<undefined, AdminPastesResponse, AdminPasteListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/pastes",
       credentials: true
     });
   };

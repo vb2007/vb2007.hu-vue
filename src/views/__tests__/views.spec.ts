@@ -12,6 +12,7 @@ import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
 import AdminAreaView from "@/views/AdminAreaView.vue";
 import AdminUsersView from "@/views/AdminUsersView.vue";
+import AdminPastesView from "@/views/AdminPastesView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import AdminUserView from "@/views/AdminUserView.vue";
@@ -19,6 +20,7 @@ import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
 import ApiErrorView from "@/views/ApiErrorView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
+import AdminPasteList from "@/components/features/admin/AdminPasteList.vue";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
@@ -228,6 +230,18 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
     expect(wrapper.findComponent(AdminUserList).props("as")).toBe("h1");
     expect(wrapper.find("h1").text()).toBe("Users");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
+  it("AdminAreaView shows the superuser the pastes board as the page heading", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { pastes: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/pastes");
+
+    expect(wrapper.findComponent(AdminPastesView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.findComponent(AdminPasteList).props("as")).toBe("h1");
+    expect(wrapper.find("h1").text()).toBe("Pastes");
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
   });
 

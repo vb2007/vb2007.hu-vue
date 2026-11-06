@@ -20,6 +20,7 @@ describe("router", () => {
     ["upload", "/upload"],
     ["admin", "/admin"],
     ["admin-users", "/admin/users"],
+    ["admin-pastes", "/admin/pastes"],
     ["account", "/account"],
     ["login", "/login"],
     ["register", "/register"],
@@ -102,6 +103,7 @@ describe("router", () => {
     ["/admin/users/1/uploads", "admin-user-uploads"],
     ["/admin/users/1", "admin-user"],
     ["/admin/users", "admin-users"],
+    ["/admin/pastes", "admin-pastes"],
     ["/admin/", "admin"],
     ["/apierror?url=%2Ffoo", "api-error"]
   ])("still resolves %s to its own route, not the catch-all", (path, name) => {
