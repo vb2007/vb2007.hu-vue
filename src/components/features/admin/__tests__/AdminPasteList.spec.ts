@@ -70,6 +70,9 @@ describe("AdminPasteList", () => {
       "const answer = 42;"
     ]);
     expect(rows[0].find(".row__preview").attributes("href")).toBe("/pastebin/a");
+    // Blank space has no code to show, so it reads as a note.
+    expect(rows[0].find(".row__preview--blank").exists()).toBe(false);
+    expect(rows[1].find(".row__preview--blank").attributes("href")).toBe("/pastebin/b");
     expect(rows[0].find(".row__owner").text()).toBe("user-a");
     expect(rows[0].find(".row__owner").attributes("href")).toBe("/admin/users/u-a");
     expect(rows[0].find(".row__language").text()).toBe("TypeScript");
@@ -90,11 +93,15 @@ describe("AdminPasteList", () => {
   it("marks a preview the API cut off in its first line", async () => {
     const full = "x".repeat(Limits.Paste.previewLength);
     const twoLines = `short\n${"y".repeat(Limits.Paste.previewLength - 6)}`;
+    // The first line ends at the preview's end, so nothing was cut.
+    const endsInNewline = `${"z".repeat(Limits.Paste.previewLength - 1)}\n`;
     fetchMock.mockResolvedValueOnce(
       listing([
         aPaste("a", { preview: full }),
         aPaste("b", { preview: twoLines }),
-        aPaste("c", { preview: "brief" })
+        aPaste("c", { preview: "brief" }),
+        aPaste("d", { preview: `\n\n${full.slice(2)}` }),
+        aPaste("e", { preview: endsInNewline })
       ])
     );
     const wrapper = mount(AdminPasteList, { global });
@@ -103,7 +110,9 @@ describe("AdminPasteList", () => {
     expect(wrapper.findAll(".row__preview").map((link) => link.text())).toEqual([
       `${full}…`,
       "short",
-      "brief"
+      "brief",
+      `${full.slice(2)}…`,
+      endsInNewline.trim()
     ]);
   });
 
@@ -196,10 +205,14 @@ describe("AdminPasteList", () => {
     await deleteKey().trigger("click");
     expect(deleteKey().text()).toBe("Deleting user-b's paste");
     expect(fetchMock.mock.calls[1][0]).toBe("https://api.test/paste/b");
+    // The other keys wait, so a second delete can't start meanwhile.
+    const otherKey = wrapper.findAll(".row")[0].find("button");
+    expect(otherKey.attributes("disabled")).toBeDefined();
 
     respond(jsonResponse(200, { message: "Paste deleted successfully." }));
     await flushPromises();
     expect(wrapper.findAll(".row")).toHaveLength(1);
+    expect(wrapper.find(".row button").attributes("disabled")).toBeUndefined();
     expect(wrapper.find(".count").text()).toBe("1 paste");
   });
 
@@ -222,16 +235,14 @@ describe("AdminPasteList", () => {
     const wrapper = mount(AdminPasteList, { global });
     await flushPromises();
 
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(404, { error: "There is no such paste with that ID." })
-    );
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const deleteKey = wrapper.findAll(".row")[0].find("button");
     await deleteKey.trigger("click");
     await deleteKey.trigger("click");
     await flushPromises();
 
     const rows = wrapper.findAll(".row");
-    expect(rows[0].find(".status").text()).toBe("There is no such paste with that ID.");
+    expect(rows[0].find(".status").text()).toBe("Error connecting to server");
     expect(rows[1].find(".status").exists()).toBe(false);
   });
 });

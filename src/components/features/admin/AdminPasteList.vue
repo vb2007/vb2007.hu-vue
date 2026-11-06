@@ -48,14 +48,14 @@ const confirmDelete = useConfirmDelete();
 const onDelete = (id: string) => confirmDelete.press(id, () => remove(id));
 
 /**
- * The preview's first line, with an ellipsis when the API cut it off; a paste that opens with more
- * blank space than the preview holds has none.
+ * The preview's first line, with an ellipsis when the API cut it off (it runs to the preview's
+ * end); "" for a paste that opens with more blank space than the preview holds.
  */
 const previewOf = ({ preview }: AdminPaste) => {
   const line = pastePreview(preview);
-  if (!line) return "Opens with blank lines";
-  const isCut = [...preview].length >= Limits.Paste.previewLength && !preview.trim().includes("\n");
-  return isCut ? `${line}…` : line;
+  const isCut =
+    [...preview].length >= Limits.Paste.previewLength && !preview.trimStart().includes("\n");
+  return line && isCut ? `${line}…` : line;
 };
 
 /** Whose paste it is, for the delete key's name. */
@@ -100,8 +100,12 @@ onMounted(load);
 
     <ol v-if="pastes.length" class="rows" :aria-busy="isLoading || undefined">
       <li v-for="paste in pastes" :key="paste.id" class="row">
-        <RouterLink :to="`/pastebin/${paste.id}`" class="row__preview">
+        <RouterLink v-if="previewOf(paste)" :to="`/pastebin/${paste.id}`" class="row__preview">
           {{ previewOf(paste) }}
+        </RouterLink>
+        <!-- Not code, so it reads as a note in the body face. -->
+        <RouterLink v-else :to="`/pastebin/${paste.id}`" class="row__preview row__preview--blank">
+          Opens with blank lines
         </RouterLink>
         <p class="row__meta">
           <RouterLink
@@ -118,6 +122,7 @@ onMounted(load);
           <ConfirmDeleteButton
             :armed="confirmDelete.isArmed(paste.id)"
             :busy="deletingId === paste.id"
+            :disabled="Boolean(deletingId) && deletingId !== paste.id"
             @click="onDelete(paste.id)"
           >
             <span class="visually-hidden">{{ whoseOf(paste) }}</span>
@@ -198,6 +203,13 @@ onMounted(load);
   white-space: nowrap;
   text-overflow: ellipsis;
   text-decoration-color: var(--c-line);
+}
+
+.row__preview--blank {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
 }
 
 .row__preview:focus-visible {

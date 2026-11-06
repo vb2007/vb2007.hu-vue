@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { usePagedList, type ListSort } from "@/composables/usePagedList";
 import { apiRequest } from "@/scripts/api/client";
@@ -35,7 +36,7 @@ export const useAdminPastes = (limit = ADMIN_PASTES_PER_PAGE) => {
       }),
     items: (data) => data.pastes
   });
-  /** The paste being deleted. */
+  /** The paste being deleted; the other delete keys wait for it. */
   const deletingId = ref("");
   /** The last failed delete, shown on its row. */
   const rowError = ref({ id: "", message: "" });
@@ -47,10 +48,13 @@ export const useAdminPastes = (limit = ADMIN_PASTES_PER_PAGE) => {
 
     const result = await apiRequest(Endpoints.Pastebin.remove, {
       params: { id },
-      failure: Messages.Pastebin.deleteFailed
+      failure: Messages.Pastebin.deleteFailed,
+      // Already gone: the reload drops its row.
+      quietStatuses: [HttpStatus.NotFound]
     });
 
-    if (result.ok) {
+    const isGone = !result.ok && result.kind === "http" && result.status === HttpStatus.NotFound;
+    if (result.ok || isGone) {
       await reloadAfterRemove();
     } else {
       rowError.value = { id, message: result.error };

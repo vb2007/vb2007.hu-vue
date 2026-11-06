@@ -111,18 +111,35 @@ describe("useAdminPastes", () => {
     expect(lastUrl(fetchMock)).toBe(listUrl("limit=20&page=2&sortBy=addedOn&sortOrder=desc"));
   });
 
-  it("keeps a failed delete's message on its row until the next delete", async () => {
+  it("drops a paste that was already gone by reloading, without an error", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(404, { error: "There is no such paste with that ID." }))
+      .mockResolvedValueOnce(listing([aPaste("p2")]));
+    const { api } = mountComposable(() => useAdminPastes());
+    api.pastes.value = [aPaste("p1"), aPaste("p2")];
+
+    await api.remove("p1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(api.pastes.value).toEqual([aPaste("p2")]);
+    expect(api.rowError.value).toEqual({ id: "", message: "" });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed delete's message on its row until the next delete", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: "You do not have permission to perform this action." })
+      )
       .mockResolvedValueOnce(jsonResponse(200, { message: "Paste deleted successfully." }))
       .mockResolvedValueOnce(listing([]));
     const { api } = mountComposable(() => useAdminPastes());
 
-    await api.remove("p404");
+    await api.remove("p1");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(api.rowError.value).toEqual({
-      id: "p404",
-      message: "There is no such paste with that ID."
+      id: "p1",
+      message: "You do not have permission to perform this action."
     });
     expect(api.deletingId.value).toBe("");
 

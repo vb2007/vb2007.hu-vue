@@ -1,5 +1,6 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
 import type { PasteSortBy } from "@/types/api/pastebin";
+import type { UploadOwner } from "@/types/api/uploads";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -62,12 +63,6 @@ export interface UploadQuotaResponse extends MessageResponse {
   user: AdminUser;
 }
 
-/** Who owns an item in the admin's site-wide lists. */
-export interface AdminOwner {
-  id: string;
-  username: string;
-}
-
 /** A paste as `GET /admin/pastes` lists it (vb2007/vb2007.hu-api#277). */
 export interface AdminPaste {
   id: string;
@@ -77,7 +72,7 @@ export interface AdminPaste {
   preview: string;
   addedOn: string;
   /** `null` once the owner's account no longer exists. */
-  owner: AdminOwner | null;
+  owner: UploadOwner | null;
 }
 
 /** `GET /admin/pastes` */

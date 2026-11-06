@@ -1408,7 +1408,7 @@ export class MockApi {
     }
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
     if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
-      return { status: 403, body: { error: "You are not authorized." } };
+      return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
     if (method === "PATCH") {
       if (!/^[a-z0-9+#-]{1,32}$/.test(language ?? "")) {
