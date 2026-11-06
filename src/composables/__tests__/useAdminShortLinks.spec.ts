@@ -72,7 +72,27 @@ describe("useAdminShortLinks", () => {
     expect(fetchMock.mock.calls[2][0]).toContain("/admin/short-urls?limit=20&page=1");
     expect(list.page.value).toBe(1);
     expect(list.links.value).toEqual([link("new1")]);
-    expect(list.deletingCode.value).toBe("");
-    expect(list.deleteError.value).toBe("");
+    expect(list.isDeleting("old1")).toBe(false);
+    expect(list.deleteError.value).toEqual({ code: "", message: "" });
+  });
+
+  it("keeps a refused delete with its code until the next load, or until it's cleared", async () => {
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123")]))
+      .mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }))
+      .mockResolvedValueOnce(listing([link("abc123")]))
+      .mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }));
+    const list = useAdminShortLinks();
+    await list.load();
+
+    expect(await list.remove("abc123")).toBe(false);
+    expect(list.deleteError.value).toEqual({ code: "abc123", message: "Something went wrong." });
+
+    await list.load();
+    expect(list.deleteError.value).toEqual({ code: "", message: "" });
+
+    await list.remove("abc123");
+    list.clearError();
+    expect(list.deleteError.value).toEqual({ code: "", message: "" });
   });
 });

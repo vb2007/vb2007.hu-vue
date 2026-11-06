@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  addressParts,
   displayLink,
   isSafeRedirect,
-  linkParts,
   MAX_ADDRESS,
   readableAddress,
   validateUrl
@@ -47,16 +47,51 @@ describe("displayLink", () => {
   });
 });
 
-describe("linkParts", () => {
+describe("addressParts", () => {
+  const parts = (scheme: string, userinfo: string, host: string, rest: string) => ({
+    scheme,
+    userinfo,
+    host,
+    rest
+  });
+
   it.each([
-    ["https://example.com/a/b?c#d", "", "example.com", "/a/b?c#d"],
-    ["HTTP://Example.com", "", "Example.com", ""],
-    ["https://me@evil.example/login", "", "me@evil.example", "/login"],
-    ["ftp://files.example/pub", "ftp://", "files.example", "/pub"],
-    ["mailto:me@example.com?subject=hi", "", "mailto:me@example.com", "?subject=hi"],
-    ["https://example.com/a\nb", "", "example.com", "/a\nb"]
-  ])("splits %j into its scheme, host and rest", (link, scheme, host, rest) => {
-    expect(linkParts(link)).toEqual({ scheme, host, rest });
+    ["https://example.com/a/b?c#d", parts("", "", "example.com", "/a/b?c#d")],
+    ["HTTP://Example.com", parts("", "", "example.com", "/")],
+    ["http://localhost:4173/x", parts("", "", "localhost:4173", "/x")],
+    ["https://me@evil.example/login", parts("", "me@", "evil.example", "/login")],
+    ["https://me:pw@evil.example/", parts("", "me:pw@", "evil.example", "/")],
+    ["ftp://files.example/pub", parts("ftp://", "", "files.example", "/pub")],
+    ["ssh://git@host.example", parts("ssh://", "git@", "host.example", "")]
+  ])("splits %j by the host the browser goes to", (address, expected) => {
+    expect(addressParts(address)).toEqual(expected);
+  });
+
+  it("shows the real host of a backslash trick, and the rest as the browser reads it", () => {
+    expect(addressParts("https://evil.example\\@google.com/login")).toEqual(
+      parts("", "", "evil.example", "/@google.com/login")
+    );
+  });
+
+  it.each([
+    ["javascript:alert(1)"],
+    ["data:text/html,<script>alert(1)</script>"],
+    ["mailto:me@example.com?subject=hi"]
+  ])("gives %j no host, since it has none", (address) => {
+    expect(addressParts(address)).toEqual(parts("", "", "", address));
+  });
+
+  it("splits an address URL can't read by its text", () => {
+    expect(addressParts("https://me@exa\u202Eelpm.com/x y")).toEqual(
+      parts("", "me@", "exa\u202Eelpm.com", "/x y")
+    );
+    expect(addressParts("FTP://bad host/pub")).toEqual(parts("FTP://", "", "bad host", "/pub"));
+    expect(addressParts("http://bad host")).toEqual(parts("", "", "bad host", ""));
+  });
+
+  it("keeps the whole of a very long address", () => {
+    const path = "/" + "a".repeat(5000);
+    expect(addressParts(`https://example.com${path}`)).toEqual(parts("", "", "example.com", path));
   });
 });
 

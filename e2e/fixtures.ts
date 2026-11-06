@@ -1754,9 +1754,7 @@ export class MockApi {
         originalUrl: link.target,
         addedOn: link.addedOn
       }));
-    // By date, like the API; links added at the same moment (`hasShortLink`'s default date) keep the order they were added in.
-    const oldestFirst = owned.sort((a, b) => a.addedOn.localeCompare(b.addedOn));
-    const sorted = sortOrder === "asc" ? oldestFirst : oldestFirst.reverse();
+    const sorted = this.sortShortLinks(owned, sortOrder);
     return {
       status: 200,
       body: {
@@ -1820,8 +1818,7 @@ export class MockApi {
         row.originalUrl.toLowerCase().includes(q) ||
         row.owner?.username.toLowerCase().includes(q)
     );
-    // The store is oldest first.
-    const sorted = sortOrder === "asc" ? matching : [...matching].reverse();
+    const sorted = this.sortShortLinks(matching, sortOrder);
     return {
       status: 200,
       body: {
@@ -1836,6 +1833,15 @@ export class MockApi {
         }
       }
     };
+  }
+
+  /**
+   * Short links by date, like the API's `addedOn` sort; links added at the same moment (`hasShortLink`'s default date)
+   * keep the order they were added in.
+   */
+  private sortShortLinks<Row extends { addedOn: string }>(rows: Row[], sortOrder: string) {
+    const oldestFirst = [...rows].sort((a, b) => a.addedOn.localeCompare(b.addedOn));
+    return sortOrder === "asc" ? oldestFirst : oldestFirst.reverse();
   }
 
   /** `DELETE /shortenUrl/:shortenedUrl` (vb2007/vb2007.hu-api#278): the owner's own link, or any for the superuser. */

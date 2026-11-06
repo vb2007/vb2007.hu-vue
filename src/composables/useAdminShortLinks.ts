@@ -36,9 +36,11 @@ export const useAdminShortLinks = (limit = ADMIN_SHORT_LINKS_PER_PAGE) => {
         failure: Messages.Admin.shortLinksFailed,
         signal
       }),
-    items: (data) => data.shortUrls
+    items: (data) => data.shortUrls,
+    // A delete's error belongs to the rows it was shown with.
+    onLoad: () => clearError()
   });
-  const { deletingCode, deleteError, remove } = useShortLinkDelete(reloadAfterRemove);
+  const { deleteError, isDeleting, clearError, remove } = useShortLinkDelete(reloadAfterRemove);
 
   return {
     links,
@@ -49,8 +51,9 @@ export const useAdminShortLinks = (limit = ADMIN_SHORT_LINKS_PER_PAGE) => {
     query,
     isLoading,
     errorMessage,
-    deletingCode,
     deleteError,
+    isDeleting,
+    clearError,
     load,
     goToPage,
     setSort,

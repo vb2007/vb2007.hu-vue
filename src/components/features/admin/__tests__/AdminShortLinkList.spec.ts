@@ -81,6 +81,31 @@ describe("AdminShortLinkList", () => {
 
     expect(wrapper.find(".row__host").text()).toBe("exa%E2%80%AEelpm.com");
     expect(wrapper.find(".row__url").text()).toBe("exa%E2%80%AEelpm.com/x%20y");
+    // The tooltip too, so the override can't reorder it.
+    expect(wrapper.find(".row__target").attributes("title")).toBe(
+      "https://exa%E2%80%AEelpm.com/x%20y"
+    );
+  });
+
+  it("names the host a backslash trick really goes to, after its userinfo", async () => {
+    fetchMock.mockResolvedValueOnce(
+      listing([
+        link("trick", "https://evil.example\\@google.com/login"),
+        link("creds", "https://google.com@evil.example/"),
+        link("script", "javascript:alert(1)")
+      ])
+    );
+    const { wrapper } = await mountWithRouter(AdminShortLinkList);
+    await flushPromises();
+    const [trick, creds, script] = wrapper.findAll(".row");
+
+    expect(trick.find(".row__host").text()).toBe("evil.example");
+    expect(trick.find(".row__url").text()).toBe("evil.example/@google.com/login");
+    expect(creds.find(".row__host").text()).toBe("evil.example");
+    expect(creds.find(".row__url").text()).toBe("google.com@evil.example/");
+    // No host to stress: the whole address stays in the soft ink.
+    expect(script.find(".row__host").exists()).toBe(false);
+    expect(script.find(".row__url").text()).toBe("javascript:alert(1)");
   });
 
   it("says when there are no links yet, and uses the singular for one", async () => {
@@ -173,7 +198,7 @@ describe("AdminShortLinkList", () => {
       .mockResolvedValueOnce(listing([link("def456")]));
     const { wrapper } = await mountWithRouter(AdminShortLinkList);
     await flushPromises();
-    const deleteButton = () => wrapper.find(".row__actions button");
+    const deleteButton = () => wrapper.find("[data-delete]");
 
     expect(deleteButton().text()).toBe("Delete abc123");
     await deleteButton().trigger("click");
@@ -191,33 +216,167 @@ describe("AdminShortLinkList", () => {
     await flushPromises();
 
     expect(codes(wrapper)).toEqual(["def456"]);
+    expect(wrapper.find('[role="status"]').text()).toBe("Deleted abc123.");
   });
 
-  it("shows the API's text when a delete fails, and drops a link that was gone already", async () => {
+  it("shows a refused delete on its row until the next load", async () => {
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123"), link("def456")], { pages: 2, total: 21 }))
+      .mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }))
+      .mockResolvedValueOnce(listing([link("old1")], { page: 2, pages: 2, total: 21 }));
+    const { wrapper } = await mountWithRouter(AdminShortLinkList);
+    await flushPromises();
+
+    await buttonNamed(wrapper, "Delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
+    await flushPromises();
+
+    // Still listed, so the refusal shows on its row, next to the key.
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
+    expect(wrapper.findAll(".row")[0].find(".row__error").text()).toBe("Something went wrong.");
+    expect(codes(wrapper)).toEqual(["abc123", "def456"]);
+
+    await buttonNamed(wrapper, "Next").trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  it("drops a link that was gone already, and names it above the list", async () => {
     fetchMock
       .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
-      .mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }))
       .mockResolvedValueOnce(jsonResponse(404, { error: "The shortened URL cannot be found." }))
       .mockResolvedValueOnce(listing([link("def456")]));
     const { wrapper } = await mountWithRouter(AdminShortLinkList);
     await flushPromises();
 
-    await buttonNamed(wrapper, "Delete").trigger("click");
-    await buttonNamed(wrapper, "Confirm delete").trigger("click");
+    await buttonNamed(wrapper, "Delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
     await flushPromises();
 
-    // Still listed, so the refusal shows on its row, next to the key.
-    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
-    expect(wrapper.find(".row .row__error").text()).toBe("Something went wrong.");
-    expect(codes(wrapper)).toEqual(["abc123", "def456"]);
-
-    await buttonNamed(wrapper, "Delete").trigger("click");
-    await buttonNamed(wrapper, "Confirm delete").trigger("click");
-    await flushPromises();
-
-    // Gone from the list, so the board says it above the rows.
-    expect(wrapper.find('[role="alert"]').text()).toBe("The shortened URL cannot be found.");
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "abc123: The shortened URL cannot be found."
+    );
     expect(wrapper.find(".row__error").exists()).toBe(false);
     expect(codes(wrapper)).toEqual(["def456"]);
+    expect(wrapper.find('[role="status"]').text()).toBe("");
+  });
+
+  it("deletes two links side by side", async () => {
+    let respondFirst!: (response: Response) => void;
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123"), link("def456"), link("ghi789")]))
+      .mockReturnValueOnce(new Promise((resolve) => (respondFirst = resolve)))
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Shortened URL deleted successfully." }))
+      .mockResolvedValueOnce(listing([link("abc123"), link("ghi789")]))
+      .mockResolvedValueOnce(listing([link("ghi789")]));
+    const { wrapper } = await mountWithRouter(AdminShortLinkList);
+    await flushPromises();
+    const deleteLabels = () =>
+      wrapper.findAll("[data-delete]").map((button) => button.text().split(" ")[0]);
+
+    await buttonNamed(wrapper, "Delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Delete def456").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete def456").trigger("click");
+    await flushPromises();
+
+    expect(codes(wrapper)).toEqual(["abc123", "ghi789"]);
+    expect(deleteLabels()).toEqual(["Deleting", "Delete"]);
+
+    respondFirst(jsonResponse(200, { message: "Shortened URL deleted successfully." }));
+    await flushPromises();
+
+    expect(codes(wrapper)).toEqual(["ghi789"]);
+    expect(deleteLabels()).toEqual(["Delete"]);
+  });
+
+  describe("after a delete", () => {
+    const deleteVia = async (wrapper: VueWrapper, code: string) => {
+      await buttonNamed(wrapper, `Delete ${code}`).trigger("click");
+      const confirm = buttonNamed(wrapper, `Confirm delete ${code}`);
+      (confirm.element as HTMLElement).focus();
+      await confirm.trigger("click");
+      await flushPromises();
+    };
+    const ok = () => jsonResponse(200, { message: "Shortened URL deleted successfully." });
+
+    it("focuses the delete key that took the row's place", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([link("def456")]));
+      const { wrapper } = await mountWithRouter(AdminShortLinkList, { attachTo: document.body });
+      await flushPromises();
+
+      await deleteVia(wrapper, "abc123");
+
+      expect(document.activeElement?.textContent).toContain("Delete def456");
+      wrapper.unmount();
+    });
+
+    it("focuses the row above when the last row went", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([link("abc123")]));
+      const { wrapper } = await mountWithRouter(AdminShortLinkList, { attachTo: document.body });
+      await flushPromises();
+
+      await deleteVia(wrapper, "def456");
+
+      expect(document.activeElement?.textContent).toContain("Delete abc123");
+      wrapper.unmount();
+    });
+
+    it("focuses the count when no row is left", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([]));
+      const { wrapper } = await mountWithRouter(AdminShortLinkList, { attachTo: document.body });
+      await flushPromises();
+
+      await deleteVia(wrapper, "abc123");
+
+      expect(document.activeElement).toBe(wrapper.find(".count").element);
+      expect(wrapper.find(".count").text()).toBe("0 short links");
+      wrapper.unmount();
+    });
+
+    it("leaves focus alone when it moved on meanwhile", async () => {
+      let respond!: (response: Response) => void;
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockReturnValueOnce(new Promise((resolve) => (respond = resolve)))
+        .mockResolvedValueOnce(listing([link("def456")]));
+      const { wrapper } = await mountWithRouter(AdminShortLinkList, { attachTo: document.body });
+      await flushPromises();
+      const search = wrapper.find('input[type="search"]').element as HTMLInputElement;
+
+      await buttonNamed(wrapper, "Delete abc123").trigger("click");
+      await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
+      search.focus();
+      respond(ok());
+      await flushPromises();
+
+      expect(document.activeElement).toBe(search);
+      wrapper.unmount();
+    });
+  });
+
+  it("offers to try again when the first load fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(500))
+      .mockResolvedValueOnce(listing([link("abc123")]));
+    const { wrapper } = await mountWithRouter(AdminShortLinkList);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe("Failed to load the short links: 500");
+    await buttonNamed(wrapper, "Try again").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(buttonNamed(wrapper, "Try again")).toBeUndefined();
+    expect(codes(wrapper)).toEqual(["abc123"]);
   });
 });

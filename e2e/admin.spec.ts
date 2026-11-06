@@ -328,6 +328,8 @@ test("the superuser finds short links, checks them and deletes one", async ({ pa
   await page.getByRole("button", { name: "Confirm delete orphan" }).click();
   await expect(page.getByText("2 short links")).toBeVisible();
   await expect(codes).toHaveText(["annas", "mine"]);
+  // The deleted row took the focused key with it: the one above takes the focus.
+  await expect(page.getByRole("button", { name: "Delete mine" })).toBeFocused();
   expect([...api.shortLinks.keys()]).toEqual(["annas", "mine"]);
 
   // The owner's name leads to their account, the code to the link's preview.

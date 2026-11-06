@@ -58,14 +58,45 @@ export const validateUrl = (originalUrl: string) => {
 /** A link as people read it: no protocol, which every browser fills in anyway. */
 export const displayLink = (link: string) => link.replace(/^https?:\/\//, "");
 
+/** The parts of an address, for a list that leads with the host it goes to. */
+export interface AddressParts {
+  /** The scheme when it isn't the web's (`ftp://`), else "". */
+  scheme: string;
+  /** A `user@` before the host, which can pass for one, else "". */
+  userinfo: string;
+  /** The host the browser goes to, or "" for an address without one (`mailto:`, `data:`). */
+  host: string;
+  rest: string;
+}
+
+const WEB_SCHEMES = ["http:", "https:"];
+
 /**
- * A link split for a list that leads with where it goes: the scheme when it isn't the web's
- * (`ftp://`), the host (with any `user@` in front of it, which can pass for one), and the rest.
- * A link without `//` (`mailto:`) is all host.
+ * An address split into its scheme, userinfo, host and the rest. The host is the one `URL` finds,
+ * as the browser does, so a trick such as `https://evil.example\@good.example` shows its real
+ * host, `evil.example`, and the rest as the browser reads it. An address `URL` can't read (an
+ * invisible character in its host, say) is split by its text instead; one without a host keeps
+ * all of it in `rest`.
  */
-export const linkParts = (link: string) => {
-  const [, scheme = "", host, rest] = /^([a-z][a-z\d+.-]*:\/\/)?([^/?#]*)(.*)$/is.exec(link)!;
-  return { scheme: /^https?:\/\/$/i.test(scheme) ? "" : scheme, host, rest };
+export const addressParts = (address: string): AddressParts => {
+  try {
+    const url = new URL(address);
+    if (url.host) {
+      const credentials = url.password ? `${url.username}:${url.password}` : url.username;
+      return {
+        scheme: WEB_SCHEMES.includes(url.protocol) ? "" : `${url.protocol}//`,
+        userinfo: credentials ? `${credentials}@` : "",
+        host: url.host,
+        rest: url.pathname + url.search + url.hash
+      };
+    }
+  } catch {
+    // Not one `URL` reads: split it by its text below.
+  }
+  const parts = /^([a-z][a-z\d+.-]*:\/\/)([^/?#]*@)?([^/?#]*)(.*)$/is.exec(address);
+  if (!parts) return { scheme: "", userinfo: "", host: "", rest: address };
+  const [, scheme, userinfo = "", host, rest] = parts;
+  return { scheme: /^https?:\/\/$/i.test(scheme) ? "" : scheme, userinfo, host, rest };
 };
 
 /** Combining marks kept on one letter: enough for any script's accents, too few to pile up. */

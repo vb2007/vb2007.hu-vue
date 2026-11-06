@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
 import { AdminRoutes } from "@/constants/admin";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { useAdminShortLinks } from "@/composables/useAdminShortLinks";
 import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
-import { linkParts, readableAddress } from "@/scripts/utility/text";
+import { addressParts, readableAddress } from "@/scripts/utility/text";
 import type { ShortUrlSortBy } from "@/types/api/shortener";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -28,8 +29,8 @@ const {
   query,
   isLoading,
   errorMessage,
-  deletingCode,
   deleteError,
+  isDeleting,
   load,
   goToPage,
   setSort,
@@ -43,33 +44,56 @@ const SORT_OPTIONS: SortOption<ShortUrlSortBy>[] = [
 
 const isSearching = computed(() => Boolean(query.value.trim()));
 
+const list = useTemplateRef("list");
+const count = useTemplateRef("count");
+
+/** The last delete, for screen readers: its row and key are gone. */
+const deletedNote = ref("");
+
+const isListed = (code: string) => links.value.some((link) => link.shortenedUrl === code);
+
+/** A failed delete whose link left the list (a 404: it was gone already) shows above it instead. */
+const unlistedError = computed(() => deleteError.value.code && !isListed(deleteError.value.code));
+
+/**
+ * The deleted row took the focused key with it, so focus goes to the delete key that took its
+ * place, else the one above, else the count. Not when focus moved on meanwhile.
+ */
+const refocus = async (index: number) => {
+  await nextTick();
+  if (document.activeElement && document.activeElement !== document.body) return;
+  const keys = list.value?.querySelectorAll<HTMLElement>("[data-delete]") ?? [];
+  (keys[index] ?? keys[index - 1] ?? count.value)?.focus();
+};
+
 const confirmDelete = useConfirmDelete();
-/** The code of the last delete, so its refusal shows on its row, next to the key. */
-const deletedCode = ref("");
 const onDelete = (code: string) =>
-  confirmDelete.press(code, () => {
-    deletedCode.value = code;
-    return remove(code);
+  confirmDelete.press(code, async () => {
+    const index = links.value.findIndex((link) => link.shortenedUrl === code);
+    deletedNote.value = "";
+    const deleted = await remove(code);
+    if (deleted) deletedNote.value = Messages.ShortUrl.deleted(code);
+    if (!isListed(code)) await refocus(index);
   });
 
 /**
- * Where a link leads, host first: that's what a check is after. Anyone can make a link, so every
- * part is shown safe (no invisible or reordering characters), and the whole target stays the
- * tooltip.
+ * Where a link leads, host first: that's what a check is after, so it's the host the browser
+ * goes to (see `addressParts`). Anyone can make a link, so every part is shown safe, with no
+ * invisible or reordering characters, and so is the whole target in the tooltip.
  */
 const targetOf = (url: string) => {
-  const { scheme, host, rest } = linkParts(url);
-  return { scheme, host: readableAddress(host), rest: readableAddress(rest) };
+  const { scheme, userinfo, host, rest } = addressParts(url);
+  return {
+    scheme,
+    userinfo: readableAddress(userinfo),
+    host: readableAddress(host),
+    rest: readableAddress(rest),
+    full: readableAddress(url)
+  };
 };
 
 const rows = computed(() =>
   links.value.map((link) => ({ ...link, target: targetOf(link.originalUrl) }))
-);
-
-/** A refused delete whose row is still listed shows there; one that dropped out (a 404) on top. */
-const isRowError = (code: string) => Boolean(deleteError.value) && deletedCode.value === code;
-const topDeleteError = computed(() =>
-  rows.value.some((link) => isRowError(link.shortenedUrl)) ? "" : deleteError.value
 );
 
 onMounted(load);
@@ -92,13 +116,26 @@ onMounted(load);
       />
     </div>
 
-    <p v-if="pagination" class="count">
+    <p v-if="pagination" ref="count" class="count" tabindex="-1">
       {{ pagination.total }} {{ pagination.total === 1 ? "short link" : "short links" }}
       <template v-if="isSearching">found</template>
     </p>
 
     <StatusMessage v-if="errorMessage" tone="error">{{ errorMessage }}</StatusMessage>
-    <StatusMessage v-if="topDeleteError" tone="error">{{ topDeleteError }}</StatusMessage>
+    <BaseButton
+      v-if="errorMessage && !pagination"
+      class="retry"
+      size="sm"
+      variant="secondary"
+      :loading="isLoading"
+      @click="load"
+    >
+      Try again
+    </BaseButton>
+    <StatusMessage v-if="unlistedError" tone="error">
+      <span class="error-code">{{ deleteError.code }}</span
+      >: {{ deleteError.message }}
+    </StatusMessage>
 
     <p v-if="isLoading && !pagination" class="note">Loading the short links…</p>
     <div v-else-if="pagination && pagination.total === 0" class="empty">
@@ -109,7 +146,7 @@ onMounted(load);
       <p v-else class="note">No short links yet.</p>
     </div>
 
-    <ol v-if="rows.length" class="rows" :aria-busy="isLoading || undefined">
+    <ol v-if="rows.length" ref="list" class="rows" :aria-busy="isLoading || undefined">
       <li v-for="link in rows" :key="link.shortenedUrl" class="row">
         <RouterLink
           :to="{ name: 'redirect-preview', params: { code: link.shortenedUrl } }"
@@ -117,12 +154,13 @@ onMounted(load);
         >
           {{ link.shortenedUrl }}
         </RouterLink>
-        <p class="row__target" :title="link.originalUrl">
+        <p class="row__target" :title="link.target.full">
           <AppIcon name="arrow" :size="16" class="row__arrow" />
           <span class="visually-hidden">Leads to</span>
           <span class="row__url">
             <span v-if="link.target.scheme">{{ link.target.scheme }}</span>
-            <span class="row__host">{{ link.target.host }}</span>
+            <span v-if="link.target.userinfo">{{ link.target.userinfo }}</span>
+            <span v-if="link.target.host" class="row__host">{{ link.target.host }}</span>
             <span>{{ link.target.rest }}</span>
           </span>
         </p>
@@ -139,15 +177,20 @@ onMounted(load);
         </p>
         <div class="row__actions">
           <ConfirmDeleteButton
+            data-delete
             :armed="confirmDelete.isArmed(link.shortenedUrl)"
-            :busy="deletingCode === link.shortenedUrl"
+            :busy="isDeleting(link.shortenedUrl)"
             @click="onDelete(link.shortenedUrl)"
           >
             <span class="visually-hidden">{{ link.shortenedUrl }}</span>
           </ConfirmDeleteButton>
         </div>
-        <StatusMessage v-if="isRowError(link.shortenedUrl)" class="row__error" tone="error">
-          {{ deleteError }}
+        <StatusMessage
+          v-if="deleteError.code === link.shortenedUrl"
+          class="row__error"
+          tone="error"
+        >
+          {{ deleteError.message }}
         </StatusMessage>
       </li>
     </ol>
@@ -159,6 +202,8 @@ onMounted(load);
       :disabled="isLoading"
       @go="goToPage"
     />
+
+    <p class="visually-hidden" role="status">{{ deletedNote }}</p>
   </StationBoard>
 </template>
 
@@ -180,6 +225,18 @@ onMounted(load);
   color: var(--c-ink-soft);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.count:focus {
+  outline: none;
+}
+
+.retry {
+  justify-self: start;
+}
+
+.error-code {
+  font-family: var(--font-code);
 }
 
 .empty {
@@ -282,6 +339,11 @@ onMounted(load);
   font-weight: 600;
 }
 
+.row__error {
+  grid-column: 1 / -1;
+  margin-top: var(--sp-2);
+}
+
 .row__actions {
   display: flex;
   margin-top: var(--sp-2);
@@ -298,10 +360,6 @@ onMounted(load);
     grid-column: 2;
     grid-row: 1 / span 3;
     margin-top: 0;
-  }
-
-  .row__error {
-    grid-column: 1 / -1;
   }
 }
 </style>
