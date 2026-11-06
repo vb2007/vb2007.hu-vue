@@ -31,10 +31,14 @@ export interface Pagination<SortBy extends string = string> extends BasePaginati
   sortOrder: SortOrder;
 }
 
-/** The query every list route takes (a type, not an interface, so it fits `QueryValues`). */
-export type ListQuery<SortBy extends string> = {
-  limit: number;
-  page: number;
+/**
+ * The page every list route takes; on its own, the query of a list without a sort (pending
+ * registrations). Types, not interfaces, so they fit `QueryValues`.
+ */
+export type PageQuery = { limit: number; page: number };
+
+/** The query every sorted list route takes. */
+export type ListQuery<SortBy extends string> = PageQuery & {
   sortBy: SortBy;
   sortOrder: SortOrder;
 };
