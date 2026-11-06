@@ -9,7 +9,12 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
 
   api.loggedInAs();
-  for (const path of ["/admin", "/admin/users", `/admin/users/${"b".repeat(24)}`]) {
+  for (const path of [
+    "/admin",
+    "/admin/users",
+    `/admin/users/${"b".repeat(24)}`,
+    "/admin/short-links"
+  ]) {
     await page.goto(path);
     await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
@@ -268,4 +273,107 @@ test("a user page's link that leads to no account says so", async ({ page, api }
   ).toBeVisible();
   await page.getByRole("link", { name: "All users" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+});
+
+test("the superuser finds short links, checks them and deletes one", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  api.hasShortLink("annas", "https://example.com/flyer", "anna", "2026-10-01T12:00:00.000Z");
+  api.hasShortLink("mine", "https://vb2007.hu/", "vb2007", "2026-10-02T12:00:00.000Z");
+  // No account has this name any more.
+  api.hasShortLink("orphan", "ftp://files.example/pub", "ghost", "2026-10-03T12:00:00.000Z");
+
+  await page.goto("/admin");
+  await page.getByRole("link", { name: /^Short links/ }).click();
+
+  await expect(page).toHaveURL(/\/admin\/short-links$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Short links" })).toBeVisible();
+  await expect(page.locator(".bar__admin")).toHaveAttribute("aria-current", "true");
+  await expect(page.getByText("3 short links")).toBeVisible();
+  // Newest first, each with where it leads, host first, and whose it is.
+  const codes = page.locator(".row__code");
+  await expect(codes).toHaveText(["orphan", "mine", "annas"]);
+  const row = (code: string) =>
+    page.locator(".row").filter({ has: page.getByRole("link", { name: code, exact: true }) });
+  await expect(row("orphan").locator(".row__url")).toHaveText("ftp://files.example/pub");
+  await expect(row("orphan").locator(".row__host")).toHaveText("files.example");
+  await expect(row("orphan")).toContainText("Deleted account ·");
+  await expect(row("annas").locator(".row__url")).toHaveText("example.com/flyer");
+  await expect(row("annas").locator(".row__target")).toHaveAttribute(
+    "title",
+    "https://example.com/flyer"
+  );
+
+  await page.getByLabel("Sort").selectOption({ label: "Oldest first" });
+  await expect(codes).toHaveText(["annas", "mine", "orphan"]);
+
+  // The search matches part of the code, the target or the owner's name.
+  const search = page.getByLabel("Search by code, target or owner");
+  await search.fill("ANNA");
+  await expect(page.getByText("1 short link found")).toBeVisible();
+  await expect(codes).toHaveText(["annas"]);
+  await search.fill("files.ex");
+  await expect(codes).toHaveText(["orphan"]);
+  await search.fill("vb2007.hu");
+  await expect(codes).toHaveText(["mine"]);
+  await search.fill("nowhere");
+  await expect(page.getByText("No code, target or owner matches that search.")).toBeVisible();
+  await page.getByRole("button", { name: "Show every link" }).click();
+  await expect(page.getByText("3 short links")).toBeVisible();
+
+  // The first click arms the key, the second deletes.
+  await page.getByRole("button", { name: "Delete orphan" }).click();
+  await page.getByRole("button", { name: "Confirm delete orphan" }).click();
+  await expect(page.getByText("2 short links")).toBeVisible();
+  await expect(codes).toHaveText(["annas", "mine"]);
+  expect([...api.shortLinks.keys()]).toEqual(["annas", "mine"]);
+
+  // The owner's name leads to their account, the code to the link's preview.
+  await page.getByRole("link", { name: "anna", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${anna.id}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await page.goBack();
+  await page.getByRole("link", { name: "annas", exact: true }).click();
+  await expect(page).toHaveURL(/\/r\/annas\/preview$/);
+  await expect(page.getByText("example.com/flyer").first()).toBeVisible();
+});
+
+test("the short links search shows the API's refusal of a NUL character", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasShortLink("annas", "https://example.com/", "vb2007");
+
+  await page.goto("/admin/short-links");
+  await expect(page.getByText("1 short link", { exact: true })).toBeVisible();
+  await page.getByLabel("Search by code, target or owner").fill("an\0nas");
+  await expect(page.getByText("Invalid value for q.")).toBeVisible();
+});
+
+test("deleting the last short link on a page steps back a page", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna");
+  for (let i = 1; i <= 21; i++) {
+    const day = String(i).padStart(2, "0");
+    api.hasShortLink(
+      `link${day}`,
+      `https://example.com/${i}`,
+      "anna",
+      `2026-10-${day}T12:00:00.000Z`
+    );
+  }
+
+  await page.goto("/admin/short-links");
+  await expect(page.getByText("21 short links")).toBeVisible();
+  await expect(page.getByText("Page 1 of 2")).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Page 2 of 2")).toBeVisible();
+  const codes = page.locator(".row__code");
+  await expect(codes).toHaveText(["link01"]);
+
+  await page.getByRole("button", { name: "Delete link01" }).click();
+  await page.getByRole("button", { name: "Confirm delete link01" }).click();
+
+  await expect(page.getByText("20 short links")).toBeVisible();
+  await expect(codes).toHaveCount(20);
+  await expect(codes.first()).toHaveText("link21");
+  await expect(page.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
 });

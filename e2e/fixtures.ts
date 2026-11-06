@@ -50,6 +50,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
  * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
+ * `GET /admin/short-urls` lists every account's links from the same store for the superuser, with a `null` owner for an `addedBy` no account has.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one.
  *
@@ -758,6 +759,8 @@ export class MockApi {
     switch (endpoint) {
       case "GET /admin/users":
         return this.listUsers(query);
+      case "GET /admin/short-urls":
+        return this.listAdminShortLinks(query);
       case "GET /uploads":
         return this.listUploads(query, this.user?.username);
       case "GET /uploads/usage":
@@ -1730,6 +1733,71 @@ export class MockApi {
           page,
           total: owned.length,
           pages: Math.ceil(owned.length / limit),
+          sortBy: "addedOn",
+          sortOrder
+        }
+      }
+    };
+  }
+
+  /**
+   * `GET /admin/short-urls` (vb2007/vb2007.hu-api#279): every link, newest first by default, from the same store. The owner
+   * is `null` when no account has the link's username, and `q` matches part of the code, the target or the owner's
+   * username, whatever its case. Like the API, it checks the query before anything else.
+   */
+  private listAdminShortLinks(query: URLSearchParams): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    const isIntegerInRange = (value: string, min: number, max: number) =>
+      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+    const validators: [string, (value: string) => boolean][] = [
+      ["limit", (value) => isIntegerInRange(value, 1, 50)],
+      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
+      ["sortBy", (value) => value === "addedOn"],
+      ["sortOrder", (value) => value === "asc" || value === "desc"],
+      ["q", (value) => value.length <= 100 && !value.includes("\0")]
+    ];
+    // A repeated parameter reaches the API as an array, which no check accepts.
+    const invalid = validators.find(
+      ([param, isValid]) =>
+        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
+    );
+    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+
+    const ownerOf = (name: string) => {
+      const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
+      const listed = this.users.find((user) => sameName(user.username));
+      if (listed) return { id: listed.id, username: listed.username };
+      const account = this.accounts.find((item) => sameName(item.username));
+      return account ? { id: account._id, username: account.username } : null;
+    };
+    const limit = Number(query.get("limit") ?? 20);
+    const page = Number(query.get("page") ?? 1);
+    const sortOrder = query.get("sortOrder") ?? "desc";
+    const q = query.get("q")?.toLowerCase() ?? "";
+    const rows = [...this.shortLinks].map(([code, link]) => ({
+      shortenedUrl: code,
+      originalUrl: link.target,
+      addedOn: link.addedOn,
+      owner: ownerOf(link.addedBy)
+    }));
+    const matching = rows.filter(
+      (row) =>
+        row.shortenedUrl.toLowerCase().includes(q) ||
+        row.originalUrl.toLowerCase().includes(q) ||
+        row.owner?.username.toLowerCase().includes(q)
+    );
+    // The store is oldest first.
+    const sorted = sortOrder === "asc" ? matching : [...matching].reverse();
+    return {
+      status: 200,
+      body: {
+        shortUrls: sorted.slice((page - 1) * limit, page * limit),
+        pagination: {
+          limit,
+          page,
+          total: matching.length,
+          pages: Math.ceil(matching.length / limit),
           sortBy: "addedOn",
           sortOrder
         }
