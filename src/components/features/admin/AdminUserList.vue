@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, useTemplateRef } from "vue";
 import { useAdminUsers } from "@/composables/useAdminUsers";
 import { Limits } from "@/constants/limits";
 import type { AdminUserSortBy } from "@/types/api/admin";
@@ -11,7 +11,14 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import AdminUserRow from "./AdminUserRow.vue";
 
-withDefaults(defineProps<{ as?: "h1" | "h2" }>(), { as: "h2" });
+const props = withDefaults(
+  defineProps<{
+    as?: "h1" | "h2";
+    /** Shown above the list, e.g. that an account was deleted. */
+    notice?: string;
+  }>(),
+  { as: "h2", notice: "" }
+);
 
 const {
   users,
@@ -41,11 +48,20 @@ const SORT_OPTIONS: SortOption<AdminUserSortBy>[] = [
 
 const isSearching = computed(() => Boolean(query.value.trim()));
 
-onMounted(load);
+/** A notice comes from the page left behind (its key went with it), so it takes the focus. */
+const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
+onMounted(() => {
+  load();
+  if (props.notice) noticeMessage.value?.$el.focus();
+});
 </script>
 
 <template>
   <StationBoard title="Users" :as="as">
+    <StatusMessage v-if="notice" ref="noticeMessage" class="notice" tone="success" tabindex="-1">{{
+      notice
+    }}</StatusMessage>
+
     <div class="filters">
       <BaseInput
         v-model="query"
@@ -99,6 +115,10 @@ onMounted(load);
 </template>
 
 <style scoped>
+.notice {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
+}
+
 .filters {
   display: grid;
   gap: var(--sp-4);

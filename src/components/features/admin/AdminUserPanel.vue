@@ -12,15 +12,28 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import StatusPill from "@/components/ui/StatusPill.vue";
+import AdminDeleteUser from "./AdminDeleteUser.vue";
+import AdminLogoutUser from "./AdminLogoutUser.vue";
 import AdminQuotaEditor from "./AdminQuotaEditor.vue";
 import AdminQuotaMeter from "./AdminQuotaMeter.vue";
+import AdminRenameUser from "./AdminRenameUser.vue";
 import AdminUserAction from "./AdminUserAction.vue";
+import AdminUserSuspension from "./AdminUserSuspension.vue";
 import AdminUserTags from "./AdminUserTags.vue";
 
 const props = defineProps<{ id: string }>();
 
-const { user, isLoading, errorMessage, canRetry, load, isSavingQuota, quotaError, setQuota } =
-  useAdminUser();
+const {
+  user,
+  isLoading,
+  errorMessage,
+  canRetry,
+  load,
+  applyUser,
+  isSavingQuota,
+  quotaError,
+  setQuota
+} = useAdminUser();
 watch(() => props.id, load, { immediate: true });
 
 const storageTitle = useId();
@@ -142,8 +155,8 @@ const password = computed(() => {
 
       <!--
         One AdminUserAction per thing the admin can do to the account, each with its key and any
-        form it opens in place (#panel). Rename, log out and suspend go after Uploads; Delete
-        account stays last.
+        form it opens in place (#panel), in this order: Uploads, Rename, Log out everywhere,
+        Suspend, then Delete account last.
       -->
       <section class="part" :aria-labelledby="actionsTitle">
         <h2 :id="actionsTitle" class="part__title">Actions</h2>
@@ -169,6 +182,10 @@ const password = computed(() => {
               </BaseButton>
             </template>
           </AdminUserAction>
+          <AdminRenameUser :user="user" @updated="applyUser" />
+          <AdminLogoutUser :user="user" />
+          <AdminUserSuspension :user="user" @updated="applyUser" />
+          <AdminDeleteUser :user="user" />
         </div>
       </section>
     </div>

@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import AdminUserAction from "@/components/features/admin/AdminUserAction.vue";
 import AdminQuotaEditor from "@/components/features/admin/AdminQuotaEditor.vue";
+import AdminUserSuspension from "@/components/features/admin/AdminUserSuspension.vue";
 import { Messages } from "@/constants/messages";
 import { QUOTA_UNITS } from "@/scripts/admin/adminUser";
 import type { AdminUserDetails } from "@/types/api/admin";
@@ -170,7 +171,13 @@ describe("AdminUserPanel", () => {
     await flushPromises();
 
     const actions = wrapper.findAllComponents(AdminUserAction);
-    expect(actions.map((action) => action.props("title"))).toEqual(["Uploads"]);
+    expect(actions.map((action) => action.props("title"))).toEqual([
+      "Uploads",
+      "Rename",
+      "Log out everywhere",
+      "Suspend account",
+      "Delete account"
+    ]);
     expect(actions[0].find(".action__note").text()).toBe(
       "Open, rename, make private or delete user-a's 12 uploads."
     );
@@ -180,6 +187,49 @@ describe("AdminUserPanel", () => {
       name: "admin-user-uploads",
       params: { id: "a" },
       state: { uploadsOwner: "user-a" }
+    });
+  });
+
+  it("tags and dates the account once it's suspended, keeping the details", async () => {
+    const wrapper = await mountPanel(anAdminUserDetails("a", { githubLogin: "octo" }));
+    await flushPromises();
+    expect(wrapper.find(".tag").exists()).toBe(false);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        message: "User suspended successfully: their session was ended.",
+        user: anAdminUser("a", { suspendedAt: "2026-11-06T10:00:00.000Z" })
+      })
+    );
+    await wrapper.findComponent(AdminUserSuspension).find("button").trigger("click");
+    await wrapper.find(".confirm").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.findAll(".tag").map((tag) => tag.text())).toEqual(["Suspended"]);
+    expect(facts(wrapper).Suspended).toMatch(/^Since .+: they can't log in\.$/);
+    expect(facts(wrapper).GitHub).toBe("@octo");
+    expect(wrapper.find(".actions .status--success").text()).toBe(
+      "User suspended successfully: their session was ended."
+    );
+  });
+
+  it("titles the board with the new name once it's renamed, keeping the details", async () => {
+    const wrapper = await mountPanel(anAdminUserDetails("a"));
+    await flushPromises();
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { user: anAdminUser("a", { username: "milo" }) })
+    );
+    const rename = wrapper.findAllComponents(AdminUserAction)[1];
+    await rename.find(".action__keys button").trigger("click");
+    await rename.find("input").setValue("milo");
+    await rename.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find("h1").text()).toBe("milo");
+    expect(facts(wrapper)).toMatchObject({
+      Username: "milo",
+      Owns: "3 pastes · 1 short link · 12 uploads"
     });
   });
 

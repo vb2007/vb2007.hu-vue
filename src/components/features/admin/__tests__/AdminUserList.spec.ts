@@ -67,6 +67,26 @@ describe("AdminUserList", () => {
     expect(wrapper.find(".empty").text()).toBe("No accounts yet.");
   });
 
+  it("shows a notice above the list and focuses it, and none by default", async () => {
+    fetchMock.mockResolvedValue(listing([anAdminUser("a")]));
+    const plain = mount(AdminUserList, { global, attachTo: document.body });
+    await flushPromises();
+    expect(plain.find(".status").exists()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
+
+    const wrapper = mount(AdminUserList, {
+      props: { notice: "anna's account is deleted." },
+      global,
+      attachTo: document.body
+    });
+    await flushPromises();
+    const notice = wrapper.find(".status--success");
+    expect(notice.text()).toBe("anna's account is deleted.");
+    // The key that led here went with the page it was on: the focus moves to what happened.
+    expect(notice.attributes("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(notice.element);
+  });
+
   it("says one user, and offers everyone back when a search finds nobody", async () => {
     fetchMock.mockResolvedValueOnce(listing([anAdminUser("a")]));
     const wrapper = mount(AdminUserList, { global });
