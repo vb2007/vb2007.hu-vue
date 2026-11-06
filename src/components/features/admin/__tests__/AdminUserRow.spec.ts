@@ -58,11 +58,16 @@ describe("AdminUserRow", () => {
     expect(suspended.wrapper.find(".tag--suspended").exists()).toBe(true);
   });
 
-  it("links the account's page by its encoded ID", async () => {
+  it("links the account's page from the closed row, by its encoded ID", async () => {
     const { wrapper } = mountRow(anAdminUser("a/b"));
-    await open(wrapper);
 
-    expect(wrapper.find('a[href="/admin/users/a%2Fb"]').text()).toBe("View account");
+    const link = wrapper.find('.row__meta a[href="/admin/users/a%2Fb"]');
+    expect(link.text()).toBe("View account");
+    // Named apart for screen readers, with the visible words first.
+    expect(link.attributes("aria-label")).toBe("View account: user-a/b");
+    expect(wrapper.find(".details").exists()).toBe(false);
+
+    await open(wrapper);
     expect(wrapper.find('a[href="/admin/users/a%2Fb/uploads"]').text()).toBe("Browse uploads");
   });
 
@@ -98,7 +103,6 @@ describe("AdminUserRow", () => {
     expect(wrapper.find("input").attributes("inputmode")).toBe("decimal");
     expect((wrapper.find("select").element as HTMLSelectElement).value).toBe("GB");
     expect(buttonNamed(wrapper, "Use default").attributes("disabled")).toBeDefined();
-    expect(wrapper.find('a[href="/admin/users/a"]').text()).toBe("View account");
     expect(wrapper.find('a[href="/admin/users/a/uploads"]').text()).toBe("Browse uploads");
     // The name goes along, so the uploads page can say whose they are before they load.
     expect(wrapper.findAllComponents(RouterLink)[1].props("to")).toEqual({

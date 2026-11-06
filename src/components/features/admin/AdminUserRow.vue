@@ -40,7 +40,14 @@ const usage = computed(() => props.user.uploads);
         </button>
         <p class="row__meta">
           {{ usage.count }} {{ usage.count === 1 ? "file" : "files" }} · joined
-          <time :datetime="user.createdAt">{{ formatDate(user.createdAt) }}</time>
+          <time :datetime="user.createdAt">{{ formatDate(user.createdAt) }}</time> ·
+          <!-- The whole account, a click away without opening the row; named apart for screen readers. -->
+          <RouterLink
+            class="row__page"
+            :to="{ name: AdminRoutes.user, params: { id: user.id } }"
+            :aria-label="`View account: ${user.username}`"
+            >View account</RouterLink
+          >
         </p>
       </div>
 
@@ -79,27 +86,18 @@ const usage = computed(() => props.user.uploads);
             <dd>{{ formatBytes(usage.usedBytes - usage.quotaBytes) }}</dd>
           </div>
         </dl>
-        <div class="about__keys">
-          <BaseButton
-            size="sm"
-            variant="secondary"
-            :to="{ name: AdminRoutes.user, params: { id: user.id } }"
-          >
-            View account
-          </BaseButton>
-          <!-- The name goes along, so the uploads page can say whose they are before they load. -->
-          <BaseButton
-            size="sm"
-            variant="secondary"
-            :to="{
-              name: AdminRoutes.userUploads,
-              params: { id: user.id },
-              state: { uploadsOwner: user.username }
-            }"
-          >
-            Browse uploads
-          </BaseButton>
-        </div>
+        <!-- The name goes along, so the uploads page can say whose they are before they load. -->
+        <BaseButton
+          size="sm"
+          variant="secondary"
+          :to="{
+            name: AdminRoutes.userUploads,
+            params: { id: user.id },
+            state: { uploadsOwner: user.username }
+          }"
+        >
+          Browse uploads
+        </BaseButton>
       </div>
 
       <AdminQuotaEditor :user="user" :saving="saving" :set-quota="setQuota" />
@@ -183,6 +181,27 @@ const usage = computed(() => props.user.uploads);
   font-variant-numeric: tabular-nums;
 }
 
+/* A text link in Signal Forest on a hairline underline that turns route green on hover. */
+.row__page {
+  color: var(--c-action);
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--c-hairline);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--dur-quick) ease;
+}
+
+.row__page:hover {
+  text-decoration-color: var(--c-line);
+}
+
+.row__page:focus-visible {
+  outline: 3px solid var(--c-line);
+  outline-offset: 3px;
+}
+
 .row__tags {
   grid-area: tags;
   justify-content: flex-end;
@@ -215,12 +234,6 @@ const usage = computed(() => props.user.uploads);
   display: grid;
   justify-items: start;
   gap: var(--sp-4);
-}
-
-.about__keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
 }
 
 .facts {

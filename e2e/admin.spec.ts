@@ -165,8 +165,9 @@ test("the superuser opens a user's page from the list", async ({ page, api }) =>
   await expect(
     page.locator(".row").filter({ hasText: "anna" }).getByText("Suspended")
   ).toBeVisible();
-  await page.getByRole("button", { name: "anna" }).click();
-  await page.getByRole("link", { name: "View account" }).click();
+  // One click from the closed row; each row's link names its account for screen readers.
+  await expect(page.getByRole("link", { name: "View account: milo" })).toBeVisible();
+  await page.getByRole("link", { name: "View account: anna" }).click();
 
   await expect(page).toHaveURL(new RegExp(`/admin/users/${anna.id}$`));
   await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
@@ -203,6 +204,29 @@ test("the superuser opens a user's page from the list", async ({ page, api }) =>
 
   await page.getByRole("link", { name: "All users" }).click();
   await expect(page).toHaveURL(/\/admin\/users$/);
+});
+
+test("a user page shows a waiting e-mail change beside the confirmed address", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const milo = api.hasUser("milo", { emailVerified: true, pendingEmail: "milo@new.example" });
+
+  await page.goto(`/admin/users/${milo.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "milo" })).toBeVisible();
+  const fact = (label: string) =>
+    page
+      .locator(".fact")
+      .filter({ has: page.locator("dt").getByText(label, { exact: true }) })
+      .locator("dd");
+  // The current address keeps its badge: the new one has a row of its own.
+  await expect(fact("E-mail")).toHaveText(/milo@example\.com\s+Confirmed/);
+  await expect(fact("E-mail").locator(".badge")).toBeVisible();
+  await expect(fact("Changing to")).toHaveText(/milo@new\.example\s+\(waiting for its code\)/);
+  await expect(fact("Password")).toHaveText("Set");
+  await expect(fact("GitHub")).toHaveText("Not linked");
+  await expect(fact("Owns")).toHaveText("0 pastes · 0 short links · 0 uploads");
 });
 
 test("a user page's link that leads to no account says so", async ({ page, api }) => {
