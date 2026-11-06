@@ -3,14 +3,14 @@ import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/t
 import { nextTick } from "vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
-import { SEARCH_DELAY_MS, type UploadListing } from "@/composables/useUploads";
-import { Endpoints } from "@/constants/endpoints";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
+import type { ListedUpload, UploadListing } from "@/composables/useUploads";
 import { Limits } from "@/constants/limits";
-import type { Upload } from "@/types/api/uploads";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { anUpload } from "@/__tests__/helpers/uploads";
+import { createTestRouter } from "@/__tests__/helpers/mount";
 
-const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.length } = {}) =>
+const listing = (uploads: ListedUpload[], { page = 1, pages = 1, total = uploads.length } = {}) =>
   jsonResponse(200, {
     uploads,
     pagination: { limit: 10, page, total, pages, sortBy: "uploadedOn", sortOrder: "desc" }
@@ -18,7 +18,7 @@ const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.lengt
 
 /** One user's uploads for the admin, as the admin's page builds it. */
 const usersUploads = (ownerHint?: string): UploadListing => ({
-  endpoint: Endpoints.Admin.userUploads,
+  kind: "user",
   params: { id: "u9" },
   ownerHint
 });
@@ -89,7 +89,57 @@ describe("UploadList", () => {
     await flushPromises();
 
     expect(wrapper.find("h1").text()).toBe("anna's uploads");
-    expect(wrapper.findComponent(UploadRow).props("ownerName")).toBe("anna");
+    expect(wrapper.findComponent(UploadRow).props()).toMatchObject({
+      owner: { id: "u9", username: "anna" },
+      showOwner: false
+    });
+  });
+
+  it("lists everyone's uploads for the admin, each row with its owner", async () => {
+    const anna = { id: "u9", username: "anna" };
+    let respond!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
+    const wrapper = mount(UploadList, {
+      props: { listing: { kind: "site" }, as: "h1" },
+      global: { plugins: [createTestRouter()] }
+    });
+    await flushPromises();
+    expect(lastUrl(fetchMock)).toMatch(/^https:\/\/api\.test\/admin\/uploads\?/);
+    expect(wrapper.find("h1").text()).toBe("Uploads");
+    expect(wrapper.find(".note").text()).toBe("Loading the uploads…");
+    expect(wrapper.find("label").text()).toContain("Search by name or owner");
+
+    respond(
+      listing([
+        { ...anUpload("a"), owner: anna },
+        { ...anUpload("b"), owner: null }
+      ])
+    );
+    await flushPromises();
+
+    expect(wrapper.find("h1").text()).toBe("Uploads");
+    const rows = wrapper.findAllComponents(UploadRow);
+    expect(rows.map((row) => [row.props("owner"), row.props("showOwner")])).toEqual([
+      [anna, true],
+      [null, true]
+    ]);
+  });
+
+  it("says when nobody has uploaded anything, or nothing matches a name or owner", async () => {
+    fetchMock.mockResolvedValueOnce(listing([]));
+    const wrapper = mount(UploadList, { props: { listing: { kind: "site" } } });
+    await flushPromises();
+    expect(wrapper.find(".empty").text()).toBe("Nobody has uploaded anything yet.");
+
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(listing([]));
+    await wrapper.find("input[type=search]").setValue("zed");
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    vi.useRealTimers();
+    await flushPromises();
+    expect(wrapper.find(".empty").text()).toContain(
+      "No uploads match. Try another name or owner, or show all of them."
+    );
   });
 
   it("names the owner from its hint while their uploads load, and when they fail", async () => {

@@ -17,10 +17,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
-const passwordHint = Messages.Auth.passwordHint(
-  Limits.Password.minLength,
-  Limits.Password.maxLength
-);
+const passwordHint = Messages.Auth.lengthHint(Limits.Password.minLength, Limits.Password.maxLength);
 
 const emit = defineEmits<{ start: [] }>();
 

@@ -1,11 +1,26 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
+  AdminPasteListQuery,
+  AdminPastesResponse,
+  AdminShortUrlListQuery,
+  AdminShortUrlsResponse,
   AdminStatsResponse,
+  AdminUploadsResponse,
   AdminUserListQuery,
+  AdminUserResponse,
   AdminUsersResponse,
+  ClearRateLimitsBody,
+  ClearRateLimitsResponse,
+  LogoutUserResponse,
   MailBudgetResponse,
+  PendingRegistrationListQuery,
+  PendingRegistrationsResponse,
+  RenameUserBody,
+  RenameUserResponse,
+  SetSuspensionBody,
   SetUploadQuotaBody,
+  SuspensionResponse,
   UploadQuotaResponse
 } from "@/types/api/admin";
 import type {
@@ -33,7 +48,9 @@ import type {
 import type {
   ShortenUrlBody,
   ShortenUrlResponse,
-  ShortUrlLookupResponse
+  ShortUrlListQuery,
+  ShortUrlLookupResponse,
+  ShortUrlsResponse
 } from "@/types/api/shortener";
 import type {
   UpdateUploadBody,
@@ -215,10 +232,22 @@ export class Endpoints {
       path: "/shortenUrl/:shortenedUrl",
       credentials: false
     });
-    // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
+    /** Shortens a URL (vb2007/vb2007.hu-api#278). */
     static readonly create = defineEndpoint<ShortenUrlBody, ShortenUrlResponse>()({
       method: HttpMethod.Post,
-      path: "/shortenUrl/create",
+      path: "/shortenUrl",
+      credentials: true
+    });
+    /** The logged-in user's own short links (vb2007/vb2007.hu-api#285). */
+    static readonly list = defineEndpoint<undefined, ShortUrlsResponse, ShortUrlListQuery>()({
+      method: HttpMethod.Get,
+      path: "/shortenUrls",
+      credentials: true
+    });
+    /** Deletes a short link: the owner their own, the superuser any (vb2007/vb2007.hu-api#278). */
+    static readonly remove = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/shortenUrl/:shortenedUrl",
       credentials: true
     });
   };
@@ -295,15 +324,90 @@ export class Endpoints {
       path: "/admin/users",
       credentials: true
     });
+    static readonly user = defineEndpoint<undefined, AdminUserResponse>()({
+      method: HttpMethod.Get,
+      path: "/admin/users/:id",
+      credentials: true
+    });
+    static readonly renameUser = defineEndpoint<RenameUserBody, RenameUserResponse>()({
+      method: HttpMethod.Patch,
+      path: "/admin/users/:id",
+      credentials: true
+    });
+    /** Ends every session of the account; on the superuser's own, theirs too. */
+    static readonly logoutUser = defineEndpoint<undefined, LogoutUserResponse>()({
+      method: HttpMethod.Post,
+      path: "/admin/users/:id/logout",
+      credentials: true
+    });
+    /** Deletes the account with its pastes, short links and uploads; never the superuser's own. */
+    static readonly deleteUser = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/users/:id",
+      credentials: true
+    });
     static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({
       method: HttpMethod.Patch,
       path: "/admin/users/:id/upload-quota",
+      credentials: true
+    });
+    /** Suspending ends the user's session; the superuser's own account answers 409. */
+    static readonly setSuspension = defineEndpoint<SetSuspensionBody, SuspensionResponse>()({
+      method: HttpMethod.Patch,
+      path: "/admin/users/:id/suspension",
       credentials: true
     });
     /** Answers like `Uploads.list`, plus whose uploads they are. */
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    /** Every paste on the site; delete one with `Pastebin.remove`, which lets the superuser through. */
+    static readonly pastes = defineEndpoint<undefined, AdminPastesResponse, AdminPasteListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/pastes",
+      credentials: true
+    });
+    /** Every short link on the site; delete one with `ShortUrl.remove`, which lets the superuser through. */
+    static readonly shortUrls = defineEndpoint<
+      undefined,
+      AdminShortUrlsResponse,
+      AdminShortUrlListQuery
+    >()({
+      method: HttpMethod.Get,
+      path: "/admin/short-urls",
+      credentials: true
+    });
+    /**
+     * Every user's uploads, each with its owner. Edits go through `Uploads.update` and
+     * `Uploads.remove`, which let the superuser past the owner check.
+     */
+    static readonly uploads = defineEndpoint<undefined, AdminUploadsResponse, UploadListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/uploads",
+      credentials: true
+    });
+    static readonly pendingRegistrations = defineEndpoint<
+      undefined,
+      PendingRegistrationsResponse,
+      PendingRegistrationListQuery
+    >()({
+      method: HttpMethod.Get,
+      path: "/admin/pending-registrations",
+      credentials: true
+    });
+    static readonly removePendingRegistration = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/pending-registrations/:id",
+      credentials: true
+    });
+    static readonly clearRateLimits = defineEndpoint<
+      ClearRateLimitsBody,
+      ClearRateLimitsResponse
+    >()({
+      method: HttpMethod.Delete,
+      path: "/admin/rate-limits",
       credentials: true
     });
     static readonly stats = defineEndpoint<undefined, AdminStatsResponse>()({

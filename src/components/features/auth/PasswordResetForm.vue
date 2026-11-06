@@ -32,7 +32,7 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const codeHint = `The ${Limits.Code.digits}-digit code from the e-mail. It works for ${Limits.Code.passwordResetValidMinutes} minutes.`;
 const linkIntro = `Choose a new password for your account. The link from the e-mail works once, for ${Limits.Code.passwordResetValidMinutes} minutes after it was sent.`;
-const passwordHint = Messages.Auth.passwordHint(
+const passwordHint = Messages.Auth.lengthHint(
   Limits.Password.minLength,
   Limits.Password.maxLength
 );

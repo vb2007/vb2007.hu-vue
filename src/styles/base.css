@@ -95,6 +95,23 @@ svg {
   color: var(--c-on-action);
 }
 
+/* A text link in a row's soft-ink meta line, e.g. "View account" or an upload's owner. */
+.meta-link {
+  color: var(--c-action);
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--c-hairline);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--dur-quick) ease;
+}
+
+.meta-link:hover {
+  text-decoration-color: var(--c-line);
+  text-decoration-thickness: 2px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

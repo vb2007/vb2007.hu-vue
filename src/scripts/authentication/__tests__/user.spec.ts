@@ -451,6 +451,26 @@ describe("login", () => {
     expect(isLoggedIn.value).toBe(false);
   });
 
+  it("shows the API's refusal of a suspended account, which starts no session", async () => {
+    // Only after the right password (vb2007/vb2007.hu-api#273).
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, {
+        error:
+          "This account is suspended: it can't log in until the superuser lifts the suspension."
+      })
+    );
+    const { login, loginStatus, isLoggedIn } = await load();
+
+    await expect(login("me@example.com", "secret")).resolves.toBeUndefined();
+
+    expect(loginStatus.value).toBe(
+      "This account is suspended: it can't log in until the superuser lifts the suspension."
+    );
+    expect(isLoggedIn.value).toBe(false);
+    // No lookup of the user follows: the refusal is the whole answer.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("clears the last status while it asks again, so the same refusal shows afresh", async () => {
     const response = deferResponse(fetchMock);
     const { login, loginStatus } = await load();

@@ -1,5 +1,6 @@
 import { SITE_LOCALE } from "@/constants/locale";
 import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
+import type { RateLimitName } from "@/types/api/admin";
 
 /**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
@@ -37,6 +38,12 @@ export class Messages {
     static readonly shortenFailed: string = "Failed to shorten URL";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";
+    static readonly listFailed: string = "Failed to load your short links";
+    static readonly deleteFailed: string = "Failed to delete short link";
+    /** Announced to screen readers once a link is deleted, since its row and key are gone. */
+    static deleted(code: string): string {
+      return `Deleted ${code}.`;
+    }
   };
 
   static readonly Pastebin = class {
@@ -81,6 +88,12 @@ export class Messages {
     /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
     static readonly sessionEnded: string =
       "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";
+    /**
+     * GitHub login's `?oauthError=accountSuspended` (vb2007/vb2007.hu-api#273): the GitHub account
+     * is linked to a suspended one. A password login gets the API's own 403 text instead.
+     */
+    static readonly githubAccountSuspended: string =
+      "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension.";
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
@@ -129,8 +142,8 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
-    /** The hint under every new-password field. */
-    static passwordHint(min: number, max: number): string {
+    /** The hint under every new-password field, and the admin's new username field. */
+    static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
     }
     static passwordTooShort(min: number, max: number): string {
@@ -256,12 +269,71 @@ export class Messages {
 
   static readonly Admin = class {
     static readonly usersFailed: string = "Failed to load the users";
+    static readonly userFailed: string = "Failed to load the account";
+    /** `GET /admin/users/:id`'s 400: the link's ID can't be anyone's. */
+    static readonly userInvalidId: string =
+      "This link doesn't lead to an account: its ID isn't valid.";
+    /** `GET /admin/users/:id`'s 404. */
+    static readonly userNotFound: string =
+      "There's no account with this ID. It may have been deleted.";
     static readonly quotaFailed: string = "Failed to change the quota";
     static readonly invalidQuota: string = "Enter a size of 0 or more.";
     static readonly quotaTooLarge: string = "That's more than the API can store.";
+    static readonly renameFailed: string = "Failed to rename the account";
+    static renamed(name: string): string {
+      return `Renamed to ${name}.`;
+    }
+    static readonly logoutFailed: string = "Failed to log the account out";
+    static loggedOut(name: string): string {
+      return `${name} is logged out everywhere. They can log in again.`;
+    }
+    static readonly deleteFailed: string = "Failed to delete the account";
+    /** On the Users list, once the account's page deleted it. */
+    static userDeleted(name: string): string {
+      return `${name}'s account is deleted, with its pastes, short links and uploads.`;
+    }
+    static readonly suspendFailed: string = "Failed to suspend the account";
+    static readonly unsuspendFailed: string = "Failed to lift the suspension";
+    /** Why the superuser's own page has no Suspend key: the API answers it with 409. */
+    static readonly superuserNotSuspendable: string = "The admin's own account can't be suspended.";
     /** `name` is the account's username, when it's known. */
     static userUploadsFailed(name?: string): string {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
+    }
+    static readonly pastesFailed: string = "Failed to load the pastes";
+    static readonly shortLinksFailed: string = "Failed to load the short links";
+    static readonly uploadsFailed: string = "Failed to load the uploads";
+
+    static readonly pendingRegistrationsFailed: string = "Failed to load the pending registrations";
+    static readonly removePendingRegistrationFailed: string =
+      "Failed to remove the pending registration";
+    static readonly clearRateLimitsFailed: string = "Failed to clear the rate limits";
+    /** The API wants an e-mail, an IP or both; it says so too, but nothing is sent without one. */
+    static readonly rateLimitTargetMissing: string = "Enter an e-mail address, an IP or both.";
+    static readonly invalidIp: string = "That isn't an IPv4 or IPv6 address.";
+    /** What each of the API's rate limiters counts, for the notice of what was cleared. */
+    static readonly rateLimitNames: Record<RateLimitName, string> = {
+      loginPerIp: "Failed log-ins from the IP",
+      loginPerAccount: "Failed log-ins to the address from the IP",
+      loginPerEmail: "Failed log-ins to the address from anywhere",
+      codeChecksPerIp: "Wrong sign-up and password reset codes from the IP",
+      codeChecksPerEmail: "Wrong sign-up and password reset codes for the address",
+      resetLinkChecksPerIp: "Refused password reset links from the IP",
+      mailSendsPerIp: "E-mails requested from the IP",
+      usernameChecksPerIp: "Username checks from the IP",
+      accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
+      passwordChecksPerIp: "Wrong passwords on the account page from the IP"
+    };
+    /** A limiter's plain name, or the API's own one for a limiter added after this list. */
+    static rateLimitName(name: string): string {
+      return Messages.Admin.rateLimitNames[name as RateLimitName] ?? name;
+    }
+    /** `target` names what was cleared, e.g. "anna@example.com and 203.0.113.7". */
+    static rateLimitsCleared(target: string): string {
+      return `Cleared for ${target}:`;
+    }
+    static nothingCleared(target: string): string {
+      return `Nothing was counting for ${target}, so there was nothing to clear.`;
     }
     static readonly statsLoading: string = "Loading the site's totals…";
     static readonly statsFailed: string = "Failed to load the site's totals";

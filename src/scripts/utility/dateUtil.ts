@@ -14,6 +14,9 @@ export const formatDate = (iso: string, locale?: string): string => {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
 };
 
+/** Whether the moment `iso` names has come, e.g. a pending registration's expiry. */
+export const isPast = (iso: string, now = Date.now()): boolean => Date.parse(iso) <= now;
+
 /**
  * A short time of day without the date, e.g. when a link expires within the hour or when today's
  * mail count starts again. `moment` is an ISO timestamp or milliseconds since the epoch; `locale`

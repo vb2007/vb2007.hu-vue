@@ -45,13 +45,30 @@ describe("AdminUserRow", () => {
     expect(wrapper.find(".details").exists()).toBe(false);
   });
 
-  it("tags the admin and a custom quota", () => {
+  it("tags the admin, a suspension and a custom quota", () => {
     const { wrapper } = mountRow(
       anAdminUser("a", { isSuperuser: true, uploads: { count: 3, hasCustomQuota: true } })
     );
 
     expect(wrapper.find(".row__meta").text()).toMatch(/^3 files/);
     expect(wrapper.findAll(".tag").map((tag) => tag.text())).toEqual(["Admin", "Custom quota"]);
+
+    const suspended = mountRow(anAdminUser("b", { suspendedAt: "2026-11-05T09:00:00.000Z" }));
+    expect(suspended.wrapper.findAll(".tag").map((tag) => tag.text())).toEqual(["Suspended"]);
+    expect(suspended.wrapper.find(".tag--suspended").exists()).toBe(true);
+  });
+
+  it("links the account's page from the closed row, by its encoded ID", async () => {
+    const { wrapper } = mountRow(anAdminUser("a/b"));
+
+    const link = wrapper.find('.row__meta a[href="/admin/users/a%2Fb"]');
+    expect(link.text()).toBe("View account");
+    // Named apart for screen readers, with the visible words first.
+    expect(link.attributes("aria-label")).toBe("View account: user-a/b");
+    expect(wrapper.find(".details").exists()).toBe(false);
+
+    await open(wrapper);
+    expect(wrapper.find('a[href="/admin/users/a%2Fb/uploads"]').text()).toBe("Browse uploads");
   });
 
   it("marks a user over their quota, and a quota of 0, as full", () => {
@@ -88,7 +105,7 @@ describe("AdminUserRow", () => {
     expect(buttonNamed(wrapper, "Use default").attributes("disabled")).toBeDefined();
     expect(wrapper.find('a[href="/admin/users/a/uploads"]').text()).toBe("Browse uploads");
     // The name goes along, so the uploads page can say whose they are before they load.
-    expect(wrapper.findComponent(RouterLink).props("to")).toEqual({
+    expect(wrapper.findAllComponents(RouterLink)[1].props("to")).toEqual({
       name: "admin-user-uploads",
       params: { id: "a" },
       state: { uploadsOwner: "user-a" }
@@ -153,6 +170,17 @@ describe("AdminUserRow", () => {
 
     expect(setQuota).not.toHaveBeenCalled();
     expect(wrapper.find(".field__error").text()).toBe("Enter a size of 0 or more.");
+  });
+
+  it("doesn't warn an account already over its quota about the quota it has", async () => {
+    const { wrapper } = mountRow(
+      anAdminUser("a", { uploads: { usedBytes: 12 * GB, quotaBytes: 10 * GB } })
+    );
+    await open(wrapper);
+
+    expect(wrapper.find(".field__hint").exists()).toBe(false);
+    await wrapper.find("input").setValue("11");
+    expect(wrapper.find(".field__hint").text()).toMatch(/^That's less than user-a uses now/);
   });
 
   it("checks the quota once it's left", async () => {

@@ -16,11 +16,12 @@ export const useShortener = () => {
   /** Short links live on this site (/r/:code), which is shorter than going through the API host. */
   const shortenedLink = () => (shortenedCode.value ? shortLink(shortenedCode.value) : "");
 
+  /** Whether the API gave back a link: a new one, or the user's own for the same URL. */
   const shorten = async () => {
     const invalid = validateShortUrl(originalUrl.value);
     if (invalid) {
       errorMessage.value = invalid;
-      return;
+      return false;
     }
 
     isLoading.value = true;
@@ -38,6 +39,7 @@ export const useShortener = () => {
       errorMessage.value = result.error;
     }
     isLoading.value = false;
+    return result.ok;
   };
 
   const reset = () => {
