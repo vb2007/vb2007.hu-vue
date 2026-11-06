@@ -65,7 +65,9 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
 
   const list = board(page, "Your uploads");
   await list.getByRole("button", { name: "report.pdf" }).click();
-  await expect(list.getByText("Only you, while you're logged in")).toBeVisible();
+  await expect(
+    list.getByText("You, the admin, and anyone with the link (until it expires)")
+  ).toBeVisible();
 
   await list.getByRole("button", { name: "Rename" }).click();
   await list.getByLabel("New name").fill("annual report.pdf");
@@ -74,7 +76,7 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
   expect(api.uploads[0].originalFileName).toBe("annual report.pdf");
 
   await list.getByRole("button", { name: "Make public" }).click();
-  await expect(list.getByText("Anyone with the link")).toBeVisible();
+  await expect(list.getByText("Anyone with the link, while it's public")).toBeVisible();
   expect(api.uploads[0].visibility).toBe("public");
 
   await list.getByRole("button", { name: "Delete", exact: true }).click();
@@ -82,6 +84,104 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
   await expect(list.getByText("No uploads yet.")).toBeVisible();
   expect(api.uploads).toEqual([]);
   await expect(page.getByText("0 bytes of 10 GB used")).toBeVisible();
+});
+
+const SIGNED_LINK =
+  /^https:\/\/cdn\.e2e\.invalid\/useruploads\/a{24}\/0{23}1\.pdf\?expires=(\d+)&sig=[\w-]+$/;
+const MINUTE = 60_000;
+
+test("a private link reads without its signature, copies with it and is renewed before it runs out", async ({
+  page,
+  api,
+  context
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.clock.install();
+  api.loggedInAs();
+  api.hasUpload("report.pdf");
+  await page.goto("/upload");
+
+  const list = board(page, "Your uploads");
+  await list.getByRole("button", { name: "report.pdf" }).click();
+  const link = list.locator(".facts .link");
+  await expect(link).toHaveText(/^cdn\.e2e\.invalid\/useruploads\/a+\/0000…0001\.pdf$/);
+  await expect(link).toHaveAttribute("title", api.uploads[0].url);
+
+  const copiedLink = async () => {
+    await list.getByRole("button", { name: "Copy link" }).click();
+    await expect(list.getByRole("button", { name: "Copied" })).toBeVisible();
+    const copied = String(await page.evaluate("navigator.clipboard.readText()"));
+    expect(copied).toMatch(SIGNED_LINK);
+    await expect(list.getByText(/^The copied link expires at \d/)).toBeVisible();
+    return copied;
+  };
+  const first = await copiedLink();
+  await expect(list.getByRole("link", { name: /^Open/ })).toHaveAttribute("href", first);
+
+  // Ten minutes before the link expires, the list asks for a new one.
+  const reload = page.waitForRequest((request) => new URL(request.url()).pathname === "/uploads");
+  api.clockRunsFor(50 * MINUTE);
+  await page.clock.fastForward(50 * MINUTE);
+  await reload;
+  await expect(list.getByRole("link", { name: /^Open/ })).not.toHaveAttribute("href", first);
+  await expect(link).toHaveText(/^cdn\.e2e\.invalid\/useruploads\/a+\/0000…0001\.pdf$/);
+
+  const renewed = await copiedLink();
+  const expiresOf = (url: string) => Number(SIGNED_LINK.exec(url)![1]);
+  expect(expiresOf(renewed) - expiresOf(first)).toBeGreaterThanOrEqual(50 * 60);
+});
+
+test("a just-uploaded private file's ticket keeps a working link", async ({ page, api }) => {
+  await page.clock.install();
+  api.loggedInAs();
+  await page.goto("/upload");
+  await page.getByLabel("Files to upload").setInputFiles({
+    name: "secret.png",
+    mimeType: "image/png",
+    buffer: Buffer.alloc(1024)
+  });
+
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(queue.getByText("Uploaded · Private")).toBeVisible();
+  const ticket = queue.locator(".ticket__link");
+  const signed = /^https:\/\/cdn\.e2e\.invalid\/useruploads\/a{24}\/0{23}1\.png\?expires=\d+&sig=/;
+  await expect(ticket).toHaveAttribute("href", signed);
+  const first = await ticket.getAttribute("href");
+  await expect(ticket).toHaveText(/^cdn\.e2e\.invalid\/useruploads\/a+\/0000…0001\.png$/);
+
+  const renew = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === `/upload/${api.uploads[0].id}`
+  );
+  api.clockRunsFor(50 * MINUTE);
+  await page.clock.fastForward(50 * MINUTE);
+  await renew;
+  await expect(ticket).not.toHaveAttribute("href", first!);
+  await expect(ticket).toHaveAttribute("href", signed);
+});
+
+test("coming back after the links ran out reloads them, the admin's view of a user too", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna", { count: 1 });
+  api.hasUpload("report.pdf", { owner: "anna" });
+  await page.goto(`/admin/users/${api.users[0].id}/uploads`);
+
+  await page.getByRole("button", { name: "report.pdf" }).click();
+  const open = page.getByRole("link", { name: /^Open/ });
+  await expect(open).toHaveAttribute("href", SIGNED_LINK);
+  const first = await open.getAttribute("href");
+
+  // The machine slept: the clock moved on, but no timer fired.
+  const reload = page.waitForRequest((request) => request.url().includes("/uploads?"));
+  api.clockRunsFor(90 * MINUTE);
+  await page.clock.setSystemTime(Date.now() + 90 * MINUTE);
+  await page.evaluate('window.dispatchEvent(new Event("focus"))');
+  await reload;
+  await expect(open).not.toHaveAttribute("href", first!);
+  await expect(open).toHaveAttribute("href", SIGNED_LINK);
 });
 
 test("the list searches, filters, sorts and pages through uploads", async ({ page, api }) => {
