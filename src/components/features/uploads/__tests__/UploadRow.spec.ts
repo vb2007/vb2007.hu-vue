@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick } from "vue";
+import { RouterLink } from "vue-router";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
-import { isSuperuser } from "@/scripts/authentication/authState";
+import { AdminRoutes } from "@/constants/admin";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
 import UploadLink from "@/components/features/uploads/UploadLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { Upload } from "@/types/api/uploads";
 import { anUpload } from "@/__tests__/helpers/uploads";
 import { formatTime } from "@/scripts/utility/dateUtil";
+import { createTestRouter } from "@/__tests__/helpers/mount";
 
 /** A private link as the API signs it. */
 const EXPIRES = Math.floor(Date.now() / 1000) + 3600;
@@ -25,7 +28,8 @@ describe("UploadRow", () => {
   const mountRow = (upload: Upload = anUpload("u1"), props: object = {}) =>
     mount(UploadRow, {
       props: { upload, busy: "", error: "", rename, setVisibility, remove, ...props },
-      attachTo: document.body
+      attachTo: document.body,
+      global: { plugins: [createTestRouter()] }
     });
 
   beforeEach(() => {
@@ -141,11 +145,52 @@ describe("UploadRow", () => {
   });
 
   it("names the owner and the admin on someone else's private upload", async () => {
-    const wrapper = mountRow(anUpload("u1"), { ownerName: "anna" });
+    isSuperuser.value = true;
+    userId.value = "admin";
+    const wrapper = mountRow(anUpload("u1"), { owner: { id: "u9", username: "anna" } });
     await wrapper.find(".row__name").trigger("click");
     expect(wrapper.find(".facts").text()).toContain(
       "anna, you, and anyone with the link (until it expires)"
     );
+    // Only on the list of everyone's uploads does the row name its owner itself.
+    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB · /);
+  });
+
+  it("leaves only the admin on their own upload in a listing, or a deleted account's", async () => {
+    isSuperuser.value = true;
+    userId.value = "admin";
+    const own = mountRow(anUpload("u1"), { owner: { id: "admin", username: "vb2007" } });
+    await own.find(".row__name").trigger("click");
+    expect(own.find(".facts").text()).toContain("You, and anyone with the link (until it expires)");
+
+    const orphaned = mountRow(anUpload("u2"), { owner: null });
+    await orphaned.find(".row__name").trigger("click");
+    expect(orphaned.find(".facts").text()).toContain(
+      "You, and anyone with the link (until it expires)"
+    );
+  });
+
+  it("leads with the owner on the list of everyone's uploads, linking their account", () => {
+    const wrapper = mountRow(anUpload("u1"), {
+      owner: { id: "u9", username: "anna" },
+      showOwner: true
+    });
+
+    // The page collapses the space either side of the template's dot.
+    const meta = () => wrapper.find(".row__meta").text().replace(/\s+/g, " ");
+    expect(meta()).toMatch(/^anna · 2 kB · PNG · /);
+    const link = wrapper.findComponent(RouterLink);
+    expect(link.props("to")).toEqual({ name: AdminRoutes.user, params: { id: "u9" } });
+    expect(link.attributes("aria-label")).toBe("anna's account");
+  });
+
+  it("says when the owner's account is gone", () => {
+    const wrapper = mountRow(anUpload("u1"), { owner: null, showOwner: true });
+
+    expect(wrapper.find(".row__meta").text().replace(/\s+/g, " ")).toMatch(
+      /^Deleted account · 2 kB · /
+    );
+    expect(wrapper.findComponent(RouterLink).exists()).toBe(false);
   });
 
   it("doesn't name the admin to the admin on their own upload", async () => {

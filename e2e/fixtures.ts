@@ -8,7 +8,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasShortLink(...)`, `api.hasPaste(...)`, `api.hasUpload(...)`, `api.quotaIs(...)`,
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
- * `api.userUploadsFail()` answers with a bare 502, like a gateway; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * `api.userUploadsFail()` answers with a bare 502, like a gateway; `GET /admin/uploads` lists every owner's, each with its owner
+ * (the logged-in user or a `hasUser(...)` account by that name, else `null`, as for a deleted account), its `q` matching the owner's name too; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
  * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
@@ -759,6 +760,8 @@ export class MockApi {
         return this.listUsers(query);
       case "GET /uploads":
         return this.listUploads(query, this.user?.username);
+      case "GET /admin/uploads":
+        return this.listAllUploads(query);
       case "GET /uploads/usage":
         return this.usage();
       case "GET /user":
@@ -1567,8 +1570,23 @@ export class MockApi {
     };
   }
 
-  private listUploads(query: URLSearchParams, owner: string | undefined) {
+  /** The admin's view of every upload, each with its owner (vb2007/vb2007.hu-api#280). */
+  private listAllUploads(query: URLSearchParams) {
+    return this.refuseNonSuperuser() ?? this.listUploads(query, null);
+  }
+
+  /** Whose an upload is, as the site-wide listing names them: `null` once no account has the name. */
+  private ownerOf(uploadId: string) {
+    const name = this.uploadOwners.get(uploadId);
+    if (this.user?.username === name) return { id: this.user!._id, username: name };
+    const user = this.users.find((item) => item.username === name);
+    return user ? { id: user.id, username: user.username } : null;
+  }
+
+  /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. */
+  private listUploads(query: URLSearchParams, owner: string | undefined | null) {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    const everyone = owner === null;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortBy = (query.get("sortBy") ?? "uploadedOn") as keyof MockUpload;
@@ -1576,9 +1594,15 @@ export class MockApi {
     const visibility = query.get("visibility");
     const q = query.get("q")?.toLowerCase();
     const matching = this.uploads
-      .filter((upload) => this.uploadOwners.get(upload.id) === owner)
+      .filter((upload) => everyone || this.uploadOwners.get(upload.id) === owner)
       .filter((upload) => !visibility || upload.visibility === visibility)
-      .filter((upload) => !q || upload.originalFileName.toLowerCase().includes(q))
+      .filter(
+        (upload) =>
+          !q ||
+          upload.originalFileName.toLowerCase().includes(q) ||
+          // Site-wide, the owner's name matches too.
+          (everyone && this.uploadOwners.get(upload.id)!.toLowerCase().includes(q))
+      )
       .sort((a, b) => {
         const order = String(a[sortBy]).localeCompare(String(b[sortBy]), "en", { numeric: true });
         return sortOrder === "asc" ? order : -order;
@@ -1588,7 +1612,11 @@ export class MockApi {
       body: {
         uploads: matching
           .slice((page - 1) * limit, page * limit)
-          .map((upload) => this.served(upload)),
+          .map((upload) =>
+            everyone
+              ? { ...this.served(upload), owner: this.ownerOf(upload.id) }
+              : this.served(upload)
+          ),
         pagination: {
           limit,
           page,
