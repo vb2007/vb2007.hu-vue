@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
+import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
 import type { Upload, UploadVisibility } from "@/types/api/uploads";
@@ -10,6 +11,7 @@ import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
+import ConfirmDeleteButton from "@/components/ui/ConfirmDeleteButton.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { CATEGORY_ICONS } from "./categoryIcon";
 import UploadLink from "./UploadLink.vue";
@@ -96,20 +98,8 @@ const saveRename = async () => {
 const toggleVisibility = () =>
   props.setVisibility(props.upload.id, isPrivate.value ? "public" : "private");
 
-/** Deleting takes two clicks; the armed state wears off if the user moves on. */
-const confirming = ref(false);
-let confirmTimer: ReturnType<typeof setTimeout> | undefined;
-const onDelete = () => {
-  clearTimeout(confirmTimer);
-  if (!confirming.value) {
-    confirming.value = true;
-    confirmTimer = setTimeout(() => (confirming.value = false), 4000);
-    return;
-  }
-  confirming.value = false;
-  return props.remove(props.upload.id);
-};
-onBeforeUnmount(() => clearTimeout(confirmTimer));
+const confirmDelete = useConfirmDelete();
+const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(props.upload.id));
 </script>
 
 <template>
@@ -253,17 +243,12 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           <AppIcon :name="isPrivate ? 'globe' : 'lock'" :size="16" />
           {{ isPrivate ? "Make public" : "Make private" }}
         </BaseButton>
-        <!-- Armed, it turns solid red; the ghost variant's hover fill would wash that out. -->
-        <BaseButton
-          size="sm"
-          :variant="confirming ? 'primary' : 'ghost'"
-          :error="confirming"
-          :loading="busy === 'delete'"
+        <ConfirmDeleteButton
+          :armed="confirmDelete.isArmed(upload.id)"
+          :busy="busy === 'delete'"
+          icon
           @click="onDelete"
-        >
-          <AppIcon name="trash" :size="16" />
-          {{ busy === "delete" ? "Deleting" : confirming ? "Confirm delete" : "Delete" }}
-        </BaseButton>
+        />
       </div>
     </div>
 

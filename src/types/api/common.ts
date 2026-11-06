@@ -17,12 +17,16 @@ export interface ApiErrorBody {
   retryAfter?: number;
 }
 
-/** The `pagination` object of every list route. */
-export interface Pagination<SortBy extends string = string> {
+/** The `pagination` object of every list route; `pages` is 0 for an empty list. */
+export interface BasePagination {
   limit: number;
   page: number;
   total: number;
   pages: number;
+}
+
+/** The `pagination` object of a sorted list route (every one but pending registrations). */
+export interface Pagination<SortBy extends string = string> extends BasePagination {
   sortBy: SortBy;
   sortOrder: SortOrder;
 }
