@@ -138,7 +138,7 @@ export const sendUpload = (
           errorMessageFrom(body, request.status, request.statusText, Messages.Uploads.uploadFailed)
         );
         // Like `apiRequest`, an ended session logs the page out before the failure comes back.
-        void noticeSessionRefusal(endpoint, request.status, body).then(() => reject(error));
+        void noticeSessionRefusal(endpoint, request.status, body).finally(() => reject(error));
       }
     };
     request.onerror = () => reject(new UploadError(Messages.connectionError));

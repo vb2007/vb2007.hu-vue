@@ -390,6 +390,17 @@ describe("onSessionRefused", () => {
     expect(await request).toMatchObject({ ok: false, error: Messages.Auth.notLoggedIn });
   });
 
+  it("still never throws when the listener fails, and logs it", async () => {
+    const failed = new Error("listener broke");
+    onSessionRefused(() => Promise.reject(failed));
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, loggedOut));
+
+    const result = await apiRequest(Endpoints.User.changePassword, { body: passwords, failure });
+
+    expect(result).toMatchObject({ ok: false, status: 403, error: Messages.Auth.notLoggedIn });
+    expect(console.error).toHaveBeenCalledWith("Failed to load the user: ", failed);
+  });
+
   it("keeps another 403 to itself", async () => {
     const listener = vi.fn();
     onSessionRefused(listener);

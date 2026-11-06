@@ -350,6 +350,21 @@ describe("an ended session on another call", () => {
     expect(sessionEnded.value).toBe(true);
   });
 
+  it("shares one GET /user between refusals that arrive together", async () => {
+    fetchMock
+      .mockResolvedValueOnce(notLoggedIn())
+      .mockResolvedValueOnce(notLoggedIn())
+      .mockResolvedValueOnce(notLoggedIn());
+    const { changePassword, isLoggedIn, sessionEnded } = await loadLoggedIn();
+
+    await Promise.all([changePassword(), changePassword()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.test/user")).toHaveLength(1);
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(true);
+  });
+
   it("stays logged in when GET /user finds the session working", async () => {
     // E.g. the 403 of a request sent before the latest login.
     fetchMock

@@ -152,6 +152,16 @@ describe("sendUpload", () => {
     await expect(sent).rejects.toThrow("You must be logged in to perform this action.");
   });
 
+  it("still rejects with the API's error when the session check fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    onSessionRefused(() => Promise.reject(new Error("listener broke")));
+    const requests = mockXhr();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn());
+    requests[0].respond(403, { error: "You must be logged in to perform this action." });
+
+    await expect(sent).rejects.toThrow("You must be logged in to perform this action.");
+  });
+
   it("falls back to the status when the error isn't JSON or has no message", async () => {
     const requests = mockXhr();
     const first = sendUpload(aFile("a.png"), "private", vi.fn());

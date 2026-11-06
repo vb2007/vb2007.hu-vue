@@ -135,6 +135,7 @@ export const onSessionRefused = (listener: SessionRefusedListener) => {
 /**
  * Runs the `onSessionRefused` listener when `status` and `body` are the API's logged-out 403 to a
  * request with the session cookie. Other 403s (a wrong password, not the owner) mean nothing here.
+ * Never rejects: a listener that fails is logged, so `apiRequest` still never throws.
  */
 export const noticeSessionRefusal = async (endpoint: Endpoint, status: number, body: unknown) => {
   if (
@@ -142,7 +143,11 @@ export const noticeSessionRefusal = async (endpoint: Endpoint, status: number, b
     status === HttpStatus.Forbidden &&
     (body as ApiErrorBody | null)?.error === Messages.Auth.notLoggedIn
   ) {
-    await sessionRefusedListener?.(endpoint);
+    try {
+      await sessionRefusedListener?.(endpoint);
+    } catch (error) {
+      console.error(`${Messages.Auth.userFailed}: `, error);
+    }
   }
 };
 
