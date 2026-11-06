@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from 
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { Limits } from "@/constants/limits";
 import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
 import type { Upload, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
@@ -29,23 +30,23 @@ const props = defineProps<{
 const detailsId = useId();
 const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
-const privateAudience = computed(() =>
-  props.ownerName ? `Only ${props.ownerName} and the admin` : "Only you, while you're logged in"
+/** A private link is signed: anyone who has it can open the file until it runs out. */
+const privateAudience = computed(
+  () =>
+    `${props.ownerName ? `Only ${props.ownerName} and the admin` : "Only you"}, and anyone with its link for up to ${Limits.UploadLink.validMinutes} minutes`
 );
 
-/** Thumbnails that fail to load (e.g. a private file after logging out) fall back to the icon. */
+/** Thumbnails that fail to load (e.g. a private link that ran out) fall back to the icon. */
 const thumbFailed = ref(false);
 
 const expanded = ref(false);
 
 const { copied, failed, copy } = useClipboard();
-/** Announced after copying; a private link warns who can open it. */
+/** Announced after copying; a private link warns that it runs out. */
 const copyStatus = computed(() => {
   if (!copied.value) return "";
   if (!isPrivate.value) return "Link copied to clipboard";
-  return props.ownerName
-    ? `Link copied. Only ${props.ownerName} and the admin can open it while it's private.`
-    : "Link copied. Only you can open it while it's private.";
+  return `Link copied. Anyone with it can open the file for up to ${Limits.UploadLink.validMinutes} minutes.`;
 });
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"

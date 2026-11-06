@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
 import { useLatestRequest } from "@/composables/useLatestRequest";
+import { useSignedLinkRefresh } from "@/composables/useSignedLinkRefresh";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import type { ParamsOf } from "@/scripts/api/endpoint";
 import type { Pagination, SortOrder } from "@/types/api/common";
@@ -145,6 +146,15 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
     }, SEARCH_DELAY_MS);
   });
   onBeforeUnmount(() => clearTimeout(searchTimer));
+
+  // Private links stop working after a while: load the page again for new ones, unless a load
+  // that brings them is already running.
+  useSignedLinkRefresh(
+    () => uploads.value.map((upload) => upload.url),
+    () => {
+      if (!isLoading.value) load();
+    }
+  );
 
   /** Runs one edit on a row, keeping `busyId`/`rowError` in step. Returns whether it worked. */
   const edit = async <Data>(

@@ -352,6 +352,32 @@ describe("useUploads", () => {
     expect(api.uploads.value).toEqual([anUpload("b")]);
   });
 
+  it("loads the page again before its private links run out, unless a load is running", async () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 10, 6, 12) });
+    const expires = Date.now() / 1000 + 10 * 60;
+    const signed = anUpload("a", { url: `https://cdn.test/a.png?expires=${expires}&sig=x` });
+    fetchMock.mockResolvedValueOnce(listing([signed, anUpload("b", { visibility: "public" })]));
+    const { api } = mountComposable(() => useUploads());
+    await api.load();
+
+    // Nine minutes on, the user's own page change is still loading: it brings new links anyway.
+    const pageTwo = deferResponse(fetchMock);
+    const paging = api.goToPage(2);
+    vi.advanceTimersByTime(9 * 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    pageTwo.respond(listing([signed]));
+    await paging;
+    fetchMock.mockResolvedValueOnce(listing([anUpload("a")]));
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(lastUrl(fetchMock)).toContain("page=2");
+    expect(api.uploads.value).toEqual([anUpload("a")]);
+    vi.useRealTimers();
+  });
+
   it("steps back a page after deleting the last upload on it", async () => {
     fetchMock.mockResolvedValueOnce(listing([anUpload("k")], { page: 2, pages: 2, total: 11 }));
     const { api } = mountComposable(() => useUploads());

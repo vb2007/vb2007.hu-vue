@@ -105,10 +105,12 @@ describe("UploadRow", () => {
     expect(wrapper.find(".details__icon").findComponent(AppIcon).props("name")).toBe("archive");
     const facts = wrapper.findAll(".facts__row").map((row) => row.find("dt").text());
     expect(facts).not.toContain("Changed");
-    expect(wrapper.find(".facts").text()).toContain("Only you, while you're logged in");
+    expect(wrapper.find(".facts").text()).toContain(
+      "Only you, and anyone with its link for up to 60 minutes"
+    );
   });
 
-  it("copies the link and says when a private one only opens for its owner", async () => {
+  it("copies the link and says how long a private one works", async () => {
     const wrapper = mountRow();
     await buttonNamed(wrapper, "Copy link")!.trigger("click");
     await flushPromises();
@@ -116,7 +118,7 @@ describe("UploadRow", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(anUpload("u1").url);
     expect(buttonNamed(wrapper, "Copied")).toBeTruthy();
     expect(wrapper.find("[role=status]").text()).toBe(
-      "Link copied. Only you can open it while it's private."
+      "Link copied. Anyone with it can open the file for up to 60 minutes."
     );
 
     const pub = mountRow(anUpload("u2", { visibility: "public" }));
@@ -128,12 +130,14 @@ describe("UploadRow", () => {
   it("names the owner and the admin on someone else's private upload", async () => {
     const wrapper = mountRow(anUpload("u1"), { ownerName: "anna" });
     await wrapper.find(".row__name").trigger("click");
-    expect(wrapper.find(".facts").text()).toContain("Only anna and the admin");
+    expect(wrapper.find(".facts").text()).toContain(
+      "Only anna and the admin, and anyone with its link for up to 60 minutes"
+    );
 
     await buttonNamed(wrapper, "Copy link")!.trigger("click");
     await flushPromises();
     expect(wrapper.find("[role=status]").text()).toBe(
-      "Link copied. Only anna and the admin can open it while it's private."
+      "Link copied. Anyone with it can open the file for up to 60 minutes."
     );
   });
 

@@ -31,13 +31,26 @@ export const categoryOf = (mimeType: string): UploadCategory => {
   return "document";
 };
 
+/** A link without its query, e.g. without a private upload's `?expires=…&sig=…` signature. */
+export const withoutQuery = (url: string) => url.replace(/[?#].*$/, "");
+
 /**
- * A link split for display: everything up to the last "/" (without the protocol), and the file
- * part with a long name shortened in the middle (`6712…a3f1.png`). Shown on one line, the head
- * gets cut short while the file part, which tells uploads apart, stays readable.
+ * When a signed private upload link stops working, in ms since the epoch, or undefined for a
+ * plain one (vb2007/vb2007.hu-api#361).
+ */
+export const linkExpiresAt = (url: string) => {
+  const query = url.match(/\?([^#]*)/)?.[1];
+  const expires = new URLSearchParams(query).get(Limits.UploadLink.expiresParam);
+  return expires && /^\d+$/.test(expires) ? Number(expires) * 1000 : undefined;
+};
+
+/**
+ * A link split for display: everything up to the last "/" (without the protocol or a query), and
+ * the file part with a long name shortened in the middle (`6712…a3f1.png`). Shown on one line,
+ * the head gets cut short while the file part, which tells uploads apart, stays readable.
  */
 export const linkParts = (url: string) => {
-  const bare = url.replace(/^https?:\/\//, "");
+  const bare = withoutQuery(url).replace(/^https?:\/\//, "");
   const cut = bare.lastIndexOf("/") + 1;
   const file = bare.slice(cut);
   const dot = file.lastIndexOf(".");

@@ -14,7 +14,10 @@ export interface Upload {
   /** Bytes. */
   fileSize: number;
   visibility: UploadVisibility;
-  /** `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`; private ones only open for the owner. */
+  /**
+   * `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`. A private one is signed for a while
+   * (`?expires=…&sig=…`, see `Limits.UploadLink`) and opens for anyone who has it until then.
+   */
   url: string;
   uploadedOn: string;
   updatedOn: string;

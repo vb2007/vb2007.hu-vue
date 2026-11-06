@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptFor,
   categoryOf,
+  linkExpiresAt,
   sendUpload,
   typeLabel,
   UploadError,
@@ -27,6 +28,21 @@ describe("categoryOf", () => {
     ["", "document"]
   ])("puts %s under %s", (mimeType, category) => {
     expect(categoryOf(mimeType)).toBe(category);
+  });
+});
+
+describe("linkExpiresAt", () => {
+  it("reads when a signed link stops working, in ms", () => {
+    expect(
+      linkExpiresAt("https://cdn.test/useruploads/u1/a.png?expires=1790000000&sig=Ab-_9")
+    ).toBe(1_790_000_000_000);
+    expect(linkExpiresAt("https://cdn.test/a.png?sig=x&expires=5#top")).toBe(5000);
+  });
+
+  it("has nothing for a plain link or an unreadable expiry", () => {
+    expect(linkExpiresAt("https://cdn.test/useruploads/u1/a.png")).toBeUndefined();
+    expect(linkExpiresAt("https://cdn.test/a.png?expires=soon")).toBeUndefined();
+    expect(linkExpiresAt("https://cdn.test/a.png?expires=")).toBeUndefined();
   });
 });
 

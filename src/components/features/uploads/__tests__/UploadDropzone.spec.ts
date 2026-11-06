@@ -15,7 +15,7 @@ describe("UploadDropzone", () => {
     const wrapper = mountDropzone();
 
     expect(wrapper.find(".visibility-hint").text()).toBe(
-      "Only you can open private files, once you're logged in."
+      "Only you get a private file's link, and it works for up to 60 minutes."
     );
     await wrapper.find("input[value=public]").setValue();
     expect(wrapper.find(".visibility-hint").text()).toBe(

@@ -68,6 +68,17 @@ export class Limits {
   };
 
   /**
+   * A private upload's link is signed (vb2007/vb2007.hu-api#361), `…/<id><ext>?expires=<unix s>&sig=…`,
+   * and stops working at its `expires`; a public one is plain and never does.
+   */
+  static readonly UploadLink = class {
+    /** Mirrors the API's `UPLOAD_URL_TTL_SECONDS`: how long a link works after the API signs it. */
+    static readonly validMinutes: number = 60;
+    /** The query parameter with the second it stops working, since the Unix epoch. */
+    static readonly expiresParam: string = "expires";
+  };
+
+  /**
    * The `q` that searches a list of uploads or, for the admin, of users. Counted in UTF-16 units,
    * untrimmed, like the input's maxlength.
    */
