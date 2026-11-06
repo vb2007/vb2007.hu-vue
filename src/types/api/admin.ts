@@ -1,4 +1,10 @@
-import type { BasePagination, ListQuery, MessageResponse, Pagination } from "@/types/api/common";
+import type {
+  BasePagination,
+  ListQuery,
+  MessageResponse,
+  PageQuery,
+  Pagination
+} from "@/types/api/common";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -50,9 +56,7 @@ export interface AdminPendingRegistration {
 }
 
 /** `GET /admin/pending-registrations`: no sort, the newest `expiresAt` first. */
-export type PendingRegistrationListQuery = {
-  limit: number;
-  page: number;
+export type PendingRegistrationListQuery = PageQuery & {
   /** Part of the e-mail address. */
   q?: string;
 };
