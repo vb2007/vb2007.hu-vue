@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import {
   PENDING_REGISTRATIONS_PER_PAGE,
   usePendingRegistrations
@@ -63,7 +63,7 @@ describe("usePendingRegistrations", () => {
       )
       .mockResolvedValueOnce(listing([pending("a")]));
     const removing = list.remove("b");
-    expect(list.removingId.value).toBe("b");
+    expect(list.removingIds.value.has("b")).toBe(true);
     await removing;
 
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "DELETE" });
@@ -72,7 +72,7 @@ describe("usePendingRegistrations", () => {
       "https://api.test/admin/pending-registrations?limit=20&page=1"
     ]);
     expect(list.registrations.value).toEqual([pending("a")]);
-    expect(list.removingId.value).toBe("");
+    expect(list.removingIds.value.size).toBe(0);
     expect(list.removeError.value).toBe("");
   });
 
@@ -98,5 +98,37 @@ describe("usePendingRegistrations", () => {
 
     expect(list.removeError.value).toBe("Failed to remove the pending registration: 500");
     expect(urls(fetchMock)).toHaveLength(1);
+  });
+
+  it("forgets a failed remove once the list loads again", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(500, undefined))
+      .mockResolvedValueOnce(listing([pending("a")], 2, 2));
+    const list = usePendingRegistrations();
+    await list.remove("a");
+    expect(list.removeError.value).not.toBe("");
+
+    await list.goToPage(2);
+
+    expect(list.removeError.value).toBe("");
+  });
+
+  it("keeps each running remove busy on its own", async () => {
+    const answers = [deferResponse(fetchMock), deferResponse(fetchMock)];
+    const list = usePendingRegistrations();
+
+    const first = list.remove("a");
+    const second = list.remove("b");
+    expect([...list.removingIds.value]).toEqual(["a", "b"]);
+
+    fetchMock.mockResolvedValueOnce(listing([pending("a")]));
+    answers[1].respond(jsonResponse(200, { message: "Pending registration removed." }));
+    await second;
+    expect([...list.removingIds.value]).toEqual(["a"]);
+
+    answers[0].respond(jsonResponse(500, undefined));
+    await first;
+    expect(list.removingIds.value.size).toBe(0);
+    expect(list.removeError.value).toBe("Failed to remove the pending registration: 500");
   });
 });

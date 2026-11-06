@@ -18,7 +18,8 @@ describe("isIpAddress", () => {
     "2001:db8::8a2e:370:7334",
     "2001:0db8:0000:0000:0000:ff00:0042:8329",
     "::ffff:203.0.113.7",
-    "fe80::1%eth0"
+    "fe80::1%eth0",
+    "fe80::1%en-0.1:a"
   ])("takes %s", (value) => {
     expect(isIpAddress(value)).toBe(true);
   });
@@ -35,6 +36,8 @@ describe("isIpAddress", () => {
     "1:2:3:4:5:6:7:8:9",
     "::1]/x[",
     "fe80::1%",
+    // Node's `isIP` takes letters, digits, dots, colons and hyphens in a zone, but no underscore.
+    "fe80::1%eth_0",
     " 203.0.113.7"
   ])("refuses %o", (value) => {
     expect(isIpAddress(value)).toBe(false);

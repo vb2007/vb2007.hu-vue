@@ -8,7 +8,7 @@ import AdminRateLimits from "@/components/features/admin/AdminRateLimits.vue";
   <AdminPage>
     <div>
       <h1 class="section-title">System</h1>
-      <p class="section-lead">Sign-ups that never finished, and the API's rate limits.</p>
+      <p class="section-lead">Sign-ups still waiting for their code, and the API's rate limits.</p>
     </div>
     <div class="tools">
       <AdminPendingRegistrations />

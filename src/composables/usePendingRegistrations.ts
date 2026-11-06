@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
@@ -29,11 +29,22 @@ export const usePendingRegistrations = (limit = PENDING_REGISTRATIONS_PER_PAGE) 
       }),
     items: (data) => data.pendingRegistrations
   });
-  const removingId = ref("");
+  /** The rows whose remove is running; each keeps its own busy key. */
+  const removingIds = ref(new Set<string>());
+  /** The last failed remove, until the list loads again. */
   const removeError = ref("");
 
+  // Sync, so a reload clears it as it starts, before a 404 sets it again.
+  watch(
+    isLoading,
+    (loading) => {
+      if (loading) removeError.value = "";
+    },
+    { flush: "sync" }
+  );
+
   const remove = async (id: string) => {
-    removingId.value = id;
+    removingIds.value.add(id);
     removeError.value = "";
 
     const result = await apiRequest(Endpoints.Admin.removePendingRegistration, {
@@ -41,11 +52,11 @@ export const usePendingRegistrations = (limit = PENDING_REGISTRATIONS_PER_PAGE) 
       failure: Messages.Admin.removePendingRegistrationFailed
     });
 
-    if (!result.ok) removeError.value = result.error;
     // Gone either way once the API can't find it (verified or removed meanwhile), so the list
     // shouldn't keep offering it.
     if (result.ok || result.status === HttpStatus.NotFound) await reloadAfterRemove();
-    removingId.value = "";
+    if (!result.ok) removeError.value = result.error;
+    removingIds.value.delete(id);
   };
 
   return {
@@ -55,7 +66,7 @@ export const usePendingRegistrations = (limit = PENDING_REGISTRATIONS_PER_PAGE) 
     query,
     isLoading,
     errorMessage,
-    removingId,
+    removingIds,
     removeError,
     load,
     goToPage,

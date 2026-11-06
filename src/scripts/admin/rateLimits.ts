@@ -4,8 +4,22 @@ import type { ClearRateLimitsBody } from "@/types/api/admin";
 /** One part of a dotted IPv4 address, 0 to 255 without a leading zero, like Node's `isIP`. */
 const IPV4_PART = /(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)/.source;
 const IPV4 = new RegExp(`^${IPV4_PART}(?:\\.${IPV4_PART}){3}$`);
-/** Hex groups, colons and an embedded IPv4 tail, then an optional zone (`fe80::1%eth0`). */
-const IPV6_SHAPE = /^([0-9a-f:.]*:[0-9a-f:.]*)(?:%[\w.:-]+)?$/i;
+/**
+ * Hex groups, colons and an embedded IPv4 tail, then an optional zone (`fe80::1%eth0`) in the
+ * characters Node's `isIP` allows there.
+ */
+const IPV6_SHAPE = /^([0-9a-fA-F:.]*:[0-9a-fA-F:.]*)(?:%[0-9a-zA-Z.:-]+)?$/;
+
+/** Whether the URL parser takes `address` as a bracketed IPv6 host. */
+const parsesAsIpv6 = (address: string): boolean => {
+  // Not `URL.canParse`, which needs newer browsers than the build targets.
+  try {
+    new URL(`http://[${address}]/`);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Whether `value` is an IPv4 or IPv6 address, as the API's `net.isIP` decides. The URL parser
@@ -14,7 +28,7 @@ const IPV6_SHAPE = /^([0-9a-f:.]*:[0-9a-f:.]*)(?:%[\w.:-]+)?$/i;
 export const isIpAddress = (value: string): boolean => {
   if (IPV4.test(value)) return true;
   const address = value.match(IPV6_SHAPE)?.[1];
-  return address !== undefined && URL.canParse(`http://[${address}]/`);
+  return address !== undefined && parsesAsIpv6(address);
 };
 
 /** The IP field's problem: "" when it's empty or an address. */

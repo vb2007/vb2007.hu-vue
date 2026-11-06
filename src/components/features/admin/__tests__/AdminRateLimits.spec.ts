@@ -24,7 +24,11 @@ describe("AdminRateLimits", () => {
 
     expect(wrapper.find("h2").text()).toBe("Rate limits");
     const lead = wrapper.find(".lead");
+    expect(lead.text()).toContain("The usual log-in lockout");
     expect(lead.text()).toContain("so lifting it needs both");
+    expect(field(wrapper, "IP address").props("hint")).toContain(
+      "An IPv6 address clears its whole network block"
+    );
     expect(field(wrapper, "E-mail").find("input").attributes("aria-describedby")).toBe(
       lead.attributes("id")
     );

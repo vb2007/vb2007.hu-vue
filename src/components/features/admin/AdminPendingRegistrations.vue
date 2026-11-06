@@ -20,7 +20,7 @@ const {
   query,
   isLoading,
   errorMessage,
-  removingId,
+  removingIds,
   removeError,
   load,
   goToPage,
@@ -38,7 +38,7 @@ onMounted(load);
 <template>
   <StationBoard title="Pending registrations">
     <p class="lead">
-      Sign-ups whose code was never entered. Removing one voids its code, and the address can
+      Sign-ups still waiting for their code. Removing one voids its code, and the address can
       register again at once.
     </p>
 
@@ -88,7 +88,7 @@ onMounted(load);
         <ConfirmDeleteButton
           class="row__remove"
           :armed="confirmDelete.isArmed(registration.id)"
-          :busy="removingId === registration.id"
+          :busy="removingIds.has(registration.id)"
           @click="onRemove(registration.id)"
         >
           <span class="visually-hidden">{{ registration.email }}</span>
@@ -139,13 +139,14 @@ onMounted(load);
   transition: opacity var(--dur-quick) ease;
 }
 
+/* Narrow: the key goes under the address, so arming it never squeezes the address. */
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "email remove"
-    "meta remove";
-  align-items: center;
+    "email"
+    "meta"
+    "remove";
   gap: var(--sp-1) var(--sp-4);
   padding: var(--sp-4) 0;
   border-bottom: var(--edge) solid var(--c-hairline);
@@ -174,5 +175,22 @@ onMounted(load);
 
 .row__remove {
   grid-area: remove;
+  justify-self: start;
+  margin-top: var(--sp-2);
+}
+
+/* Wide enough: the key to the right of both lines. */
+@container (min-width: 30rem) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "email remove"
+      "meta remove";
+    align-items: center;
+  }
+
+  .row__remove {
+    margin-top: 0;
+  }
 }
 </style>

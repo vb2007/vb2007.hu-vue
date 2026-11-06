@@ -31,8 +31,8 @@ const onSubmit = async () => {
 <template>
   <StationBoard title="Rate limits">
     <p :id="noteId" class="lead">
-      Clears what the API counted against an address or an IP, such as failed log-ins. A log-in
-      lockout counts the address and the IP together, so lifting it needs both.
+      Clears what the API counted against an address or an IP, such as failed log-ins. The usual
+      log-in lockout counts the address and the IP together, so lifting it needs both.
     </p>
 
     <form ref="form" class="form" novalidate @submit.prevent="onSubmit">
@@ -49,7 +49,7 @@ const onSubmit = async () => {
       <BaseInput
         v-model="ip"
         label="IP address"
-        hint="IPv4 or IPv6, e.g. 203.0.113.7."
+        hint="IPv4 or IPv6, e.g. 203.0.113.7. An IPv6 address clears its whole network block, as the API counts it."
         autocomplete="off"
         autocapitalize="off"
         mono
