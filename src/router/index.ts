@@ -28,16 +28,29 @@ export const routes: RouteRecordRaw[] = [
     name: "upload",
     component: () => import("../views/UploadView.vue")
   },
+  // The admin area: the gate stands in front of every child, and the overview lists the sections
+  // in `ADMIN_SECTIONS` (`src/constants/admin.ts`). A new section is one more child here.
   {
     path: "/admin",
-    name: "admin",
-    component: () => import("../views/AdminView.vue")
-  },
-  {
-    path: "/admin/users/:id/uploads",
-    name: "admin-user-uploads",
-    component: () => import("../views/AdminUserUploadsView.vue"),
-    props: true
+    component: () => import("../views/AdminAreaView.vue"),
+    children: [
+      {
+        path: "",
+        name: "admin",
+        component: () => import("../views/AdminView.vue")
+      },
+      {
+        path: "users",
+        name: "admin-users",
+        component: () => import("../views/AdminUsersView.vue")
+      },
+      {
+        path: "users/:id/uploads",
+        name: "admin-user-uploads",
+        component: () => import("../views/AdminUserUploadsView.vue"),
+        props: true
+      }
+    ]
   },
   {
     path: "/r/:code",

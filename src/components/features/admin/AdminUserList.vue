@@ -53,7 +53,7 @@ onMounted(load);
 </script>
 
 <template>
-  <StationBoard title="Upload quotas" :as="as">
+  <StationBoard title="Users" :as="as">
     <div class="filters">
       <BaseInput
         v-model="query"

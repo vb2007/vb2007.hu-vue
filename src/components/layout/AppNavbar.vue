@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import {
   isLoggedIn,
@@ -8,6 +8,7 @@ import {
   userEmail
 } from "@/scripts/authentication/authState";
 import { logout, restoreSession } from "@/scripts/authentication/user";
+import { AdminPaths } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -17,6 +18,15 @@ import ThemeToggle from "@/components/ui/ThemeToggle.vue";
 
 const route = useRoute();
 const isMenuOpen = ref(false);
+
+/**
+ * The Admin key's "you are here": the overview is the page it opens, and the pages under it are
+ * still the admin area. An unknown path under /admin is the not-found page, so the key stays dark.
+ */
+const adminCurrent = computed(() => {
+  if (route.matched[0]?.path !== AdminPaths.overview) return undefined;
+  return route.path === AdminPaths.overview ? "page" : "true";
+});
 
 const closeMenu = () => {
   isMenuOpen.value = false;
@@ -75,7 +85,14 @@ watch(() => route.fullPath, closeMenu);
 
         <div class="bar__account">
           <template v-if="isLoggedIn">
-            <BaseButton v-if="isSuperuser" class="bar__admin" size="sm" variant="ghost" to="/admin">
+            <BaseButton
+              v-if="isSuperuser"
+              class="bar__admin"
+              size="sm"
+              variant="ghost"
+              :to="AdminPaths.overview"
+              :aria-current="adminCurrent"
+            >
               Admin
             </BaseButton>
             <RouterLink v-if="userEmail" to="/account" class="bar__user" :title="userEmail">
@@ -169,8 +186,8 @@ watch(() => route.fullPath, closeMenu);
   gap: var(--sp-3);
 }
 
-/* On the admin page no stop is current, so the Admin key carries "you are here". */
-.bar__admin[aria-current="page"] {
+/* In the admin area no stop is current, so the Admin key carries "you are here" on all its pages. */
+.bar__admin[aria-current] {
   background: var(--c-field-deep);
 }
 

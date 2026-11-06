@@ -77,6 +77,23 @@ describe("AppNavbar", () => {
     wrapper.unmount();
   });
 
+  it.each([
+    ["/admin", "page"],
+    ["/admin/users", "true"],
+    ["/admin/users/u9/uploads", "true"],
+    ["/admin/no-such-section", undefined],
+    ["/upload", undefined]
+  ])("marks the Admin key as where the superuser is on %s", async (path, current) => {
+    isLoggedIn.value = true;
+    isSuperuser.value = true;
+    const { wrapper, router } = await mountNavbar();
+    await router.push(path);
+    await flushPromises();
+
+    expect(wrapper.find(".bar__admin").attributes("aria-current")).toBe(current);
+    wrapper.unmount();
+  });
+
   it("hides the email slot when the email is unknown", async () => {
     isLoggedIn.value = true;
     const { wrapper } = await mountNavbar();
