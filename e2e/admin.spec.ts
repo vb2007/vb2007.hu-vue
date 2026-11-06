@@ -118,7 +118,9 @@ test("the superuser browses a user's uploads and moderates them", async ({ page,
 
   await page.getByRole("button", { name: "flyer.pdf" }).click();
   await page.getByRole("button", { name: "Make private" }).click();
-  await expect(page.getByText("Only anna and the admin")).toBeVisible();
+  await expect(
+    page.getByText("anna, you, and anyone with the link (until it expires)")
+  ).toBeVisible();
   expect(api.uploads[0].visibility).toBe("private");
 
   await page.getByRole("button", { name: "flyer.pdf" }).click();
@@ -349,7 +351,7 @@ test("a suspended account is logged out and refused, but only after the right pa
   );
   await expect(main).not.toContainText("Login successful!");
   const cookies = await page.context().cookies();
-  expect(cookies.map((cookie) => cookie.name)).not.toContain("VB-AUTH");
+  expect(cookies.map((cookie) => cookie.name)).not.toContain("__Host-VB-AUTH");
 });
 
 test("a GitHub login into a suspended account is explained", async ({ page }) => {
