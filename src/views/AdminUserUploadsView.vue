@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { AdminPaths } from "@/constants/admin";
 import { Endpoints } from "@/constants/endpoints";
 import type { UploadListing } from "@/composables/useUploads";
-import { isSuperuser } from "@/scripts/authentication/authState";
-import PageSection from "@/components/layout/PageSection.vue";
-import AdminGate from "@/components/features/admin/AdminGate.vue";
+import AdminPage from "@/components/features/admin/AdminPage.vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
-import BaseButton from "@/components/ui/BaseButton.vue";
 
 const props = defineProps<{ id: string }>();
 
@@ -28,26 +26,8 @@ const listing = computed<UploadListing>(() => ({
 </script>
 
 <template>
-  <PageSection :width="isSuperuser ? 'medium' : 'narrow'">
-    <AdminGate>
-      <div class="moderate">
-        <BaseButton class="moderate__back" size="sm" variant="ghost" to="/admin">
-          All users
-        </BaseButton>
-        <!-- A new list per user, so its listing is fixed for its lifetime. -->
-        <UploadList :key="id" :listing="listing" as="h1" />
-      </div>
-    </AdminGate>
-  </PageSection>
+  <AdminPage width="medium" :back-to="AdminPaths.users" back-label="All users">
+    <!-- A new list per user, so its listing is fixed for its lifetime. -->
+    <UploadList :key="id" :listing="listing" as="h1" />
+  </AdminPage>
 </template>
-
-<style scoped>
-.moderate {
-  display: grid;
-  gap: var(--sp-4);
-}
-
-.moderate__back {
-  justify-self: start;
-}
-</style>

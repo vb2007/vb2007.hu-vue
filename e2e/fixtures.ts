@@ -84,6 +84,8 @@ export interface MockAdminUser {
   email: string;
   createdAt: string;
   isSuperuser: boolean;
+  /** When the superuser suspended them, or `null` (vb2007/vb2007.hu-api#273). */
+  suspendedAt: string | null;
   uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
 }
 
@@ -288,6 +290,8 @@ export class MockApi {
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
+  /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
+  private readonly userPendingEmails = new Map<string, string>();
   /** What `PATCH /user/password` checks the current password against, and changes. */
   password = MOCK_PASSWORD;
   /** The only `VB-AUTH` value still accepted; each new session replaces it. */
@@ -366,14 +370,32 @@ export class MockApi {
     else this.accounts[index] = user;
   }
 
-  /** Adds an account to the admin list; `quotaBytes` makes it a custom quota. */
+  /**
+   * Adds an account to the admin list; `quotaBytes` makes it a custom quota, `suspendedAt` suspends
+   * it, `githubLogin` links GitHub and `password: false` makes it a GitHub-only account;
+   * `emailVerified` confirms its address and `pendingEmail` leaves a change waiting for its code.
+   */
   hasUser(
     username: string,
     {
       usedBytes = 0,
       count = 0,
-      quotaBytes
-    }: { usedBytes?: number; count?: number; quotaBytes?: number } = {}
+      quotaBytes,
+      suspendedAt = null,
+      githubLogin,
+      password = true,
+      emailVerified = false,
+      pendingEmail
+    }: {
+      usedBytes?: number;
+      count?: number;
+      quotaBytes?: number;
+      suspendedAt?: string | null;
+      githubLogin?: string;
+      password?: boolean;
+      emailVerified?: boolean;
+      pendingEmail?: string;
+    } = {}
   ) {
     const user: MockAdminUser = {
       id: `${this.users.length + 1}`.padStart(24, "b"),
@@ -382,6 +404,7 @@ export class MockApi {
       // Each account is a day newer than the last, so sorting by date is deterministic.
       createdAt: new Date(Date.UTC(2026, 0, 1 + this.users.length)).toISOString(),
       isSuperuser: false,
+      suspendedAt,
       uploads: {
         usedBytes,
         count,
@@ -390,6 +413,7 @@ export class MockApi {
       }
     };
     this.users.push(user);
+    if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
     // A password reset can reach this account, so logging in reaches it too; an arranged one stays.
     const email = normalizeEmail(user.email);
     if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
@@ -398,8 +422,9 @@ export class MockApi {
         email: user.email,
         username,
         isSuperuser: false,
-        hasPassword: true,
-        emailVerified: false
+        hasPassword: password,
+        emailVerified,
+        ...(githubLogin && { githubId: `gh-${username}`, githubLogin })
       });
     }
     return user;
@@ -720,6 +745,10 @@ export class MockApi {
     const userUploadsRoute = endpoint.match(/^GET \/admin\/users\/([^/]+)\/uploads$/);
     if (userUploadsRoute) {
       return this.listUserUploads(decodeURIComponent(userUploadsRoute[1]), query);
+    }
+    const adminUserRoute = endpoint.match(/^GET \/admin\/users\/([^/]+)$/);
+    if (adminUserRoute) {
+      return this.adminUser(decodeURIComponent(adminUserRoute[1]));
     }
     const quotaRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/upload-quota$/);
     if (quotaRoute) {
@@ -1481,6 +1510,36 @@ export class MockApi {
     };
   }
 
+  /** One account for the admin: the list's fields, its logins and how much it owns. */
+  private adminUser(id: string): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
+    const user = this.users.find((item) => item.id === id);
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
+    const account = this.accounts.find(
+      (item) => normalizeEmail(item.email) === normalizeEmail(user.email)
+    );
+    const owns = (addedBy: string) => addedBy === user.username;
+    return {
+      status: 200,
+      body: {
+        user: {
+          ...user,
+          hasPassword: account?.hasPassword ?? true,
+          emailVerified: account?.emailVerified ?? false,
+          githubLogin: account?.githubLogin ?? null,
+          pendingEmail: this.userPendingEmails.get(user.id) ?? null,
+          counts: {
+            pastes: this.pastes.filter((paste) => owns(paste.addedBy)).length,
+            shortUrls: [...this.shortLinks.values()].filter((link) => owns(link.addedBy)).length,
+            uploads: user.uploads.count
+          }
+        }
+      }
+    };
+  }
+
   /** The admin's view of one user's uploads: the same listing, plus whose they are. */
   private listUserUploads(id: string, query: URLSearchParams) {
     const refusal = this.refuseNonSuperuser();
@@ -1539,7 +1598,11 @@ export class MockApi {
     const value = (user: MockAdminUser) =>
       sortBy === "usedBytes" ? String(user.uploads.usedBytes) : String(user[sortBy as "username"]);
     const matching = this.users
-      .filter((user) => !q || user.username.toLowerCase().includes(q))
+      // Part of the username or the e-mail address, like the API (vb2007/vb2007.hu-api#272).
+      .filter(
+        (user) =>
+          !q || user.username.toLowerCase().includes(q) || user.email.toLowerCase().includes(q)
+      )
       .sort((a, b) => {
         const order = value(a).localeCompare(value(b), "en", { numeric: true });
         return sortOrder === "asc" ? order : -order;

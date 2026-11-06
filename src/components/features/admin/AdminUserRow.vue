@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, useId, useTemplateRef, watch } from "vue";
-import { QUOTA_UNITS, quotaBytesFrom, quotaParts, type QuotaUnit } from "@/scripts/admin/adminUser";
+import { computed, ref, useId } from "vue";
+import { AdminRoutes } from "@/constants/admin";
 import type { AdminUser } from "@/types/api/admin";
-import { useFormValidation } from "@/composables/useFormValidation";
 import { formatDate } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
-import BaseInput from "@/components/ui/BaseInput.vue";
-import BaseSelect from "@/components/ui/BaseSelect.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import AdminQuotaEditor from "./AdminQuotaEditor.vue";
+import AdminQuotaMeter from "./AdminQuotaMeter.vue";
+import AdminUserTags from "./AdminUserTags.vue";
 
 const props = defineProps<{
   user: AdminUser;
@@ -22,54 +22,6 @@ const detailsId = useId();
 const expanded = ref(false);
 
 const usage = computed(() => props.user.uploads);
-/** Nothing more fits once used reaches the quota, including a quota of 0. */
-const isFull = computed(() => usage.value.usedBytes >= usage.value.quotaBytes);
-const share = computed(() =>
-  usage.value.quotaBytes ? Math.min(1, usage.value.usedBytes / usage.value.quotaBytes) : 1
-);
-
-const UNIT_OPTIONS = (Object.keys(QUOTA_UNITS) as QuotaUnit[]).map((unit) => ({
-  value: unit,
-  label: unit
-}));
-
-/* The editor starts from the current quota and follows it after each save. */
-const amount = ref("");
-const unit = ref<QuotaUnit>("GB");
-const saved = ref("");
-const form = useTemplateRef("form");
-const { errors, isValid, leave, validate, reset } = useFormValidation({
-  amount: { value: amount, check: () => draft.value.error }
-});
-const resetDraft = () => {
-  ({ amount: amount.value, unit: unit.value } = quotaParts(usage.value.quotaBytes));
-  reset();
-};
-watch(() => usage.value.quotaBytes, resetDraft, { immediate: true });
-
-const draft = computed(() => quotaBytesFrom(amount.value, unit.value));
-const isUnchanged = computed(() => draft.value.bytes === usage.value.quotaBytes);
-/** Read out with the field, so it's announced as well as shown. */
-const belowUsageHint = computed(() =>
-  draft.value.bytes !== null && draft.value.bytes < usage.value.usedBytes
-    ? `That's less than ${props.user.username} uses now. Nothing gets deleted, but their uploads stop until they free up space.`
-    : undefined
-);
-
-const save = async () => {
-  saved.value = "";
-  if (!(await validate(form.value)) || isUnchanged.value) return;
-  if (await props.setQuota(props.user.id, draft.value.bytes)) {
-    saved.value = `Quota set to ${formatBytes(usage.value.quotaBytes)}.`;
-  }
-};
-
-const useDefault = async () => {
-  saved.value = "";
-  if (await props.setQuota(props.user.id, null)) {
-    saved.value = `Back on the default quota, ${formatBytes(usage.value.quotaBytes)}.`;
-  }
-};
 </script>
 
 <template>
@@ -88,35 +40,20 @@ const useDefault = async () => {
         </button>
         <p class="row__meta">
           {{ usage.count }} {{ usage.count === 1 ? "file" : "files" }} · joined
-          <time :datetime="user.createdAt">{{ formatDate(user.createdAt) }}</time>
+          <time :datetime="user.createdAt">{{ formatDate(user.createdAt) }}</time> ·
+          <!-- The whole account, a click away without opening the row; named apart for screen readers. -->
+          <RouterLink
+            class="row__page"
+            :to="{ name: AdminRoutes.user, params: { id: user.id } }"
+            :aria-label="`View account: ${user.username}`"
+            >View account</RouterLink
+          >
         </p>
       </div>
 
-      <p class="row__tags">
-        <span v-if="user.isSuperuser" class="tag tag--admin">Admin</span>
-        <span v-if="usage.hasCustomQuota" class="tag tag--custom">Custom quota</span>
-      </p>
+      <AdminUserTags class="row__tags" :user="user" />
 
-      <div class="measure" :class="{ 'measure--full': isFull }">
-        <p class="measure__figure">
-          <span class="measure__used">{{ formatBytes(usage.usedBytes) }}</span>
-          of {{ formatBytes(usage.quotaBytes) }}
-        </p>
-        <span
-          class="measure__line"
-          role="meter"
-          :aria-label="`Storage used by ${user.username}`"
-          aria-valuemin="0"
-          :aria-valuemax="usage.quotaBytes"
-          :aria-valuenow="Math.min(usage.usedBytes, usage.quotaBytes)"
-          :aria-valuetext="`${formatBytes(usage.usedBytes)} of ${formatBytes(usage.quotaBytes)}`"
-          :style="{ '--share': share }"
-          :class="{ 'measure__line--some': usage.usedBytes > 0 }"
-        >
-          <span class="measure__run" />
-          <span class="measure__stop" />
-        </span>
-      </div>
+      <AdminQuotaMeter class="row__measure" :user="user" />
     </div>
 
     <StatusMessage v-if="error" tone="error">{{ error }}</StatusMessage>
@@ -153,48 +90,17 @@ const useDefault = async () => {
         <BaseButton
           size="sm"
           variant="secondary"
-          :to="{ path: `/admin/users/${user.id}/uploads`, state: { uploadsOwner: user.username } }"
+          :to="{
+            name: AdminRoutes.userUploads,
+            params: { id: user.id },
+            state: { uploadsOwner: user.username }
+          }"
         >
           Browse uploads
         </BaseButton>
       </div>
 
-      <form ref="form" class="quota" novalidate @submit.prevent="save">
-        <div class="quota__fields">
-          <BaseInput
-            v-model="amount"
-            class="quota__amount"
-            label="New quota"
-            inputmode="decimal"
-            :hint="belowUsageHint"
-            :error="errors.amount"
-            @update:model-value="saved = ''"
-            @blur="leave('amount')"
-          />
-          <BaseSelect v-model="unit" label="Unit" :options="UNIT_OPTIONS" />
-        </div>
-        <div class="quota__actions">
-          <BaseButton
-            type="submit"
-            size="sm"
-            :loading="saving"
-            :disabled="isUnchanged"
-            :blocked="!isValid"
-          >
-            {{ saving ? "Saving" : "Save quota" }}
-          </BaseButton>
-          <BaseButton
-            size="sm"
-            variant="secondary"
-            :disabled="!usage.hasCustomQuota || saving"
-            @click="useDefault"
-          >
-            Use default
-          </BaseButton>
-        </div>
-      </form>
-
-      <StatusMessage v-if="saved" tone="success">{{ saved }}</StatusMessage>
+      <AdminQuotaEditor :user="user" :saving="saving" :set-quota="setQuota" />
     </div>
   </li>
 </template>
@@ -275,118 +181,34 @@ const useDefault = async () => {
   font-variant-numeric: tabular-nums;
 }
 
+/* A text link in Signal Forest on a hairline underline that turns route green on hover. */
+.row__page {
+  color: var(--c-action);
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--c-hairline);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--dur-quick) ease;
+}
+
+.row__page:hover {
+  text-decoration-color: var(--c-line);
+}
+
+.row__page:focus-visible {
+  outline: 3px solid var(--c-line);
+  outline-offset: 3px;
+}
+
 .row__tags {
   grid-area: tags;
-  display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: var(--sp-2);
 }
 
-/* Same pill as the upload badges; Admin in forest, a custom quota on sunk enamel. */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.125rem var(--sp-2);
-  border: var(--edge) solid currentColor;
-  border-radius: 999px;
-  font-family: var(--font-board);
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.tag--admin {
-  background: var(--c-ok-wash);
-  color: var(--c-action);
-}
-
-.tag--custom {
-  background: var(--c-panel-sunk);
-  color: var(--c-ink-soft);
-}
-
-/* Used of quota as a stretch of line: the run ends in a ring where the user is, the rail ends at the quota. */
-.measure {
+.row__measure {
   grid-area: measure;
-  display: grid;
-  gap: var(--sp-2);
-}
-
-.measure__figure {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--c-ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.measure__used {
-  color: var(--c-ink);
-  font-weight: 700;
-}
-
-.measure__line {
-  position: relative;
-  display: block;
-  height: 3px;
-  margin: 0 0.4375rem;
-  background: var(--c-hairline);
-}
-
-.measure__run {
-  position: absolute;
-  inset: 0 auto 0 0;
-  /* Short of the terminus, so a nearly full run doesn't swallow it. */
-  width: min(calc(var(--share) * 100%), calc(100% - 0.875rem));
-  background: var(--c-line);
-}
-
-/* True to scale, except that any use at all shows a few pixels of green. */
-.measure__line--some .measure__run {
-  width: min(max(0.25rem, calc(var(--share) * 100%)), calc(100% - 0.875rem));
-}
-
-/* Full: the run reaches the terminus, which turns red. */
-.measure--full .measure__run {
-  width: 100%;
-}
-
-.measure__run::after,
-.measure__stop {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 0.625rem;
-  height: 0.625rem;
-  border: 3px solid var(--c-line);
-  border-radius: 50%;
-  background: var(--c-panel);
-  transform: translate(50%, -50%);
-}
-
-.measure__run::after {
-  right: 0;
-}
-
-/* The terminus at the quota. */
-.measure__stop {
-  right: 0;
-  width: 0.875rem;
-  height: 0.875rem;
-  border-color: var(--c-ink-soft);
-}
-
-.measure--full .measure__run,
-.measure--full .measure__run::after {
-  background: var(--c-danger);
-  border-color: var(--c-danger);
-}
-
-.measure--full .measure__stop {
-  border-color: var(--c-danger);
-  background: var(--c-danger);
 }
 
 @container (min-width: 40rem) {
@@ -448,33 +270,10 @@ const useDefault = async () => {
   font-weight: 600;
 }
 
-.quota {
-  display: grid;
-  align-content: start;
-  gap: var(--sp-3);
-}
-
-.quota__fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(5.5rem, 7rem);
-  align-items: start;
-  gap: var(--sp-3);
-}
-
-.quota__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-
 @container (min-width: 40rem) {
   .details {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
-  }
-
-  .details > :last-child:not(.quota) {
-    grid-column: 1 / -1;
   }
 }
 

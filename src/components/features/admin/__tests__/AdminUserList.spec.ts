@@ -42,7 +42,7 @@ describe("AdminUserList", () => {
     const wrapper = mount(AdminUserList, { props: { as: "h1" }, global });
     await flushPromises();
 
-    expect(wrapper.find("h1").text()).toBe("Upload quotas");
+    expect(wrapper.find("h1").text()).toBe("Users");
     expect(wrapper.find(".note").text()).toBe("Loading the users…");
 
     respond(listing([anAdminUser("a"), anAdminUser("b")]));
@@ -62,7 +62,7 @@ describe("AdminUserList", () => {
     const wrapper = mount(AdminUserList, { global });
     await flushPromises();
 
-    expect(wrapper.find("h2").text()).toBe("Upload quotas");
+    expect(wrapper.find("h2").text()).toBe("Users");
     expect(wrapper.find(".count").text()).toBe("0 users");
     expect(wrapper.find(".empty").text()).toBe("No accounts yet.");
   });
@@ -82,7 +82,9 @@ describe("AdminUserList", () => {
     await flushPromises();
     expect(lastUrl(fetchMock)).toContain("q=zzz");
     expect(wrapper.find(".count").text()).toBe("0 users found");
-    expect(wrapper.find(".empty .note").text()).toBe("No username matches that search.");
+    expect(wrapper.find(".empty .note").text()).toBe(
+      "No username or e-mail address matches that search."
+    );
 
     fetchMock.mockResolvedValueOnce(listing([anAdminUser("a")]));
     await buttonNamed(wrapper, "Show everyone").trigger("click");

@@ -9,6 +9,8 @@ export interface AdminUser {
   email: string;
   createdAt: string;
   isSuperuser: boolean;
+  /** When the user was suspended, or `null` while they aren't (vb2007/vb2007.hu-api#273). */
+  suspendedAt: string | null;
   uploads: {
     usedBytes: number;
     count: number;
@@ -18,9 +20,27 @@ export interface AdminUser {
   };
 }
 
+/** `GET /admin/users/:id` (vb2007/vb2007.hu-api#272): one user with their logins and content. */
+export interface AdminUserDetails extends AdminUser {
+  /** False for an account that only logs in with GitHub. */
+  hasPassword: boolean;
+  emailVerified: boolean;
+  /** The new address while an unexpired change waits for its code. */
+  pendingEmail: string | null;
+  /** The linked GitHub account's login. */
+  githubLogin: string | null;
+  /** How much the user owns; `uploads` is the same as `uploads.count`. */
+  counts: { pastes: number; shortUrls: number; uploads: number };
+}
+
+/** `GET /admin/users/:id` */
+export interface AdminUserResponse {
+  user: AdminUserDetails;
+}
+
 /** `GET /admin/users` */
 export type AdminUserListQuery = ListQuery<AdminUserSortBy> & {
-  /** Searches the users. */
+  /** Matches part of the username or the e-mail address, whatever its case. */
   q?: string;
 };
 

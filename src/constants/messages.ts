@@ -251,6 +251,13 @@ export class Messages {
 
   static readonly Admin = class {
     static readonly usersFailed: string = "Failed to load the users";
+    static readonly userFailed: string = "Failed to load the account";
+    /** `GET /admin/users/:id`'s 400: the link's ID can't be anyone's. */
+    static readonly userInvalidId: string =
+      "This link doesn't lead to an account: its ID isn't valid.";
+    /** `GET /admin/users/:id`'s 404. */
+    static readonly userNotFound: string =
+      "There's no account with this ID. It may have been deleted.";
     static readonly quotaFailed: string = "Failed to change the quota";
     static readonly invalidQuota: string = "Enter a size of 0 or more.";
     static readonly quotaTooLarge: string = "That's more than the API can store.";
