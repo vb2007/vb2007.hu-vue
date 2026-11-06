@@ -1,8 +1,10 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
+  AdminStatsResponse,
   AdminUserListQuery,
   AdminUsersResponse,
+  MailBudgetResponse,
   SetUploadQuotaBody,
   UploadQuotaResponse
 } from "@/types/api/admin";
@@ -295,6 +297,16 @@ export class Endpoints {
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    static readonly stats = defineEndpoint<undefined, AdminStatsResponse>()({
+      method: HttpMethod.Get,
+      path: "/admin/stats",
+      credentials: true
+    });
+    static readonly mailBudget = defineEndpoint<undefined, MailBudgetResponse>()({
+      method: HttpMethod.Get,
+      path: "/admin/mail-budget",
       credentials: true
     });
   };

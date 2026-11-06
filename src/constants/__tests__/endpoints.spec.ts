@@ -42,7 +42,9 @@ describe("Endpoints", () => {
     [Endpoints.Uploads.remove, "DELETE", "/upload/:id", true],
     [Endpoints.Admin.users, "GET", "/admin/users", true],
     [Endpoints.Admin.setUploadQuota, "PATCH", "/admin/users/:id/upload-quota", true],
-    [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true]
+    [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true],
+    [Endpoints.Admin.stats, "GET", "/admin/stats", true],
+    [Endpoints.Admin.mailBudget, "GET", "/admin/mail-budget", true]
   ])("declares %o", (endpoint, method, path, credentials) => {
     expect(endpoint).toMatchObject({ method, path, credentials });
   });

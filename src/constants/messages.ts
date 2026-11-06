@@ -250,5 +250,17 @@ export class Messages {
     static userUploadsFailed(name?: string): string {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
     }
+    static readonly statsLoading: string = "Loading the site's totals…";
+    static readonly statsFailed: string = "Failed to load the site's totals";
+    static readonly mailBudgetLoading: string = "Loading today's mail…";
+    static readonly mailBudgetFailed: string = "Failed to load today's mail";
+    /** `resetsAt` is the time the count starts again, as shown. */
+    static mailLimitReached(resetsAt: string): string {
+      return `Today's mail limit is used up: no mail goes out until ${resetsAt}.`;
+    }
+    /** `dailyLimit` is the number of mails a day, past which nothing is sent. */
+    static registrationMailStopped(dailyLimit: number): string {
+      return `Sign-up codes have stopped for today. Mail to existing accounts still goes out, up to ${dailyLimit}.`;
+    }
   };
 }

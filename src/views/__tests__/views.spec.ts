@@ -16,6 +16,7 @@ import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
 import ApiErrorView from "@/views/ApiErrorView.vue";
+import AdminSiteBoard from "@/components/features/admin/AdminSiteBoard.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
@@ -38,6 +39,7 @@ import { ADMIN_SECTIONS } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
 import { MAX_ADDRESS } from "@/scripts/utility/text";
 import { isLoggedIn, isSessionChecked, isSuperuser } from "@/scripts/authentication/authState";
+import { aMailBudget, someStats } from "@/__tests__/helpers/admin";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -206,13 +208,19 @@ describe("views", () => {
     expect(wrapper.findComponent(AdminUserList).exists()).toBe(false);
   });
 
-  it("AdminAreaView shows the superuser the overview, with a key to every section", async () => {
+  it("AdminAreaView shows the superuser the overview: the site's figures, then a key to every section", async () => {
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, someStats()))
+      .mockResolvedValueOnce(jsonResponse(200, aMailBudget()));
     asSuperuser();
     const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin");
 
     expect(wrapper.findComponent(AdminView).exists()).toBe(true);
     expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
     expect(wrapper.find("h1").text()).toBe("Admin");
+    expect(wrapper.findAll("h2").map((heading) => heading.text())).toEqual(["Site", "Sections"]);
+    expect(wrapper.findComponent(AdminSiteBoard).exists()).toBe(true);
+    expect(wrapper.find(".directory").attributes("aria-labelledby")).toBe("admin-sections");
     expect(wrapper.findComponent(ToolDirectory).props("stops")).toEqual(ADMIN_SECTIONS);
     expect(wrapper.find('.directory a[href="/admin/users"]').text()).toContain("Users");
   });

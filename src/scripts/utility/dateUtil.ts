@@ -13,3 +13,8 @@ export const formatDateTime = (iso: string, locale?: string): string => {
 export const formatDate = (iso: string, locale?: string): string => {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
 };
+
+/** A readable time of day without the date, e.g. when today's mail count starts again. `locale` defaults to the browser's. */
+export const formatTime = (iso: string, locale?: string): string => {
+  return new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(new Date(iso));
+};
