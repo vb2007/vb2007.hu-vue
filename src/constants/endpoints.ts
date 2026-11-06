@@ -31,7 +31,9 @@ import type {
 import type {
   ShortenUrlBody,
   ShortenUrlResponse,
-  ShortUrlLookupResponse
+  ShortUrlListQuery,
+  ShortUrlLookupResponse,
+  ShortUrlsResponse
 } from "@/types/api/shortener";
 import type {
   UpdateUploadBody,
@@ -212,10 +214,22 @@ export class Endpoints {
       path: "/shortenUrl/:shortenedUrl",
       credentials: false
     });
-    // Temporary: the API currently serves this at /shortenUrl/create; revert to /shortenUrl once it is fixed.
+    /** Shortens a URL (vb2007/vb2007.hu-api#278; the old `/shortenUrl/create` goes in #345). */
     static readonly create = defineEndpoint<ShortenUrlBody, ShortenUrlResponse>()({
       method: HttpMethod.Post,
-      path: "/shortenUrl/create",
+      path: "/shortenUrl",
+      credentials: true
+    });
+    /** The logged-in user's own short links (vb2007/vb2007.hu-api#285). */
+    static readonly list = defineEndpoint<undefined, ShortUrlsResponse, ShortUrlListQuery>()({
+      method: HttpMethod.Get,
+      path: "/shortenUrls",
+      credentials: true
+    });
+    /** Deletes a short link: the owner their own, the superuser any (vb2007/vb2007.hu-api#278). */
+    static readonly remove = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/shortenUrl/:shortenedUrl",
       credentials: true
     });
   };

@@ -37,6 +37,8 @@ export class Messages {
     static readonly shortenFailed: string = "Failed to shorten URL";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";
+    static readonly listFailed: string = "Failed to load your short links";
+    static readonly deleteFailed: string = "Failed to delete short link";
   };
 
   static readonly Pastebin = class {

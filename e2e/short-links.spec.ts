@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
 const TARGET = "https://target.e2e.invalid/landing";
@@ -113,4 +114,122 @@ test("a server error on the lookup shows the API's message and can be retried", 
   );
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page).toHaveURL(TARGET);
+});
+
+test.describe("your links on /shorten", () => {
+  /** The "Your links" board. */
+  const yourLinks = (page: Page) =>
+    page.locator("section").filter({ has: page.getByRole("heading", { name: "Your links" }) });
+  /** The codes the board lists, top to bottom. */
+  const codes = (page: Page) => yourLinks(page).getByRole("listitem").getByRole("link");
+  /** One row of the board, by its code. */
+  const row = (page: Page, code: string) =>
+    yourLinks(page)
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name: code, exact: true }) });
+
+  test("lists the user's own links, newest first, and a new one joins at the top", async ({
+    page,
+    context,
+    api,
+    baseURL
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    api.loggedInAs();
+    api.hasShortLink("old111", TARGET);
+    api.hasShortLink("theirs", "https://example.com/not-mine", "someone-else");
+    api.shortenReturns("new222");
+    await page.goto("/shorten");
+    const board = yourLinks(page);
+
+    await expect(board.getByText("1 link", { exact: true })).toBeVisible();
+    await expect(row(page, "old111")).toContainText("target.e2e.invalid/landing");
+    await expect(codes(page)).toHaveText(["old111"]);
+
+    await page.getByLabel("URL").fill("https://example.com/fresh");
+    await page.getByRole("button", { name: "Shorten", exact: true }).click();
+
+    await expect(board.getByText("2 links", { exact: true })).toBeVisible();
+    await expect(codes(page)).toHaveText(["new222", "old111"]);
+
+    await row(page, "old111").getByRole("button", { name: "Copy link old111" }).click();
+    await expect(row(page, "old111").getByRole("button", { name: "Copied old111" })).toBeVisible();
+    expect(await page.evaluate("navigator.clipboard.readText()")).toBe(`${baseURL}/r/old111`);
+
+    await row(page, "old111").getByRole("link", { name: "old111" }).click();
+    await expect(page).toHaveURL("/r/old111/preview");
+  });
+
+  test("search matches the code or the target", async ({ page, api }) => {
+    api.loggedInAs();
+    api.hasShortLink("abc123", TARGET);
+    api.hasShortLink("xyz789", "https://example.com/other");
+    await page.goto("/shorten");
+    const board = yourLinks(page);
+    const search = board.getByLabel("Search by code or target");
+    await expect(codes(page)).toHaveText(["xyz789", "abc123"]);
+
+    await search.fill("LANDING");
+    await expect(codes(page)).toHaveText(["abc123"]);
+    await expect(board.getByText("1 link found")).toBeVisible();
+
+    await search.fill("xyz");
+    await expect(codes(page)).toHaveText(["xyz789"]);
+
+    await search.fill("nowhere");
+    await expect(board.getByText(/^No links match\./)).toBeVisible();
+    await board.getByRole("button", { name: "Show all links" }).click();
+    await expect(codes(page)).toHaveText(["xyz789", "abc123"]);
+    await expect(search).toHaveValue("");
+  });
+
+  test("deleting takes a second click, and emptying the last page steps back one", async ({
+    page,
+    api
+  }) => {
+    api.loggedInAs();
+    for (let n = 0; n <= 10; n++) api.hasShortLink(`code${n}`, `https://example.com/${n}`);
+    await page.goto("/shorten");
+    const board = yourLinks(page);
+    await expect(board.getByText("Page 1 of 2")).toBeVisible();
+
+    await board.getByRole("button", { name: "Next" }).click();
+    await expect(board.getByText("Page 2 of 2")).toBeVisible();
+    await expect(codes(page)).toHaveText(["code0"]);
+
+    await row(page, "code0").getByRole("button", { name: "Delete code0" }).click();
+    await expect(
+      row(page, "code0").getByRole("button", { name: "Confirm delete code0" })
+    ).toBeVisible();
+    expect(api.shortLinks.has("code0")).toBe(true);
+    await row(page, "code0").getByRole("button", { name: "Confirm delete code0" }).click();
+
+    await expect(board.getByText("10 links", { exact: true })).toBeVisible();
+    await expect(codes(page)).toHaveCount(10);
+    await expect(codes(page).first()).toHaveText("code10");
+    await expect(board.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
+    expect(api.shortLinks.has("code0")).toBe(false);
+  });
+
+  test("a link deleted elsewhere drops out with the API's text", async ({ page, api }) => {
+    api.loggedInAs();
+    api.hasShortLink("gone11", TARGET);
+    api.hasShortLink("kept22", "https://example.com/kept");
+    await page.goto("/shorten");
+    const board = yourLinks(page);
+
+    await row(page, "gone11").getByRole("button", { name: "Delete gone11" }).click();
+    api.shortLinks.delete("gone11");
+    await row(page, "gone11").getByRole("button", { name: "Confirm delete gone11" }).click();
+
+    await expect(board.getByRole("alert")).toHaveText("The shortened URL cannot be found.");
+    await expect(codes(page)).toHaveText(["kept22"]);
+  });
+
+  test("logged out, there is no list", async ({ page }) => {
+    await page.goto("/shorten");
+
+    await expect(page.getByText("Create a new account")).toBeVisible();
+    await expect(yourLinks(page)).toHaveCount(0);
+  });
 });

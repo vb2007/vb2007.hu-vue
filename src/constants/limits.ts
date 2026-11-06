@@ -68,8 +68,8 @@ export class Limits {
   };
 
   /**
-   * The `q` that searches a list of uploads or, for the admin, of users. Counted in UTF-16 units,
-   * untrimmed, like the input's maxlength.
+   * The `q` that searches a list: uploads, short links or, for the admin, users. Counted in UTF-16
+   * units, untrimmed, like the input's maxlength.
    */
   static readonly Search = class {
     static readonly maxLength: number = 100;

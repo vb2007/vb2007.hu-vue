@@ -22,6 +22,7 @@ import LoginForm from "@/components/features/auth/LoginForm.vue";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import PasswordResetForm from "@/components/features/auth/PasswordResetForm.vue";
 import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
+import ShortLinkList from "@/components/features/shorten/ShortLinkList.vue";
 import PasteComposer from "@/components/features/pastebin/PasteComposer.vue";
 import PasteList from "@/components/features/pastebin/PasteList.vue";
 import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
@@ -73,10 +74,32 @@ describe("views", () => {
     expect(wrapper.findComponent(feature).exists()).toBe(true);
   });
 
-  it("ShortenView uses the panel as the page heading", async () => {
+  it("ShortenView uses the panel as the page heading and shows no list when logged out", async () => {
     const { wrapper } = await mountWithRouter(ShortenView);
 
     expect(wrapper.findComponent(ShortenPanel).props("as")).toBe("h1");
+    expect(wrapper.findComponent(ShortLinkList).exists()).toBe(false);
+    expect(wrapper.find(".workspace").classes()).not.toContain("workspace--split");
+  });
+
+  it("ShortenView refreshes the list when a link is shortened", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(200, { shortUrls: [], pagination: null }));
+    const { wrapper } = await mountWithRouter(ShortenView);
+    await flushPromises();
+    expect(wrapper.findComponent(ShortLinkList).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.find(".workspace").classes()).toContain("workspace--split");
+    // Views mounted by earlier tests are still alive and load their own lists on login, so count from here.
+    fetchMock.mockClear();
+
+    wrapper.findComponent(ShortenPanel).vm.$emit("created");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/shortenUrls?");
+    expect(fetchMock.mock.calls[0][0]).toContain("page=1");
   });
 
   it("PastebinView shows the composer as the page heading and no list when logged out", async () => {

@@ -13,6 +13,8 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 import TicketSlip from "@/components/ui/TicketSlip.vue";
 
 withDefaults(defineProps<{ as?: "h1" | "h2" }>(), { as: "h2" });
+/** A link came back, new or the user's own for the same URL, e.g. for a list to refresh. */
+const emit = defineEmits<{ created: [] }>();
 
 const { originalUrl, shortenedCode, shortenedLink, isLoading, errorMessage, shorten, reset } =
   useShortener();
@@ -37,7 +39,7 @@ const {
 });
 
 const submit = async () => {
-  if (await validate(form.value)) await shorten();
+  if ((await validate(form.value)) && (await shorten())) emit("created");
 };
 
 // The shortened URL is gone from the field; that's not a problem to show.
