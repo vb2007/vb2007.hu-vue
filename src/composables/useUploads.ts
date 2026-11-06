@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
 import { useLatestRequest } from "@/composables/useLatestRequest";
+import { useSignedLinkRefresh } from "@/composables/useSignedLinkRefresh";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import type { ParamsOf } from "@/scripts/api/endpoint";
 import type { Pagination, SortOrder } from "@/types/api/common";
@@ -146,6 +147,18 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
   });
   onBeforeUnmount(() => clearTimeout(searchTimer));
 
+  // Private links expire: load the page again for new ones, unless a load that brings them is
+  // already running, or an edit is (its row could come back as it was); that one asks after.
+  // A load that failed leaves the old links, so it's asked for again.
+  const { refreshIfDue } = useSignedLinkRefresh(
+    () => uploads.value.map((upload) => upload.url),
+    async () => {
+      if (isLoading.value || busyId.value) return false;
+      await load();
+      return !errorMessage.value;
+    }
+  );
+
   /** Runs one edit on a row, keeping `busyId`/`rowError` in step. Returns whether it worked. */
   const edit = async <Data>(
     id: string,
@@ -166,6 +179,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
     }
     busyId.value = "";
     busyAction.value = "";
+    refreshIfDue();
     return result.ok;
   };
 

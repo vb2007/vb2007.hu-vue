@@ -42,6 +42,7 @@ import type {
   UploadDeletedResponse,
   UploadFileFields,
   UploadListQuery,
+  UploadResponse,
   UploadSavedResponse,
   UploadsResponse,
   UploadUsage
@@ -263,6 +264,12 @@ export class Endpoints {
     static readonly usage = defineEndpoint<undefined, UploadUsage>()({
       method: HttpMethod.Get,
       path: "/uploads/usage",
+      credentials: true
+    });
+    /** The owner's or the superuser's: a private one comes with a newly signed link. */
+    static readonly get = defineEndpoint<undefined, UploadResponse>()({
+      method: HttpMethod.Get,
+      path: "/upload/:id",
       credentials: true
     });
     /** Multipart form fields; sent with XMLHttpRequest for its progress events, not `apiRequest`. */

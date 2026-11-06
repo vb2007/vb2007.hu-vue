@@ -2,13 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptFor,
   categoryOf,
+  copiedLinkNote,
+  linkExpiresAt,
   sendUpload,
   typeLabel,
   UploadError,
   validateFile,
   validateFileName
 } from "@/scripts/uploads/upload";
+import { Endpoints } from "@/constants/endpoints";
+import { onSessionRefused } from "@/scripts/api/client";
 import { aFile, anUpload, someUsage } from "@/__tests__/helpers/uploads";
+import { formatTime } from "@/scripts/utility/dateUtil";
 import { mockXhr } from "@/__tests__/helpers/xhr";
 
 const MB = 1024 * 1024;
@@ -27,6 +32,30 @@ describe("categoryOf", () => {
     ["", "document"]
   ])("puts %s under %s", (mimeType, category) => {
     expect(categoryOf(mimeType)).toBe(category);
+  });
+});
+
+describe("linkExpiresAt", () => {
+  it("reads when a signed link stops working, in ms", () => {
+    expect(
+      linkExpiresAt("https://cdn.test/useruploads/u1/a.png?expires=1790000000&sig=Ab-_9")
+    ).toBe(1_790_000_000_000);
+    expect(linkExpiresAt("https://cdn.test/a.png?sig=x&expires=5#top")).toBe(5000);
+  });
+
+  it("has nothing for a plain link or an unreadable expiry", () => {
+    expect(linkExpiresAt("https://cdn.test/useruploads/u1/a.png")).toBeUndefined();
+    expect(linkExpiresAt("https://cdn.test/a.png?expires=soon")).toBeUndefined();
+    expect(linkExpiresAt("https://cdn.test/a.png?expires=")).toBeUndefined();
+  });
+});
+
+describe("copiedLinkNote", () => {
+  it("says when a copied signed link expires, and nothing for a plain one", () => {
+    expect(copiedLinkNote("https://cdn.test/a.png?expires=1793995200&sig=x")).toBe(
+      `The copied link expires at ${formatTime(1_793_995_200_000)}.`
+    );
+    expect(copiedLinkNote("https://cdn.test/a.png")).toBe("");
   });
 });
 
@@ -131,6 +160,33 @@ describe("sendUpload", () => {
     requests[0].respond(415, { error: "This file type isn't supported." });
 
     await expect(sent).rejects.toEqual(new UploadError("This file type isn't supported."));
+  });
+
+  it("tells the client about an ended session before it rejects, like apiRequest", async () => {
+    let finish!: () => void;
+    const listener = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    onSessionRefused(listener);
+    const requests = mockXhr();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn());
+    let settled = false;
+    sent.catch(() => (settled = true));
+    requests[0].respond(403, { error: "You must be logged in to perform this action." });
+
+    expect(listener).toHaveBeenCalledWith(Endpoints.Uploads.upload);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await expect(sent).rejects.toThrow("You must be logged in to perform this action.");
+  });
+
+  it("still rejects with the API's error when the session check fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    onSessionRefused(() => Promise.reject(new Error("listener broke")));
+    const requests = mockXhr();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn());
+    requests[0].respond(403, { error: "You must be logged in to perform this action." });
+
+    await expect(sent).rejects.toThrow("You must be logged in to perform this action.");
   });
 
   it("falls back to the status when the error isn't JSON or has no message", async () => {

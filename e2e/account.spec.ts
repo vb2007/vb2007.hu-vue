@@ -66,7 +66,7 @@ test("a refused login shows the API's one message and stays logged out", async (
   }
   await expect(main).not.toContainText("Login successful!");
   const cookies = await page.context().cookies();
-  expect(cookies.map((cookie) => cookie.name)).not.toContain("VB-AUTH");
+  expect(cookies.map((cookie) => cookie.name)).not.toContain("__Host-VB-AUTH");
 
   // The address's case and surrounding spaces don't matter, like the API.
   await page.getByLabel("E-mail").fill(` ${MOCK_EMAIL.toUpperCase()} `);
@@ -789,14 +789,14 @@ test("accounts that can't change their e-mail say why", async ({ page, api }) =>
 });
 
 test("the password changes in place and the session carries on", async ({ page, api }) => {
-  // A real login, so the browser holds a VB-AUTH cookie that the change has to replace.
+  // A real login, so the browser holds a __Host-VB-AUTH cookie that the change has to replace.
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   const sessionCookie = async () =>
-    (await page.context().cookies()).find((cookie) => cookie.name === "VB-AUTH")?.value;
+    (await page.context().cookies()).find((cookie) => cookie.name === "__Host-VB-AUTH")?.value;
   expect(await sessionCookie()).toBe("e2e-session-1");
 
   await page.goto("/account");
@@ -838,6 +838,35 @@ test("a wrong current password is refused and the form keeps its values", async 
   await page.keyboard.press("Escape");
   await expect(details.getByRole("button", { name: "Change password" })).toBeFocused();
   await expect(details.getByRole("alert")).toHaveCount(0);
+});
+
+test("a session that ended elsewhere logs the page out when the password is changed", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+
+  // A login on another device (or a password reset) ends this one: the API keeps one session.
+  api.loggedOut();
+  await details.getByRole("button", { name: "Save password" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  const ended = page.getByRole("status");
+  await expect(ended).toHaveText(
+    "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account."
+  );
+  await expect(ended).toBeFocused();
+  await expect(page.getByLabel("Current password")).toHaveCount(0);
+  expect(api.password).toBe(MOCK_PASSWORD);
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
 });
 
 test("the password form checks its fields before asking the API", async ({ page, api }) => {
