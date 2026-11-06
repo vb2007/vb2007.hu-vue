@@ -183,6 +183,28 @@ describe("fetchUserDetails", () => {
     expect(pendingEmail.value).toBe("");
     expect(sessionEnded.value).toBe(true);
     expect(console.error).not.toHaveBeenCalled();
+    // Its own 403 doesn't ask again.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the ended session's notice through a later 403", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { fetchUserDetails, isLoggedIn, sessionEnded } = await load();
+    sessionEnded.value = true;
+
+    expect(await fetchUserDetails()).toBe(false);
+
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(true);
+  });
+
+  it("says nothing ended for a visitor who never had a session", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { fetchUserDetails, sessionEnded } = await load();
+
+    await fetchUserDetails();
+
+    expect(sessionEnded.value).toBe(false);
   });
 
   it.each([
@@ -292,6 +314,77 @@ describe("fetchUserDetails", () => {
     expect(await pending).toBe(true);
     expect(isLoggedIn.value).toBe(false);
     expect(userEmail.value).toBe("");
+  });
+});
+
+describe("an ended session on another call", () => {
+  const passwords = { currentPassword: "old-secret", newPassword: "new-secret" };
+
+  /** Loads a logged-in page, with the client and endpoints from the same fresh modules. */
+  const loadLoggedIn = async () => {
+    const loaded = await load();
+    const client = await import("@/scripts/api/client");
+    const { Endpoints } = await import("@/constants/endpoints");
+    loaded.isLoggedIn.value = true;
+    loaded.userEmail.value = "me@example.com";
+    const changePassword = () =>
+      client.apiRequest(Endpoints.User.changePassword, { body: passwords, failure: "Failed" });
+    return { ...loaded, changePassword };
+  };
+
+  it("asks GET /user, whose 403 logs the page out and says the session ended", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedIn()).mockResolvedValueOnce(notLoggedIn());
+    const { changePassword, isLoggedIn, userEmail, sessionEnded } = await loadLoggedIn();
+
+    const result = await changePassword();
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 403,
+      error: "You must be logged in to perform this action."
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://api.test/user");
+    expect(isLoggedIn.value).toBe(false);
+    expect(userEmail.value).toBe("");
+    expect(sessionEnded.value).toBe(true);
+  });
+
+  it("stays logged in when GET /user finds the session working", async () => {
+    // E.g. the 403 of a request sent before the latest login.
+    fetchMock
+      .mockResolvedValueOnce(notLoggedIn())
+      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { changePassword, isLoggedIn, sessionEnded } = await loadLoggedIn();
+
+    await changePassword();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(isLoggedIn.value).toBe(true);
+    expect(sessionEnded.value).toBe(false);
+  });
+
+  it("keeps the page logged in after another 403, without asking", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "The current password is incorrect." })
+    );
+    const { changePassword, isLoggedIn, sessionEnded } = await loadLoggedIn();
+
+    await changePassword();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(isLoggedIn.value).toBe(true);
+    expect(sessionEnded.value).toBe(false);
+  });
+
+  it("doesn't ask for a visitor, who has no session to lose", async () => {
+    fetchMock.mockResolvedValueOnce(notLoggedIn());
+    const { changePassword, isLoggedIn } = await loadLoggedIn();
+    isLoggedIn.value = false;
+
+    await changePassword();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

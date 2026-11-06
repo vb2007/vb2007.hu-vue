@@ -9,6 +9,8 @@ import {
   apiRequest,
   apiUrl,
   errorMessageFrom,
+  noticeSessionRefusal,
+  onSessionRefused,
   readJson,
   type ApiFailure
 } from "@/scripts/api/client";
@@ -345,5 +347,71 @@ describe("apiRequest", () => {
     await apiRequest(Endpoints.Pastebin.update, { params: { id: "a" }, failure });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("onSessionRefused", () => {
+  let fetchMock: ReturnType<typeof mockFetch>;
+  const passwords = { currentPassword: "old-secret", newPassword: "new-secret" };
+  const loggedOut = { error: Messages.Auth.notLoggedIn };
+
+  beforeEach(() => {
+    fetchMock = mockFetch();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("has nothing to run until a listener is set", async () => {
+    vi.resetModules();
+    const fresh = await import("@/scripts/api/client");
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, loggedOut));
+
+    const result = await fresh.apiRequest(Endpoints.User.changePassword, {
+      body: passwords,
+      failure
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 403, error: Messages.Auth.notLoggedIn });
+  });
+
+  it("runs the listener for the API's logged-out 403, and the result waits for it", async () => {
+    let finish!: () => void;
+    const listener = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    onSessionRefused(listener);
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, loggedOut));
+
+    let settled = false;
+    const request = apiRequest(Endpoints.User.changePassword, { body: passwords, failure });
+    void request.then(() => (settled = true));
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(Endpoints.User.changePassword));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+
+    expect(await request).toMatchObject({ ok: false, error: Messages.Auth.notLoggedIn });
+  });
+
+  it("keeps another 403 to itself", async () => {
+    const listener = vi.fn();
+    onSessionRefused(listener);
+    const error = "The current password is incorrect.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error }));
+
+    const result = await apiRequest(Endpoints.User.changePassword, { body: passwords, failure });
+
+    expect(result).toMatchObject({ ok: false, status: 403, error });
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the text with another status", Endpoints.User.changePassword, 400, loggedOut],
+    ["a 403 without a body", Endpoints.User.changePassword, 403, null],
+    ["a request without the session cookie", Endpoints.Auth.register, 403, loggedOut]
+  ])("doesn't run it for %s", async (_name, endpoint, status, body) => {
+    const listener = vi.fn();
+    onSessionRefused(listener);
+
+    await noticeSessionRefusal(endpoint, status, body);
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });
