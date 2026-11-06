@@ -62,11 +62,11 @@ const password = computed(() => {
           <dt>Username</dt>
           <dd>{{ user.username }}</dd>
         </div>
+        <!-- The badge waits out a change, like on the Account board, so it can't be read as being about the new address. -->
         <div class="fact">
           <dt>E-mail</dt>
           <dd>
             {{ user.email }}
-            <!-- It waits out a change, like on the Account board, so it can't be read as being about the new address. -->
             <span v-if="user.emailVerified && !user.pendingEmail" class="badge">
               <AppIcon name="check" :size="14" />
               Confirmed
@@ -222,17 +222,15 @@ const password = computed(() => {
 }
 
 .fact dd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-1) var(--sp-2);
   margin: 0;
   min-width: 0;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 
+/* Notes and the badge follow the value on its line, and move to the next one whole. */
 .fact__soft {
+  display: inline-block;
   color: var(--c-ink-soft);
   font-weight: 400;
 }
@@ -267,6 +265,7 @@ const password = computed(() => {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 @container (min-width: 30rem) {
