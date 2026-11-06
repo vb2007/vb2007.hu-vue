@@ -4,6 +4,7 @@ import UploadQueue from "@/components/features/uploads/UploadQueue.vue";
 import UploadProgress from "@/components/features/uploads/UploadProgress.vue";
 import type { QueueItem, QueueStatus } from "@/composables/useUploadQueue";
 import { aFile, anUpload } from "@/__tests__/helpers/uploads";
+import { formatTime } from "@/scripts/utility/dateUtil";
 
 let nextId = 1;
 const item = (status: QueueStatus, overrides: Partial<QueueItem> = {}): QueueItem => ({
@@ -14,6 +15,7 @@ const item = (status: QueueStatus, overrides: Partial<QueueItem> = {}): QueueIte
   progress: 0,
   error: "",
   result: null,
+  linkError: "",
   ...overrides
 });
 
@@ -90,6 +92,39 @@ describe("UploadQueue", () => {
     expect(button(rows[1], "Copied").exists()).toBe(true);
     expect(button(rows[0], "Copy link").exists()).toBe(true);
     expect(wrapper.find("[role=status]").text()).toBe("Link copied to clipboard");
+  });
+
+  it("shows when a copied signed link expires, under its ticket", async () => {
+    const expires = Math.floor(Date.now() / 1000) + 3600;
+    const url = `https://cdn.test/useruploads/user1/u2.png?expires=${expires}&sig=x`;
+    const items = [
+      item("done", { result: anUpload("u1") }),
+      item("done", { result: anUpload("u2", { url }) })
+    ];
+    const wrapper = mount(UploadQueue, { props: { items, hasFinished: false } });
+    const rows = wrapper.findAll(".job");
+
+    await button(rows[1], "Copy link").trigger("click");
+    await flushPromises();
+
+    const note = `The copied link expires at ${formatTime(expires * 1000)}.`;
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(url);
+    expect(rows[1].find(".ticket__note").text()).toBe(note);
+    expect(rows[0].find(".ticket__note").exists()).toBe(false);
+    expect(wrapper.find("[role=status]").text()).toBe(note);
+  });
+
+  it("keeps the ticket of a link that can't be renewed, with why instead of the key", () => {
+    const linkError = "This file was deleted, so its link no longer works.";
+    const items = [item("done", { result: anUpload("u1"), linkError })];
+    const wrapper = mount(UploadQueue, { props: { items, hasFinished: true } });
+    const ticket = wrapper.find(".ticket");
+
+    expect(ticket.find("a").exists()).toBe(false);
+    expect(ticket.find(".ticket__link--dead").text()).toContain("u1.png");
+    expect(button(wrapper, "Copy link")).toBeUndefined();
+    expect(ticket.find(".ticket__note[role=status]").text()).toBe(linkError);
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
   });
 
   it("says when copying failed", async () => {
