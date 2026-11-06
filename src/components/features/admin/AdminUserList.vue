@@ -3,10 +3,10 @@ import { computed, onMounted } from "vue";
 import { useAdminUsers } from "@/composables/useAdminUsers";
 import { Limits } from "@/constants/limits";
 import type { AdminUserSortBy } from "@/types/api/admin";
-import type { SortOrder } from "@/types/api/common";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
-import BaseSelect from "@/components/ui/BaseSelect.vue";
+import ListPager from "@/components/ui/ListPager.vue";
+import SortSelect, { type SortOption } from "@/components/ui/SortSelect.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import AdminUserRow from "./AdminUserRow.vue";
@@ -30,22 +30,14 @@ const {
   setQuota
 } = useAdminUsers();
 
-type SortKey = `${AdminUserSortBy}:${SortOrder}`;
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "usedBytes:desc", label: "Most storage used" },
-  { value: "usedBytes:asc", label: "Least storage used" },
-  { value: "username:asc", label: "Name, A to Z" },
-  { value: "username:desc", label: "Name, Z to A" },
-  { value: "createdAt:desc", label: "Newest accounts" },
-  { value: "createdAt:asc", label: "Oldest accounts" }
+const SORT_OPTIONS: SortOption<AdminUserSortBy>[] = [
+  { by: "usedBytes", order: "desc", label: "Most storage used" },
+  { by: "usedBytes", order: "asc", label: "Least storage used" },
+  { by: "username", order: "asc", label: "Name, A to Z" },
+  { by: "username", order: "desc", label: "Name, Z to A" },
+  { by: "createdAt", order: "desc", label: "Newest accounts" },
+  { by: "createdAt", order: "asc", label: "Oldest accounts" }
 ];
-const sort = computed<SortKey>({
-  get: () => `${sortBy.value}:${sortOrder.value}` as SortKey,
-  set: (key: SortKey) => {
-    const [by, order] = key.split(":") as [AdminUserSortBy, SortOrder];
-    setSort(by, order);
-  }
-});
 
 const isSearching = computed(() => Boolean(query.value.trim()));
 
@@ -61,7 +53,12 @@ onMounted(load);
         label="Search by username or e-mail"
         :maxlength="Limits.Search.maxLength"
       />
-      <BaseSelect v-model="sort" label="Sort" :options="SORT_OPTIONS" />
+      <SortSelect
+        :options="SORT_OPTIONS"
+        :sort-by="sortBy"
+        :sort-order="sortOrder"
+        @change="setSort"
+      />
     </div>
 
     <p v-if="pagination" class="count">
@@ -91,25 +88,13 @@ onMounted(load);
       />
     </ol>
 
-    <nav v-if="pagination && pagination.pages > 1" class="pager" aria-label="Pages">
-      <BaseButton
-        size="sm"
-        variant="secondary"
-        :disabled="isLoading || page <= 1"
-        @click="goToPage(page - 1)"
-      >
-        Previous
-      </BaseButton>
-      <p class="pager__label">Page {{ page }} of {{ pagination.pages }}</p>
-      <BaseButton
-        size="sm"
-        variant="secondary"
-        :disabled="isLoading || page >= pagination.pages"
-        @click="goToPage(page + 1)"
-      >
-        Next
-      </BaseButton>
-    </nav>
+    <ListPager
+      v-if="pagination"
+      :page="page"
+      :pages="pagination.pages"
+      :disabled="isLoading"
+      @go="goToPage"
+    />
   </StationBoard>
 </template>
 
@@ -127,7 +112,6 @@ onMounted(load);
 }
 
 .count,
-.pager__label,
 .note {
   color: var(--c-ink-soft);
   font-weight: 600;
@@ -153,13 +137,5 @@ onMounted(load);
 .rows[aria-busy] {
   opacity: 0.6;
   transition: opacity var(--dur-quick) ease;
-}
-
-.pager {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
 }
 </style>

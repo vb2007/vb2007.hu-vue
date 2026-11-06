@@ -3,7 +3,8 @@ import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/t
 import { nextTick } from "vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
-import { SEARCH_DELAY_MS, type UploadListing } from "@/composables/useUploads";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
+import type { UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
 import { Limits } from "@/constants/limits";
 import type { Upload } from "@/types/api/uploads";
