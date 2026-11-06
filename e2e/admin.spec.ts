@@ -9,7 +9,7 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
 
   api.loggedInAs();
-  for (const path of ["/admin", "/admin/users"]) {
+  for (const path of ["/admin", "/admin/users", `/admin/users/${"b".repeat(24)}`]) {
     await page.goto(path);
     await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
@@ -47,7 +47,15 @@ test("the superuser finds a user and changes their quota", async ({ page, api, i
   await page.getByLabel("Sort").selectOption({ label: "Name, A to Z" });
   await expect(names).toHaveText(["anna", "milo", "vb2007"]);
 
-  await page.getByLabel("Search by username").fill("ann");
+  // The search matches part of the e-mail address too.
+  const search = page.getByLabel("Search by username or e-mail");
+  await search.fill("MILO@exa");
+  await expect(page.getByText("1 user found")).toBeVisible();
+  await expect(names).toHaveText(["milo"]);
+  await search.fill("nobody");
+  await expect(page.getByText("No username or e-mail address matches that search.")).toBeVisible();
+
+  await search.fill("ann");
   await expect(page.getByText("1 user found")).toBeVisible();
 
   await page.getByRole("button", { name: "anna" }).click();
@@ -136,4 +144,80 @@ test("the admin's view of a user's uploads names them while loading and on failu
   await page.goto(`/admin/users/${api.users[0].id}/uploads`);
   await expect(page.getByText(/^Failed to load this user's uploads: /)).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Uploads" })).toBeVisible();
+});
+
+test("the superuser opens a user's page from the list", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("milo", { usedBytes: 0.5 * GB, count: 4 });
+  const anna = api.hasUser("anna", {
+    usedBytes: 12 * GB,
+    count: 2,
+    suspendedAt: "2026-11-05T09:00:00.000Z",
+    githubLogin: "anna-gh",
+    password: false
+  });
+  api.hasPaste("hello", "anna");
+  api.hasPaste("again", "anna");
+  api.hasShortLink("annas", "https://example.com/", "anna");
+  api.hasUpload("flyer.pdf", { owner: "anna" });
+
+  await page.goto("/admin/users");
+  await expect(
+    page.locator(".row").filter({ hasText: "anna" }).getByText("Suspended")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "anna" }).click();
+  await page.getByRole("link", { name: "View account" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${anna.id}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  // Still in the admin area, so the navbar's Admin key stays lit.
+  await expect(page.locator(".bar__admin")).toHaveAttribute("aria-current", "true");
+  const fact = (label: string) =>
+    page
+      .locator(".fact")
+      .filter({ has: page.locator("dt").getByText(label, { exact: true }) })
+      .locator("dd");
+  await expect(fact("E-mail")).toHaveText(/anna@example\.com\s+\(not confirmed\)/);
+  await expect(fact("Password")).toHaveText("None: logs in with GitHub only");
+  await expect(fact("GitHub")).toHaveText("@anna-gh");
+  await expect(fact("Suspended")).toHaveText(/Since .+: they can't log in\./);
+  await expect(fact("Owns")).toHaveText("2 pastes · 1 short link · 2 uploads");
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toBeVisible();
+
+  // Over the quota: the meter is full and the page says by how much.
+  await expect(page.getByText("12 GB of 10 GB")).toBeVisible();
+  await expect(page.getByText("Over by 2 GB.")).toBeVisible();
+  await page.getByLabel("New quota").fill("20");
+  await page.getByRole("button", { name: "Save quota" }).click();
+  await expect(page.getByText("Quota set to 20 GB.")).toBeVisible();
+  await expect(page.getByText("12 GB of 20 GB")).toBeVisible();
+  await expect(page.getByText("Over by")).toHaveCount(0);
+  expect(anna.uploads).toMatchObject({ quotaBytes: 20 * GB, hasCustomQuota: true });
+  // The details stay once the quota's answer is in.
+  await expect(fact("GitHub")).toHaveText("@anna-gh");
+
+  await page.getByRole("link", { name: "Browse uploads" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "anna's uploads" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+
+  await page.getByRole("link", { name: "All users" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+});
+
+test("a user page's link that leads to no account says so", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+
+  await page.goto("/admin/users/not-an-id");
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  await expect(
+    page.getByText("This link doesn't lead to an account: its ID isn't valid.")
+  ).toBeVisible();
+
+  await page.goto(`/admin/users/${"c".repeat(24)}`);
+  await expect(
+    page.getByText("There's no account with this ID. It may have been deleted.")
+  ).toBeVisible();
+  await page.getByRole("link", { name: "All users" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
 });
