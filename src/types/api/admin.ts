@@ -61,6 +61,23 @@ export interface UploadQuotaResponse extends MessageResponse {
   user: AdminUser;
 }
 
+/** `PATCH /admin/users/:id` (vb2007/vb2007.hu-api#274): 2 to 16 characters once trimmed. */
+export interface RenameUserBody {
+  username: string;
+}
+
+/** `PATCH /admin/users/:id` */
+export interface RenameUserResponse extends MessageResponse {
+  user: AdminUser;
+}
+
+/**
+ * `POST /admin/users/:id/logout` (vb2007/vb2007.hu-api#275): ends the account's session, and so the
+ * superuser's own when it's their account. Also a 200 when they weren't logged in.
+ */
+export interface LogoutUserResponse extends MessageResponse {
+  user: { id: string; username: string };
+}
 /** `PATCH /admin/users/:id/suspension` (vb2007/vb2007.hu-api#273) */
 export interface SetSuspensionBody {
   /** `true` suspends the user and ends their session; `false` lifts the suspension. */

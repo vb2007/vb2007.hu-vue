@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { pasteLanguage } from "@/scripts/pastebin/detect";
 import { languageLabel } from "@/scripts/pastebin/languages";
 import { pasteLink, pastePreview, pasteSize } from "@/scripts/pastebin/paste";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { useClipboard } from "@/composables/useClipboard";
+import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { usePastes } from "@/composables/usePastes";
 import BaseButton from "@/components/ui/BaseButton.vue";
+import ConfirmDeleteButton from "@/components/ui/ConfirmDeleteButton.vue";
+import ListPager from "@/components/ui/ListPager.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 
@@ -34,30 +37,12 @@ const copyLink = (id: string) => {
   return copy(pasteLink(id));
 };
 
-/** Deleting takes two clicks; the armed state wears off if the user moves on. */
-const confirmingId = ref("");
-let confirmTimer: ReturnType<typeof setTimeout> | undefined;
-
-const disarm = () => {
-  clearTimeout(confirmTimer);
-  confirmingId.value = "";
-};
-
-const onDelete = (id: string) => {
-  if (confirmingId.value !== id) {
-    disarm();
-    confirmingId.value = id;
-    confirmTimer = setTimeout(disarm, 4000);
-    return;
-  }
-  disarm();
-  return remove(id);
-};
+const confirmDelete = useConfirmDelete();
+const onDelete = (id: string) => confirmDelete.press(id, () => remove(id));
 
 const toggleSort = () => setSortOrder(sortOrder.value === "desc" ? "asc" : "desc");
 
 onMounted(load);
-onBeforeUnmount(() => clearTimeout(confirmTimer));
 
 /** Called after a new paste is created, so it shows up without a page reload. */
 defineExpose({ refresh: () => goToPage(1) });
@@ -108,53 +93,29 @@ defineExpose({ refresh: () => goToPage(1) });
                   : "Copy link"
             }}
           </BaseButton>
-          <!-- Armed, it turns solid red; the ghost variant's hover fill would wash that out. -->
-          <BaseButton
-            size="sm"
-            :variant="confirmingId === paste._id ? 'primary' : 'ghost'"
-            :error="confirmingId === paste._id"
-            :loading="deletingId === paste._id"
+          <ConfirmDeleteButton
+            :armed="confirmDelete.isArmed(paste._id)"
+            :busy="deletingId === paste._id"
             @click="onDelete(paste._id)"
-          >
-            {{
-              deletingId === paste._id
-                ? "Deleting"
-                : confirmingId === paste._id
-                  ? "Confirm delete"
-                  : "Delete"
-            }}
-          </BaseButton>
+          />
         </div>
       </li>
     </ol>
 
-    <nav v-if="pagination && pagination.pages > 1" class="pager" aria-label="Pages">
-      <BaseButton
-        size="sm"
-        variant="secondary"
-        :disabled="isLoading || page <= 1"
-        @click="goToPage(page - 1)"
-      >
-        Previous
-      </BaseButton>
-      <p class="pager__label">Page {{ page }} of {{ pagination.pages }}</p>
-      <BaseButton
-        size="sm"
-        variant="secondary"
-        :disabled="isLoading || page >= pagination.pages"
-        @click="goToPage(page + 1)"
-      >
-        Next
-      </BaseButton>
-    </nav>
+    <ListPager
+      v-if="pagination"
+      :page="page"
+      :pages="pagination.pages"
+      :disabled="isLoading"
+      @go="goToPage"
+    />
 
     <p class="visually-hidden" role="status">{{ copied ? "Link copied to clipboard" : "" }}</p>
   </StationBoard>
 </template>
 
 <style scoped>
-.toolbar,
-.pager {
+.toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -163,7 +124,6 @@ defineExpose({ refresh: () => goToPage(1) });
 }
 
 .toolbar__count,
-.pager__label,
 .note {
   color: var(--c-ink-soft);
   font-weight: 600;
@@ -227,9 +187,5 @@ defineExpose({ refresh: () => goToPage(1) });
     flex-wrap: nowrap;
     margin-top: 0;
   }
-}
-
-.pager__label {
-  font-variant-numeric: tabular-nums;
 }
 </style>
