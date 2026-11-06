@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { AdminPaths, AdminRoutes } from "@/constants/admin";
 import HomeView from "../views/HomeView.vue";
 
 export const routes: RouteRecordRaw[] = [
@@ -28,16 +29,30 @@ export const routes: RouteRecordRaw[] = [
     name: "upload",
     component: () => import("../views/UploadView.vue")
   },
+  // The admin area: the gate stands in front of every child, and the overview lists the sections
+  // in `ADMIN_SECTIONS` (`src/constants/admin.ts`, with `AdminPaths` and `AdminRoutes`). A new
+  // section is one more child here.
   {
-    path: "/admin",
-    name: "admin",
-    component: () => import("../views/AdminView.vue")
-  },
-  {
-    path: "/admin/users/:id/uploads",
-    name: "admin-user-uploads",
-    component: () => import("../views/AdminUserUploadsView.vue"),
-    props: true
+    path: AdminPaths.overview,
+    component: () => import("../views/AdminAreaView.vue"),
+    children: [
+      {
+        path: "",
+        name: AdminRoutes.overview,
+        component: () => import("../views/AdminView.vue")
+      },
+      {
+        path: "users",
+        name: AdminRoutes.users,
+        component: () => import("../views/AdminUsersView.vue")
+      },
+      {
+        path: "users/:id/uploads",
+        name: AdminRoutes.userUploads,
+        component: () => import("../views/AdminUserUploadsView.vue"),
+        props: true
+      }
+    ]
   },
   {
     path: "/r/:code",

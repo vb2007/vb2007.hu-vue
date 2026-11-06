@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, useTemplateRef, watch } from "vue";
 import { QUOTA_UNITS, quotaBytesFrom, quotaParts, type QuotaUnit } from "@/scripts/admin/adminUser";
+import { AdminRoutes } from "@/constants/admin";
 import type { AdminUser } from "@/types/api/admin";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { formatDate } from "@/scripts/utility/dateUtil";
@@ -153,7 +154,11 @@ const useDefault = async () => {
         <BaseButton
           size="sm"
           variant="secondary"
-          :to="{ path: `/admin/users/${user.id}/uploads`, state: { uploadsOwner: user.username } }"
+          :to="{
+            name: AdminRoutes.userUploads,
+            params: { id: user.id },
+            state: { uploadsOwner: user.username }
+          }"
         >
           Browse uploads
         </BaseButton>

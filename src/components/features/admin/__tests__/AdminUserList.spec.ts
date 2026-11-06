@@ -42,7 +42,7 @@ describe("AdminUserList", () => {
     const wrapper = mount(AdminUserList, { props: { as: "h1" }, global });
     await flushPromises();
 
-    expect(wrapper.find("h1").text()).toBe("Upload quotas");
+    expect(wrapper.find("h1").text()).toBe("Users");
     expect(wrapper.find(".note").text()).toBe("Loading the users…");
 
     respond(listing([anAdminUser("a"), anAdminUser("b")]));
@@ -62,7 +62,7 @@ describe("AdminUserList", () => {
     const wrapper = mount(AdminUserList, { global });
     await flushPromises();
 
-    expect(wrapper.find("h2").text()).toBe("Upload quotas");
+    expect(wrapper.find("h2").text()).toBe("Users");
     expect(wrapper.find(".count").text()).toBe("0 users");
     expect(wrapper.find(".empty").text()).toBe("No accounts yet.");
   });
