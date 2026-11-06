@@ -123,12 +123,8 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
-    /** The hint under a field for a new username. */
-    static usernameHint(min: number, max: number): string {
-      return `${min} to ${max} characters.`;
-    }
-    /** The hint under every new-password field. */
-    static passwordHint(min: number, max: number): string {
+    /** The hint under every new-password field, and the admin's new username field. */
+    static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
     }
     static passwordTooShort(min: number, max: number): string {

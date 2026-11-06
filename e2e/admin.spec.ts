@@ -319,9 +319,11 @@ test("the superuser deletes a user with everything they own", async ({ page, api
   await confirm.click();
 
   await expect(page).toHaveURL(/\/admin\/users$/);
+  // The key went with the page, so the focus moves to what happened.
   await expect(
     page.getByText("anna's account is deleted, with its pastes, short links and uploads.")
   ).toBeVisible();
+  await expect(page.locator(".status--success")).toBeFocused();
   await expect(page.locator(".row__name")).toHaveText(["milo"]);
   expect(api.pastes).toEqual([]);
   expect(api.shortLinks.size).toBe(0);
@@ -350,7 +352,16 @@ test("the superuser's own account can't be deleted, and logging it out ends this
       "This is your account: it ends this session too, so you'll have to log in again."
     )
   ).toBeVisible();
-  await page.getByRole("button", { name: "Log out everywhere" }).click();
+  // Their own session goes too, so it takes a second click; Escape disarms it.
+  const key = page.getByRole("button", { name: "Log out everywhere" });
+  await key.click();
+  const confirm = page.getByRole("button", { name: "Confirm log out" });
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(key).toBeVisible();
+  expect(api.loggedOutUsers).toEqual([]);
+  await key.click();
+  await confirm.click();
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toHaveCount(0);
   expect(api.loggedOutUsers).toEqual([own.id]);

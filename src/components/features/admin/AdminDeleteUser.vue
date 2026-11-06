@@ -4,10 +4,10 @@
  * upload's Delete, then goes back to the Users list, which says so. The superuser's own account
  * can't be deleted, so its row only says that.
  */
-import { onBeforeUnmount, ref } from "vue";
-import { useRouter } from "vue-router";
+import { nextTick, onBeforeUnmount, useTemplateRef } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { AdminRoutes } from "@/constants/admin";
-import { useAdminDelete } from "@/composables/useAdminUserActions";
+import { useAdminDelete, useArmedKey } from "@/composables/useAdminUserActions";
 import type { AdminUser } from "@/types/api/admin";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -16,26 +16,30 @@ import AdminUserAction from "./AdminUserAction.vue";
 
 const props = defineProps<{ user: AdminUser }>();
 
+const route = useRoute();
 const router = useRouter();
 const { isDeleting, deleteError, remove } = useAdminDelete();
+const { armed, press, disarm } = useArmedKey();
+const key = useTemplateRef("key");
 
-/** Deleting takes two clicks; the armed state wears off if the admin moves on. */
-const confirming = ref(false);
-let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+let isGone = false;
+onBeforeUnmount(() => (isGone = true));
+
 const onDelete = async () => {
-  clearTimeout(confirmTimer);
-  if (!confirming.value) {
-    confirming.value = true;
-    confirmTimer = setTimeout(() => (confirming.value = false), 4000);
+  if (!press()) return;
+  const { id, username } = props.user;
+  if (await remove(id)) {
+    // Only from this account's page: the admin may have gone elsewhere while it worked.
+    const isStillHere = !isGone && route.name === AdminRoutes.user && route.params.id === id;
+    if (isStillHere) {
+      await router.push({ name: AdminRoutes.users, state: { deletedUser: username } });
+    }
     return;
   }
-  confirming.value = false;
-  const { username } = props.user;
-  if (await remove(props.user.id)) {
-    await router.push({ name: AdminRoutes.users, state: { deletedUser: username } });
-  }
+  // The key was disabled while it worked, which dropped the focus.
+  await nextTick();
+  key.value?.$el.focus();
 };
-onBeforeUnmount(() => clearTimeout(confirmTimer));
 </script>
 
 <template>
@@ -46,16 +50,18 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       undone.
     </template>
     <template v-if="!user.isSuperuser" #key>
-      <!-- Armed, it turns solid red, like an upload's Delete. -->
+      <!-- Armed, it turns solid red, like an upload's Delete; Escape disarms it. -->
       <BaseButton
+        ref="key"
         size="sm"
-        :variant="confirming ? 'primary' : 'secondary'"
-        :error="confirming"
+        :variant="armed ? 'primary' : 'secondary'"
+        :error="armed"
         :loading="isDeleting"
         @click="onDelete"
+        @keydown.esc="disarm"
       >
         <AppIcon name="trash" :size="16" />
-        {{ isDeleting ? "Deleting" : confirming ? "Confirm delete" : "Delete account" }}
+        {{ isDeleting ? "Deleting" : armed ? "Confirm delete" : "Delete account" }}
       </BaseButton>
     </template>
     <template #panel>

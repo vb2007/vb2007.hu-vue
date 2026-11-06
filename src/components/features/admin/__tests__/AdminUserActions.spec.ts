@@ -15,6 +15,15 @@ enableAutoUnmount(afterEach);
 
 const NOT_LOGGED_IN = "You must be logged in to perform this action.";
 
+/** What a browser does to the focus on a key that disables while it works. */
+const dropFocus = () => (document.activeElement as HTMLElement | null)?.blur();
+
+/** Escape, pressed where the focus is, like a person would. */
+const pressEscape = () =>
+  document.activeElement!.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+  );
+
 let fetchMock: ReturnType<typeof mockFetch>;
 
 beforeEach(() => {
@@ -146,10 +155,12 @@ describe("AdminRenameUser", () => {
     const { wrapper, updated } = await mountRename();
     await open(wrapper);
 
-    fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    const answer = deferResponse(fetchMock);
     await field(wrapper).setValue("milo");
     save(wrapper).element.focus();
     await wrapper.find("form").trigger("submit");
+    dropFocus();
+    answer.respond(jsonResponse(status, { error }));
     await flushPromises();
 
     expect(wrapper.find(".field__error").text()).toBe(error);
@@ -167,15 +178,20 @@ describe("AdminRenameUser", () => {
     const { wrapper } = await mountRename();
     await open(wrapper);
 
-    fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"));
+    const answer = deferResponse(fetchMock);
     await field(wrapper).setValue("milo");
+    save(wrapper).element.focus();
     await wrapper.find("form").trigger("submit");
+    dropFocus();
+    answer.respond(jsonResponse(500, undefined, "Server Error"));
     await flushPromises();
 
     expect(wrapper.find("form .status").text()).toBe("Failed to rename the account: Server Error");
     expect(wrapper.find(".field__error").exists()).toBe(false);
+    // The focus comes back to the key, so Escape still cancels.
+    expect(document.activeElement).toBe(save(wrapper).element);
 
-    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    pressEscape();
     await flushPromises();
     expect(wrapper.find("form").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find(".action__keys button").element);
@@ -196,7 +212,9 @@ describe("AdminRenameUser", () => {
     expect(save(wrapper).text()).toBe("Saving");
     const cancel = wrapper.findAll("form button")[1];
     expect(cancel.attributes("disabled")).toBeDefined();
-    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    field(wrapper).element.focus();
+    pressEscape();
+    await flushPromises();
     expect(wrapper.find("form").exists()).toBe(true);
 
     answer.respond(jsonResponse(200, { user: anAdminUser("a", { username: "milo" }) }));
@@ -218,7 +236,7 @@ describe("AdminRenameUser", () => {
 
 describe("AdminLogoutUser", () => {
   const mountLogout = async (user = anAdminUser("a", { username: "anna" })) =>
-    (await mountWithRouter(AdminLogoutUser, { props: { user } })).wrapper;
+    (await mountWithRouter(AdminLogoutUser, { props: { user }, attachTo: document.body })).wrapper;
 
   it("ends the account's sessions and says so", async () => {
     const wrapper = await mountLogout();
@@ -228,8 +246,11 @@ describe("AdminLogoutUser", () => {
     );
 
     const answer = deferResponse(fetchMock);
+    // Someone else's account goes at once.
+    wrapper.find<HTMLButtonElement>("button").element.focus();
     await wrapper.find("button").trigger("click");
     expect(wrapper.find("button").text()).toBe("Logging out");
+    dropFocus();
 
     answer.respond(
       jsonResponse(200, {
@@ -249,6 +270,8 @@ describe("AdminLogoutUser", () => {
       "anna is logged out everywhere. They can log in again."
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The key was disabled while it worked: the focus comes back to it.
+    expect(document.activeElement).toBe(wrapper.find("button").element);
   });
 
   it("shows a failure", async () => {
@@ -261,6 +284,24 @@ describe("AdminLogoutUser", () => {
     await flushPromises();
 
     expect(wrapper.find(".status--error").text()).toBe("There is no such user with that ID.");
+    expect(document.activeElement).toBe(wrapper.find("button").element);
+  });
+
+  it("arms first on the superuser's own account, and Escape disarms it", async () => {
+    userId.value = "a";
+    const wrapper = await mountLogout();
+    const key = wrapper.find<HTMLButtonElement>("button");
+
+    await key.trigger("click");
+    expect(key.text()).toBe("Confirm log out");
+    expect(key.classes()).toContain("btn--error");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    key.element.focus();
+    pressEscape();
+    await flushPromises();
+    expect(key.text()).toBe("Log out everywhere");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("warns on the superuser's own account, then logs the page out", async () => {
@@ -277,6 +318,8 @@ describe("AdminLogoutUser", () => {
       .mockResolvedValueOnce(jsonResponse(200, { user: { id: "a", username: "anna" } }))
       .mockResolvedValueOnce(jsonResponse(403, { error: NOT_LOGGED_IN }));
     await wrapper.find("button").trigger("click");
+    expect(fetchMock).not.toHaveBeenCalled();
+    await wrapper.find("button").trigger("click");
     await flushPromises();
 
     expect(sent(1)).toMatchObject({ method: "GET", url: "https://api.test/user" });
@@ -287,7 +330,11 @@ describe("AdminLogoutUser", () => {
 
 describe("AdminDeleteUser", () => {
   const mountDelete = (user = anAdminUser("a", { username: "anna" })) =>
-    mountWithRouter(AdminDeleteUser, { props: { user } }, "/admin/users/a");
+    mountWithRouter(
+      AdminDeleteUser,
+      { props: { user }, attachTo: document.body },
+      "/admin/users/a"
+    );
 
   it("arms on the first click, and the armed state wears off", async () => {
     vi.useFakeTimers();
@@ -307,6 +354,34 @@ describe("AdminDeleteUser", () => {
     await flushPromises();
     expect(key.text()).toBe("Delete account");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("disarms with Escape", async () => {
+    const { wrapper } = await mountDelete();
+    const key = wrapper.find<HTMLButtonElement>("button");
+
+    await key.trigger("click");
+    key.element.focus();
+    pressEscape();
+    await flushPromises();
+
+    expect(key.text()).toBe("Delete account");
+    // Armed afresh, it still takes two clicks.
+    await key.trigger("click");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stays on the page the admin went to while it deleted", async () => {
+    const { wrapper, router } = await mountDelete();
+
+    const answer = deferResponse(fetchMock);
+    await wrapper.find("button").trigger("click");
+    await wrapper.find("button").trigger("click");
+    await router.push("/admin/users/b");
+    answer.respond(jsonResponse(200, { message: "User deleted successfully." }));
+    await flushPromises();
+
+    expect(router.currentRoute.value.fullPath).toBe("/admin/users/b");
   });
 
   it("deletes on the second click and goes back to the users with the name", async () => {
@@ -333,15 +408,16 @@ describe("AdminDeleteUser", () => {
   it("stays and shows a failure", async () => {
     const { wrapper, router } = await mountDelete();
 
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(404, { error: "There is no such user with that ID." })
-    );
+    const answer = deferResponse(fetchMock);
     await wrapper.find("button").trigger("click");
     await wrapper.find("button").trigger("click");
+    dropFocus();
+    answer.respond(jsonResponse(404, { error: "There is no such user with that ID." }));
     await flushPromises();
 
     expect(wrapper.find(".status--error").text()).toBe("There is no such user with that ID.");
     expect(wrapper.find("button").text()).toBe("Delete account");
+    expect(document.activeElement).toBe(wrapper.find("button").element);
     expect(router.currentRoute.value.name).toBe(AdminRoutes.user);
   });
 
@@ -361,5 +437,19 @@ describe("AdminDeleteUser", () => {
 
     wrapper.unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("doesn't leave a page it's no longer on", async () => {
+    const { wrapper, router } = await mountDelete();
+
+    const answer = deferResponse(fetchMock);
+    await wrapper.find("button").trigger("click");
+    await wrapper.find("button").trigger("click");
+    const push = vi.spyOn(router, "push");
+    wrapper.unmount();
+    answer.respond(jsonResponse(200, { message: "User deleted successfully." }));
+    await flushPromises();
+
+    expect(push).not.toHaveBeenCalled();
   });
 });

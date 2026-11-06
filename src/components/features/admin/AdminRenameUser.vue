@@ -16,7 +16,7 @@ const props = defineProps<{ user: AdminUser }>();
 /** The renamed account, as the API answered it. */
 const emit = defineEmits<{ updated: [user: AdminUser] }>();
 
-const hint = Messages.Auth.usernameHint(Limits.Username.minLength, Limits.Username.maxLength);
+const hint = Messages.Auth.lengthHint(Limits.Username.minLength, Limits.Username.maxLength);
 
 const { isRenaming, fieldError, renameError, rename } = useAdminRename();
 
@@ -35,6 +35,7 @@ const isUnchanged = computed(() => name.value.trim() === props.user.username);
 
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
+const saveKey = useTemplateRef("saveKey");
 const field = () => form.value!.querySelector("input")!;
 
 const start = async () => {
@@ -66,11 +67,13 @@ const save = async () => {
     saved.value = Messages.Admin.renamed(renamed.username);
     return close();
   }
-  if (!fieldError.value) return;
-  // The API's refusal shows under the field until it's edited.
-  setError("name", fieldError.value);
+  // The API's refusal of the name shows under the field until it's edited.
+  if (fieldError.value) setError("name", fieldError.value);
+  // The Save key was disabled while it worked, which dropped the focus: back to the field the
+  // refusal is about, or to the key, so Escape still cancels.
   await nextTick();
-  field().focus();
+  if (fieldError.value) field().focus();
+  else saveKey.value?.$el.focus();
 };
 </script>
 
@@ -104,6 +107,7 @@ const save = async () => {
         <StatusMessage v-if="renameError" tone="error">{{ renameError }}</StatusMessage>
         <div class="rename__actions">
           <BaseButton
+            ref="saveKey"
             type="submit"
             size="sm"
             :loading="isRenaming"

@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { onScopeDispose, ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
@@ -6,6 +6,37 @@ import { apiRequest } from "@/scripts/api/client";
 import { userId, username } from "@/scripts/authentication/authState";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 import type { AdminUser } from "@/types/api/admin";
+
+/** How long an armed key waits for its second click. */
+export const ARMED_MS = 4000;
+
+/**
+ * A key that takes two clicks, like an upload's Delete: the first arms it, the second goes ahead.
+ * The armed state wears off after `ARMED_MS`, or with `disarm` (Escape on the key).
+ */
+export const useArmedKey = () => {
+  const armed = ref(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const disarm = () => {
+    clearTimeout(timer);
+    armed.value = false;
+  };
+
+  /** A click on the key: returns whether to go ahead, which it does once it was armed. */
+  const press = () => {
+    if (armed.value) {
+      disarm();
+      return true;
+    }
+    armed.value = true;
+    timer = setTimeout(disarm, ARMED_MS);
+    return false;
+  };
+
+  onScopeDispose(disarm);
+  return { armed, press, disarm };
+};
 
 /** Whether `id` is the logged-in superuser's own account. */
 const isOwnAccount = (id: string) => id === userId.value;
