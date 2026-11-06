@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_PASSWORD, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
@@ -275,6 +275,230 @@ test("a user page's link that leads to no account says so", async ({ page, api }
   ).toBeVisible();
   await page.getByRole("link", { name: "All users" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+});
+
+test("the superuser suspends a user after confirming, then lifts it", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const admin = api.hasUser("vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
+  const actions = page.locator(".actions");
+  await expect(actions.getByRole("heading", { level: 3 })).toHaveText([
+    "Uploads",
+    "Rename",
+    "Log out everywhere",
+    "Suspend account",
+    "Delete account"
+  ]);
+
+  // It asks first, and backing out sends nothing.
+  await actions.getByRole("button", { name: "Suspend", exact: true }).click();
+  await expect(page.getByText("Suspend anna? They're logged out at once")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Suspend anna" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Suspend anna" })).toHaveCount(0);
+  await expect(actions.getByRole("button", { name: "Suspend", exact: true })).toBeFocused();
+  expect(anna.suspendedAt).toBeNull();
+
+  await actions.getByRole("button", { name: "Suspend", exact: true }).click();
+  await page.getByRole("button", { name: "Suspend anna" }).click();
+  await expect(actions.getByRole("status")).toHaveText(
+    "User suspended successfully: their session was ended."
+  );
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toBeVisible();
+  await expect(page.locator(".fact--suspended dd")).toHaveText(/Since .+: they can't log in\./);
+  await expect(page.getByRole("button", { name: "Lift suspension" })).toBeFocused();
+  expect(anna.suspendedAt).not.toBeNull();
+
+  // The list says so too.
+  await page.getByRole("link", { name: "All users" }).click();
+  await expect(
+    page.locator(".row").filter({ hasText: "anna" }).getByText("Suspended")
+  ).toBeVisible();
+  await page.goBack();
+
+  await page.getByRole("button", { name: "Lift suspension" }).click();
+  await expect(actions.getByRole("status")).toHaveText("User unsuspended successfully.");
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
+  await expect(page.locator(".fact--suspended")).toHaveCount(0);
+  expect(anna.suspendedAt).toBeNull();
+
+  // The admin's own account can't be suspended, so its row only says so.
+  await page.goto(`/admin/users/${admin.id}`);
+  await expect(page.getByText("The admin's own account can't be suspended.")).toBeVisible();
+  await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
+});
+
+test("a suspended account is logged out and refused, but only after the right password", async ({
+  page,
+  api
+}) => {
+  // Logged in when the suspension came: the session answers as logged out.
+  api.loggedInAs("anna@example.com", "anna");
+  api.hasUser("anna", { suspendedAt: "2026-11-05T09:00:00.000Z" });
+  await page.goto("/account");
+  await expect(page.getByText("Log in to see your account.")).toBeVisible();
+
+  await page.goto("/login");
+  const main = page.getByRole("main");
+  const logIn = main.getByRole("button", { name: "Log in", exact: true });
+  await page.getByLabel("E-mail").fill("anna@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("not-the-password");
+  await logIn.click();
+  await expect(main.getByRole("alert")).toHaveText(
+    "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+  );
+
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await logIn.click();
+  await expect(main.getByRole("alert")).toHaveText(
+    "This account is suspended: it can't log in until the superuser lifts the suspension."
+  );
+  await expect(main).not.toContainText("Login successful!");
+  const cookies = await page.context().cookies();
+  expect(cookies.map((cookie) => cookie.name)).not.toContain("__Host-VB-AUTH");
+});
+
+test("a GitHub login into a suspended account is explained", async ({ page }) => {
+  await page.goto("/login?oauthError=accountSuspended");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension."
+  );
+  await expect(page).toHaveURL("/login");
+});
+
+test("the superuser renames a user and logs them out everywhere", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  api.hasUser("milo");
+  api.hasPaste("hello", "anna");
+
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await expect(page.locator(".action h3")).toHaveText([
+    "Uploads",
+    "Rename",
+    "Log out everywhere",
+    "Suspend account",
+    "Delete account"
+  ]);
+
+  await page.getByRole("button", { name: "Rename" }).click();
+  const field = page.getByLabel("New username");
+  await expect(field).toHaveValue("anna");
+  await expect(field).toBeFocused();
+  const save = page.getByRole("button", { name: "Save username" });
+  await expect(save).toBeDisabled();
+
+  // Checked while it's typed, from the API's limits.
+  await field.fill("a".repeat(17));
+  await expect(
+    page.getByText("The username's too long: it must be between 2 and 16 characters.")
+  ).toBeVisible();
+
+  // Another account's name, in another case, is taken: the API says so under the field.
+  await field.fill("MILO");
+  await save.click();
+  await expect(page.getByText("This username is already taken.")).toBeVisible();
+  await expect(field).toBeFocused();
+
+  await field.fill(" Annabel ");
+  await save.click();
+  await expect(page.getByText("Renamed to Annabel.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Annabel" })).toBeVisible();
+  await expect(field).toHaveCount(0);
+  expect(anna.username).toBe("Annabel");
+
+  await expect(
+    page.getByText("Ends Annabel's session on every device. They can log in again.")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Log out everywhere" }).click();
+  await expect(
+    page.getByText("Annabel is logged out everywhere. They can log in again.")
+  ).toBeVisible();
+  expect(api.loggedOutUsers).toEqual([anna.id]);
+});
+
+test("the superuser deletes a user with everything they own", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { count: 1 });
+  api.hasUser("milo");
+  api.hasPaste("hello", "anna");
+  api.hasShortLink("annas", "https://example.com/", "anna");
+  api.hasUpload("flyer.pdf", { owner: "anna" });
+
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(
+    page.getByText(
+      "Deletes anna's account with its pastes, short links and uploads. It can't be undone."
+    )
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete account" }).click();
+  // The first click only arms it.
+  const confirm = page.getByRole("button", { name: "Confirm delete" });
+  await expect(confirm).toBeVisible();
+  expect(api.users).toContain(anna);
+  await confirm.click();
+
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  // The key went with the page, so the focus moves to what happened.
+  await expect(
+    page.getByText("anna's account is deleted, with its pastes, short links and uploads.")
+  ).toBeVisible();
+  await expect(page.locator(".status--success")).toBeFocused();
+  await expect(page.locator(".row__name")).toHaveText(["milo"]);
+  expect(api.pastes).toEqual([]);
+  expect(api.shortLinks.size).toBe(0);
+  expect(api.uploads).toEqual([]);
+
+  // Said once: a reload doesn't repeat it.
+  await page.reload();
+  await expect(page.locator(".row__name")).toHaveText(["milo"]);
+  await expect(page.getByText("anna's account is deleted")).toHaveCount(0);
+});
+
+test("the superuser's own account can't be deleted, and logging it out ends this session", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const own = api.hasUser("vb2007", { superuser: true });
+
+  await page.goto(`/admin/users/${own.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+  await expect(page.getByText("The superuser's own account can't be deleted.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete account" })).toHaveCount(0);
+
+  await expect(
+    page.getByText(
+      "This is your account: it ends this session too, so you'll have to log in again."
+    )
+  ).toBeVisible();
+  // Their own session goes too, so it takes a second click; Escape disarms it.
+  const key = page.getByRole("button", { name: "Log out everywhere" });
+  await key.click();
+  const confirm = page.getByRole("button", { name: "Confirm log out" });
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(key).toBeVisible();
+  expect(api.loggedOutUsers).toEqual([]);
+  await key.click();
+  const userChecks: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "GET" && new URL(request.url()).pathname === "/user") {
+      userChecks.push(request.url());
+    }
+  });
+  await confirm.click();
+  await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
+  // The page asks once whether the session is gone, and that answer doesn't ask again.
+  expect(userChecks).toHaveLength(1);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toHaveCount(0);
+  expect(api.loggedOutUsers).toEqual([own.id]);
 });
 
 test("the superuser finds pastes, opens them and deletes one", async ({ page, api }) => {

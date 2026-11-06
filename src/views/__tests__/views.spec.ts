@@ -38,6 +38,7 @@ import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
 import { ADMIN_SECTIONS } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
 import { MAX_ADDRESS } from "@/scripts/utility/text";
@@ -243,6 +244,30 @@ describe("views", () => {
     expect(wrapper.findComponent(AdminPasteList).props("as")).toBe("h1");
     expect(wrapper.find("h1").text()).toBe("Pastes");
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
+  it("AdminUsersView says which account was deleted, once", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    asSuperuser();
+    const noticeFrom = async () => {
+      const { wrapper } = await mountWithRouter(AdminUsersView);
+      return wrapper.findComponent(AdminUserList).props("notice");
+    };
+
+    try {
+      window.history.replaceState({ deletedUser: "anna", kept: 1 }, "");
+      expect(await noticeFrom()).toBe(Messages.Admin.userDeleted("anna"));
+      // Dropped from the entry, so a reload doesn't say it again; the rest of the state stays.
+      expect(window.history.state).toEqual({ deletedUser: undefined, kept: 1 });
+      expect(await noticeFrom()).toBe("");
+
+      window.history.replaceState({ deletedUser: 7 }, "");
+      expect(await noticeFrom()).toBe("");
+      window.history.replaceState(null, "");
+      expect(await noticeFrom()).toBe("");
+    } finally {
+      window.history.replaceState(null, "");
+    }
   });
 
   it("AdminAreaView changes admin pages with the route fade", async () => {

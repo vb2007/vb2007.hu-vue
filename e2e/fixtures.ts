@@ -35,6 +35,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
+ * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
+ * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
  * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
@@ -52,6 +54,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
  * cdn answers a private file without a link that's still live with a 404. Public links stay plain.
+ * The admin can rename a `hasUser(...)` account (what it owns goes along), log it out (`api.loggedOutUsers` lists the ids; the
+ * admin's own row, `superuser: true`, ends this session too) and delete it with what it owns (the admin's own row answers 409).
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
  * never reach a real server. Add a case to `respond` when the app starts calling a new endpoint.
@@ -290,6 +294,8 @@ export class MockApi {
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
+  /** The ids `POST /admin/users/:id/logout` was asked for. */
+  readonly loggedOutUsers: string[] = [];
   /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
   private readonly userPendingEmails = new Map<string, string>();
   /** What `PATCH /user/password` checks the current password against, and changes. */
@@ -374,6 +380,8 @@ export class MockApi {
    * Adds an account to the admin list; `quotaBytes` makes it a custom quota, `suspendedAt` suspends
    * it, `githubLogin` links GitHub and `password: false` makes it a GitHub-only account;
    * `emailVerified` confirms its address and `pendingEmail` leaves a change waiting for its code.
+   * `superuser` marks the admin's own row, which the API won't suspend. It also gets the id
+   * `loggedInAs` gives, so logging it out ends this session; the API won't delete it.
    */
   hasUser(
     username: string,
@@ -384,6 +392,7 @@ export class MockApi {
       suspendedAt = null,
       githubLogin,
       password = true,
+      superuser = false,
       emailVerified = false,
       pendingEmail
     }: {
@@ -393,17 +402,18 @@ export class MockApi {
       suspendedAt?: string | null;
       githubLogin?: string;
       password?: boolean;
+      superuser?: boolean;
       emailVerified?: boolean;
       pendingEmail?: string;
     } = {}
   ) {
     const user: MockAdminUser = {
-      id: `${this.users.length + 1}`.padStart(24, "b"),
+      id: superuser ? MOCK_USER_ID : `${this.users.length + 1}`.padStart(24, "b"),
       username,
       email: `${username}@example.com`,
       // Each account is a day newer than the last, so sorting by date is deterministic.
       createdAt: new Date(Date.UTC(2026, 0, 1 + this.users.length)).toISOString(),
-      isSuperuser: false,
+      isSuperuser: superuser,
       suspendedAt,
       uploads: {
         usedBytes,
@@ -653,6 +663,9 @@ export class MockApi {
       return route.fulfill({ status: response.status, headers, json: response.body });
     }
 
+    // Suspending ends the account's session, like the API's: it answers as logged out from then on.
+    if (this.user && this.isSuspended(this.user.email)) this.user = null;
+
     const cookie = (await request.headerValue("cookie")) ?? "";
     const sentSession = cookie.match(/(?:^|;\s*)__Host-VB-AUTH=([^;]+)/)?.[1];
     const response =
@@ -702,6 +715,7 @@ export class MockApi {
       newPassword?: string;
       username?: string;
       token?: string;
+      suspended?: unknown;
     } | null,
     query: URLSearchParams
   ): MockResponse | undefined {
@@ -745,13 +759,24 @@ export class MockApi {
     if (userUploadsRoute) {
       return this.listUserUploads(decodeURIComponent(userUploadsRoute[1]), query);
     }
-    const adminUserRoute = endpoint.match(/^GET \/admin\/users\/([^/]+)$/);
+    const adminUserRoute = endpoint.match(/^(GET|PATCH|DELETE) \/admin\/users\/([^/]+)$/);
     if (adminUserRoute) {
-      return this.adminUser(decodeURIComponent(adminUserRoute[1]));
+      const id = decodeURIComponent(adminUserRoute[2]);
+      if (adminUserRoute[1] === "PATCH") return this.renameUser(id, body?.username);
+      if (adminUserRoute[1] === "DELETE") return this.deleteUser(id);
+      return this.adminUser(id);
+    }
+    const logoutRoute = endpoint.match(/^POST \/admin\/users\/([^/]+)\/logout$/);
+    if (logoutRoute) {
+      return this.logoutUser(decodeURIComponent(logoutRoute[1]));
     }
     const quotaRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/upload-quota$/);
     if (quotaRoute) {
       return this.setQuota(decodeURIComponent(quotaRoute[1]), body?.quotaBytes);
+    }
+    const suspensionRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/suspension$/);
+    if (suspensionRoute) {
+      return this.setSuspension(decodeURIComponent(suspensionRoute[1]), body?.suspended);
     }
 
     switch (endpoint) {
@@ -917,6 +942,16 @@ export class MockApi {
         body: {
           error:
             "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+        }
+      };
+    }
+    // Only after the right password, so a wrong one doesn't reveal the suspension.
+    if (this.isSuspended(account.email)) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "This account is suspended: it can't log in until the superuser lifts the suspension."
         }
       };
     }
@@ -1644,6 +1679,81 @@ export class MockApi {
     };
   }
 
+  /** The admin list's account `id`, or what the API answers before it gets there. */
+  private adminTarget(id: string): MockAdminUser | MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
+    return (
+      this.users.find((item) => item.id === id) ?? {
+        status: 404,
+        body: { error: "There is no such user with that ID." }
+      }
+    );
+  }
+
+  /** The login of an account on the admin list, found by its address like `adminUser`. */
+  private accountOf(user: MockAdminUser) {
+    return this.accounts.find((item) => normalizeEmail(item.email) === normalizeEmail(user.email));
+  }
+
+  /**
+   * `PATCH /admin/users/:id` (vb2007/vb2007.hu-api#274): the name is kept trimmed, and another
+   * account's, in any case, is taken. What they own goes along, as it's kept by name here.
+   */
+  private renameUser(id: string, username: unknown): MockResponse {
+    const target = this.adminTarget(id);
+    if ("status" in target) return target;
+    if (typeof username !== "string" || !username) {
+      return { status: 400, body: { error: "You must provide a username." } };
+    }
+    const name = username.trim();
+    if (name.length < 2 || name.length > 16) {
+      const which = name.length < 2 ? "short" : "long";
+      return {
+        status: 400,
+        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
+      };
+    }
+    const account = this.accountOf(target);
+    const taken = [...this.users, ...this.accounts].some(
+      (other) =>
+        other !== target && other !== account && other.username.toLowerCase() === name.toLowerCase()
+    );
+    if (taken) return { status: 409, body: { error: "This username is already taken." } };
+
+    const previous = target.username;
+    for (const paste of this.pastes) if (paste.addedBy === previous) paste.addedBy = name;
+    for (const link of this.shortLinks.values()) if (link.addedBy === previous) link.addedBy = name;
+    for (const [upload, owner] of this.uploadOwners) {
+      if (owner === previous) this.uploadOwners.set(upload, name);
+    }
+    target.username = name;
+    if (account) account.username = name;
+    return { status: 200, body: { message: "Username updated successfully.", user: target } };
+  }
+
+  /**
+   * `POST /admin/users/:id/logout` (vb2007/vb2007.hu-api#275): a 200 whether they were logged in
+   * or not. On the superuser's own account it ends this session too.
+   */
+  private logoutUser(id: string): MockResponse {
+    const target = this.adminTarget(id);
+    if ("status" in target) return target;
+    this.loggedOutUsers.push(id);
+    if (this.user && this.accountOf(target) === this.user) {
+      this.user = null;
+      this.session = "";
+    }
+    return {
+      status: 200,
+      body: {
+        message: "User logged out successfully.",
+        user: { id: target.id, username: target.username }
+      }
+    };
+  }
+
   /**
    * Every paste for the admin, from the same store (vb2007/vb2007.hu-api#277): the owner is `null`
    * when no account has the paste's username, and `q` matches part of the owner's name or of the
@@ -1711,6 +1821,30 @@ export class MockApi {
     };
   }
 
+  /**
+   * `DELETE /admin/users/:id` (vb2007/vb2007.hu-api#276): the account leaves the list and the
+   * logins, with its pastes, short links and uploads. Never the superuser's own.
+   */
+  private deleteUser(id: string): MockResponse {
+    const target = this.adminTarget(id);
+    if ("status" in target) return target;
+    if (target.isSuperuser) {
+      return { status: 409, body: { error: "The superuser's own account can't be deleted." } };
+    }
+    const name = target.username;
+    this.users.splice(this.users.indexOf(target), 1);
+    const account = this.accountOf(target);
+    if (account) this.accounts.splice(this.accounts.indexOf(account), 1);
+    const kept = this.pastes.filter((paste) => paste.addedBy !== name);
+    this.pastes.splice(0, this.pastes.length, ...kept);
+    for (const [code, link] of this.shortLinks) {
+      if (link.addedBy === name) this.shortLinks.delete(code);
+    }
+    const keptUploads = this.uploads.filter((upload) => this.uploadOwners.get(upload.id) !== name);
+    this.uploads.splice(0, this.uploads.length, ...keptUploads);
+    return { status: 200, body: { message: "User deleted successfully." } };
+  }
+
   private setQuota(id: string, quotaBytes: number | null | undefined) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
@@ -1730,6 +1864,41 @@ export class MockApi {
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
     return { status: 200, body: { message: "Upload quota updated successfully.", user } };
+  }
+
+  /** Whether the `hasUser(...)` account at `email` is suspended. */
+  private isSuspended(email: string) {
+    return this.users.some(
+      (user) => user.suspendedAt && normalizeEmail(user.email) === normalizeEmail(email)
+    );
+  }
+
+  /**
+   * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
+   * the first `suspendedAt`, and the superuser's row answers 409.
+   */
+  private setSuspension(id: string, suspended: unknown): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
+    const user = this.users.find((item) => item.id === id);
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
+    if (typeof suspended !== "boolean") {
+      return { status: 400, body: { error: "suspended must be true or false." } };
+    }
+    if (user.isSuperuser) {
+      return { status: 409, body: { error: "The superuser's account can't be suspended." } };
+    }
+    user.suspendedAt = suspended ? (user.suspendedAt ?? new Date(this.now()).toISOString()) : null;
+    return {
+      status: 200,
+      body: {
+        message: suspended
+          ? "User suspended successfully: their session was ended."
+          : "User unsuspended successfully.",
+        user
+      }
+    };
   }
 
   /**
