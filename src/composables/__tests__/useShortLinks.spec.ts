@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
 import { SHORT_LINKS_PER_PAGE, useShortLinks } from "@/composables/useShortLinks";
 
 const link = (code: string) => ({
@@ -51,6 +52,42 @@ describe("useShortLinks", () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain("limit=5");
     expect(list.errorMessage.value).toBe("Failed to load your short links: 500");
+  });
+
+  it("refresh drops the search and loads page 1 once", async () => {
+    vi.useFakeTimers();
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123")], 2, 2))
+      .mockResolvedValueOnce(listing([link("new1"), link("abc123")]));
+    const list = useShortLinks();
+    list.query.value = "abc";
+    await list.goToPage(2);
+
+    await list.refresh();
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
+
+    expect(list.query.value).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://api.test/shortenUrls?limit=10&page=1&sortBy=addedOn&sortOrder=desc"
+    );
+  });
+
+  it("forgets a failed delete at the next load", async () => {
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123")]))
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: "You can only delete URLs created with your account." })
+      )
+      .mockResolvedValueOnce(listing([link("abc123")]));
+    const list = useShortLinks();
+    await list.load();
+
+    await list.remove("abc123");
+    expect(list.deleteError.value.code).toBe("abc123");
+
+    await list.load();
+    expect(list.deleteError.value).toEqual({ code: "", message: "" });
   });
 
   it("steps back a page when deleting its last link", async () => {

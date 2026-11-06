@@ -186,26 +186,36 @@ describe("ShortLinkList", () => {
     expect(codes(wrapper)).toEqual(["def456"]);
   });
 
-  it("shows the API's text when a delete is refused", async () => {
+  it("shows a refused delete on its row until the next load", async () => {
     fetchMock
-      .mockResolvedValueOnce(listing([link("abc123")]))
+      .mockResolvedValueOnce(listing([link("abc123"), link("def456")], { pages: 2, total: 12 }))
       .mockResolvedValueOnce(
         jsonResponse(403, { error: "You can only delete URLs created with your account." })
-      );
+      )
+      .mockResolvedValueOnce(listing([link("old1")], { page: 2, pages: 2, total: 12 }));
     const { wrapper } = await mountWithRouter(ShortLinkList);
     await flushPromises();
+    const rows = () => wrapper.findAll(".link");
 
-    await buttonNamed(wrapper, "Delete").trigger("click");
-    await buttonNamed(wrapper, "Confirm delete").trigger("click");
+    await buttonNamed(wrapper, "Delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe(
+    expect(rows()[0].find('[role="alert"]').text()).toBe(
       "You can only delete URLs created with your account."
     );
-    expect(codes(wrapper)).toEqual(["abc123"]);
+    expect(rows()[1].find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
+    expect(codes(wrapper)).toEqual(["abc123", "def456"]);
+    expect(wrapper.find('[role="status"]').text()).toBe("");
+
+    await buttonNamed(wrapper, "Next").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
-  it("drops a link that was gone already, and says so", async () => {
+  it("drops a link that was gone already, and names it above the list", async () => {
     fetchMock
       .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
       .mockResolvedValueOnce(jsonResponse(404, { error: "The shortened URL cannot be found." }))
@@ -213,25 +223,187 @@ describe("ShortLinkList", () => {
     const { wrapper } = await mountWithRouter(ShortLinkList);
     await flushPromises();
 
-    await buttonNamed(wrapper, "Delete").trigger("click");
-    await buttonNamed(wrapper, "Confirm delete").trigger("click");
+    await buttonNamed(wrapper, "Delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[role="alert"]').text()).toBe("The shortened URL cannot be found.");
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "abc123: The shortened URL cannot be found."
+    );
+    expect(wrapper.find(".link [role='alert']").exists()).toBe(false);
     expect(codes(wrapper)).toEqual(["def456"]);
   });
 
-  it("refresh reloads the first page", async () => {
+  it("deletes two links side by side", async () => {
+    let respondFirst!: (response: Response) => void;
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123"), link("def456"), link("ghi789")]))
+      .mockReturnValueOnce(new Promise((resolve) => (respondFirst = resolve)))
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Shortened URL deleted successfully." }))
+      .mockResolvedValueOnce(listing([link("abc123"), link("ghi789")]))
+      .mockResolvedValueOnce(listing([link("ghi789")]));
+    const { wrapper } = await mountWithRouter(ShortLinkList);
+    await flushPromises();
+    const deleteLabels = () =>
+      wrapper.findAll("[data-delete]").map((button) => button.text().split(" ")[0]);
+
+    await buttonNamed(wrapper, "Delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
+    await buttonNamed(wrapper, "Delete def456").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete def456").trigger("click");
+    await flushPromises();
+
+    expect(codes(wrapper)).toEqual(["abc123", "ghi789"]);
+    expect(deleteLabels()).toEqual(["Deleting", "Delete"]);
+
+    respondFirst(jsonResponse(200, { message: "Shortened URL deleted successfully." }));
+    await flushPromises();
+
+    expect(codes(wrapper)).toEqual(["ghi789"]);
+    expect(deleteLabels()).toEqual(["Delete"]);
+  });
+
+  describe("after a delete", () => {
+    const deleteVia = async (wrapper: VueWrapper, code: string) => {
+      await buttonNamed(wrapper, `Delete ${code}`).trigger("click");
+      const confirm = buttonNamed(wrapper, `Confirm delete ${code}`);
+      (confirm.element as HTMLElement).focus();
+      await confirm.trigger("click");
+      await flushPromises();
+    };
+    const ok = () => jsonResponse(200, { message: "Shortened URL deleted successfully." });
+
+    it("focuses the delete key that took the row's place, and announces it", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([link("def456")]));
+      const { wrapper } = await mountWithRouter(ShortLinkList, { attachTo: document.body });
+      await flushPromises();
+
+      await deleteVia(wrapper, "abc123");
+
+      expect(document.activeElement?.textContent).toContain("Delete def456");
+      expect(wrapper.find('[role="status"]').text()).toBe("Deleted abc123.");
+      wrapper.unmount();
+    });
+
+    it("focuses the row above when the last row went", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([link("abc123")]));
+      const { wrapper } = await mountWithRouter(ShortLinkList, { attachTo: document.body });
+      await flushPromises();
+
+      await deleteVia(wrapper, "def456");
+
+      expect(document.activeElement?.textContent).toContain("Delete abc123");
+      wrapper.unmount();
+    });
+
+    it("focuses the count when no row is left", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([]));
+      const { wrapper } = await mountWithRouter(ShortLinkList, { attachTo: document.body });
+      await flushPromises();
+
+      await deleteVia(wrapper, "abc123");
+
+      expect(document.activeElement).toBe(wrapper.find(".count").element);
+      expect(wrapper.find(".count").text()).toBe("0 links");
+      wrapper.unmount();
+    });
+
+    it("leaves focus alone when it moved on meanwhile", async () => {
+      let respond!: (response: Response) => void;
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockReturnValueOnce(new Promise((resolve) => (respond = resolve)))
+        .mockResolvedValueOnce(listing([link("def456")]));
+      const { wrapper } = await mountWithRouter(ShortLinkList, { attachTo: document.body });
+      await flushPromises();
+      const search = wrapper.find('input[type="search"]').element as HTMLInputElement;
+
+      await buttonNamed(wrapper, "Delete abc123").trigger("click");
+      await buttonNamed(wrapper, "Confirm delete abc123").trigger("click");
+      search.focus();
+      respond(ok());
+      await flushPromises();
+
+      expect(document.activeElement).toBe(search);
+      wrapper.unmount();
+    });
+
+    it("a copy replaces the announcement", async () => {
+      fetchMock
+        .mockResolvedValueOnce(listing([link("abc123"), link("def456")]))
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(listing([link("def456")]));
+      const { wrapper } = await mountWithRouter(ShortLinkList);
+      await flushPromises();
+
+      await deleteVia(wrapper, "abc123");
+      vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error("denied"));
+      await buttonNamed(wrapper, "Copy link def456").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find('[role="status"]').text()).toBe("Copy failed");
+    });
+  });
+
+  it("offers to try again when the first load fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(500))
+      .mockResolvedValueOnce(listing([link("abc123")]));
+    const { wrapper } = await mountWithRouter(ShortLinkList);
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe("Failed to load your short links: 500");
+    await buttonNamed(wrapper, "Try again").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(buttonNamed(wrapper, "Try again")).toBeUndefined();
+    expect(codes(wrapper)).toEqual(["abc123"]);
+  });
+
+  it("dims the rows while another page loads", async () => {
+    let respond!: (response: Response) => void;
+    fetchMock
+      .mockResolvedValueOnce(listing([link("abc123")], { pages: 2, total: 11 }))
+      .mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
+    const { wrapper } = await mountWithRouter(ShortLinkList);
+    await flushPromises();
+    expect(wrapper.find(".links").attributes("aria-busy")).toBeUndefined();
+
+    await buttonNamed(wrapper, "Next").trigger("click");
+
+    expect(wrapper.find(".links").attributes("aria-busy")).toBe("true");
+    respond(listing([link("old1")], { page: 2, pages: 2, total: 11 }));
+    await flushPromises();
+    expect(wrapper.find(".links").attributes("aria-busy")).toBeUndefined();
+  });
+
+  it("refresh drops the search and reloads the first page", async () => {
+    vi.useFakeTimers();
     fetchMock
       .mockResolvedValueOnce(listing([link("old1")], { page: 2, pages: 2, total: 11 }))
       .mockResolvedValueOnce(listing([link("new1"), link("abc123")], { pages: 2, total: 12 }));
     const { wrapper } = await mountWithRouter(ShortLinkList);
     await flushPromises();
+    await wrapper.find('input[type="search"]').setValue("old");
 
     await (wrapper.vm as unknown as { refresh: () => Promise<void> }).refresh();
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
     await flushPromises();
 
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toContain("page=1");
+    expect(fetchMock.mock.calls[1][0]).not.toContain("q=");
+    expect((wrapper.find('input[type="search"]').element as HTMLInputElement).value).toBe("");
     expect(wrapper.find(".count").text()).toBe("12 links");
   });
 });

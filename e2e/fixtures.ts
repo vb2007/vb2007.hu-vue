@@ -35,7 +35,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
- * Logging in, setting and changing the password set a fresh `VB-AUTH` cookie, like the API; a request that carries an older one is
+ * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
@@ -52,7 +52,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
  * `GET /admin/short-urls` lists every account's links from the same store for the superuser, with a `null` owner for an `addedBy` no account has.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
- * routes added later take precedence over this one.
+ * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
+ * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
+ * cdn answers a private file without a link that's still live with a 404. Public links stay plain.
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
  * never reach a real server. Add a case to `respond` when the app starts calling a new endpoint.
@@ -90,7 +92,7 @@ export interface MockAdminUser {
   uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
 }
 
-/** `newSession` sets a fresh `VB-AUTH` cookie and retires the previous one. */
+/** `newSession` sets a fresh `__Host-VB-AUTH` cookie and retires the previous one. */
 type MockResponse = { status: number; body?: unknown; location?: string; newSession?: boolean };
 
 /**
@@ -295,7 +297,7 @@ export class MockApi {
   private readonly userPendingEmails = new Map<string, string>();
   /** What `PATCH /user/password` checks the current password against, and changes. */
   password = MOCK_PASSWORD;
-  /** The only `VB-AUTH` value still accepted; each new session replaces it. */
+  /** The only `__Host-VB-AUTH` value still accepted; each new session replaces it. */
   private session = "";
   private sessionCount = 0;
   /** Registrations waiting for their code, by address: only the code, like the API's (vb2007/vb2007.hu-api#295). */
@@ -638,7 +640,15 @@ export class MockApi {
     const url = new URL(request.url());
     if (url.origin !== this.cdnOrigin) this.apiOrigin = url.origin;
     if (url.origin === this.cdnOrigin && url.pathname.startsWith("/useruploads/")) {
-      return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL });
+      const upload = this.uploads.find((item) => new URL(item.url).pathname === url.pathname);
+      const expires = Number(url.searchParams.get("expires"));
+      const opens =
+        upload?.visibility === "public" ||
+        (url.searchParams.has("sig") && expires * 1000 > this.now());
+      // The API's access check answers 403, which the cdn's nginx (`cdn.conf`) turns into a 404.
+      return opens
+        ? route.fulfill({ status: 200, contentType: "image/png", body: PIXEL })
+        : route.fulfill({ status: 404 });
     }
 
     if (this.userUploadsHold && /^\/admin\/users\/[^/]+\/uploads$/.test(url.pathname)) {
@@ -652,7 +662,7 @@ export class MockApi {
     }
 
     const cookie = (await request.headerValue("cookie")) ?? "";
-    const sentSession = cookie.match(/(?:^|;\s*)VB-AUTH=([^;]+)/)?.[1];
+    const sentSession = cookie.match(/(?:^|;\s*)__Host-VB-AUTH=([^;]+)/)?.[1];
     const response =
       sentSession && sentSession !== this.session
         ? this.staleSession()
@@ -670,7 +680,7 @@ export class MockApi {
     }
     if (response.newSession) {
       this.session = `e2e-session-${++this.sessionCount}`;
-      const sessionCookie = `VB-AUTH=${this.session}; Path=/; HttpOnly; Secure; SameSite=None`;
+      const sessionCookie = `__Host-VB-AUTH=${this.session}; Path=/; HttpOnly; Secure; SameSite=None`;
       return route.fulfill({
         status: response.status,
         headers: { ...headers, "Set-Cookie": sessionCookie },
@@ -738,7 +748,7 @@ export class MockApi {
       return this.listPastes(decodeURIComponent(listRoute[1]), query);
     }
 
-    const uploadRoute = endpoint.match(/^(PATCH|DELETE) \/upload\/([^/]+)$/);
+    const uploadRoute = endpoint.match(/^(GET|PATCH|DELETE) \/upload\/([^/]+)$/);
     if (uploadRoute) {
       return this.editUpload(uploadRoute[1], decodeURIComponent(uploadRoute[2]), body);
     }
@@ -1475,7 +1485,10 @@ export class MockApi {
       fileSize: part.size,
       visibility: part.visibility === "public" ? "public" : "private"
     });
-    return { status: 201, body: { message: "File uploaded successfully.", upload } };
+    return {
+      status: 201,
+      body: { message: "File uploaded successfully.", upload: this.served(upload) }
+    };
   }
 
   private editUpload(
@@ -1486,13 +1499,29 @@ export class MockApi {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     const index = this.uploads.findIndex((upload) => upload.id === id);
     if (index === -1) return { status: 404, body: { error: "There is no such upload." } };
+    if (method === "GET") {
+      return { status: 200, body: { upload: this.served(this.uploads[index]) } };
+    }
     if (method === "DELETE") {
       this.uploads.splice(index, 1);
       return { status: 200, body: { message: "Upload deleted successfully.", upload: { id } } };
     }
     const upload = this.uploads[index];
     Object.assign(upload, body, { updatedOn: "2026-10-11T08:30:00.000Z" });
-    return { status: 200, body: { message: "Upload updated successfully.", upload } };
+    return {
+      status: 200,
+      body: { message: "Upload updated successfully.", upload: this.served(upload) }
+    };
+  }
+
+  /** An upload as the API answers it: a private one's link is signed for an hour, like `signUploadPath`. */
+  private served(upload: MockUpload): MockUpload {
+    if (upload.visibility === "public") return upload;
+    const expires = Math.floor(this.now() / 1000) + 60 * 60;
+    return {
+      ...upload,
+      url: `${upload.url}?expires=${expires}&sig=${"e2e-signature_".padEnd(43, "0")}`
+    };
   }
 
   /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
@@ -1577,7 +1606,9 @@ export class MockApi {
     return {
       status: 200,
       body: {
-        uploads: matching.slice((page - 1) * limit, page * limit),
+        uploads: matching
+          .slice((page - 1) * limit, page * limit)
+          .map((upload) => this.served(upload)),
         pagination: {
           limit,
           page,
@@ -1681,7 +1712,7 @@ export class MockApi {
 
     let code = this.shortCode;
     for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;
-    this.hasShortLink(code, url, username, new Date().toISOString());
+    this.hasShortLink(code, url, username, new Date(this.now()).toISOString());
     return answer(201, "URL shortened successfully", code);
   }
 
@@ -1723,7 +1754,9 @@ export class MockApi {
         originalUrl: link.target,
         addedOn: link.addedOn
       }));
-    const sorted = sortOrder === "asc" ? owned : owned.reverse();
+    // By date, like the API; links added at the same moment (`hasShortLink`'s default date) keep the order they were added in.
+    const oldestFirst = owned.sort((a, b) => a.addedOn.localeCompare(b.addedOn));
+    const sorted = sortOrder === "asc" ? oldestFirst : oldestFirst.reverse();
     return {
       status: 200,
       body: {

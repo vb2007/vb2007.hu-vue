@@ -18,6 +18,19 @@ describe("UploadLink", () => {
     expect(linkParts("https://cdn.test/u/671234567890abcdefa3f1").tail).toBe("6712…a3f1");
   });
 
+  it("leaves a private link's signature out of the text and the tooltip", () => {
+    const url =
+      "https://cdn.test/useruploads/u1/671234567890abcdefa3f1.png?expires=1790000000&sig=Ab-_9";
+    const wrapper = mount(UploadLink, { props: { url } });
+
+    expect(wrapper.attributes("title")).toBe(
+      "https://cdn.test/useruploads/u1/671234567890abcdefa3f1.png"
+    );
+    expect(wrapper.find(".link__head").text()).toBe("cdn.test/useruploads/u1/");
+    expect(wrapper.find(".link__tail").text()).toBe("6712…a3f1.png");
+    expect(linkParts("https://cdn.test/u/a.png#top").tail).toBe("a.png");
+  });
+
   it("splits a link without folders or protocol too", () => {
     expect(linkParts("http://cdn.test/a.png")).toEqual({ head: "cdn.test/", tail: "a.png" });
     expect(linkParts("a.png")).toEqual({ head: "", tail: "a.png" });

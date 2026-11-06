@@ -30,9 +30,18 @@ export const useShortLinks = (limit = SHORT_LINKS_PER_PAGE) => {
         failure: Messages.ShortUrl.listFailed,
         signal
       }),
-    items: (data) => data.shortUrls
+    items: (data) => data.shortUrls,
+    // A delete's error belongs to the rows it was shown with.
+    onLoad: () => clearError()
   });
-  const { deletingCode, deleteError, remove } = useShortLinkDelete(reloadAfterRemove);
+  const { deleteError, isDeleting, clearError, remove } = useShortLinkDelete(reloadAfterRemove);
+
+  /** Back to page 1 without the search, e.g. so a new link shows at the top. */
+  const refresh = () => {
+    // The search box's own reload then finds the list already loaded without a search.
+    query.value = "";
+    return goToPage(1);
+  };
 
   return {
     links,
@@ -41,10 +50,11 @@ export const useShortLinks = (limit = SHORT_LINKS_PER_PAGE) => {
     query,
     isLoading,
     errorMessage,
-    deletingCode,
     deleteError,
+    isDeleting,
     load,
     goToPage,
+    refresh,
     remove
   };
 };

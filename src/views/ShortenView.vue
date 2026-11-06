@@ -7,8 +7,8 @@ import PageSection from "@/components/layout/PageSection.vue";
 
 const list = useTemplateRef("list");
 
-// The panel only renders its form for logged-in users, so the list is there to refresh.
-const onCreated = () => list.value!.refresh();
+// The list is there while the panel's form is, but a logout during the request takes it away.
+const onCreated = () => list.value?.refresh();
 </script>
 
 <template>

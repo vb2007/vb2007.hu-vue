@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { useShortLinkDelete } from "@/composables/useShortLinkDelete";
 
+const deleted = () => jsonResponse(200, { message: "Shortened URL deleted successfully." });
+
 describe("useShortLinkDelete", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
   let afterRemove: ReturnType<typeof vi.fn<() => Promise<void>>>;
@@ -16,60 +18,95 @@ describe("useShortLinkDelete", () => {
   it("deletes a link by its code, then reloads the list", async () => {
     let respond!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
-    const { deletingCode, deleteError, remove } = useShortLinkDelete(afterRemove);
+    const { isDeleting, deleteError, remove } = useShortLinkDelete(afterRemove);
 
     const pending = remove("a b/c");
-    expect(deletingCode.value).toBe("a b/c");
+    expect(isDeleting("a b/c")).toBe(true);
+    expect(isDeleting("other")).toBe(false);
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/shortenUrl/a%20b%2Fc", {
       method: "DELETE",
       credentials: "include"
     });
 
-    respond(jsonResponse(200, { message: "Shortened URL deleted successfully." }));
+    respond(deleted());
 
     expect(await pending).toBe(true);
     expect(afterRemove).toHaveBeenCalledOnce();
-    expect(deletingCode.value).toBe("");
-    expect(deleteError.value).toBe("");
+    expect(isDeleting("a b/c")).toBe(false);
+    expect(deleteError.value).toEqual({ code: "", message: "" });
   });
 
-  it("shows the API's refusal of someone else's link and keeps the list", async () => {
+  it("runs deletes side by side, each busy until its own answer", async () => {
+    let respondFirst!: (response: Response) => void;
+    let respondSecond!: (response: Response) => void;
+    fetchMock
+      .mockReturnValueOnce(new Promise((resolve) => (respondFirst = resolve)))
+      .mockReturnValueOnce(new Promise((resolve) => (respondSecond = resolve)));
+    const { isDeleting, remove } = useShortLinkDelete(afterRemove);
+
+    const first = remove("one");
+    const second = remove("two");
+    expect([isDeleting("one"), isDeleting("two")]).toEqual([true, true]);
+
+    respondSecond(deleted());
+    await second;
+    expect([isDeleting("one"), isDeleting("two")]).toEqual([true, false]);
+
+    respondFirst(deleted());
+    await first;
+    expect(isDeleting("one")).toBe(false);
+  });
+
+  it("keeps the API's refusal of someone else's link with its code, and the list", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(403, { error: "You can only delete URLs created with your account." })
     );
-    const { deletingCode, deleteError, remove } = useShortLinkDelete(afterRemove);
+    const { isDeleting, deleteError, remove } = useShortLinkDelete(afterRemove);
 
     expect(await remove("abc123")).toBe(false);
 
-    expect(deleteError.value).toBe("You can only delete URLs created with your account.");
+    expect(deleteError.value).toEqual({
+      code: "abc123",
+      message: "You can only delete URLs created with your account."
+    });
     expect(afterRemove).not.toHaveBeenCalled();
-    expect(deletingCode.value).toBe("");
+    expect(isDeleting("abc123")).toBe(false);
     expect(consoleError).toHaveBeenCalled();
   });
 
-  it("reloads the list when the link was gone already, without logging it", async () => {
+  it("reloads the list when the link was gone already, then keeps the error, unlogged", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(404, { error: "The shortened URL cannot be found." })
     );
-    const { deleteError, remove } = useShortLinkDelete(afterRemove);
+    const useDelete = useShortLinkDelete(async () => {
+      // A list clears the error on every load; this one comes after the reload.
+      useDelete.clearError();
+    });
 
-    expect(await remove("abc123")).toBe(false);
+    expect(await useDelete.remove("abc123")).toBe(false);
 
-    expect(deleteError.value).toBe("The shortened URL cannot be found.");
-    expect(afterRemove).toHaveBeenCalledOnce();
+    expect(useDelete.deleteError.value).toEqual({
+      code: "abc123",
+      message: "The shortened URL cannot be found."
+    });
     expect(consoleError).not.toHaveBeenCalled();
   });
 
-  it("falls back to its own text and clears it on the next try", async () => {
+  it("falls back to its own text, clears it on the next try, and on clearError", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(500))
-      .mockResolvedValueOnce(jsonResponse(200, { message: "Shortened URL deleted successfully." }));
-    const { deleteError, remove } = useShortLinkDelete(afterRemove);
+      .mockResolvedValueOnce(deleted())
+      .mockResolvedValueOnce(jsonResponse(500));
+    const { deleteError, clearError, remove } = useShortLinkDelete(afterRemove);
 
     await remove("abc123");
-    expect(deleteError.value).toBe("Failed to delete short link: 500");
+    expect(deleteError.value.message).toBe("Failed to delete short link: 500");
 
     await remove("abc123");
-    expect(deleteError.value).toBe("");
+    expect(deleteError.value.message).toBe("");
+
+    await remove("def456");
+    clearError();
+    expect(deleteError.value).toEqual({ code: "", message: "" });
   });
 });
