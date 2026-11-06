@@ -89,7 +89,8 @@ describe("AdminUserRow", () => {
     expect(wrapper.find('a[href="/admin/users/a/uploads"]').text()).toBe("Browse uploads");
     // The name goes along, so the uploads page can say whose they are before they load.
     expect(wrapper.findComponent(RouterLink).props("to")).toEqual({
-      path: "/admin/users/a/uploads",
+      name: "admin-user-uploads",
+      params: { id: "a" },
       state: { uploadsOwner: "user-a" }
     });
 

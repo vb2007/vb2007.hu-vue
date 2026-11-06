@@ -8,7 +8,7 @@ import {
   userEmail
 } from "@/scripts/authentication/authState";
 import { logout, restoreSession } from "@/scripts/authentication/user";
-import { AdminPaths } from "@/constants/admin";
+import { AdminPaths, AdminRoutes } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -25,7 +25,8 @@ const isMenuOpen = ref(false);
  */
 const adminCurrent = computed(() => {
   if (route.matched[0]?.path !== AdminPaths.overview) return undefined;
-  return route.path === AdminPaths.overview ? "page" : "true";
+  // By name, so `/admin/` (the same page) counts as the overview too.
+  return route.name === AdminRoutes.overview ? "page" : "true";
 });
 
 const closeMenu = () => {

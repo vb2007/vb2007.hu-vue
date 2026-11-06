@@ -7,6 +7,16 @@ export const AdminPaths = {
 } as const;
 
 /**
+ * The names of the admin routes, for links that need params or history state (a page under a
+ * section, such as one user's uploads) and for telling the overview apart from the rest.
+ */
+export const AdminRoutes = {
+  overview: "admin",
+  users: "admin-users",
+  userUploads: "admin-user-uploads"
+} as const;
+
+/**
  * The admin area's sections, in the order the overview lists them. A section exists once its
  * route does, so each is open and draws as an open row of the Tools Directory.
  * Add a section by appending it here, with its path in `AdminPaths` and its route as a child of

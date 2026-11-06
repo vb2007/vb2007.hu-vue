@@ -237,6 +237,22 @@ describe("views", () => {
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
   });
 
+  it("AdminAreaView changes admin pages with the route fade", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    asSuperuser();
+    const { wrapper, router } = await mountWithRouter(AdminAreaView, {}, "/admin");
+    expect(wrapper.findComponent({ name: "Transition" }).props()).toMatchObject({
+      name: "route",
+      mode: "out-in"
+    });
+
+    await router.push("/admin/users");
+    await flushPromises();
+
+    expect(wrapper.findComponent(AdminView).exists()).toBe(false);
+    expect(wrapper.findComponent(AdminUsersView).exists()).toBe(true);
+  });
+
   it("AdminUserUploadsView lists the user's uploads with a way back", async () => {
     const fetchMock = mockFetch();
     fetchMock.mockResolvedValue(jsonResponse(200, { uploads: [], pagination: null }));
