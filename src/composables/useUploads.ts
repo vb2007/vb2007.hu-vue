@@ -147,12 +147,14 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
   });
   onBeforeUnmount(() => clearTimeout(searchTimer));
 
-  // Private links stop working after a while: load the page again for new ones, unless a load
-  // that brings them is already running.
-  useSignedLinkRefresh(
+  // Private links expire: load the page again for new ones, unless a load that brings them is
+  // already running, or an edit is (its row could come back as it was); that one asks after.
+  const { refreshIfDue } = useSignedLinkRefresh(
     () => uploads.value.map((upload) => upload.url),
     () => {
-      if (!isLoading.value) load();
+      if (isLoading.value || busyId.value) return false;
+      load();
+      return true;
     }
   );
 
@@ -176,6 +178,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
     }
     busyId.value = "";
     busyAction.value = "";
+    refreshIfDue();
     return result.ok;
   };
 

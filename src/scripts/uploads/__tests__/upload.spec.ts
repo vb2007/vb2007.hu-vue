@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptFor,
   categoryOf,
+  copiedLinkNote,
   linkExpiresAt,
   sendUpload,
   typeLabel,
@@ -10,6 +11,7 @@ import {
   validateFileName
 } from "@/scripts/uploads/upload";
 import { aFile, anUpload, someUsage } from "@/__tests__/helpers/uploads";
+import { formatTime } from "@/scripts/utility/dateUtil";
 import { mockXhr } from "@/__tests__/helpers/xhr";
 
 const MB = 1024 * 1024;
@@ -43,6 +45,15 @@ describe("linkExpiresAt", () => {
     expect(linkExpiresAt("https://cdn.test/useruploads/u1/a.png")).toBeUndefined();
     expect(linkExpiresAt("https://cdn.test/a.png?expires=soon")).toBeUndefined();
     expect(linkExpiresAt("https://cdn.test/a.png?expires=")).toBeUndefined();
+  });
+});
+
+describe("copiedLinkNote", () => {
+  it("says when a copied signed link expires, and nothing for a plain one", () => {
+    expect(copiedLinkNote("https://cdn.test/a.png?expires=1793995200&sig=x")).toBe(
+      `The copied link expires at ${formatTime(1_793_995_200_000)}.`
+    );
+    expect(copiedLinkNote("https://cdn.test/a.png")).toBe("");
   });
 });
 

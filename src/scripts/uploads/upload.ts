@@ -4,6 +4,7 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { apiUrl, errorMessageFrom } from "@/scripts/api/client";
 import type { BodyOf, ResponseOf } from "@/scripts/api/endpoint";
+import { formatTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import type {
   AllowedUploadType,
@@ -35,13 +36,22 @@ export const categoryOf = (mimeType: string): UploadCategory => {
 export const withoutQuery = (url: string) => url.replace(/[?#].*$/, "");
 
 /**
- * When a signed private upload link stops working, in ms since the epoch, or undefined for a
- * plain one (vb2007/vb2007.hu-api#361).
+ * The query parameter of a signed private upload link (vb2007/vb2007.hu-api#361),
+ * `…/<id><ext>?expires=<unix s>&sig=…`, with the second it expires; a public link is plain.
  */
+const EXPIRES_PARAM = "expires";
+
+/** When a signed private upload link expires, in ms since the epoch, or undefined for a plain one. */
 export const linkExpiresAt = (url: string) => {
   const query = url.match(/\?([^#]*)/)?.[1];
-  const expires = new URLSearchParams(query).get(Limits.UploadLink.expiresParam);
+  const expires = new URLSearchParams(query).get(EXPIRES_PARAM);
   return expires && /^\d+$/.test(expires) ? Number(expires) * 1000 : undefined;
+};
+
+/** Shown after copying a signed link: when that copy expires. "" for a plain link, which doesn't. */
+export const copiedLinkNote = (url: string) => {
+  const at = linkExpiresAt(url);
+  return at === undefined ? "" : `The copied link expires at ${formatTime(at)}.`;
 };
 
 /**

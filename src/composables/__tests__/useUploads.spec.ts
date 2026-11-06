@@ -378,6 +378,31 @@ describe("useUploads", () => {
     vi.useRealTimers();
   });
 
+  it("holds the reload for new links back while an edit runs, then catches up", async () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 10, 6, 12) });
+    const signedFor = (id: string, minutes: number) =>
+      anUpload(id, {
+        url: `https://cdn.test/${id}.png?expires=${Date.now() / 1000 + minutes * 60}&sig=x`
+      });
+    fetchMock.mockResolvedValueOnce(listing([signedFor("a", 10), signedFor("b", 30)]));
+    const { api } = mountComposable(() => useUploads());
+    await api.load();
+
+    const renaming = deferResponse(fetchMock);
+    const renamed = api.rename("b", "new.png");
+    vi.advanceTimersByTime(9 * 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fetchMock.mockResolvedValueOnce(listing([signedFor("a", 60), signedFor("b", 60)]));
+    renaming.respond(jsonResponse(200, { upload: signedFor("b", 60) }));
+    await renamed;
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(lastUrl(fetchMock)).toContain("/uploads?");
+    vi.useRealTimers();
+  });
+
   it("steps back a page after deleting the last upload on it", async () => {
     fetchMock.mockResolvedValueOnce(listing([anUpload("k")], { page: 2, pages: 2, total: 11 }));
     const { api } = mountComposable(() => useUploads());

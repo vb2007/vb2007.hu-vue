@@ -15,8 +15,8 @@ export interface Upload {
   fileSize: number;
   visibility: UploadVisibility;
   /**
-   * `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`. A private one is signed for a while
-   * (`?expires=…&sig=…`, see `Limits.UploadLink`) and opens for anyone who has it until then.
+   * `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`. A private one is signed for an hour
+   * (`?expires=…&sig=…`, see `linkExpiresAt`) and opens for anyone who has it until then.
    */
   url: string;
   uploadedOn: string;
@@ -73,6 +73,11 @@ export interface UploadFileFields {
 export interface UpdateUploadBody {
   originalFileName?: string;
   visibility?: UploadVisibility;
+}
+
+/** `GET /upload/:id`: one upload, e.g. for a new signed link. */
+export interface UploadResponse {
+  upload: Upload;
 }
 
 /** `POST /upload` and `PATCH /upload/:id` */

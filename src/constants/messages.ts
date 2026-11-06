@@ -227,6 +227,8 @@ export class Messages {
     static readonly visibilityFailed: string = "Failed to change visibility";
     static readonly deleteFailed: string = "Failed to delete upload";
     static readonly uploadFailed: string = "Upload failed";
+    /** A finished upload's private link couldn't be signed again. */
+    static readonly renewLinkFailed: string = "Failed to renew the link";
     /** The user stopped the upload; not shown as an error. */
     static readonly cancelled: string = "Cancelled";
     static readonly emptyFile: string = "This file is empty.";

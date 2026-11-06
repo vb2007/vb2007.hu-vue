@@ -2,11 +2,12 @@
 import { computed, ref } from "vue";
 import type { QueueItem } from "@/composables/useUploadQueue";
 import { useClipboard } from "@/composables/useClipboard";
-import { categoryOf } from "@/scripts/uploads/upload";
+import { categoryOf, copiedLinkNote } from "@/scripts/uploads/upload";
 import UploadLink from "./UploadLink.vue";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
+import StatusMessage from "@/components/ui/StatusMessage.vue";
 import UploadProgress from "./UploadProgress.vue";
 import { CATEGORY_ICONS } from "./categoryIcon";
 
@@ -15,9 +16,13 @@ defineEmits<{ cancel: [id: number]; retry: [id: number]; dismiss: [id: number]; 
 
 const { copied, failed, copy } = useClipboard();
 const copiedId = ref(0);
-const copyLink = (item: QueueItem) => {
+/** When the last copied private link expires; stays until the next copy. */
+const copiedNote = ref("");
+const copyLink = async (item: QueueItem) => {
+  const url = item.result!.url;
   copiedId.value = item.id;
-  return copy(item.result!.url);
+  await copy(url);
+  copiedNote.value = copied.value ? copiedLinkNote(url) : "";
 };
 
 const statusText = (item: QueueItem) =>
@@ -109,7 +114,14 @@ const summary = computed(() => {
         </div>
 
         <!-- Arrived: the file's ticket, like a new short link or paste gets. -->
-        <div v-if="item.status === 'done'" class="ticket">
+        <StatusMessage
+          v-if="item.status === 'done' && item.linkError"
+          class="ticket-error"
+          tone="error"
+        >
+          {{ item.linkError }}
+        </StatusMessage>
+        <div v-else-if="item.status === 'done'" class="ticket">
           <a class="ticket__link" :href="item.result!.url" target="_blank" rel="noopener">
             <UploadLink :url="item.result!.url" />
           </a>
@@ -123,11 +135,14 @@ const summary = computed(() => {
                   : "Copy link"
             }}
           </BaseButton>
+          <p v-if="copiedId === item.id && copiedNote" class="ticket__note">{{ copiedNote }}</p>
         </div>
       </li>
     </ol>
 
-    <p class="visually-hidden" role="status">{{ copied ? "Link copied to clipboard" : summary }}</p>
+    <p class="visually-hidden" role="status">
+      {{ copied ? copiedNote || "Link copied to clipboard" : summary }}
+    </p>
   </section>
 </template>
 
@@ -233,8 +248,9 @@ const summary = computed(() => {
 .ticket {
   grid-area: ticket;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2) var(--sp-3);
   margin-top: var(--sp-1);
   padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
   border: var(--edge) dashed var(--c-edge);
@@ -250,6 +266,19 @@ const summary = computed(() => {
   color: var(--c-ink);
   text-decoration-color: var(--c-line);
   text-decoration-thickness: 2px;
+}
+
+/* Under the link and key, on its own line. */
+.ticket__note {
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-error {
+  grid-area: ticket;
 }
 
 @keyframes print {

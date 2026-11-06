@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, useTemplateRef } from "vue";
-import { Limits } from "@/constants/limits";
 import type { UploadVisibility } from "@/types/api/uploads";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -42,8 +41,8 @@ const onDrop = (event: DragEvent) => {
     <p class="visibility-hint">
       {{
         visibility === "private"
-          ? `Only you get a private file's link, and it works for up to ${Limits.UploadLink.validMinutes} minutes.`
-          : "Anyone with the link can open public files."
+          ? "Only you and the admin get the link. Anyone you share it with can open the file until the link expires."
+          : "Anyone with the link can open the file. The link never expires."
       }}
     </p>
 

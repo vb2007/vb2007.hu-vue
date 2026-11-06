@@ -17,11 +17,11 @@ let hidden = false;
 
 const start = (initial: string[] = []) => {
   const urls = ref<string[]>([]);
-  const refresh = vi.fn();
+  const refresh = vi.fn(() => true);
   const scope = effectScope();
-  scope.run(() => useSignedLinkRefresh(() => urls.value, refresh));
+  const { refreshIfDue } = scope.run(() => useSignedLinkRefresh(() => urls.value, refresh))!;
   urls.value = initial;
-  return { urls, refresh, scope };
+  return { urls, refresh, scope, refreshIfDue };
 };
 
 const comeBack = () => document.dispatchEvent(new Event("visibilitychange"));
@@ -91,13 +91,47 @@ describe("useSignedLinkRefresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("doesn't keep asking when links arrive already due, as with a clock that runs ahead", async () => {
+  it("never asks for links that arrive already due, as with a clock that runs ahead", async () => {
     const { refresh } = start([signed(0)]);
     await nextTick();
 
     vi.advanceTimersByTime(120 * MINUTE);
-    expect(refresh).not.toHaveBeenCalled();
     comeBack();
+    window.dispatchEvent(new Event("focus"));
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("asks once per set of links, however often the user comes back", async () => {
+    const { refresh } = start([signed(10)]);
+    await nextTick();
+
+    vi.advanceTimersByTime(10 * MINUTE);
+    comeBack();
+    window.dispatchEvent(new Event("focus"));
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again when a refresh was held back, e.g. once an edit is done", async () => {
+    const { refresh, refreshIfDue } = start([signed(10)]);
+    await nextTick();
+    refresh.mockReturnValueOnce(false);
+
+    vi.advanceTimersByTime(10 * MINUTE);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    refreshIfDue();
+    expect(refresh).toHaveBeenCalledTimes(2);
+    refreshIfDue();
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits out a link further off than a timer can wait at once", async () => {
+    const days = 30 * 24 * 60;
+    const { refresh } = start([signed(days)]);
+    await nextTick();
+
+    vi.advanceTimersByTime(2 ** 31 - 1);
+    expect(refresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(days * MINUTE - SIGNED_LINK_REFRESH_LEAD_MS - (2 ** 31 - 1));
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 

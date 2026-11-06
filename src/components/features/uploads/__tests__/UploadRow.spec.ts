@@ -6,6 +6,11 @@ import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { Upload } from "@/types/api/uploads";
 import { anUpload } from "@/__tests__/helpers/uploads";
+import { formatTime } from "@/scripts/utility/dateUtil";
+
+/** A private link as the API signs it. */
+const EXPIRES = 1_793_995_200;
+const SIGNED = `https://cdn.test/useruploads/user1/u1.png?expires=${EXPIRES}&sig=x`;
 
 const buttonNamed = (wrapper: VueWrapper, name: string) =>
   wrapper.findAll("button").find((button) => button.text().includes(name));
@@ -78,7 +83,7 @@ describe("UploadRow", () => {
     expect(facts).toMatchObject({
       Type: "PNG · image/png",
       Size: `2 kB (${(2048).toLocaleString()} bytes)`,
-      "Who can open it": "Anyone with the link"
+      "Who can open it": "Anyone with the link; it never expires"
     });
     expect(facts.Changed).toBeTruthy();
     expect(details.findComponent(UploadLink).props("url")).toBe(anUpload("u1").url);
@@ -106,49 +111,94 @@ describe("UploadRow", () => {
     const facts = wrapper.findAll(".facts__row").map((row) => row.find("dt").text());
     expect(facts).not.toContain("Changed");
     expect(wrapper.find(".facts").text()).toContain(
-      "Only you, and anyone with its link for up to 60 minutes"
+      "You and the admin, plus anyone you share the link with until it expires"
     );
   });
 
-  it("copies the link and says how long a private one works", async () => {
-    const wrapper = mountRow();
+  it("copies a signed link and shows when the copy expires", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
     await buttonNamed(wrapper, "Copy link")!.trigger("click");
     await flushPromises();
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(anUpload("u1").url);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SIGNED);
     expect(buttonNamed(wrapper, "Copied")).toBeTruthy();
-    expect(wrapper.find("[role=status]").text()).toBe(
-      "Link copied. Anyone with it can open the file for up to 60 minutes."
-    );
+    const note = wrapper.find("[role=status]");
+    expect(note.text()).toBe(`The copied link expires at ${formatTime(EXPIRES * 1000)}.`);
+    expect(note.classes()).not.toContain("visually-hidden");
+  });
 
-    const pub = mountRow(anUpload("u2", { visibility: "public" }));
-    await buttonNamed(pub, "Copy link")!.trigger("click");
+  it("only reads out copying a plain link", async () => {
+    const wrapper = mountRow(anUpload("u2", { visibility: "public" }));
+    expect(wrapper.find("[role=status]").text()).toBe("");
+
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
     await flushPromises();
-    expect(pub.find("[role=status]").text()).toBe("Link copied to clipboard");
+    const status = wrapper.find("[role=status]");
+    expect(status.text()).toBe("Link copied to clipboard");
+    expect(status.classes()).toContain("visually-hidden");
   });
 
   it("names the owner and the admin on someone else's private upload", async () => {
     const wrapper = mountRow(anUpload("u1"), { ownerName: "anna" });
     await wrapper.find(".row__name").trigger("click");
     expect(wrapper.find(".facts").text()).toContain(
-      "Only anna and the admin, and anyone with its link for up to 60 minutes"
-    );
-
-    await buttonNamed(wrapper, "Copy link")!.trigger("click");
-    await flushPromises();
-    expect(wrapper.find("[role=status]").text()).toBe(
-      "Link copied. Anyone with it can open the file for up to 60 minutes."
+      "anna and the admin, plus anyone they share the link with until it expires"
     );
   });
 
-  it("says when copying failed", async () => {
+  it("says when copying failed, and drops the note of an earlier copy", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=status]").text()).not.toBe("");
+
     navigator.clipboard.writeText = vi.fn(() => Promise.reject(new Error("denied")));
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const wrapper = mountRow();
-    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await buttonNamed(wrapper, "Copied")!.trigger("click");
     await flushPromises();
 
     expect(buttonNamed(wrapper, "Copy failed")).toBeTruthy();
+    expect(wrapper.find("[role=status]").text()).toBe("");
+  });
+
+  it("tries the thumbnail again with a new link", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    await wrapper.find(".thumb__img").trigger("error");
+    expect(wrapper.find(".thumb__img").exists()).toBe(false);
+
+    await wrapper.setProps({ upload: anUpload("u1", { url: `${SIGNED}2` }) });
+    expect(wrapper.find(".thumb__img").attributes("src")).toBe(`${SIGNED}2`);
+  });
+
+  it("keeps a playing video where it was when its link is renewed", async () => {
+    const video = anUpload("u1", { mimeType: "video/mp4", extension: ".mp4", url: SIGNED });
+    const wrapper = mountRow(video);
+    await wrapper.find(".row__name").trigger("click");
+    const player = wrapper.find<HTMLVideoElement>("video").element;
+    player.currentTime = 42;
+    Object.defineProperty(player, "paused", { value: false, configurable: true });
+    player.play = vi.fn(() => Promise.resolve());
+
+    await wrapper.setProps({ upload: { ...video, url: `${SIGNED}2` } });
+    expect(player.getAttribute("src")).toBe(`${SIGNED}2`);
+    player.currentTime = 0;
+    player.dispatchEvent(new Event("loadedmetadata"));
+
+    expect(player.currentTime).toBe(42);
+    expect(player.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a paused song paused when its link is renewed", async () => {
+    const song = anUpload("u1", { mimeType: "audio/mpeg", extension: ".mp3", url: SIGNED });
+    const wrapper = mountRow(song);
+    await wrapper.find(".row__name").trigger("click");
+    const player = wrapper.find<HTMLAudioElement>("audio").element;
+    player.play = vi.fn(() => Promise.resolve());
+
+    await wrapper.setProps({ upload: { ...song, url: `${SIGNED}2` } });
+    player.dispatchEvent(new Event("loadedmetadata"));
+
+    expect(player.play).not.toHaveBeenCalled();
   });
 
   it("renames in place: checks the name, saves it and closes the field", async () => {
