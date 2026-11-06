@@ -116,7 +116,8 @@ export const useChangeEmail = () => {
    * API refuses the superuser's address (403) or another account's (409) only here, not when it
    * mails the code, so it doesn't show which addresses have accounts (vb2007/vb2007.hu-api#291).
    * A 403 can also be the session ending (expired, ended by a password reset, or replaced by a
-   * login elsewhere): the refresh then logs the page out, and the account page says so instead.
+   * login elsewhere): the client's own check has then logged the page out (`onSessionRefused`), as
+   * a refresh after a 400 does for one, and the account page says so instead.
    * When the refresh finds the account on the waiting address, the change was confirmed elsewhere
    * (another tab or device), so it counts.
    */
@@ -147,7 +148,8 @@ export const useChangeEmail = () => {
     } else {
       const dropped =
         result.status === HttpStatus.Forbidden || result.status === HttpStatus.Conflict;
-      if (dropped || result.status === HttpStatus.BadRequest) {
+      // An ended session's 403 has logged the page out already (`onSessionRefused`): no refresh.
+      if (isLoggedIn.value && (dropped || result.status === HttpStatus.BadRequest)) {
         // GET /user leaves out an expired change, so a 400 for one takes the code step away too.
         const refreshed = await fetchUserDetails();
         if (dropped && !refreshed) pendingEmail.value = "";

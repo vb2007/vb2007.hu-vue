@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
-import { apiErrorOf, apiRequest } from "@/scripts/api/client";
+import { apiErrorOf, apiRequest, onSessionRefused } from "@/scripts/api/client";
 import {
   emailVerified,
   githubLinked,
@@ -55,9 +55,10 @@ export const fetchUserDetails = async () => {
     // { error }) says so, not a proxy's block page; other failures say nothing about the session.
     const loggedOut = result.status === HttpStatus.Forbidden && apiErrorOf(result) !== undefined;
     if (loggedOut && takesOver()) {
-      const hadSession = isLoggedIn.value;
+      // A later check (e.g. a call's own refresh after `onSessionRefused`'s) keeps the notice.
+      const ended = isLoggedIn.value || sessionEnded.value;
       forgetUser();
-      sessionEnded.value = hadSession;
+      sessionEnded.value = ended;
     }
     return false;
   }
@@ -80,6 +81,17 @@ export const fetchUserDetails = async () => {
   sessionEnded.value = false;
   return true;
 };
+
+// Any other call the API turns away as logged out asks `GET /user` again, whose 403 then logs the
+// page out above, with the session-ended notice. Asking rather than logging out right away ignores
+// an answer to a request sent before the latest login. `GET /user`'s own 403 is handled above, so
+// it doesn't ask again, and a visitor has no session to lose. Refusals that arrive together (e.g.
+// a page's parallel loads) share one check.
+let sessionRecheck: Promise<boolean> | undefined;
+onSessionRefused((endpoint) => {
+  if (endpoint === Endpoints.User.get || !isLoggedIn.value) return;
+  return (sessionRecheck ??= fetchUserDetails().finally(() => (sessionRecheck = undefined)));
+});
 
 let sessionRestore: Promise<void> | undefined;
 
