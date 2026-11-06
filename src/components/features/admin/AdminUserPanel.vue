@@ -8,10 +8,10 @@ import { AdminRoutes } from "@/constants/admin";
 import { useAdminUser } from "@/composables/useAdminUser";
 import { formatDate, formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
-import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import StatusPill from "@/components/ui/StatusPill.vue";
 import AdminQuotaEditor from "./AdminQuotaEditor.vue";
 import AdminQuotaMeter from "./AdminQuotaMeter.vue";
 import AdminUserAction from "./AdminUserAction.vue";
@@ -19,7 +19,8 @@ import AdminUserTags from "./AdminUserTags.vue";
 
 const props = defineProps<{ id: string }>();
 
-const { user, isLoading, errorMessage, load, isSavingQuota, quotaError, setQuota } = useAdminUser();
+const { user, isLoading, errorMessage, canRetry, load, isSavingQuota, quotaError, setQuota } =
+  useAdminUser();
 watch(() => props.id, load, { immediate: true });
 
 const storageTitle = useId();
@@ -47,7 +48,12 @@ const password = computed(() => {
   <StationBoard :title="user?.username ?? 'Account'" as="h1">
     <p v-if="isLoading" class="note">Loading the account…</p>
 
-    <StatusMessage v-else-if="errorMessage" tone="error">{{ errorMessage }}</StatusMessage>
+    <div v-else-if="errorMessage" class="failed">
+      <StatusMessage tone="error">{{ errorMessage }}</StatusMessage>
+      <BaseButton v-if="canRetry" size="sm" variant="secondary" @click="load(id)">
+        Try again
+      </BaseButton>
+    </div>
 
     <div v-else-if="user" class="sheet">
       <div class="summary">
@@ -62,16 +68,16 @@ const password = computed(() => {
           <dt>Username</dt>
           <dd>{{ user.username }}</dd>
         </div>
-        <!-- The badge waits out a change, like on the Account board, so it can't be read as being about the new address. -->
+        <!-- Unlike the Account board's, the badge stays while a change waits: the new address has a
+             row of its own, so it can't be read as being about that one. -->
         <div class="fact">
           <dt>E-mail</dt>
           <dd>
             {{ user.email }}
-            <span v-if="user.emailVerified && !user.pendingEmail" class="badge">
-              <AppIcon name="check" :size="14" />
+            <StatusPill v-if="user.emailVerified" class="badge" tone="ok" icon="check">
               Confirmed
-            </span>
-            <span v-else-if="!user.emailVerified" class="fact__soft">(not confirmed)</span>
+            </StatusPill>
+            <span v-else class="fact__soft">(not confirmed)</span>
           </dd>
         </div>
         <div v-if="user.pendingEmail" class="fact">
@@ -187,6 +193,12 @@ const password = computed(() => {
 }
 
 /* Lays out by the board's width, not the viewport's. */
+.failed {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-4);
+}
+
 .sheet {
   display: grid;
   gap: var(--sp-6);
@@ -249,24 +261,6 @@ const password = computed(() => {
 .fact--suspended dd {
   color: var(--c-danger);
   font-weight: 600;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: 0.125rem var(--sp-2);
-  border: var(--edge) solid currentColor;
-  border-radius: 999px;
-  background: var(--c-ok-wash);
-  color: var(--c-action);
-  font-family: var(--font-board);
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  vertical-align: middle;
 }
 
 @container (min-width: 30rem) {
