@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { linkParts } from "@/scripts/uploads/upload";
+import { linkParts, withoutQuery } from "@/scripts/uploads/upload";
 
-/** A link on one line: the host and folders give way first, the file part always stays readable. */
+/**
+ * A link on one line: the host and folders give way first, the file part always stays readable.
+ * A private link's signature isn't shown, not even in the tooltip; copying keeps it.
+ */
 const props = defineProps<{ url: string }>();
 const parts = computed(() => linkParts(props.url));
 </script>
 
 <template>
-  <span class="link" :title="url">
+  <span class="link" :title="withoutQuery(url)">
     <span class="link__head">{{ parts.head }}</span>
     <span class="link__tail">{{ parts.tail }}</span>
   </span>
