@@ -8,6 +8,8 @@ export class Limits {
   static readonly Paste = class {
     static readonly minLength: number = 2;
     static readonly maxLength: number = 10000;
+    /** How many characters (code points) of a paste `GET /admin/pastes` sends as its preview. */
+    static readonly previewLength: number = 100;
   };
 
   /** Counted after trimming. */
@@ -68,8 +70,8 @@ export class Limits {
   };
 
   /**
-   * The `q` that searches a list of uploads or, for the admin, of users. Counted in UTF-16 units,
-   * untrimmed, like the input's maxlength.
+   * The `q` that searches a list: uploads, short links or, for the admin, users. Counted in UTF-16
+   * units, untrimmed, like the input's maxlength.
    */
   static readonly Search = class {
     static readonly maxLength: number = 100;

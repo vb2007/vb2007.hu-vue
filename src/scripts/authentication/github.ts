@@ -1,3 +1,4 @@
+import { Messages } from "@/constants/messages";
 import { OauthError, type OauthErrorCode } from "@/constants/oauth";
 
 /**
@@ -22,7 +23,8 @@ const OAUTH_ERRORS: Record<OauthErrorCode, string> = {
     "Your session ended before GitHub could be linked. Log in, then link GitHub again.",
   [OauthError.notConfigured]: "GitHub login isn't available right now.",
   [OauthError.passwordRequired]:
-    "Linking GitHub takes your password. Press Link GitHub on this page and enter it there."
+    "Linking GitHub takes your password. Press Link GitHub on this page and enter it there.",
+  [OauthError.accountSuspended]: Messages.Auth.githubAccountSuspended
 };
 
 export const oauthErrorMessage = (code: string) =>

@@ -12,12 +12,19 @@ import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
 import AdminAreaView from "@/views/AdminAreaView.vue";
 import AdminUsersView from "@/views/AdminUsersView.vue";
+import AdminPastesView from "@/views/AdminPastesView.vue";
+import AdminShortLinksView from "@/views/AdminShortLinksView.vue";
+import AdminShortLinkList from "@/components/features/admin/AdminShortLinkList.vue";
 import AdminSystemView from "@/views/AdminSystemView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
+import AdminUploadsView from "@/views/AdminUploadsView.vue";
+import AdminUserView from "@/views/AdminUserView.vue";
+import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
 import ApiErrorView from "@/views/ApiErrorView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
+import AdminPasteList from "@/components/features/admin/AdminPasteList.vue";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
@@ -25,6 +32,7 @@ import LoginForm from "@/components/features/auth/LoginForm.vue";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import PasswordResetForm from "@/components/features/auth/PasswordResetForm.vue";
 import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
+import ShortLinkList from "@/components/features/shorten/ShortLinkList.vue";
 import PasteComposer from "@/components/features/pastebin/PasteComposer.vue";
 import PasteList from "@/components/features/pastebin/PasteList.vue";
 import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
@@ -35,6 +43,7 @@ import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import { Endpoints } from "@/constants/endpoints";
+import { Messages } from "@/constants/messages";
 import { ADMIN_SECTIONS } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
 import { MAX_ADDRESS } from "@/scripts/utility/text";
@@ -77,10 +86,34 @@ describe("views", () => {
     expect(wrapper.findComponent(feature).exists()).toBe(true);
   });
 
-  it("ShortenView uses the panel as the page heading", async () => {
+  it("ShortenView uses the panel as the page heading and shows no list when logged out", async () => {
     const { wrapper } = await mountWithRouter(ShortenView);
 
     expect(wrapper.findComponent(ShortenPanel).props("as")).toBe("h1");
+    expect(wrapper.findComponent(ShortLinkList).exists()).toBe(false);
+    expect(wrapper.find(".workspace").classes()).not.toContain("workspace--split");
+    // A link that lands after a logout has no list to refresh.
+    expect(() => wrapper.findComponent(ShortenPanel).vm.$emit("created")).not.toThrow();
+  });
+
+  it("ShortenView refreshes the list when a link is shortened", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(200, { shortUrls: [], pagination: null }));
+    const { wrapper } = await mountWithRouter(ShortenView);
+    await flushPromises();
+    expect(wrapper.findComponent(ShortLinkList).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.find(".workspace").classes()).toContain("workspace--split");
+    // Views mounted by earlier tests are still alive and load their own lists on login, so count from here.
+    fetchMock.mockClear();
+
+    wrapper.findComponent(ShortenPanel).vm.$emit("created");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/shortenUrls?");
+    expect(fetchMock.mock.calls[0][0]).toContain("page=1");
   });
 
   it("PastebinView shows the composer as the page heading and no list when logged out", async () => {
@@ -230,6 +263,72 @@ describe("views", () => {
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
   });
 
+  it("AdminAreaView shows the superuser the pastes board as the page heading", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { pastes: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/pastes");
+
+    expect(wrapper.findComponent(AdminPastesView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.findComponent(AdminPasteList).props("as")).toBe("h1");
+    expect(wrapper.find("h1").text()).toBe("Pastes");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
+  it("AdminUsersView says which account was deleted, once", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    asSuperuser();
+    const noticeFrom = async () => {
+      const { wrapper } = await mountWithRouter(AdminUsersView);
+      return wrapper.findComponent(AdminUserList).props("notice");
+    };
+
+    try {
+      window.history.replaceState({ deletedUser: "anna", kept: 1 }, "");
+      expect(await noticeFrom()).toBe(Messages.Admin.userDeleted("anna"));
+      // Dropped from the entry, so a reload doesn't say it again; the rest of the state stays.
+      expect(window.history.state).toEqual({ deletedUser: undefined, kept: 1 });
+      expect(await noticeFrom()).toBe("");
+
+      window.history.replaceState({ deletedUser: 7 }, "");
+      expect(await noticeFrom()).toBe("");
+      window.history.replaceState(null, "");
+      expect(await noticeFrom()).toBe("");
+    } finally {
+      window.history.replaceState(null, "");
+    }
+  });
+
+  it("AdminAreaView shows the superuser every upload, the list as the page heading", async () => {
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(200, { uploads: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/uploads");
+    await flushPromises();
+
+    expect(wrapper.findComponent(AdminUploadsView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
+    expect(wrapper.findComponent(UploadList).props()).toMatchObject({
+      listing: { kind: "site" },
+      as: "h1"
+    });
+    expect(wrapper.find("h1").text()).toBe("Uploads");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/api\.test\/admin\/uploads\?/);
+  });
+
+  it("AdminAreaView shows the superuser the short links board as the page heading", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { shortUrls: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/short-links");
+
+    expect(wrapper.findComponent(AdminShortLinksView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.findComponent(AdminShortLinkList).props("as")).toBe("h1");
+    expect(wrapper.find("h1").text()).toBe("Short links");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
   it("AdminAreaView shows the superuser the system tools under one heading", async () => {
     mockFetch().mockResolvedValue(
       jsonResponse(200, {
@@ -293,6 +392,20 @@ describe("views", () => {
     expect(wrapper.findComponent(AdminUsersView).exists()).toBe(true);
   });
 
+  it("AdminUserView shows the account from the route with a way back to the users", async () => {
+    mockFetch().mockResolvedValue(
+      jsonResponse(404, { error: "There is no such user with that ID." })
+    );
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminUserView, { props: { id: "u9" } });
+    await flushPromises();
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
+    expect(wrapper.find('a[href="/admin/users"]').text()).toBe("All users");
+    expect(wrapper.findComponent(AdminUserPanel).props("id")).toBe("u9");
+    expect(wrapper.find("h1").text()).toBe("Account");
+  });
+
   it("AdminUserUploadsView lists the user's uploads with a way back", async () => {
     const fetchMock = mockFetch();
     fetchMock.mockResolvedValue(jsonResponse(200, { uploads: [], pagination: null }));
@@ -304,7 +417,7 @@ describe("views", () => {
     expect(wrapper.find('a[href="/admin/users"]').text()).toBe("All users");
     expect(wrapper.findComponent(UploadList).props()).toMatchObject({
       listing: {
-        endpoint: Endpoints.Admin.userUploads,
+        kind: "user",
         params: { id: "u 9" },
         ownerHint: undefined
       },

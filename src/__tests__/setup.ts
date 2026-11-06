@@ -10,6 +10,7 @@ import {
   pendingEmail,
   sessionEnded,
   userEmail,
+  userId,
   username
 } from "@/scripts/authentication/authState";
 
@@ -43,6 +44,7 @@ afterEach(() => {
   localStorage.clear();
   isLoggedIn.value = false;
   userEmail.value = "";
+  userId.value = "";
   username.value = "";
   isSessionChecked.value = false;
   isSuperuser.value = false;

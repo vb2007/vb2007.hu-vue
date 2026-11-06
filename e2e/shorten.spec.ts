@@ -58,7 +58,7 @@ test("a URL over 2000 characters is refused before it's sent", async ({ page, ap
   api.shortenReturns("abc123");
   const sent: string[] = [];
   page.on("request", (request) => {
-    if (new URL(request.url()).pathname === "/shortenUrl/create") sent.push(request.url());
+    if (new URL(request.url()).pathname === "/shortenUrl") sent.push(request.url());
   });
   await page.goto("/shorten");
   const url = page.getByLabel("URL");

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { AdminPaths } from "@/constants/admin";
-import { Endpoints } from "@/constants/endpoints";
 import type { UploadListing } from "@/composables/useUploads";
 import AdminPage from "@/components/features/admin/AdminPage.vue";
 import UploadList from "@/components/features/uploads/UploadList.vue";
@@ -19,7 +18,7 @@ const ownerFromState = () => {
 
 // Read again per user: by the time the id changes, the history state is the new entry's.
 const listing = computed<UploadListing>(() => ({
-  endpoint: Endpoints.Admin.userUploads,
+  kind: "user",
   params: { id: props.id },
   ownerHint: ownerFromState()
 }));
