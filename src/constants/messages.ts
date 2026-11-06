@@ -233,6 +233,13 @@ export class Messages {
     static readonly visibilityFailed: string = "Failed to change visibility";
     static readonly deleteFailed: string = "Failed to delete upload";
     static readonly uploadFailed: string = "Upload failed";
+    /** A finished upload's private link couldn't be signed again. */
+    static readonly renewLinkFailed: string = "Failed to renew the link";
+    /** On a queue ticket whose file is gone, so no new link will come. */
+    static readonly linkFileDeleted: string = "This file was deleted, so its link no longer works.";
+    /** On a queue ticket the API won't renew a link for any more, e.g. after the session ended. */
+    static readonly linkNotRenewed: string =
+      "This link couldn't be renewed. Copy it from Your uploads instead.";
     /** The user stopped the upload; not shown as an error. */
     static readonly cancelled: string = "Cancelled";
     static readonly emptyFile: string = "This file is empty.";
