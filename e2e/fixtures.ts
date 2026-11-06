@@ -1615,7 +1615,7 @@ export class MockApi {
 
     let code = this.shortCode;
     for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;
-    this.hasShortLink(code, url, username, new Date().toISOString());
+    this.hasShortLink(code, url, username, new Date(this.now()).toISOString());
     return answer(201, "URL shortened successfully", code);
   }
 
@@ -1657,7 +1657,9 @@ export class MockApi {
         originalUrl: link.target,
         addedOn: link.addedOn
       }));
-    const sorted = sortOrder === "asc" ? owned : owned.reverse();
+    // By date, like the API; links added at the same moment (`hasShortLink`'s default date) keep the order they were added in.
+    const oldestFirst = owned.sort((a, b) => a.addedOn.localeCompare(b.addedOn));
+    const sorted = sortOrder === "asc" ? oldestFirst : oldestFirst.reverse();
     return {
       status: 200,
       body: {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
 import { Limits } from "@/constants/limits";
+import { Messages } from "@/constants/messages";
 import { useClipboard } from "@/composables/useClipboard";
 import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { shortLink } from "@/composables/useShortener";
@@ -23,18 +24,28 @@ const {
   query,
   isLoading,
   errorMessage,
-  deletingCode,
   deleteError,
+  isDeleting,
   load,
   goToPage,
+  refresh,
   remove
 } = useShortLinks();
 
+const rows = useTemplateRef("rows");
+const count = useTemplateRef("count");
+
 const { copied, failed, copy } = useClipboard();
 const copiedCode = ref("");
+/** The last delete, for screen readers: its row and key are gone. */
+const deletedNote = ref("");
+const status = computed(() =>
+  copied.value ? "Link copied to clipboard" : failed.value ? "Copy failed" : deletedNote.value
+);
 
 const copyLink = (code: string) => {
   copiedCode.value = code;
+  deletedNote.value = "";
   return copy(shortLink(code));
 };
 
@@ -43,15 +54,38 @@ const copyLabel = (code: string) => {
   return copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link";
 };
 
+const isListed = (code: string) => links.value.some((link) => link.shortenedUrl === code);
+
+/** A failed delete whose link left the list (a 404: it was gone already) shows above it instead. */
+const unlistedError = computed(() => deleteError.value.code && !isListed(deleteError.value.code));
+
+/**
+ * The deleted row took the focused key with it, so focus goes to the delete key that took its
+ * place, else the one above, else the count. Not when focus moved on meanwhile.
+ */
+const refocus = async (index: number) => {
+  await nextTick();
+  if (document.activeElement && document.activeElement !== document.body) return;
+  const keys = rows.value?.querySelectorAll<HTMLElement>("[data-delete]") ?? [];
+  (keys[index] ?? keys[index - 1] ?? count.value)?.focus();
+};
+
 const confirmDelete = useConfirmDelete();
-const onDelete = (code: string) => confirmDelete.press(code, () => remove(code));
+const onDelete = (code: string) =>
+  confirmDelete.press(code, async () => {
+    const index = links.value.findIndex((link) => link.shortenedUrl === code);
+    deletedNote.value = "";
+    const deleted = await remove(code);
+    if (deleted) deletedNote.value = Messages.ShortUrl.deleted(code);
+    if (!isListed(code)) await refocus(index);
+  });
 
 const isSearching = computed(() => Boolean(query.value.trim()));
 
 onMounted(load);
 
-/** Called after a link is shortened, so it shows up without a page reload. */
-defineExpose({ refresh: () => goToPage(1) });
+/** Called after a link is shortened, so it shows up without a page reload, search or not. */
+defineExpose({ refresh });
 </script>
 
 <template>
@@ -63,13 +97,26 @@ defineExpose({ refresh: () => goToPage(1) });
       :maxlength="Limits.Search.maxLength"
     />
 
-    <p v-if="pagination" class="count">
+    <p v-if="pagination" ref="count" class="count" tabindex="-1">
       {{ pagination.total }} {{ pagination.total === 1 ? "link" : "links" }}
       <template v-if="isSearching">found</template>
     </p>
 
     <StatusMessage v-if="errorMessage" tone="error">{{ errorMessage }}</StatusMessage>
-    <StatusMessage v-if="deleteError" tone="error">{{ deleteError }}</StatusMessage>
+    <BaseButton
+      v-if="errorMessage && !pagination"
+      class="retry"
+      size="sm"
+      variant="secondary"
+      :loading="isLoading"
+      @click="load"
+    >
+      Try again
+    </BaseButton>
+    <StatusMessage v-if="unlistedError" tone="error">
+      <span class="error-code">{{ deleteError.code }}</span
+      >: {{ deleteError.message }}
+    </StatusMessage>
 
     <p v-if="isLoading && !pagination" class="note">Loading your links…</p>
     <div v-else-if="pagination && pagination.total === 0" class="empty">
@@ -80,7 +127,7 @@ defineExpose({ refresh: () => goToPage(1) });
       <p v-else class="note">No short links yet. The ones you shorten show up here.</p>
     </div>
 
-    <ol v-if="links.length" class="links" :aria-busy="isLoading || undefined">
+    <ol v-if="links.length" ref="rows" class="links" :aria-busy="isLoading || undefined">
       <li v-for="link in links" :key="link.shortenedUrl" class="link">
         <RouterLink
           :to="{ name: 'redirect-preview', params: { code: link.shortenedUrl } }"
@@ -102,13 +149,21 @@ defineExpose({ refresh: () => goToPage(1) });
             <span class="visually-hidden">{{ link.shortenedUrl }}</span>
           </BaseButton>
           <ConfirmDeleteButton
+            data-delete
             :armed="confirmDelete.isArmed(link.shortenedUrl)"
-            :busy="deletingCode === link.shortenedUrl"
+            :busy="isDeleting(link.shortenedUrl)"
             @click="onDelete(link.shortenedUrl)"
           >
             <span class="visually-hidden">{{ link.shortenedUrl }}</span>
           </ConfirmDeleteButton>
         </div>
+        <StatusMessage
+          v-if="deleteError.code === link.shortenedUrl"
+          tone="error"
+          class="link__error"
+        >
+          {{ deleteError.message }}
+        </StatusMessage>
       </li>
     </ol>
 
@@ -120,7 +175,7 @@ defineExpose({ refresh: () => goToPage(1) });
       @go="goToPage"
     />
 
-    <p class="visually-hidden" role="status">{{ copied ? "Link copied to clipboard" : "" }}</p>
+    <p class="visually-hidden" role="status">{{ status }}</p>
   </StationBoard>
 </template>
 
@@ -129,6 +184,19 @@ defineExpose({ refresh: () => goToPage(1) });
 .note {
   color: var(--c-ink-soft);
   font-weight: 600;
+}
+
+/* Focused only after a delete emptied the list, so it needs no ring of its own. */
+.count:focus {
+  outline: none;
+}
+
+.retry {
+  justify-self: start;
+}
+
+.error-code {
+  font-family: var(--font-code);
 }
 
 .empty {
@@ -145,6 +213,12 @@ defineExpose({ refresh: () => goToPage(1) });
   list-style: none;
   border-top: var(--edge) solid var(--c-hairline);
   container-type: inline-size;
+}
+
+/* A page loading keeps the rows it replaces, dimmed. */
+.links[aria-busy] {
+  opacity: 0.6;
+  transition: opacity var(--dur-quick) ease;
 }
 
 .link {
@@ -198,6 +272,12 @@ defineExpose({ refresh: () => goToPage(1) });
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* Under the whole row, actions included. */
+.link__error {
+  grid-column: 1 / -1;
   margin-top: var(--sp-2);
 }
 

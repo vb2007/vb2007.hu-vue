@@ -80,6 +80,8 @@ describe("views", () => {
     expect(wrapper.findComponent(ShortenPanel).props("as")).toBe("h1");
     expect(wrapper.findComponent(ShortLinkList).exists()).toBe(false);
     expect(wrapper.find(".workspace").classes()).not.toContain("workspace--split");
+    // A link that lands after a logout has no list to refresh.
+    expect(() => wrapper.findComponent(ShortenPanel).vm.$emit("created")).not.toThrow();
   });
 
   it("ShortenView refreshes the list when a link is shortened", async () => {

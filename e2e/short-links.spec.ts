@@ -146,11 +146,15 @@ test.describe("your links on /shorten", () => {
     await expect(row(page, "old111")).toContainText("target.e2e.invalid/landing");
     await expect(codes(page)).toHaveText(["old111"]);
 
+    // A search the new link doesn't match goes, so the link shows.
+    await board.getByLabel("Search by code or target").fill("old");
+    await expect(board.getByText("1 link found")).toBeVisible();
     await page.getByLabel("URL").fill("https://example.com/fresh");
     await page.getByRole("button", { name: "Shorten", exact: true }).click();
 
     await expect(board.getByText("2 links", { exact: true })).toBeVisible();
     await expect(codes(page)).toHaveText(["new222", "old111"]);
+    await expect(board.getByLabel("Search by code or target")).toHaveValue("");
 
     await row(page, "old111").getByRole("button", { name: "Copy link old111" }).click();
     await expect(row(page, "old111").getByRole("button", { name: "Copied old111" })).toBeVisible();
@@ -209,6 +213,9 @@ test.describe("your links on /shorten", () => {
     await expect(codes(page).first()).toHaveText("code10");
     await expect(board.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
     expect(api.shortLinks.has("code0")).toBe(false);
+    // The focused key went with its row: focus goes to the first row's, and the delete is announced.
+    await expect(row(page, "code10").getByRole("button", { name: "Delete code10" })).toBeFocused();
+    await expect(board.getByRole("status")).toHaveText("Deleted code0.");
   });
 
   test("a link deleted elsewhere drops out with the API's text", async ({ page, api }) => {
@@ -222,8 +229,9 @@ test.describe("your links on /shorten", () => {
     api.shortLinks.delete("gone11");
     await row(page, "gone11").getByRole("button", { name: "Confirm delete gone11" }).click();
 
-    await expect(board.getByRole("alert")).toHaveText("The shortened URL cannot be found.");
+    await expect(board.getByRole("alert")).toHaveText("gone11: The shortened URL cannot be found.");
     await expect(codes(page)).toHaveText(["kept22"]);
+    await expect(row(page, "kept22").getByRole("button", { name: "Delete kept22" })).toBeFocused();
   });
 
   test("logged out, there is no list", async ({ page }) => {
