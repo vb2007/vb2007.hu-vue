@@ -151,3 +151,26 @@ test("the owner changes a paste's language; others can't", async ({ page, api })
   await expect(page.getByLabel("Paste content")).toHaveText("someone else's words");
   await expect(page.getByLabel("Language")).toHaveCount(0);
 });
+
+test("a session that ended elsewhere logs the page out when a paste's language is saved", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  const own = api.hasPaste("just some words", "e2e", "plaintext");
+  api.loggedInAs();
+  await page.goto(`/pastebin/${own._id}`);
+  await expect(page.getByLabel("Language")).toBeVisible();
+
+  // A login on another device (or a password reset) ends this one: the API keeps one session.
+  api.loggedOut();
+  await page.getByLabel("Language").selectOption("markdown");
+
+  await expect(page.getByRole("alert")).toHaveText("You must be logged in to perform this action.");
+  await expect(page.getByLabel("Language")).toHaveCount(0);
+  await expect(page.locator(".note__language")).toHaveText("Plain text");
+  expect(api.pastes[0].language).toBe("plaintext");
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("link", { name: "e2e@example.com" })).toHaveCount(0);
+  await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
+});

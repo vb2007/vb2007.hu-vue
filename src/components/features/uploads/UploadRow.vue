@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from "vue";
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
+import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { isSuperuser } from "@/scripts/authentication/authState";
 import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
 import type { Upload, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
@@ -29,24 +31,59 @@ const props = defineProps<{
 const detailsId = useId();
 const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
-const privateAudience = computed(() =>
-  props.ownerName ? `Only ${props.ownerName} and the admin` : "Only you, while you're logged in"
-);
+/**
+ * Only the owner and the admin get a private file's signed link, but it opens for anyone until it
+ * expires. The admin is "you" on their own uploads and on someone else's (`ownerName`).
+ */
+const audience = computed(() => {
+  if (!isPrivate.value) return "Anyone with the link, while it's public";
+  if (props.ownerName)
+    return `${props.ownerName}, you, and anyone with the link (until it expires)`;
+  return isSuperuser.value
+    ? "You, and anyone with the link (until it expires)"
+    : "You, the admin, and anyone with the link (until it expires)";
+});
 
-/** Thumbnails that fail to load (e.g. a private file after logging out) fall back to the icon. */
+/** Thumbnails that fail to load (e.g. an expired link) fall back to the icon, until a new link. */
 const thumbFailed = ref(false);
 
 const expanded = ref(false);
 
+// A renewed link swaps the preview's source: a playing video or song carries on where it was.
+const media = useTemplateRef<HTMLMediaElement>("media");
+/** The wait for the new source, dropped when another link or the row's end overtakes it. */
+let resume: AbortController | undefined;
+watch(
+  () => props.upload.url,
+  () => {
+    thumbFailed.value = false;
+    resume?.abort();
+    const player = media.value;
+    if (!player) return;
+    const { currentTime, paused } = player;
+    resume = new AbortController();
+    player.addEventListener(
+      "loadedmetadata",
+      () => {
+        player.currentTime = currentTime;
+        // The browser may refuse to play on its own; the user can still press play.
+        if (!paused) player.play()?.catch(() => {});
+      },
+      { once: true, signal: resume.signal }
+    );
+  }
+);
+onBeforeUnmount(() => resume?.abort());
+
 const { copied, failed, copy } = useClipboard();
-/** Announced after copying; a private link warns who can open it. */
-const copyStatus = computed(() => {
-  if (!copied.value) return "";
-  if (!isPrivate.value) return "Link copied to clipboard";
-  return props.ownerName
-    ? `Link copied. Only ${props.ownerName} and the admin can open it while it's private.`
-    : "Link copied. Only you can open it while it's private.";
-});
+/** When the last copied private link expires, until it has. */
+const { note: copiedNote, show: showCopiedNote, clear: clearCopiedNote } = useCopiedLinkNote();
+const copyLink = async () => {
+  const url = props.upload.url;
+  await copy(url);
+  if (copied.value) showCopiedNote(url);
+  else clearCopiedNote();
+};
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"
 );
@@ -152,7 +189,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       </span>
 
       <div class="row__quick">
-        <BaseButton size="sm" variant="secondary" @click="copy(upload.url)">
+        <BaseButton size="sm" variant="secondary" @click="copyLink">
           {{ copyLabel }}
         </BaseButton>
         <BaseButton size="sm" variant="ghost" :href="upload.url" target="_blank" rel="noopener">
@@ -160,6 +197,11 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         </BaseButton>
       </div>
     </div>
+
+    <!-- Shown for a signed link, whose copy expires; only read out for a plain one. -->
+    <p class="copied-note" :class="{ 'visually-hidden': !copiedNote }" role="status">
+      {{ copiedNote || (copied ? "Link copied to clipboard" : "") }}
+    </p>
 
     <StatusMessage v-if="error" tone="error">{{ error }}</StatusMessage>
 
@@ -170,8 +212,20 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           :src="upload.url"
           :alt="`Preview of ${upload.originalFileName}`"
         />
-        <video v-else-if="category === 'video'" :src="upload.url" controls preload="metadata" />
-        <audio v-else-if="category === 'audio'" :src="upload.url" controls preload="metadata" />
+        <video
+          v-else-if="category === 'video'"
+          ref="media"
+          :src="upload.url"
+          controls
+          preload="metadata"
+        />
+        <audio
+          v-else-if="category === 'audio'"
+          ref="media"
+          :src="upload.url"
+          controls
+          preload="metadata"
+        />
         <span v-else class="details__icon"
           ><AppIcon :name="CATEGORY_ICONS[category]" :size="40"
         /></span>
@@ -204,7 +258,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <div class="facts__row">
           <dt>Who can open it</dt>
           <dd>
-            {{ isPrivate ? privateAudience : "Anyone with the link" }}
+            {{ audience }}
           </dd>
         </div>
         <div class="facts__row facts__row--link">
@@ -266,8 +320,6 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         </BaseButton>
       </div>
     </div>
-
-    <p class="visually-hidden" role="status">{{ copyStatus }}</p>
   </li>
 </template>
 
@@ -277,6 +329,13 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   gap: var(--sp-3);
   padding: var(--sp-4) 0;
   border-bottom: var(--edge) solid var(--c-hairline);
+}
+
+.copied-note {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .row__summary {
