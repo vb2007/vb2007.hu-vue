@@ -387,8 +387,16 @@ test("the superuser's own account can't be deleted, and logging it out ends this
   await expect(key).toBeVisible();
   expect(api.loggedOutUsers).toEqual([]);
   await key.click();
+  const userChecks: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "GET" && new URL(request.url()).pathname === "/user") {
+      userChecks.push(request.url());
+    }
+  });
   await confirm.click();
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
+  // The page asks once whether the session is gone, and that answer doesn't ask again.
+  expect(userChecks).toHaveLength(1);
   await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toHaveCount(0);
   expect(api.loggedOutUsers).toEqual([own.id]);
 });

@@ -323,6 +323,8 @@ describe("AdminLogoutUser", () => {
     await flushPromises();
 
     expect(sent(1)).toMatchObject({ method: "GET", url: "https://api.test/user" });
+    // One check only: GET /user's own 403 doesn't start the ended-session recheck again.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(isLoggedIn.value).toBe(false);
     expect(isSuperuser.value).toBe(false);
   });
