@@ -64,12 +64,12 @@ describe("AdminShortLinkList", () => {
     expect(first.find(".row__target").attributes("title")).toBe("https://example.com/a/long/path");
     expect(first.find(".row__host").text()).toBe("example.com");
     expect(first.find(".row__url").text()).toBe("example.com/a/long/path");
-    expect(first.find(".row__owner").text()).toBe("anna");
-    expect(first.find(".row__owner").attributes("href")).toBe("/admin/users/u1");
+    expect(first.find(".meta-link").text()).toBe("anna");
+    expect(first.find(".meta-link").attributes("href")).toBe("/admin/users/u1");
     expect(first.find(".row__meta time").attributes("datetime")).toBe("2026-10-10T12:00:00.000Z");
     expect(second.find(".row__url").text()).toBe("ftp://files.example/pub");
     expect(second.find(".row__host").text()).toBe("files.example");
-    expect(second.find(".row__owner").exists()).toBe(false);
+    expect(second.find(".meta-link").exists()).toBe(false);
     expect(second.find(".row__gone").text()).toBe("Deleted account");
     expect(wrapper.find(".pager").exists()).toBe(false);
   });
