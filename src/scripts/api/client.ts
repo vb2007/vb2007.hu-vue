@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "@/constants/endpoints";
-import { ContentType, Header } from "@/constants/http";
+import { ContentType, Header, HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import type { BodyOf, Endpoint, ParamsOf, QueryOf, ResponseOf } from "@/scripts/api/endpoint";
 import type { ApiErrorBody } from "@/types/api/common";
@@ -117,6 +117,40 @@ export const apiErrorOf = (failure: ApiFailure): string | undefined => {
   return typeof error === "string" && error !== "" ? error : undefined;
 };
 
+/** What runs when the API turns a request with the session cookie away as logged out. */
+export type SessionRefusedListener = (endpoint: Endpoint) => Promise<unknown> | void;
+
+let sessionRefusedListener: SessionRefusedListener | undefined;
+
+/**
+ * Sets what runs when the API answers a request that sent the session cookie with its logged-out
+ * 403 (`Messages.Auth.notLoggedIn`): the session expired, was ended by a password reset, or was
+ * replaced by a login elsewhere. `user.ts` sets it, as the client can't import it (it imports the
+ * client). The request's result waits for it.
+ */
+export const onSessionRefused = (listener: SessionRefusedListener) => {
+  sessionRefusedListener = listener;
+};
+
+/**
+ * Runs the `onSessionRefused` listener when `status` and `body` are the API's logged-out 403 to a
+ * request with the session cookie. Other 403s (a wrong password, not the owner) mean nothing here.
+ * Never rejects: a listener that fails is logged, so `apiRequest` still never throws.
+ */
+export const noticeSessionRefusal = async (endpoint: Endpoint, status: number, body: unknown) => {
+  if (
+    endpoint.credentials &&
+    status === HttpStatus.Forbidden &&
+    (body as ApiErrorBody | null)?.error === Messages.Auth.notLoggedIn
+  ) {
+    try {
+      await sessionRefusedListener?.(endpoint);
+    } catch (error) {
+      console.error(`${Messages.Auth.userFailed}: `, error);
+    }
+  }
+};
+
 /**
  * Calls an endpoint. Never throws: a failure comes back as `{ ok: false }` with the message to
  * show, and is logged once here. A request aborted through its `signal` isn't logged.
@@ -170,6 +204,7 @@ export const apiRequest = async <E extends Endpoint>(
   if (!options.quietStatuses?.includes(response.status)) {
     console.error(`${options.failure}: `, response.status);
   }
+  await noticeSessionRefusal(endpoint, response.status, body);
   return {
     ok: false,
     kind: "http",
