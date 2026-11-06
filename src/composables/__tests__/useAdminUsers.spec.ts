@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { SEARCH_DELAY_MS, useAdminUsers } from "@/composables/useAdminUsers";
+import { useAdminUsers } from "@/composables/useAdminUsers";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
 import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
