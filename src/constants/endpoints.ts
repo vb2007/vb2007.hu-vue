@@ -1,6 +1,8 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
+  AdminShortUrlListQuery,
+  AdminShortUrlsResponse,
   AdminUserListQuery,
   AdminUserResponse,
   AdminUsersResponse,
@@ -315,6 +317,16 @@ export class Endpoints {
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    /** Every short link on the site; delete one with `ShortUrl.remove`, which lets the superuser through. */
+    static readonly shortUrls = defineEndpoint<
+      undefined,
+      AdminShortUrlsResponse,
+      AdminShortUrlListQuery
+    >()({
+      method: HttpMethod.Get,
+      path: "/admin/short-urls",
       credentials: true
     });
   };

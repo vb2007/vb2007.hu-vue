@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   displayLink,
   isSafeRedirect,
+  linkParts,
   MAX_ADDRESS,
   readableAddress,
   validateUrl
@@ -43,6 +44,19 @@ describe("displayLink", () => {
     ["vb2007.hu/x", "vb2007.hu/x"]
   ])("shows %s as %s", (link, shown) => {
     expect(displayLink(link)).toBe(shown);
+  });
+});
+
+describe("linkParts", () => {
+  it.each([
+    ["https://example.com/a/b?c#d", "", "example.com", "/a/b?c#d"],
+    ["HTTP://Example.com", "", "Example.com", ""],
+    ["https://me@evil.example/login", "", "me@evil.example", "/login"],
+    ["ftp://files.example/pub", "ftp://", "files.example", "/pub"],
+    ["mailto:me@example.com?subject=hi", "", "mailto:me@example.com", "?subject=hi"],
+    ["https://example.com/a\nb", "", "example.com", "/a\nb"]
+  ])("splits %j into its scheme, host and rest", (link, scheme, host, rest) => {
+    expect(linkParts(link)).toEqual({ scheme, host, rest });
   });
 });
 

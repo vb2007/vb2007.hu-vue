@@ -1,4 +1,6 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
+import type { OwnShortUrl, ShortUrlSortBy } from "@/types/api/shortener";
+import type { UploadOwner } from "@/types/api/uploads";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -59,4 +61,22 @@ export interface SetUploadQuotaBody {
 /** `PATCH /admin/users/:id/upload-quota` */
 export interface UploadQuotaResponse extends MessageResponse {
   user: AdminUser;
+}
+
+/** A short link as `GET /admin/short-urls` lists it (vb2007/vb2007.hu-api#279). */
+export interface AdminShortUrl extends OwnShortUrl {
+  /** `null` once the owner's account no longer exists. */
+  owner: UploadOwner | null;
+}
+
+/** `GET /admin/short-urls` */
+export type AdminShortUrlListQuery = ListQuery<ShortUrlSortBy> & {
+  /** Matches part of the code, the target or the owner's username, whatever its case. */
+  q?: string;
+};
+
+/** `GET /admin/short-urls` */
+export interface AdminShortUrlsResponse {
+  shortUrls: AdminShortUrl[];
+  pagination: Pagination<ShortUrlSortBy>;
 }

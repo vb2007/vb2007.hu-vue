@@ -45,7 +45,8 @@ describe("Endpoints", () => {
     [Endpoints.Admin.users, "GET", "/admin/users", true],
     [Endpoints.Admin.user, "GET", "/admin/users/:id", true],
     [Endpoints.Admin.setUploadQuota, "PATCH", "/admin/users/:id/upload-quota", true],
-    [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true]
+    [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true],
+    [Endpoints.Admin.shortUrls, "GET", "/admin/short-urls", true]
   ])("declares %o", (endpoint, method, path, credentials) => {
     expect(endpoint).toMatchObject({ method, path, credentials });
   });

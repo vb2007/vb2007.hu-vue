@@ -58,6 +58,16 @@ export const validateUrl = (originalUrl: string) => {
 /** A link as people read it: no protocol, which every browser fills in anyway. */
 export const displayLink = (link: string) => link.replace(/^https?:\/\//, "");
 
+/**
+ * A link split for a list that leads with where it goes: the scheme when it isn't the web's
+ * (`ftp://`), the host (with any `user@` in front of it, which can pass for one), and the rest.
+ * A link without `//` (`mailto:`) is all host.
+ */
+export const linkParts = (link: string) => {
+  const [, scheme = "", host, rest] = /^([a-z][a-z\d+.-]*:\/\/)?([^/?#]*)(.*)$/is.exec(link)!;
+  return { scheme: /^https?:\/\/$/i.test(scheme) ? "" : scheme, host, rest };
+};
+
 /** Combining marks kept on one letter: enough for any script's accents, too few to pile up. */
 const MAX_MARKS = 2;
 

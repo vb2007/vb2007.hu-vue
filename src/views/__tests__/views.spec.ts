@@ -12,6 +12,8 @@ import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
 import AdminAreaView from "@/views/AdminAreaView.vue";
 import AdminUsersView from "@/views/AdminUsersView.vue";
+import AdminShortLinksView from "@/views/AdminShortLinksView.vue";
+import AdminShortLinkList from "@/components/features/admin/AdminShortLinkList.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import AdminUserView from "@/views/AdminUserView.vue";
@@ -251,6 +253,18 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
     expect(wrapper.findComponent(AdminUserList).props("as")).toBe("h1");
     expect(wrapper.find("h1").text()).toBe("Users");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
+  it("AdminAreaView shows the superuser the short links board as the page heading", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { shortUrls: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/short-links");
+
+    expect(wrapper.findComponent(AdminShortLinksView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.findComponent(AdminShortLinkList).props("as")).toBe("h1");
+    expect(wrapper.find("h1").text()).toBe("Short links");
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
   });
 
