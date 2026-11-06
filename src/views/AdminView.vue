@@ -7,7 +7,7 @@ import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 <template>
   <PageSection width="medium" aria-labelledby="admin-title">
     <h1 id="admin-title" class="section-title">Admin</h1>
-    <p class="section-lead">Where the site is run from. Only the admin can open these sections.</p>
+    <p class="section-lead">Look after the site's accounts and what they keep on it.</p>
     <!-- Site figures (#146) go here, as a board of their own above the sections. -->
     <ToolDirectory :stops="ADMIN_SECTIONS" />
   </PageSection>
