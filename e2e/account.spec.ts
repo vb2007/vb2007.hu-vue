@@ -66,7 +66,7 @@ test("a refused login shows the API's one message and stays logged out", async (
   }
   await expect(main).not.toContainText("Login successful!");
   const cookies = await page.context().cookies();
-  expect(cookies.map((cookie) => cookie.name)).not.toContain("VB-AUTH");
+  expect(cookies.map((cookie) => cookie.name)).not.toContain("__Host-VB-AUTH");
 
   // The address's case and surrounding spaces don't matter, like the API.
   await page.getByLabel("E-mail").fill(` ${MOCK_EMAIL.toUpperCase()} `);
@@ -789,14 +789,14 @@ test("accounts that can't change their e-mail say why", async ({ page, api }) =>
 });
 
 test("the password changes in place and the session carries on", async ({ page, api }) => {
-  // A real login, so the browser holds a VB-AUTH cookie that the change has to replace.
+  // A real login, so the browser holds a __Host-VB-AUTH cookie that the change has to replace.
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   const sessionCookie = async () =>
-    (await page.context().cookies()).find((cookie) => cookie.name === "VB-AUTH")?.value;
+    (await page.context().cookies()).find((cookie) => cookie.name === "__Host-VB-AUTH")?.value;
   expect(await sessionCookie()).toBe("e2e-session-1");
 
   await page.goto("/account");

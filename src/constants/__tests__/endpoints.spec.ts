@@ -39,6 +39,7 @@ describe("Endpoints", () => {
     [Endpoints.Pastebin.remove, "DELETE", "/paste/:id", true],
     [Endpoints.Uploads.list, "GET", "/uploads", true],
     [Endpoints.Uploads.usage, "GET", "/uploads/usage", true],
+    [Endpoints.Uploads.get, "GET", "/upload/:id", true],
     [Endpoints.Uploads.upload, "POST", "/upload", true],
     [Endpoints.Uploads.update, "PATCH", "/upload/:id", true],
     [Endpoints.Uploads.remove, "DELETE", "/upload/:id", true],
