@@ -149,12 +149,13 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
 
   // Private links expire: load the page again for new ones, unless a load that brings them is
   // already running, or an edit is (its row could come back as it was); that one asks after.
+  // A load that failed leaves the old links, so it's asked for again.
   const { refreshIfDue } = useSignedLinkRefresh(
     () => uploads.value.map((upload) => upload.url),
-    () => {
+    async () => {
       if (isLoading.value || busyId.value) return false;
-      load();
-      return true;
+      await load();
+      return !errorMessage.value;
     }
   );
 

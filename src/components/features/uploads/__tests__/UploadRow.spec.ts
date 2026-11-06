@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { nextTick } from "vue";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
+import { isSuperuser } from "@/scripts/authentication/authState";
 import UploadLink from "@/components/features/uploads/UploadLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -9,7 +11,7 @@ import { anUpload } from "@/__tests__/helpers/uploads";
 import { formatTime } from "@/scripts/utility/dateUtil";
 
 /** A private link as the API signs it. */
-const EXPIRES = 1_793_995_200;
+const EXPIRES = Math.floor(Date.now() / 1000) + 3600;
 const SIGNED = `https://cdn.test/useruploads/user1/u1.png?expires=${EXPIRES}&sig=x`;
 
 const buttonNamed = (wrapper: VueWrapper, name: string) =>
@@ -83,7 +85,7 @@ describe("UploadRow", () => {
     expect(facts).toMatchObject({
       Type: "PNG · image/png",
       Size: `2 kB (${(2048).toLocaleString()} bytes)`,
-      "Who can open it": "Anyone with the link; it never expires"
+      "Who can open it": "Anyone with the link, while it's public"
     });
     expect(facts.Changed).toBeTruthy();
     expect(details.findComponent(UploadLink).props("url")).toBe(anUpload("u1").url);
@@ -111,7 +113,7 @@ describe("UploadRow", () => {
     const facts = wrapper.findAll(".facts__row").map((row) => row.find("dt").text());
     expect(facts).not.toContain("Changed");
     expect(wrapper.find(".facts").text()).toContain(
-      "You and the admin, plus anyone you share the link with until it expires"
+      "You, the admin, and anyone with the link (until it expires)"
     );
   });
 
@@ -142,8 +144,30 @@ describe("UploadRow", () => {
     const wrapper = mountRow(anUpload("u1"), { ownerName: "anna" });
     await wrapper.find(".row__name").trigger("click");
     expect(wrapper.find(".facts").text()).toContain(
-      "anna and the admin, plus anyone they share the link with until it expires"
+      "anna, you, and anyone with the link (until it expires)"
     );
+  });
+
+  it("doesn't name the admin to the admin on their own upload", async () => {
+    isSuperuser.value = true;
+    const wrapper = mountRow();
+    await wrapper.find(".row__name").trigger("click");
+    expect(wrapper.find(".facts").text()).toContain(
+      "You, and anyone with the link (until it expires)"
+    );
+  });
+
+  it("drops the note once the copied link has expired", async () => {
+    vi.useFakeTimers();
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=status]").text()).not.toBe("");
+
+    vi.advanceTimersByTime(EXPIRES * 1000 - Date.now());
+    await nextTick();
+    expect(wrapper.find("[role=status]").text()).toBe("");
+    vi.useRealTimers();
   });
 
   it("says when copying failed, and drops the note of an earlier copy", async () => {
@@ -177,15 +201,34 @@ describe("UploadRow", () => {
     const player = wrapper.find<HTMLVideoElement>("video").element;
     player.currentTime = 42;
     Object.defineProperty(player, "paused", { value: false, configurable: true });
-    player.play = vi.fn(() => Promise.resolve());
+    // The browser may refuse to play without a click; that stays quiet.
+    player.play = vi.fn(() => Promise.reject(new DOMException("Not allowed", "NotAllowedError")));
 
+    // Renewed twice before the first source loaded: only the latest wait resumes it.
     await wrapper.setProps({ upload: { ...video, url: `${SIGNED}2` } });
-    expect(player.getAttribute("src")).toBe(`${SIGNED}2`);
+    await wrapper.setProps({ upload: { ...video, url: `${SIGNED}3` } });
+    expect(player.getAttribute("src")).toBe(`${SIGNED}3`);
     player.currentTime = 0;
     player.dispatchEvent(new Event("loadedmetadata"));
+    await flushPromises();
 
     expect(player.currentTime).toBe(42);
     expect(player.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops waiting to resume a video once the row is gone", async () => {
+    const video = anUpload("u1", { mimeType: "video/mp4", extension: ".mp4", url: SIGNED });
+    const wrapper = mountRow(video);
+    await wrapper.find(".row__name").trigger("click");
+    const player = wrapper.find<HTMLVideoElement>("video").element;
+    Object.defineProperty(player, "paused", { value: false, configurable: true });
+    player.play = vi.fn(() => Promise.resolve());
+
+    await wrapper.setProps({ upload: { ...video, url: `${SIGNED}2` } });
+    wrapper.unmount();
+    player.dispatchEvent(new Event("loadedmetadata"));
+
+    expect(player.play).not.toHaveBeenCalled();
   });
 
   it("leaves a paused song paused when its link is renewed", async () => {

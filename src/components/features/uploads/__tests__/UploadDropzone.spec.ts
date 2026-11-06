@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import UploadDropzone from "@/components/features/uploads/UploadDropzone.vue";
 import { aFile } from "@/__tests__/helpers/uploads";
+import { isSuperuser } from "@/scripts/authentication/authState";
 
 const mountDropzone = () =>
   mount(UploadDropzone, { props: { accept: ".png,image/png", hint: "Up to 10 MB each." } });
@@ -19,9 +20,18 @@ describe("UploadDropzone", () => {
     );
     await wrapper.find("input[value=public]").setValue();
     expect(wrapper.find(".visibility-hint").text()).toBe(
-      "Anyone with the link can open the file. The link never expires."
+      "Anyone with the link can open the file while it's public."
     );
     expect(wrapper.find(".dropzone__hint").text()).toBe("Up to 10 MB each.");
+  });
+
+  it("doesn't name the admin to the admin", () => {
+    isSuperuser.value = true;
+    const wrapper = mountDropzone();
+
+    expect(wrapper.find(".visibility-hint").text()).toBe(
+      "Only you get the link. Anyone you share it with can open the file until the link expires."
+    );
   });
 
   it("sends picked files with the chosen visibility, then clears the picker", async () => {

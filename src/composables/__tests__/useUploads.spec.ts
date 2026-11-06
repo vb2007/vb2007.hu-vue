@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
+import { SIGNED_LINK_REFRESH_LEAD_MS } from "@/composables/useSignedLinkRefresh";
 import { SEARCH_DELAY_MS, useUploads, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
@@ -352,55 +353,86 @@ describe("useUploads", () => {
     expect(api.uploads.value).toEqual([anUpload("b")]);
   });
 
-  it("loads the page again before its private links run out, unless a load is running", async () => {
-    vi.useFakeTimers({ now: Date.UTC(2026, 10, 6, 12) });
-    const expires = Date.now() / 1000 + 10 * 60;
-    const signed = anUpload("a", { url: `https://cdn.test/a.png?expires=${expires}&sig=x` });
-    fetchMock.mockResolvedValueOnce(listing([signed, anUpload("b", { visibility: "public" })]));
-    const { api } = mountComposable(() => useUploads());
-    await api.load();
-
-    // Nine minutes on, the user's own page change is still loading: it brings new links anyway.
-    const pageTwo = deferResponse(fetchMock);
-    const paging = api.goToPage(2);
-    vi.advanceTimersByTime(9 * 60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    pageTwo.respond(listing([signed]));
-    await paging;
-    fetchMock.mockResolvedValueOnce(listing([anUpload("a")]));
-    window.dispatchEvent(new Event("focus"));
-    await flushPromises();
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(lastUrl(fetchMock)).toContain("page=2");
-    expect(api.uploads.value).toEqual([anUpload("a")]);
-    vi.useRealTimers();
-  });
-
-  it("holds the reload for new links back while an edit runs, then catches up", async () => {
-    vi.useFakeTimers({ now: Date.UTC(2026, 10, 6, 12) });
-    const signedFor = (id: string, minutes: number) =>
+  describe("signed links", () => {
+    const NOW = Date.UTC(2026, 10, 6, 12);
+    /** When a list of links signed at `NOW` for an hour is due for new ones. */
+    const DUE = 60 * 60_000 - SIGNED_LINK_REFRESH_LEAD_MS;
+    const signedFor = (id: string, minutes = 60) =>
       anUpload(id, {
-        url: `https://cdn.test/${id}.png?expires=${Date.now() / 1000 + minutes * 60}&sig=x`
+        url: `https://cdn.test/${id}.png?expires=${NOW / 1000 + minutes * 60}&sig=x`
       });
-    fetchMock.mockResolvedValueOnce(listing([signedFor("a", 10), signedFor("b", 30)]));
-    const { api } = mountComposable(() => useUploads());
-    await api.load();
 
-    const renaming = deferResponse(fetchMock);
-    const renamed = api.rename("b", "new.png");
-    vi.advanceTimersByTime(9 * 60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    beforeEach(() => {
+      vi.useFakeTimers({ now: NOW });
+    });
 
-    fetchMock.mockResolvedValueOnce(listing([signedFor("a", 60), signedFor("b", 60)]));
-    renaming.respond(jsonResponse(200, { upload: signedFor("b", 60) }));
-    await renamed;
-    await flushPromises();
+    afterEach(() => {
+      vi.useRealTimers();
+    });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(lastUrl(fetchMock)).toContain("/uploads?");
-    vi.useRealTimers();
+    it("are loaded again before they expire, unless a load is running", async () => {
+      fetchMock.mockResolvedValueOnce(
+        listing([signedFor("a"), anUpload("b", { visibility: "public" })])
+      );
+      const { api } = mountComposable(() => useUploads());
+      await api.load();
+
+      // The user's own page change is still loading when they're due: it brings new links anyway.
+      const pageTwo = deferResponse(fetchMock);
+      const paging = api.goToPage(2);
+      vi.advanceTimersByTime(DUE);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      pageTwo.respond(listing([signedFor("a")]));
+      await paging;
+      fetchMock.mockResolvedValueOnce(listing([anUpload("a")]));
+      window.dispatchEvent(new Event("focus"));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(lastUrl(fetchMock)).toContain("page=2");
+      expect(api.uploads.value).toEqual([anUpload("a")]);
+    });
+
+    it("are asked for again on the next focus after a reload that failed", async () => {
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a")]));
+      const { api } = mountComposable(() => useUploads());
+      await api.load();
+
+      // Woken before the network is back: the reload fails and the old links stay.
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      vi.advanceTimersByTime(DUE);
+      await flushPromises();
+      expect(api.errorMessage.value).not.toBe("");
+      expect(api.uploads.value).toEqual([signedFor("a")]);
+
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a", 120)]));
+      window.dispatchEvent(new Event("focus"));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(api.errorMessage.value).toBe("");
+      expect(api.uploads.value).toEqual([signedFor("a", 120)]);
+    });
+
+    it("wait while an edit runs, then catch up", async () => {
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a"), signedFor("b", 90)]));
+      const { api } = mountComposable(() => useUploads());
+      await api.load();
+
+      const renaming = deferResponse(fetchMock);
+      const renamed = api.rename("b", "new.png");
+      vi.advanceTimersByTime(DUE);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a", 120), signedFor("b", 120)]));
+      renaming.respond(jsonResponse(200, { upload: signedFor("b", 120) }));
+      await renamed;
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(lastUrl(fetchMock)).toContain("/uploads?");
+    });
   });
 
   it("steps back a page after deleting the last upload on it", async () => {

@@ -1,7 +1,11 @@
 import { computed, onBeforeUnmount, ref, type Ref } from "vue";
 import { useLatestRequest } from "@/composables/useLatestRequest";
-import { useSignedLinkRefresh } from "@/composables/useSignedLinkRefresh";
+import {
+  SIGNED_LINK_REFRESH_LEAD_MS,
+  useSignedLinkRefresh
+} from "@/composables/useSignedLinkRefresh";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { linkExpiresAt, sendUpload, UploadError, validateFile } from "@/scripts/uploads/upload";
@@ -132,34 +136,51 @@ export const useUploadQueue = (
 
   onBeforeUnmount(() => controllers.forEach((controller) => controller.abort()));
 
-  /** Finished private files, whose signed links expire; not the ones whose renewal failed. */
+  /** Finished private files, whose signed links expire; not the ones that can't be renewed. */
   const signed = () =>
     items.value.filter(
       (item) =>
         item.status === "done" && !item.linkError && linkExpiresAt(item.result!.url) !== undefined
     );
 
-  // Each ticket keeps a working link: ask for every signed one again just before the first expires.
-  const latest = useLatestRequest();
+  /**
+   * Asks for one ticket's link again. Resolves to whether that's settled: renewed, or refused for
+   * good (the file is gone, or no longer the user's to ask for). A dropped connection isn't.
+   */
   const renew = async (item: QueueItem, signal: AbortSignal) => {
     const result = await apiRequest(Endpoints.Uploads.get, {
       params: { id: item.result!.id },
       failure: Messages.Uploads.renewLinkFailed,
-      signal
+      signal,
+      quietStatuses: [HttpStatus.NotFound]
     });
-    if (signal.aborted) return;
+    if (signal.aborted) return false;
     if (result.ok) {
       item.result = result.data.upload;
-    } else {
-      item.linkError = result.error;
+      return true;
     }
+    if (result.kind !== "http") return false;
+    if (result.status === HttpStatus.NotFound) {
+      item.linkError = Messages.Uploads.linkFileDeleted;
+    } else if (result.status === HttpStatus.Forbidden) {
+      item.linkError = Messages.Uploads.linkNotRenewed;
+    } else {
+      return false;
+    }
+    return true;
   };
+
+  // Each ticket keeps a working link: the ones due are asked for again, until all of them settle.
+  const latest = useLatestRequest();
   useSignedLinkRefresh(
     () => signed().map((item) => item.result!.url),
-    () => {
+    async () => {
       const signal = latest.next();
-      signed().forEach((item) => renew(item, signal));
-      return true;
+      const due = signed().filter(
+        (item) => linkExpiresAt(item.result!.url)! - SIGNED_LINK_REFRESH_LEAD_MS <= Date.now()
+      );
+      const settled = await Promise.all(due.map((item) => renew(item, signal)));
+      return settled.every(Boolean);
     }
   );
 

@@ -2,12 +2,12 @@
 import { computed, ref } from "vue";
 import type { QueueItem } from "@/composables/useUploadQueue";
 import { useClipboard } from "@/composables/useClipboard";
-import { categoryOf, copiedLinkNote } from "@/scripts/uploads/upload";
+import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
+import { categoryOf } from "@/scripts/uploads/upload";
 import UploadLink from "./UploadLink.vue";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
-import StatusMessage from "@/components/ui/StatusMessage.vue";
 import UploadProgress from "./UploadProgress.vue";
 import { CATEGORY_ICONS } from "./categoryIcon";
 
@@ -16,13 +16,14 @@ defineEmits<{ cancel: [id: number]; retry: [id: number]; dismiss: [id: number]; 
 
 const { copied, failed, copy } = useClipboard();
 const copiedId = ref(0);
-/** When the last copied private link expires; stays until the next copy. */
-const copiedNote = ref("");
+/** When the last copied private link expires, until it has. */
+const { note: copiedNote, show: showCopiedNote, clear: clearCopiedNote } = useCopiedLinkNote();
 const copyLink = async (item: QueueItem) => {
   const url = item.result!.url;
   copiedId.value = item.id;
   await copy(url);
-  copiedNote.value = copied.value ? copiedLinkNote(url) : "";
+  if (copied.value) showCopiedNote(url);
+  else clearCopiedNote();
 };
 
 const statusText = (item: QueueItem) =>
@@ -114,18 +115,18 @@ const summary = computed(() => {
         </div>
 
         <!-- Arrived: the file's ticket, like a new short link or paste gets. -->
-        <StatusMessage
-          v-if="item.status === 'done' && item.linkError"
-          class="ticket-error"
-          tone="error"
-        >
-          {{ item.linkError }}
-        </StatusMessage>
-        <div v-else-if="item.status === 'done'" class="ticket">
-          <a class="ticket__link" :href="item.result!.url" target="_blank" rel="noopener">
+        <div v-if="item.status === 'done'" class="ticket">
+          <!-- A link that can't be renewed stays as text, with why and what to do instead. -->
+          <span v-if="item.linkError" class="ticket__link ticket__link--dead">
+            <UploadLink :url="item.result!.url" />
+          </span>
+          <a v-else class="ticket__link" :href="item.result!.url" target="_blank" rel="noopener">
             <UploadLink :url="item.result!.url" />
           </a>
-          <BaseButton size="sm" @click="copyLink(item)">
+          <p v-if="item.linkError" class="ticket__note ticket__note--fault" role="status">
+            {{ item.linkError }}
+          </p>
+          <BaseButton v-else size="sm" @click="copyLink(item)">
             <AppIcon :name="copiedId === item.id && copied ? 'check' : 'copy'" :size="16" />
             {{
               copiedId === item.id && copied
@@ -135,7 +136,9 @@ const summary = computed(() => {
                   : "Copy link"
             }}
           </BaseButton>
-          <p v-if="copiedId === item.id && copiedNote" class="ticket__note">{{ copiedNote }}</p>
+          <p v-if="!item.linkError && copiedId === item.id && copiedNote" class="ticket__note">
+            {{ copiedNote }}
+          </p>
         </div>
       </li>
     </ol>
@@ -277,8 +280,12 @@ const summary = computed(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.ticket-error {
-  grid-area: ticket;
+.ticket__link--dead {
+  color: var(--c-ink-soft);
+}
+
+.ticket__note--fault {
+  color: var(--c-danger);
 }
 
 @keyframes print {

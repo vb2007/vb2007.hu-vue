@@ -95,7 +95,7 @@ describe("UploadQueue", () => {
   });
 
   it("shows when a copied signed link expires, under its ticket", async () => {
-    const expires = 1_793_995_200;
+    const expires = Math.floor(Date.now() / 1000) + 3600;
     const url = `https://cdn.test/useruploads/user1/u2.png?expires=${expires}&sig=x`;
     const items = [
       item("done", { result: anUpload("u1") }),
@@ -114,13 +114,17 @@ describe("UploadQueue", () => {
     expect(wrapper.find("[role=status]").text()).toBe(note);
   });
 
-  it("puts why a link couldn't be renewed in place of the ticket", () => {
-    const items = [item("done", { result: anUpload("u1"), linkError: "There is no such upload." })];
+  it("keeps the ticket of a link that can't be renewed, with why instead of the key", () => {
+    const linkError = "This file was deleted, so its link no longer works.";
+    const items = [item("done", { result: anUpload("u1"), linkError })];
     const wrapper = mount(UploadQueue, { props: { items, hasFinished: true } });
+    const ticket = wrapper.find(".ticket");
 
-    expect(wrapper.find(".ticket").exists()).toBe(false);
+    expect(ticket.find("a").exists()).toBe(false);
+    expect(ticket.find(".ticket__link--dead").text()).toContain("u1.png");
     expect(button(wrapper, "Copy link")).toBeUndefined();
-    expect(wrapper.find("[role=alert]").text()).toBe("There is no such upload.");
+    expect(ticket.find(".ticket__note[role=status]").text()).toBe(linkError);
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
   });
 
   it("says when copying failed", async () => {

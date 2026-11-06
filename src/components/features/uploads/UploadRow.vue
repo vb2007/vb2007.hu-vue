@@ -2,8 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from "vue";
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
+import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { categoryOf, copiedLinkNote, typeLabel, validateFileName } from "@/scripts/uploads/upload";
+import { isSuperuser } from "@/scripts/authentication/authState";
+import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
 import type { Upload, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
@@ -29,12 +31,17 @@ const props = defineProps<{
 const detailsId = useId();
 const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
-/** Only the owner and the admin get a private file's signed link, but it opens for anyone until it expires. */
+/**
+ * Only the owner and the admin get a private file's signed link, but it opens for anyone until it
+ * expires. The admin is "you" on their own uploads and on someone else's (`ownerName`).
+ */
 const audience = computed(() => {
-  if (!isPrivate.value) return "Anyone with the link; it never expires";
-  return props.ownerName
-    ? `${props.ownerName} and the admin, plus anyone they share the link with until it expires`
-    : "You and the admin, plus anyone you share the link with until it expires";
+  if (!isPrivate.value) return "Anyone with the link, while it's public";
+  if (props.ownerName)
+    return `${props.ownerName}, you, and anyone with the link (until it expires)`;
+  return isSuperuser.value
+    ? "You, and anyone with the link (until it expires)"
+    : "You, the admin, and anyone with the link (until it expires)";
 });
 
 /** Thumbnails that fail to load (e.g. an expired link) fall back to the icon, until a new link. */
@@ -44,31 +51,38 @@ const expanded = ref(false);
 
 // A renewed link swaps the preview's source: a playing video or song carries on where it was.
 const media = useTemplateRef<HTMLMediaElement>("media");
+/** The wait for the new source, dropped when another link or the row's end overtakes it. */
+let resume: AbortController | undefined;
 watch(
   () => props.upload.url,
   () => {
     thumbFailed.value = false;
+    resume?.abort();
     const player = media.value;
     if (!player) return;
     const { currentTime, paused } = player;
+    resume = new AbortController();
     player.addEventListener(
       "loadedmetadata",
       () => {
         player.currentTime = currentTime;
-        if (!paused) player.play();
+        // The browser may refuse to play on its own; the user can still press play.
+        if (!paused) player.play()?.catch(() => {});
       },
-      { once: true }
+      { once: true, signal: resume.signal }
     );
   }
 );
+onBeforeUnmount(() => resume?.abort());
 
 const { copied, failed, copy } = useClipboard();
-/** When the last copied private link expires; stays until the next copy. */
-const copiedNote = ref("");
+/** When the last copied private link expires, until it has. */
+const { note: copiedNote, show: showCopiedNote, clear: clearCopiedNote } = useCopiedLinkNote();
 const copyLink = async () => {
   const url = props.upload.url;
   await copy(url);
-  copiedNote.value = copied.value ? copiedLinkNote(url) : "";
+  if (copied.value) showCopiedNote(url);
+  else clearCopiedNote();
 };
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"

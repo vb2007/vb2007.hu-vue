@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 import { flushPromises } from "@vue/test-utils";
+import { SIGNED_LINK_REFRESH_LEAD_MS } from "@/composables/useSignedLinkRefresh";
 import { PARALLEL_UPLOADS, useUploadQueue } from "@/composables/useUploadQueue";
 import type { UploadUsage } from "@/types/api/uploads";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
@@ -162,12 +163,20 @@ describe("useUploadQueue", () => {
         url: `https://cdn.test/${id}.png?expires=${NOW / 1000 + minutes * 60}&sig=x`
       });
 
-    /** Two private files and a public one, uploaded and done. */
-    const finish = async () => {
+    /** When a link signed at `NOW` for an hour is due for a new one. */
+    const DUE = 60 * 60_000 - SIGNED_LINK_REFRESH_LEAD_MS;
+    const focus = () => window.dispatchEvent(new Event("focus"));
+
+    /** Queues still listening for focus, unmounted after each test. */
+    let mountedQueues: ReturnType<typeof mountQueue>[] = [];
+
+    /** Two private files (`b` expiring later) and a public one, uploaded and done. */
+    const finish = async (bMinutes = 90) => {
       const mounted = mountQueue();
+      mountedQueues.push(mounted);
       mounted.api.add([aFile("a.png"), aFile("b.png")], "private");
       requests[0].respond(201, { upload: signedFor("a", 60) });
-      requests[1].respond(201, { upload: signedFor("b", 60) });
+      requests[1].respond(201, { upload: signedFor("b", bMinutes) });
       await flushPromises();
       mounted.api.add([aFile("c.png")], "public");
       requests[2].respond(201, { upload: anUpload("c", { visibility: "public" }) });
@@ -182,53 +191,76 @@ describe("useUploadQueue", () => {
     });
 
     afterEach(() => {
+      mountedQueues.forEach(({ wrapper }) => wrapper.unmount());
+      mountedQueues = [];
       vi.useRealTimers();
     });
 
-    it("are renewed just before they expire", async () => {
+    it("are renewed before they expire, each when it's due", async () => {
       const { api } = await finish();
-      fetchMock
-        .mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("a", 120) }))
-        .mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("b", 120) }));
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("a", 120) }));
 
-      vi.advanceTimersByTime(59 * 60_000);
+      vi.advanceTimersByTime(DUE);
       await flushPromises();
 
       expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-        "https://api.test/upload/a",
-        "https://api.test/upload/b"
+        "https://api.test/upload/a"
       ]);
       expect(api.items.value.map((item) => item.result!.url)).toEqual([
         signedFor("a", 120).url,
-        signedFor("b", 120).url,
+        signedFor("b", 90).url,
         anUpload("c").url
       ]);
     });
 
-    it("say why one couldn't be renewed, and stop asking for it", async () => {
-      const { api } = await finish();
+    it("say plainly when a file is gone or its link won't be renewed, and stop asking", async () => {
+      const { api } = await finish(60);
       fetchMock
         .mockResolvedValueOnce(jsonResponse(404, { error: "There is no such upload." }))
-        .mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("b", 120) }))
-        .mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("b", 180) }));
+        .mockResolvedValueOnce(jsonResponse(403, { error: "You are not logged in." }));
 
-      vi.advanceTimersByTime(59 * 60_000);
+      vi.advanceTimersByTime(DUE);
       await flushPromises();
-      expect(api.items.value[0].linkError).toBe("There is no such upload.");
-      expect(api.items.value[1].linkError).toBe("");
+      expect(api.items.value[0].linkError).toBe(
+        "This file was deleted, so its link no longer works."
+      );
+      expect(api.items.value[1].linkError).toBe(
+        "This link couldn't be renewed. Copy it from Your uploads instead."
+      );
 
-      vi.advanceTimersByTime(60 * 60_000);
+      vi.advanceTimersByTime(120 * 60_000);
+      focus();
       await flushPromises();
-      expect(fetchMock).toHaveBeenCalledTimes(3);
-      expect(String(fetchMock.mock.calls[2][0])).toBe("https://api.test/upload/b");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("are asked for again on the next return after a dropped connection or a server fault", async () => {
+      const { api } = await finish(60);
+      fetchMock
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValueOnce(jsonResponse(502, {}));
+
+      vi.advanceTimersByTime(DUE);
+      await flushPromises();
+      expect(api.items.value.map((item) => item.linkError)).toEqual(["", "", ""]);
+
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("a", 120) }))
+        .mockResolvedValueOnce(jsonResponse(200, { upload: signedFor("b", 120) }));
+      focus();
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(api.items.value[0].result).toEqual(signedFor("a", 120));
+      expect(api.items.value[1].result).toEqual(signedFor("b", 120));
     });
 
     it("are left alone once the queue goes away mid-renewal", async () => {
       const { api, wrapper } = await finish();
       deferResponse(fetchMock);
-      deferResponse(fetchMock);
 
-      vi.advanceTimersByTime(59 * 60_000);
+      vi.advanceTimersByTime(DUE);
+      mountedQueues = [];
       wrapper.unmount();
       await flushPromises();
 
