@@ -39,9 +39,12 @@ watch(() => usage.value.quotaBytes, resetDraft, { immediate: true });
 
 const draft = computed(() => quotaBytesFrom(amount.value, unit.value));
 const isUnchanged = computed(() => draft.value.bytes === usage.value.quotaBytes);
-/** Read out with the field, so it's announced as well as shown. */
+/**
+ * Read out with the field, so it's announced as well as shown. Only for a new amount: an account
+ * already over its quota isn't warned about the quota it has.
+ */
 const belowUsageHint = computed(() =>
-  draft.value.bytes !== null && draft.value.bytes < usage.value.usedBytes
+  !isUnchanged.value && draft.value.bytes !== null && draft.value.bytes < usage.value.usedBytes
     ? `That's less than ${props.user.username} uses now. Nothing gets deleted, but their uploads stop until they free up space.`
     : undefined
 );

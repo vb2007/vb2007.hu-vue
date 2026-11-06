@@ -168,6 +168,17 @@ describe("AdminUserRow", () => {
     expect(wrapper.find(".field__error").text()).toBe("Enter a size of 0 or more.");
   });
 
+  it("doesn't warn an account already over its quota about the quota it has", async () => {
+    const { wrapper } = mountRow(
+      anAdminUser("a", { uploads: { usedBytes: 12 * GB, quotaBytes: 10 * GB } })
+    );
+    await open(wrapper);
+
+    expect(wrapper.find(".field__hint").exists()).toBe(false);
+    await wrapper.find("input").setValue("11");
+    expect(wrapper.find(".field__hint").text()).toMatch(/^That's less than user-a uses now/);
+  });
+
   it("checks the quota once it's left", async () => {
     const { wrapper } = mountRow(anAdminUser("a"));
     await open(wrapper);
