@@ -13,6 +13,8 @@ export const AdminPaths = {
 export const AdminRoutes = {
   overview: "admin",
   users: "admin-users",
+  /** One account's page (`/admin/users/:id`), opened from its row; not a section of its own. */
+  user: "admin-user",
   userUploads: "admin-user-uploads"
 } as const;
 

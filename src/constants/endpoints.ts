@@ -2,6 +2,7 @@ import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
   AdminUserListQuery,
+  AdminUserResponse,
   AdminUsersResponse,
   SetUploadQuotaBody,
   UploadQuotaResponse
@@ -291,6 +292,11 @@ export class Endpoints {
     static readonly users = defineEndpoint<undefined, AdminUsersResponse, AdminUserListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users",
+      credentials: true
+    });
+    static readonly user = defineEndpoint<undefined, AdminUserResponse>()({
+      method: HttpMethod.Get,
+      path: "/admin/users/:id",
       credentials: true
     });
     static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({

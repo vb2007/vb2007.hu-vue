@@ -42,6 +42,7 @@ describe("Endpoints", () => {
     [Endpoints.Uploads.update, "PATCH", "/upload/:id", true],
     [Endpoints.Uploads.remove, "DELETE", "/upload/:id", true],
     [Endpoints.Admin.users, "GET", "/admin/users", true],
+    [Endpoints.Admin.user, "GET", "/admin/users/:id", true],
     [Endpoints.Admin.setUploadQuota, "PATCH", "/admin/users/:id/upload-quota", true],
     [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true]
   ])("declares %o", (endpoint, method, path, credentials) => {

@@ -14,6 +14,8 @@ import AdminAreaView from "@/views/AdminAreaView.vue";
 import AdminUsersView from "@/views/AdminUsersView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
+import AdminUserView from "@/views/AdminUserView.vue";
+import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
 import ApiErrorView from "@/views/ApiErrorView.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
@@ -270,6 +272,20 @@ describe("views", () => {
     await flushPromises();
 
     expect(wrapper.findComponent(AdminUsersView).exists()).toBe(true);
+  });
+
+  it("AdminUserView shows the account from the route with a way back to the users", async () => {
+    mockFetch().mockResolvedValue(
+      jsonResponse(404, { error: "There is no such user with that ID." })
+    );
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminUserView, { props: { id: "u9" } });
+    await flushPromises();
+
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
+    expect(wrapper.find('a[href="/admin/users"]').text()).toBe("All users");
+    expect(wrapper.findComponent(AdminUserPanel).props("id")).toBe("u9");
+    expect(wrapper.find("h1").text()).toBe("Account");
   });
 
   it("AdminUserUploadsView lists the user's uploads with a way back", async () => {
