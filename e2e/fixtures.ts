@@ -288,6 +288,8 @@ export class MockApi {
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockAdminUser[] = [];
+  /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
+  private readonly userPendingEmails = new Map<string, string>();
   /** What `PATCH /user/password` checks the current password against, and changes. */
   password = MOCK_PASSWORD;
   /** The only `VB-AUTH` value still accepted; each new session replaces it. */
@@ -368,7 +370,8 @@ export class MockApi {
 
   /**
    * Adds an account to the admin list; `quotaBytes` makes it a custom quota, `suspendedAt` suspends
-   * it, `githubLogin` links GitHub and `password: false` makes it a GitHub-only account.
+   * it, `githubLogin` links GitHub and `password: false` makes it a GitHub-only account;
+   * `emailVerified` confirms its address and `pendingEmail` leaves a change waiting for its code.
    */
   hasUser(
     username: string,
@@ -378,7 +381,9 @@ export class MockApi {
       quotaBytes,
       suspendedAt = null,
       githubLogin,
-      password = true
+      password = true,
+      emailVerified = false,
+      pendingEmail
     }: {
       usedBytes?: number;
       count?: number;
@@ -386,6 +391,8 @@ export class MockApi {
       suspendedAt?: string | null;
       githubLogin?: string;
       password?: boolean;
+      emailVerified?: boolean;
+      pendingEmail?: string;
     } = {}
   ) {
     const user: MockAdminUser = {
@@ -404,6 +411,7 @@ export class MockApi {
       }
     };
     this.users.push(user);
+    if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
     // A password reset can reach this account, so logging in reaches it too; an arranged one stays.
     const email = normalizeEmail(user.email);
     if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
@@ -413,7 +421,7 @@ export class MockApi {
         username,
         isSuperuser: false,
         hasPassword: password,
-        emailVerified: false,
+        emailVerified,
         ...(githubLogin && { githubId: `gh-${username}`, githubLogin })
       });
     }
@@ -1504,7 +1512,7 @@ export class MockApi {
           hasPassword: account?.hasPassword ?? true,
           emailVerified: account?.emailVerified ?? false,
           githubLogin: account?.githubLogin ?? null,
-          pendingEmail: null,
+          pendingEmail: this.userPendingEmails.get(user.id) ?? null,
           counts: {
             pastes: this.pastes.filter((paste) => owns(paste.addedBy)).length,
             shortUrls: [...this.shortLinks.values()].filter((link) => owns(link.addedBy)).length,
