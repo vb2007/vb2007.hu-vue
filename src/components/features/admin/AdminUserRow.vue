@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId } from "vue";
-import { adminUserPath, adminUserUploadsPath } from "@/constants/admin";
+import { AdminRoutes } from "@/constants/admin";
 import type { AdminUser } from "@/types/api/admin";
 import { formatDate } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
@@ -80,14 +80,22 @@ const usage = computed(() => props.user.uploads);
           </div>
         </dl>
         <div class="about__keys">
-          <BaseButton size="sm" variant="secondary" :to="adminUserPath(user.id)">
+          <BaseButton
+            size="sm"
+            variant="secondary"
+            :to="{ name: AdminRoutes.user, params: { id: user.id } }"
+          >
             View account
           </BaseButton>
           <!-- The name goes along, so the uploads page can say whose they are before they load. -->
           <BaseButton
             size="sm"
             variant="secondary"
-            :to="{ path: adminUserUploadsPath(user.id), state: { uploadsOwner: user.username } }"
+            :to="{
+              name: AdminRoutes.userUploads,
+              params: { id: user.id },
+              state: { uploadsOwner: user.username }
+            }"
           >
             Browse uploads
           </BaseButton>

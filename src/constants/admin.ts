@@ -6,9 +6,17 @@ export const AdminPaths = {
   users: "/admin/users"
 } as const;
 
-/** One account's page under the Users section (`/admin/users/:id`), and its uploads. */
-export const adminUserPath = (id: string) => `${AdminPaths.users}/${encodeURIComponent(id)}`;
-export const adminUserUploadsPath = (id: string) => `${adminUserPath(id)}/uploads`;
+/**
+ * The names of the admin routes, for links that need params or history state (a page under a
+ * section, such as one user's uploads) and for telling the overview apart from the rest.
+ */
+export const AdminRoutes = {
+  overview: "admin",
+  users: "admin-users",
+  /** One account's page (`/admin/users/:id`), opened from its row; not a section of its own. */
+  user: "admin-user",
+  userUploads: "admin-user-uploads"
+} as const;
 
 /**
  * The admin area's sections, in the order the overview lists them. A section exists once its

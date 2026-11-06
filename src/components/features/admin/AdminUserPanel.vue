@@ -4,7 +4,7 @@
  * with the quota editor, and the Actions that can be taken on it.
  */
 import { computed, useId, watch } from "vue";
-import { adminUserUploadsPath } from "@/constants/admin";
+import { AdminRoutes } from "@/constants/admin";
 import { useAdminUser } from "@/composables/useAdminUser";
 import { formatDate, formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
@@ -154,7 +154,8 @@ const password = computed(() => {
                 size="sm"
                 variant="secondary"
                 :to="{
-                  path: adminUserUploadsPath(user.id),
+                  name: AdminRoutes.userUploads,
+                  params: { id: user.id },
                   state: { uploadsOwner: user.username }
                 }"
               >
