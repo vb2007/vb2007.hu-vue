@@ -170,7 +170,12 @@ describe("AdminUserPanel", () => {
     await flushPromises();
 
     const actions = wrapper.findAllComponents(AdminUserAction);
-    expect(actions.map((action) => action.props("title"))).toEqual(["Uploads"]);
+    expect(actions.map((action) => action.props("title"))).toEqual([
+      "Uploads",
+      "Rename",
+      "Log out everywhere",
+      "Delete account"
+    ]);
     expect(actions[0].find(".action__note").text()).toBe(
       "Open, rename, make private or delete user-a's 12 uploads."
     );
@@ -180,6 +185,26 @@ describe("AdminUserPanel", () => {
       name: "admin-user-uploads",
       params: { id: "a" },
       state: { uploadsOwner: "user-a" }
+    });
+  });
+
+  it("titles the board with the new name once it's renamed, keeping the details", async () => {
+    const wrapper = await mountPanel(anAdminUserDetails("a"));
+    await flushPromises();
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { user: anAdminUser("a", { username: "milo" }) })
+    );
+    const rename = wrapper.findAllComponents(AdminUserAction)[1];
+    await rename.find(".action__keys button").trigger("click");
+    await rename.find("input").setValue("milo");
+    await rename.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find("h1").text()).toBe("milo");
+    expect(facts(wrapper)).toMatchObject({
+      Username: "milo",
+      Owns: "3 pastes · 1 short link · 12 uploads"
     });
   });
 

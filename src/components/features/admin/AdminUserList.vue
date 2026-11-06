@@ -11,7 +11,14 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import AdminUserRow from "./AdminUserRow.vue";
 
-withDefaults(defineProps<{ as?: "h1" | "h2" }>(), { as: "h2" });
+withDefaults(
+  defineProps<{
+    as?: "h1" | "h2";
+    /** Shown above the list, e.g. that an account was deleted. */
+    notice?: string;
+  }>(),
+  { as: "h2", notice: "" }
+);
 
 const {
   users,
@@ -54,6 +61,8 @@ onMounted(load);
 
 <template>
   <StationBoard title="Users" :as="as">
+    <StatusMessage v-if="notice" tone="success">{{ notice }}</StatusMessage>
+
     <div class="filters">
       <BaseInput
         v-model="query"

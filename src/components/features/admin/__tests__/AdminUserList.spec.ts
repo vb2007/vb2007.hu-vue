@@ -67,6 +67,20 @@ describe("AdminUserList", () => {
     expect(wrapper.find(".empty").text()).toBe("No accounts yet.");
   });
 
+  it("shows a notice above the list, and none by default", async () => {
+    fetchMock.mockResolvedValue(listing([anAdminUser("a")]));
+    const plain = mount(AdminUserList, { global });
+    await flushPromises();
+    expect(plain.find(".status").exists()).toBe(false);
+
+    const wrapper = mount(AdminUserList, {
+      props: { notice: "anna's account is deleted." },
+      global
+    });
+    await flushPromises();
+    expect(wrapper.find(".status--success").text()).toBe("anna's account is deleted.");
+  });
+
   it("says one user, and offers everyone back when a search finds nobody", async () => {
     fetchMock.mockResolvedValueOnce(listing([anAdminUser("a")]));
     const wrapper = mount(AdminUserList, { global });
