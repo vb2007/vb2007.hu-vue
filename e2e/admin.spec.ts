@@ -71,7 +71,9 @@ test("the superuser browses a user's uploads and moderates them", async ({ page,
 
   await page.getByRole("button", { name: "flyer.pdf" }).click();
   await page.getByRole("button", { name: "Make private" }).click();
-  await expect(page.getByText("Only anna and the admin")).toBeVisible();
+  await expect(
+    page.getByText("anna and the admin, plus anyone they share the link with until it expires")
+  ).toBeVisible();
   expect(api.uploads[0].visibility).toBe("private");
 
   await page.getByRole("button", { name: "flyer.pdf" }).click();

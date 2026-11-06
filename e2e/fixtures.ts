@@ -50,8 +50,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
- * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), and the cdn refuses a private file
- * without a link that's still live with a 403. Public links stay plain.
+ * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
+ * cdn answers a private file without a link that's still live with a 404. Public links stay plain.
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
  * never reach a real server. Add a case to `respond` when the app starts calling a new endpoint.
@@ -612,9 +612,10 @@ export class MockApi {
       const opens =
         upload?.visibility === "public" ||
         (url.searchParams.has("sig") && expires * 1000 > this.now());
+      // The API's access check answers 403, which the cdn's nginx (`cdn.conf`) turns into a 404.
       return opens
         ? route.fulfill({ status: 200, contentType: "image/png", body: PIXEL })
-        : route.fulfill({ status: 403 });
+        : route.fulfill({ status: 404 });
     }
 
     if (this.userUploadsHold && /^\/admin\/users\/[^/]+\/uploads$/.test(url.pathname)) {
@@ -710,7 +711,7 @@ export class MockApi {
       return this.listPastes(decodeURIComponent(listRoute[1]), query);
     }
 
-    const uploadRoute = endpoint.match(/^(PATCH|DELETE) \/upload\/([^/]+)$/);
+    const uploadRoute = endpoint.match(/^(GET|PATCH|DELETE) \/upload\/([^/]+)$/);
     if (uploadRoute) {
       return this.editUpload(uploadRoute[1], decodeURIComponent(uploadRoute[2]), body);
     }
@@ -1449,6 +1450,9 @@ export class MockApi {
     if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
     const index = this.uploads.findIndex((upload) => upload.id === id);
     if (index === -1) return { status: 404, body: { error: "There is no such upload." } };
+    if (method === "GET") {
+      return { status: 200, body: { upload: this.served(this.uploads[index]) } };
+    }
     if (method === "DELETE") {
       this.uploads.splice(index, 1);
       return { status: 200, body: { message: "Upload deleted successfully.", upload: { id } } };
