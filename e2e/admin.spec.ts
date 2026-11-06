@@ -105,6 +105,30 @@ test("the overview's totals and mail fail on their own, and Refresh tries again"
   await expect(page.getByText("4 of 250 sent")).toBeVisible();
 });
 
+test("logging out on an admin page leaves the gate in full view", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna", { usedBytes: 3 * GB, count: 2 });
+
+  for (const path of ["/admin", "/admin/users"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("button", { name: "Log out" }).click();
+
+    await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
+    // Playwright counts a transparent element as visible, so check the page faded all the way in.
+    const gate = page.locator("main section.page");
+    await expect(gate).toHaveCount(1);
+    await expect(gate).not.toHaveClass(/route-enter/);
+    await expect(gate).toHaveCSS("opacity", "1");
+    api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  }
+});
+
 test("the superuser finds a user and changes their quota", async ({ page, api, isMobile }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.hasUser("vb2007", { usedBytes: 3 * GB, count: 40 });
