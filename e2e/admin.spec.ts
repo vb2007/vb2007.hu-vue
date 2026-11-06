@@ -2,15 +2,20 @@ import { expect, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
-test("the admin page stays hidden from everyone but the superuser", async ({ page, api }) => {
+test("the admin area stays hidden from everyone but the superuser", async ({ page, api }) => {
   await page.goto("/admin");
+  await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
+  await page.goto("/admin/users");
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
 
   api.loggedInAs();
-  await page.goto("/admin");
-  await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Upload quotas" })).toHaveCount(0);
+  for (const path of ["/admin", "/admin/users"]) {
+    await page.goto(path);
+    await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /^Users/ })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
+  }
 });
 
 test("the superuser finds a user and changes their quota", async ({ page, api, isMobile }) => {
@@ -23,7 +28,17 @@ test("the superuser finds a user and changes their quota", async ({ page, api, i
   if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
   await page.getByRole("link", { name: "Admin", exact: true }).click();
 
-  await expect(page.getByRole("heading", { level: 1, name: "Upload quotas" })).toBeVisible();
+  // The overview: one key per section.
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Admin" })).toBeVisible();
+  const adminKey = page.locator(".bar__admin");
+  await expect(adminKey).toHaveAttribute("aria-current", "page");
+  await page.getByRole("link", { name: /^Users/ }).click();
+
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+  // Still in the admin area, so the navbar's Admin key stays lit.
+  await expect(adminKey).toHaveAttribute("aria-current", "true");
   await expect(page.getByText("3 users")).toBeVisible();
   // Most storage used comes first.
   const names = page.locator(".row__name");
@@ -60,7 +75,7 @@ test("the superuser browses a user's uploads and moderates them", async ({ page,
   api.hasUpload("spam.zip", { visibility: "public", owner: "anna" });
   api.hasUpload("mine.txt", { owner: "vb2007" });
 
-  await page.goto("/admin");
+  await page.goto("/admin/users");
   await page.getByRole("button", { name: "anna" }).click();
   await page.getByRole("link", { name: "Browse uploads" }).click();
 
@@ -82,7 +97,12 @@ test("the superuser browses a user's uploads and moderates them", async ({ page,
   expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["flyer.pdf", "mine.txt"]);
 
   await page.getByRole("link", { name: "All users" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Upload quotas" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  await page.getByRole("link", { name: "All sections" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Admin" })).toBeVisible();
 });
 
 test("the admin's view of a user's uploads names them while loading and on failure", async ({
@@ -94,7 +114,7 @@ test("the admin's view of a user's uploads names them while loading and on failu
   api.hasUpload("flyer.pdf", { owner: "anna" });
   const release = api.holdsUserUploads();
 
-  await page.goto("/admin");
+  await page.goto("/admin/users");
   await page.getByRole("button", { name: "anna" }).click();
   await page.getByRole("link", { name: "Browse uploads" }).click();
 
