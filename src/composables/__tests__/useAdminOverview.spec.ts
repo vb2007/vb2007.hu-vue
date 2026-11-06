@@ -25,8 +25,11 @@ describe("useAdminOverview", () => {
       stats: async () => jsonResponse(200, someStats()),
       mailBudget: async () => jsonResponse(200, aMailBudget())
     });
-    const { stats, mailBudget, statsError, mailBudgetError, load } = useAdminOverview();
-    await load();
+    const { stats, mailBudget, statsError, mailBudgetError, isLoading, load } = useAdminOverview();
+    const loading = load();
+    expect(isLoading.value).toBe(true);
+    await loading;
+    expect(isLoading.value).toBe(false);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/admin/stats", {

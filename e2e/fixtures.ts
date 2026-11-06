@@ -590,9 +590,9 @@ export class MockApi {
     this.mailSentToday = count;
   }
 
-  /** Answers `GET /admin/stats` with a 502 and no `{ error }`, like a gateway. */
-  statsFail() {
-    this.statsDown = true;
+  /** Answers `GET /admin/stats` with a 502 and no `{ error }`, like a gateway, until called with `false`. */
+  statsFail(down = true) {
+    this.statsDown = down;
   }
 
   quotaIs(bytes: number) {

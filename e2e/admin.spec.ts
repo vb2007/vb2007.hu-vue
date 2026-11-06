@@ -36,9 +36,10 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   const board = page.locator(".board", {
     has: page.getByRole("heading", { level: 2, name: "Site" })
   });
-  const totals = board.getByRole("region", { name: "Totals" });
-  const row = (label: string) =>
-    totals.locator(".ledger__row", { hasText: new RegExp(`^${label}`) });
+  const row = (label: string, part = "Totals") =>
+    board
+      .getByRole("region", { name: part })
+      .locator(".ledger__row", { hasText: new RegExp(`^${label}`) });
   await expect(row("Users").locator("dd")).toHaveText("3");
   await expect(row("Pastes").locator("dd")).toHaveText("2");
   await expect(row("Short links").locator("dd")).toHaveText("1");
@@ -46,8 +47,8 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(row("Uploads").locator("dd")).toHaveText("3");
   await expect(row("Stored").locator("dd")).toHaveText("5 MB");
   await expect(row("Sign-ups waiting").locator("dd")).toHaveText("0");
-  await expect(row("Default quota").locator("dd")).toHaveText("10 GB");
-  await expect(row("Largest file").locator("dd")).toHaveText("100 MB");
+  await expect(row("Default quota", "Upload settings").locator("dd")).toHaveText("10 GB");
+  await expect(row("Largest file", "Upload settings").locator("dd")).toHaveText("100 MB");
 
   const mail = board.getByRole("region", { name: "Mail today" });
   await expect(mail.getByText("12 of 250 sent")).toBeVisible();
@@ -82,8 +83,12 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   );
 });
 
-test("the overview's totals and mail fail on their own", async ({ page, api }) => {
+test("the overview's totals and mail fail on their own, and Refresh tries again", async ({
+  page,
+  api
+}) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna");
   api.statsFail();
   api.sentMailToday(3);
 
@@ -91,6 +96,13 @@ test("the overview's totals and mail fail on their own", async ({ page, api }) =
   await expect(page.getByText(/^Failed to load the site's totals/)).toBeVisible();
   await expect(page.getByText("3 of 250 sent")).toBeVisible();
   await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
+
+  api.statsFail(false);
+  api.sentMailToday(4);
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText(/^Failed to load the site's totals/)).toHaveCount(0);
+  await expect(page.locator(".ledger__row", { hasText: /^Users/ }).locator("dd")).toHaveText("1");
+  await expect(page.getByText("4 of 250 sent")).toBeVisible();
 });
 
 test("the superuser finds a user and changes their quota", async ({ page, api, isMobile }) => {

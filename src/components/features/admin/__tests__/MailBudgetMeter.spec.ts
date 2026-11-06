@@ -34,9 +34,13 @@ describe("MailBudgetMeter", () => {
       "250 All mail stops"
     ]);
     expect(wrapper.find(".mail__here").exists()).toBe(true);
+    expect(wrapper.findAll(".mail__scale span").map((part) => part.text())).toEqual([
+      "188 until sign-up codes stop",
+      "238 left"
+    ]);
     expect(wrapper.findComponent(StatusMessage).exists()).toBe(false);
     expect(wrapper.find(".mail__note").text()).toMatch(
-      /^Counted by the API since midnight UTC or its last restart, whichever is later\. It starts again from 0 at .+\.$/
+      /^Counted by the API since midnight UTC or its last restart, whichever is later\. It starts again from 0 at midnight UTC, .+ your time\.$/
     );
     expect(wrapper.find(".mail__note time").attributes("datetime")).toBe(
       "2026-11-07T00:00:00.000Z"
@@ -50,9 +54,13 @@ describe("MailBudgetMeter", () => {
   });
 
   it("says when sign-up codes have stopped for the day", () => {
-    const wrapper = mountMeter(aMailBudget({ sentToday: 210 }));
+    const wrapper = mountMeter(aMailBudget({ sentToday: 230 }));
 
     expect(wrapper.find(".mail__mark").classes()).toContain("mail__mark--reached");
+    expect(wrapper.findAll(".mail__scale span").map((part) => part.text())).toEqual([
+      "",
+      "20 left"
+    ]);
     expect(rows(wrapper)).toEqual([
       "200 Sign-up codes stop Reached",
       "200 The API logs a warning Reached",
@@ -74,7 +82,10 @@ describe("MailBudgetMeter", () => {
     expect(rows(wrapper).at(-1)).toBe("250 All mail stops Reached");
     const notice = wrapper.findComponent(StatusMessage);
     expect(notice.props("tone")).toBe("error");
-    expect(notice.text()).toMatch(/^Today's mail limit is used up: no mail goes out until .+\.$/);
+    expect(notice.text()).toMatch(
+      /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\)\.$/
+    );
+    expect(wrapper.find(".mail__scale").text()).toBe("0 left");
   });
 
   it("keeps the meter's value within the limit", () => {

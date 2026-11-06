@@ -13,7 +13,6 @@ import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
     <AdminSiteBoard />
     <h2 id="admin-sections" class="sections-title">Sections</h2>
     <ToolDirectory :stops="ADMIN_SECTIONS" aria-labelledby="admin-sections" />
-
   </PageSection>
 </template>
 

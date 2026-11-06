@@ -238,7 +238,11 @@ describe("views", () => {
   });
 
   it("AdminAreaView changes admin pages with the route fade", async () => {
-    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    // The overview's totals and today's mail, then the users list.
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, someStats()))
+      .mockResolvedValueOnce(jsonResponse(200, aMailBudget()))
+      .mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
     asSuperuser();
     const { wrapper, router } = await mountWithRouter(AdminAreaView, {}, "/admin");
     expect(wrapper.findComponent({ name: "Transition" }).props()).toMatchObject({

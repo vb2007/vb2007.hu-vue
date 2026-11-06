@@ -254,9 +254,9 @@ export class Messages {
     static readonly statsFailed: string = "Failed to load the site's totals";
     static readonly mailBudgetLoading: string = "Loading today's mail…";
     static readonly mailBudgetFailed: string = "Failed to load today's mail";
-    /** `resetsAt` is the time the count starts again, as shown. */
+    /** `resetsAt` is the reader's local time of the next UTC midnight, when the count starts again. */
     static mailLimitReached(resetsAt: string): string {
-      return `Today's mail limit is used up: no mail goes out until ${resetsAt}.`;
+      return `Today's mail limit is used up: no mail goes out until midnight UTC (${resetsAt} your time).`;
     }
     /** `dailyLimit` is the number of mails a day, past which nothing is sent. */
     static registrationMailStopped(dailyLimit: number): string {

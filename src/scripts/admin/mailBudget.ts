@@ -18,11 +18,21 @@ export interface MailLine {
   isFull: boolean;
   /** Sign-up codes are refused, while other mail still goes out. */
   registrationStopped: boolean;
+  /** Mails that can still go out today. */
+  left: number;
+  /** Mails until sign-up codes stop, or `null` once they have. */
+  untilRegistrationStops: number | null;
   /** Every stop, in the order they come along the line, the limit last. */
   stops: MailStop[];
   /** The rings on the rail between the ends, one per place even when two stops share it. */
   marks: { share: number; reached: boolean }[];
 }
+
+/**
+ * How close (as a share of the line) a stop's ring may come to the "here" ring before it's left
+ * out, so the two never merge into one blob; the stops in words still name it.
+ */
+export const MARK_GAP = 0.05;
 
 const ORDER: MailStopKind[] = ["registration", "warning", "limit"];
 
@@ -30,6 +40,7 @@ const ORDER: MailStopKind[] = ["registration", "warning", "limit"];
 export const mailLine = (budget: MailBudgetResponse): MailLine => {
   const { sentToday, dailyLimit, warningAt, registrationStopsAt } = budget;
   const isFull = sentToday >= dailyLimit;
+  const share = dailyLimit > 0 ? Math.min(1, sentToday / dailyLimit) : 1;
   const at: Record<MailStopKind, number> = {
     registration: registrationStopsAt,
     warning: warningAt,
@@ -39,15 +50,21 @@ export const mailLine = (budget: MailBudgetResponse): MailLine => {
     (a, b) => a.at - b.at
   );
   // A stop at 0 or at the limit sits on an end ring, which already marks it.
-  const places = [...new Set([registrationStopsAt, warningAt])]
+  const marks = [...new Set([registrationStopsAt, warningAt])]
     .filter((count) => count > 0 && count < dailyLimit)
-    .sort((a, b) => a - b);
+    .sort((a, b) => a - b)
+    .map((count) => ({ share: count / dailyLimit, reached: sentToday >= count }))
+    // At the limit there's no "here" ring for them to run into.
+    .filter((mark) => isFull || Math.abs(mark.share - share) >= MARK_GAP);
 
   return {
-    share: Math.min(1, sentToday / dailyLimit),
+    share,
     isFull,
     registrationStopped: !isFull && sentToday >= registrationStopsAt,
+    left: Math.max(0, dailyLimit - sentToday),
+    untilRegistrationStops:
+      sentToday < registrationStopsAt ? registrationStopsAt - sentToday : null,
     stops,
-    marks: places.map((count) => ({ share: count / dailyLimit, reached: sentToday >= count }))
+    marks
   };
 };

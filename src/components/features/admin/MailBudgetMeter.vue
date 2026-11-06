@@ -41,8 +41,8 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
       :style="{ '--share': line.share }"
       :class="{ 'mail__line--some': budget.sentToday > 0 }"
     >
-      <span class="mail__end mail__end--from" />
-      <span class="mail__rail">
+      <span class="mail__end mail__end--from" aria-hidden="true" />
+      <span class="mail__rail" aria-hidden="true">
         <span class="mail__run" />
         <span
           v-for="mark in line.marks"
@@ -53,8 +53,16 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
         />
         <span v-if="!line.isFull" class="mail__here" />
       </span>
-      <span class="mail__end mail__end--to" />
+      <span class="mail__end mail__end--to" aria-hidden="true" />
     </div>
+    <p class="mail__scale">
+      <span>{{
+        line.untilRegistrationStops === null
+          ? ""
+          : `${count(line.untilRegistrationStops)} until sign-up codes stop`
+      }}</span>
+      <span>{{ count(line.left) }} left</span>
+    </p>
 
     <ul class="stops" aria-label="Stops on today's mail">
       <li
@@ -81,8 +89,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
 
     <p class="mail__note">
       Counted by the API since midnight UTC or its last restart, whichever is later. It starts again
-      from 0 at <time :datetime="budget.resetsAt">{{ resetsAt }}</time
-      >.
+      from 0 at midnight UTC, <time :datetime="budget.resetsAt">{{ resetsAt }}</time> your time.
     </p>
   </div>
 </template>
@@ -186,7 +193,8 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
 }
 
 .mail__here {
-  left: var(--at);
+  /* Short of the terminus, so a nearly full line doesn't swallow it. */
+  left: min(var(--at), calc(100% - 0.75rem));
   width: 1.125rem;
   height: 1.125rem;
   border: 4px solid var(--c-action);
@@ -219,6 +227,17 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.4);
   }
+}
+
+.mail__scale {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: calc(-1 * var(--sp-2));
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 /* The stops in words: the line's text equivalent, in the order they come along it. */

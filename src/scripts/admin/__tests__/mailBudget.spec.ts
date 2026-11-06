@@ -8,6 +8,8 @@ describe("mailLine", () => {
       share: 0.2,
       isFull: false,
       registrationStopped: false,
+      left: 200,
+      untilRegistrationStops: 150,
       stops: [
         { kind: "registration", at: 200, reached: false },
         { kind: "warning", at: 200, reached: false },
@@ -19,20 +21,41 @@ describe("mailLine", () => {
 
   it("marks each stop on its own when they're apart, in the order they come", () => {
     // MAIL_DAILY_LIMIT=7: the warning at ceil(5.6) = 6, sign-ups stop at 7 - ceil(1.4) = 5.
-    const line = mailLine(
-      aMailBudget({ sentToday: 6, dailyLimit: 7, warningAt: 6, registrationStopsAt: 5 })
-    );
+    const budget = aMailBudget({
+      sentToday: 1,
+      dailyLimit: 7,
+      warningAt: 6,
+      registrationStopsAt: 5
+    });
+    const line = mailLine(budget);
 
     expect(line.stops.map((stop) => [stop.kind, stop.reached])).toEqual([
-      ["registration", true],
-      ["warning", true],
+      ["registration", false],
+      ["warning", false],
       ["limit", false]
     ]);
     expect(line.marks).toEqual([
-      { share: 5 / 7, reached: true },
-      { share: 6 / 7, reached: true }
+      { share: 5 / 7, reached: false },
+      { share: 6 / 7, reached: false }
     ]);
-    expect(line.registrationStopped).toBe(true);
+
+    const later = mailLine({ ...budget, sentToday: 5 });
+    expect(later.stops.map((stop) => stop.reached)).toEqual([true, false, false]);
+    expect(later).toMatchObject({
+      registrationStopped: true,
+      untilRegistrationStops: null,
+      left: 2
+    });
+  });
+
+  it("leaves out a stop's ring while the here ring is on top of it", () => {
+    // 210 of 250 is 0.84 along, 0.04 past the ring at 200.
+    expect(mailLine(aMailBudget({ sentToday: 210 })).marks).toEqual([]);
+    expect(mailLine(aMailBudget({ sentToday: 230 })).marks).toEqual([
+      { share: 0.8, reached: true }
+    ]);
+    // At the limit there's no here ring, so the ring stays.
+    expect(mailLine(aMailBudget({ sentToday: 250 })).marks).toHaveLength(1);
   });
 
   it("leaves a stop at either end to the end's own ring", () => {
@@ -53,7 +76,15 @@ describe("mailLine", () => {
     expect(line.stops.every((stop) => stop.reached)).toBe(true);
   });
 
-  it("stays at the end of the line past the limit", () => {
-    expect(mailLine(aMailBudget({ sentToday: 300 })).share).toBe(1);
+  it("stays at the end of the line past the limit, with nothing left", () => {
+    expect(mailLine(aMailBudget({ sentToday: 300 }))).toMatchObject({ share: 1, left: 0 });
+  });
+
+  it("is full from the start with a limit of 0", () => {
+    const line = mailLine(
+      aMailBudget({ sentToday: 0, dailyLimit: 0, warningAt: 0, registrationStopsAt: 0 })
+    );
+
+    expect(line).toMatchObject({ share: 1, isFull: true, left: 0, marks: [] });
   });
 });

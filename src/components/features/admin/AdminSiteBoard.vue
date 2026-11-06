@@ -3,11 +3,12 @@ import { computed, onMounted } from "vue";
 import { Messages } from "@/constants/messages";
 import { useAdminOverview } from "@/composables/useAdminOverview";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
+import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import MailBudgetMeter from "./MailBudgetMeter.vue";
 
-const { stats, statsError, mailBudget, mailBudgetError, load } = useAdminOverview();
+const { stats, statsError, mailBudget, mailBudgetError, isLoading, load } = useAdminOverview();
 onMounted(load);
 
 const count = (value: number) => value.toLocaleString();
@@ -45,21 +46,34 @@ const settings = computed(() => {
       figure: formatBytes(defaultUploadQuotaBytes),
       about: "For users without their own"
     },
-    { label: "Largest file", figure: formatBytes(maxFileSizeBytes), about: "One upload can take" }
+    { label: "Largest file", figure: formatBytes(maxFileSizeBytes), about: "Per upload" }
   ];
 });
 </script>
 
 <template>
   <StationBoard title="Site">
+    <template #aside>
+      <BaseButton size="sm" variant="secondary" :loading="isLoading" @click="load">
+        {{ isLoading ? "Refreshing" : "Refresh" }}
+      </BaseButton>
+    </template>
     <div class="site">
       <div class="site__parts">
-        <section class="part" aria-labelledby="site-totals">
-          <h3 id="site-totals" class="part__title">Totals</h3>
-          <StatusMessage v-if="statsError" tone="error">{{ statsError }}</StatusMessage>
-          <p v-else-if="!stats" class="part__note">{{ Messages.Admin.statsLoading }}</p>
-          <template v-if="stats">
-            <dl class="ledger">
+        <!-- Today's mail comes first: it's the one figure that moves during the day. -->
+        <section class="part" aria-labelledby="site-mail">
+          <h3 id="site-mail" class="part__title">Mail today</h3>
+          <StatusMessage v-if="mailBudgetError" tone="error">{{ mailBudgetError }}</StatusMessage>
+          <p v-else-if="!mailBudget" class="part__note">{{ Messages.Admin.mailBudgetLoading }}</p>
+          <MailBudgetMeter v-if="mailBudget && !mailBudgetError" :budget="mailBudget" />
+        </section>
+
+        <div class="site__ledgers">
+          <section class="part" aria-labelledby="site-totals">
+            <h3 id="site-totals" class="part__title">Totals</h3>
+            <StatusMessage v-if="statsError" tone="error">{{ statsError }}</StatusMessage>
+            <p v-else-if="!stats" class="part__note">{{ Messages.Admin.statsLoading }}</p>
+            <dl v-if="stats && !statsError" class="ledger">
               <div v-for="row in totals" :key="row.label" class="ledger__row">
                 <dt>
                   {{ row.label }}
@@ -68,7 +82,10 @@ const settings = computed(() => {
                 <dd>{{ row.figure }}</dd>
               </div>
             </dl>
-            <h3 class="part__title">Upload settings</h3>
+          </section>
+
+          <section v-if="stats && !statsError" class="part" aria-labelledby="site-settings">
+            <h3 id="site-settings" class="part__title">Upload settings</h3>
             <dl class="ledger">
               <div v-for="row in settings" :key="row.label" class="ledger__row">
                 <dt>
@@ -78,15 +95,8 @@ const settings = computed(() => {
                 <dd>{{ row.figure }}</dd>
               </div>
             </dl>
-          </template>
-        </section>
-
-        <section class="part" aria-labelledby="site-mail">
-          <h3 id="site-mail" class="part__title">Mail today</h3>
-          <StatusMessage v-if="mailBudgetError" tone="error">{{ mailBudgetError }}</StatusMessage>
-          <p v-else-if="!mailBudget" class="part__note">{{ Messages.Admin.mailBudgetLoading }}</p>
-          <MailBudgetMeter v-if="mailBudget" :budget="mailBudget" />
-        </section>
+          </section>
+        </div>
       </div>
     </div>
   </StationBoard>
@@ -116,8 +126,10 @@ const settings = computed(() => {
   text-transform: uppercase;
 }
 
-.part__title:not(:first-child) {
-  margin-top: var(--sp-3);
+.site__ledgers {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-6);
 }
 
 .part__note {
@@ -164,7 +176,7 @@ const settings = computed(() => {
 
 @container (min-width: 44rem) {
   .site__parts {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
     gap: var(--sp-7);
   }
 }
