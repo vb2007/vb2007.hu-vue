@@ -66,6 +66,8 @@ describe("AdminUserSuspension", () => {
     expect(document.activeElement?.textContent?.trim()).toBe("Suspend");
 
     await wrapper.find("button").trigger("click");
+    // No refusal to describe yet.
+    expect(wrapper.find("button[type=submit]").attributes("aria-describedby")).toBeUndefined();
     await wrapper.find("form").trigger("keydown", { key: "Escape" });
     await flushPromises();
     expect(wrapper.find(".confirm").exists()).toBe(false);
@@ -93,7 +95,7 @@ describe("AdminUserSuspension", () => {
 
     expect(wrapper.emitted("updated")).toEqual([[anAdminUser("a", { suspendedAt: SUSPENDED_AT })]]);
     expect(wrapper.find(".confirm").exists()).toBe(false);
-    expect(wrapper.find("h3").text()).toBe("Lift suspension");
+    expect(wrapper.find("h3").text()).toBe("Suspension");
     expect(wrapper.find(".action__note").text().replace(/\s+/g, " ")).toBe(
       "user-a can't log in while suspended. Lifting it lets them log in again, with their password or GitHub."
     );
@@ -114,10 +116,13 @@ describe("AdminUserSuspension", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find(".confirm .status--error").text()).toBe(
-      "There is no such user with that ID."
-    );
+    const refusal = wrapper.find(".confirm .status--error");
+    expect(refusal.text()).toBe("There is no such user with that ID.");
     expect(wrapper.emitted("updated")).toBeUndefined();
+    // Back on the key that was pressed, which is tied to the refusal, so Escape still cancels.
+    const confirmKey = wrapper.find("button[type=submit]");
+    expect(document.activeElement).toBe(confirmKey.element);
+    expect(confirmKey.attributes("aria-describedby")).toBe(refusal.attributes("id"));
 
     // Cancel takes the refusal along.
     await wrapper.findAll("button")[1].trigger("click");
@@ -132,6 +137,7 @@ describe("AdminUserSuspension", () => {
     await flushPromises();
     expect(wrapper.find(".outcome.status--error").text()).toBe("Database down.");
     expect(keys(wrapper)).toEqual(["Lift suspension"]);
+    expect(document.activeElement).toBe(wrapper.find("button").element);
 
     const response = deferResponse(fetchMock);
     await wrapper.find("button").trigger("click");

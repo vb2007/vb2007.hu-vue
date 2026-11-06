@@ -80,7 +80,7 @@ export class Messages {
      * is linked to a suspended one. A password login gets the API's own 403 text instead.
      */
     static readonly githubAccountSuspended: string =
-      "The account linked to this GitHub account is suspended: it can't log in until the site's admin lifts the suspension.";
+      "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension.";
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */

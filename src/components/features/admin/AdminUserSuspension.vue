@@ -3,7 +3,7 @@
  * The account page's Suspend row. Suspending ends the user's session, so it asks first, in place;
  * lifting it doesn't. The superuser's own account can't be suspended, so its row only says so.
  */
-import { nextTick, ref, useTemplateRef } from "vue";
+import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";
 import { useAdminSuspension } from "@/composables/useAdminSuspension";
 import type { AdminUser } from "@/types/api/admin";
@@ -21,11 +21,15 @@ const { isSaving, error, saved, setSuspension } = useAdminSuspension();
 const confirming = ref(false);
 const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const confirmKey = useTemplateRef<InstanceType<typeof BaseButton>>("confirmKey");
+const errorId = useId();
 
-/** The row's key goes with each change: focus moves to the key that takes its place. */
+/**
+ * The row's key goes with each change: focus moves to the key that takes its place. After a
+ * refusal it goes back to the key that was pressed, which its loading state had disabled.
+ */
 const focusKey = async () => {
   await nextTick();
-  key.value?.$el.focus();
+  (confirming.value ? confirmKey : key).value?.$el.focus();
 };
 
 const open = async () => {
@@ -45,15 +49,16 @@ const cancel = () => {
 
 const change = async (suspended: boolean) => {
   const updated = await setSuspension(props.user.id, suspended);
-  if (!updated) return;
-  confirming.value = false;
-  emit("updated", updated);
+  if (updated) {
+    confirming.value = false;
+    emit("updated", updated);
+  }
   focusKey();
 };
 </script>
 
 <template>
-  <AdminUserAction :title="user.suspendedAt ? 'Lift suspension' : 'Suspend account'" icon="lock">
+  <AdminUserAction :title="user.suspendedAt ? 'Suspension' : 'Suspend account'" icon="lock">
     <template v-if="user.isSuperuser">{{ Messages.Admin.superuserNotSuspendable }}</template>
     <template v-else-if="user.suspendedAt">
       {{ user.username }} can't log in while suspended. Lifting it lets them log in again, with
@@ -93,9 +98,16 @@ const change = async (suspended: boolean) => {
           Suspend <strong>{{ user.username }}</strong
           >? They're logged out at once, and can't log in again until you lift the suspension.
         </p>
-        <StatusMessage v-if="error" tone="error">{{ error }}</StatusMessage>
+        <StatusMessage v-if="error" :id="errorId" tone="error">{{ error }}</StatusMessage>
         <div class="confirm__actions">
-          <BaseButton ref="confirmKey" type="submit" size="sm" error :loading="isSaving">
+          <BaseButton
+            ref="confirmKey"
+            type="submit"
+            size="sm"
+            error
+            :loading="isSaving"
+            :aria-describedby="error ? errorId : undefined"
+          >
             {{ isSaving ? "Suspending" : `Suspend ${user.username}` }}
           </BaseButton>
           <BaseButton size="sm" variant="ghost" :disabled="isSaving" @click="cancel">

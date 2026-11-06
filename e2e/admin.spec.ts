@@ -308,7 +308,7 @@ test("a GitHub login into a suspended account is explained", async ({ page }) =>
   await page.goto("/login?oauthError=accountSuspended");
 
   await expect(page.getByRole("alert")).toHaveText(
-    "The account linked to this GitHub account is suspended: it can't log in until the site's admin lifts the suspension."
+    "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension."
   );
   await expect(page).toHaveURL("/login");
 });
