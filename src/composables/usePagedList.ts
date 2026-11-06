@@ -2,7 +2,7 @@ import { onScopeDispose, ref, watch, type Ref } from "vue";
 import { useLatestRequest } from "@/composables/useLatestRequest";
 import type { ApiResult } from "@/scripts/api/client";
 import type { NoQuery, QueryValues } from "@/scripts/api/endpoint";
-import type { BasePagination, ListQuery, SortOrder } from "@/types/api/common";
+import type { BasePagination, ListQuery, PageQuery, SortOrder } from "@/types/api/common";
 
 /** How long typing in a list's search box waits for a pause before the list reloads. */
 export const SEARCH_DELAY_MS = 300;
@@ -17,9 +17,6 @@ export interface ListSort<SortBy extends string> {
 interface Listing {
   pagination: BasePagination;
 }
-
-/** The query of a list without a sort (pending registrations). */
-export type PageQuery = { limit: number; page: number };
 
 /** The search, left out while the box is empty. */
 type SearchQuery = { q?: string };
