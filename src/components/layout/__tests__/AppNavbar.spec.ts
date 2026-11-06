@@ -79,6 +79,7 @@ describe("AppNavbar", () => {
 
   it.each([
     ["/admin", "page"],
+    ["/admin/", "page"],
     ["/admin/users", "true"],
     ["/admin/users/u9/uploads", "true"],
     ["/admin/no-such-section", undefined],
