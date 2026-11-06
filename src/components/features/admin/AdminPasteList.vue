@@ -110,7 +110,7 @@ onMounted(load);
         <p class="row__meta">
           <RouterLink
             v-if="paste.owner"
-            class="row__owner"
+            class="meta-link"
             :to="{ name: AdminRoutes.user, params: { id: paste.owner.id } }"
             >{{ paste.owner.username }}</RouterLink
           >
@@ -222,26 +222,6 @@ onMounted(load);
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-}
-
-/* The owner's account page, as a text link like the Users rows' "View account". */
-.row__owner {
-  color: var(--c-action);
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: var(--c-hairline);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 0.2em;
-  transition: text-decoration-color var(--dur-quick) ease;
-}
-
-.row__owner:hover {
-  text-decoration-color: var(--c-line);
-}
-
-.row__owner:focus-visible {
-  outline: 3px solid var(--c-line);
-  outline-offset: 3px;
 }
 
 .row__gone {
