@@ -2,7 +2,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { isSuccessStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { apiUrl, errorMessageFrom } from "@/scripts/api/client";
+import { apiUrl, errorMessageFrom, noticeSessionRefusal } from "@/scripts/api/client";
 import type { BodyOf, ResponseOf } from "@/scripts/api/endpoint";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import type {
@@ -134,16 +134,11 @@ export const sendUpload = (
         onProgress(1);
         resolve((body as ResponseOf<typeof endpoint>).upload);
       } else {
-        reject(
-          new UploadError(
-            errorMessageFrom(
-              body,
-              request.status,
-              request.statusText,
-              Messages.Uploads.uploadFailed
-            )
-          )
+        const error = new UploadError(
+          errorMessageFrom(body, request.status, request.statusText, Messages.Uploads.uploadFailed)
         );
+        // Like `apiRequest`, an ended session logs the page out before the failure comes back.
+        void noticeSessionRefusal(endpoint, request.status, body).finally(() => reject(error));
       }
     };
     request.onerror = () => reject(new UploadError(Messages.connectionError));
