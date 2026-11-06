@@ -217,7 +217,9 @@ test("the superuser lifts a log-in lockout with the e-mail and the IP", async ({
   const ip = page.getByLabel("IP address");
   const clear = page.getByRole("button", { name: "Clear rate limits" });
 
-  await clear.click();
+  // Blocked until the form passes, but pressing it shows why.
+  await expect(clear).toHaveAttribute("aria-disabled", "true");
+  await clear.click({ force: true });
   await expect(page.getByText("Enter an e-mail address, an IP or both.")).toBeVisible();
   await expect(email).toBeFocused();
 
@@ -231,7 +233,7 @@ test("the superuser lifts a log-in lockout with the e-mail and the IP", async ({
   ]);
 
   await ip.fill("203.0.113");
-  await clear.click();
+  await clear.click({ force: true });
   await expect(page.getByText("That isn't an IPv4 or IPv6 address.")).toBeVisible();
   await expect(ip).toBeFocused();
 

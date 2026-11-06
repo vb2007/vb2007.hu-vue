@@ -77,12 +77,13 @@ onMounted(load);
               formatDateTime(registration.expiresAt)
             }}</time>
           </template>
-          <template v-else>
-            Expires
+          <!-- One piece, so a narrow row doesn't strand "Expires" above its time. -->
+          <span v-else class="row__expiry"
+            >Expires
             <time :datetime="registration.expiresAt">{{
               formatDateTime(registration.expiresAt)
-            }}</time>
-          </template>
+            }}</time></span
+          >
         </p>
         <ConfirmDeleteButton
           class="row__remove"
@@ -165,6 +166,10 @@ onMounted(load);
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+.row__expiry {
+  white-space: nowrap;
 }
 
 .row__remove {
