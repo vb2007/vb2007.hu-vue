@@ -20,6 +20,7 @@ describe("router", () => {
     ["upload", "/upload"],
     ["admin", "/admin"],
     ["admin-users", "/admin/users"],
+    ["admin-pastes", "/admin/pastes"],
     ["admin-short-links", "/admin/short-links"],
     ["account", "/account"],
     ["login", "/login"],
@@ -103,6 +104,7 @@ describe("router", () => {
     ["/admin/users/1/uploads", "admin-user-uploads"],
     ["/admin/users/1", "admin-user"],
     ["/admin/users", "admin-users"],
+    ["/admin/pastes", "admin-pastes"],
     ["/admin/short-links", "admin-short-links"],
     ["/admin/", "admin"],
     ["/apierror?url=%2Ffoo", "api-error"]

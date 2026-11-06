@@ -1,6 +1,7 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
+import type { PasteSortBy } from "@/types/api/pastebin";
 import type { OwnShortUrl, ShortUrlSortBy } from "@/types/api/shortener";
-import type { UploadOwner } from "@/types/api/uploads";
+import type { Upload, UploadOwner, UploadSortBy } from "@/types/api/uploads";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -63,6 +64,59 @@ export interface UploadQuotaResponse extends MessageResponse {
   user: AdminUser;
 }
 
+/** `PATCH /admin/users/:id` (vb2007/vb2007.hu-api#274): 2 to 16 characters once trimmed. */
+export interface RenameUserBody {
+  username: string;
+}
+
+/** `PATCH /admin/users/:id` */
+export interface RenameUserResponse extends MessageResponse {
+  user: AdminUser;
+}
+
+/**
+ * `POST /admin/users/:id/logout` (vb2007/vb2007.hu-api#275): ends the account's session, and so the
+ * superuser's own when it's their account. Also a 200 when they weren't logged in.
+ */
+export interface LogoutUserResponse extends MessageResponse {
+  user: { id: string; username: string };
+}
+
+/** `PATCH /admin/users/:id/suspension` (vb2007/vb2007.hu-api#273) */
+export interface SetSuspensionBody {
+  /** `true` suspends the user and ends their session; `false` lifts the suspension. */
+  suspended: boolean;
+}
+
+/** `PATCH /admin/users/:id/suspension` */
+export interface SuspensionResponse extends MessageResponse {
+  user: AdminUser;
+}
+
+/** A paste as `GET /admin/pastes` lists it (vb2007/vb2007.hu-api#277). */
+export interface AdminPaste {
+  id: string;
+  /** A PASTE_LANGUAGES id, or `null` for a paste without one (plain text). */
+  language: string | null;
+  /** The paste's first 100 characters (code points); the rest stays on `GET /paste/:id`. */
+  preview: string;
+  addedOn: string;
+  /** `null` once the owner's account no longer exists. */
+  owner: UploadOwner | null;
+}
+
+/** `GET /admin/pastes` */
+export type AdminPasteListQuery = ListQuery<PasteSortBy> & {
+  /** Matches part of the owner's username or of the language id, whatever its case. */
+  q?: string;
+};
+
+/** `GET /admin/pastes` */
+export interface AdminPastesResponse {
+  pastes: AdminPaste[];
+  pagination: Pagination<PasteSortBy>;
+}
+
 /** A short link as `GET /admin/short-urls` lists it (vb2007/vb2007.hu-api#279). */
 export interface AdminShortUrl extends OwnShortUrl {
   /** `null` once the owner's account no longer exists. */
@@ -79,4 +133,16 @@ export type AdminShortUrlListQuery = ListQuery<ShortUrlSortBy> & {
 export interface AdminShortUrlsResponse {
   shortUrls: AdminShortUrl[];
   pagination: Pagination<ShortUrlSortBy>;
+}
+
+/** An upload in the admin's site-wide list, with whose it is (vb2007/vb2007.hu-api#280). */
+export interface AdminUpload extends Upload {
+  /** `null` once the owner's account no longer exists. */
+  owner: UploadOwner | null;
+}
+
+/** `GET /admin/uploads`: every user's uploads, private ones included. Takes `UploadListQuery`. */
+export interface AdminUploadsResponse {
+  uploads: AdminUpload[];
+  pagination: Pagination<UploadSortBy>;
 }

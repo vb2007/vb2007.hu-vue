@@ -1,12 +1,20 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
+  AdminPasteListQuery,
+  AdminPastesResponse,
   AdminShortUrlListQuery,
   AdminShortUrlsResponse,
+  AdminUploadsResponse,
   AdminUserListQuery,
   AdminUserResponse,
   AdminUsersResponse,
+  LogoutUserResponse,
+  RenameUserBody,
+  RenameUserResponse,
+  SetSuspensionBody,
   SetUploadQuotaBody,
+  SuspensionResponse,
   UploadQuotaResponse
 } from "@/types/api/admin";
 import type {
@@ -315,15 +323,44 @@ export class Endpoints {
       path: "/admin/users/:id",
       credentials: true
     });
+    static readonly renameUser = defineEndpoint<RenameUserBody, RenameUserResponse>()({
+      method: HttpMethod.Patch,
+      path: "/admin/users/:id",
+      credentials: true
+    });
+    /** Ends every session of the account; on the superuser's own, theirs too. */
+    static readonly logoutUser = defineEndpoint<undefined, LogoutUserResponse>()({
+      method: HttpMethod.Post,
+      path: "/admin/users/:id/logout",
+      credentials: true
+    });
+    /** Deletes the account with its pastes, short links and uploads; never the superuser's own. */
+    static readonly deleteUser = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/users/:id",
+      credentials: true
+    });
     static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({
       method: HttpMethod.Patch,
       path: "/admin/users/:id/upload-quota",
+      credentials: true
+    });
+    /** Suspending ends the user's session; the superuser's own account answers 409. */
+    static readonly setSuspension = defineEndpoint<SetSuspensionBody, SuspensionResponse>()({
+      method: HttpMethod.Patch,
+      path: "/admin/users/:id/suspension",
       credentials: true
     });
     /** Answers like `Uploads.list`, plus whose uploads they are. */
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    /** Every paste on the site; delete one with `Pastebin.remove`, which lets the superuser through. */
+    static readonly pastes = defineEndpoint<undefined, AdminPastesResponse, AdminPasteListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/pastes",
       credentials: true
     });
     /** Every short link on the site; delete one with `ShortUrl.remove`, which lets the superuser through. */
@@ -334,6 +371,15 @@ export class Endpoints {
     >()({
       method: HttpMethod.Get,
       path: "/admin/short-urls",
+      credentials: true
+    });
+    /**
+     * Every user's uploads, each with its owner. Edits go through `Uploads.update` and
+     * `Uploads.remove`, which let the superuser past the owner check.
+     */
+    static readonly uploads = defineEndpoint<undefined, AdminUploadsResponse, UploadListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/uploads",
       credentials: true
     });
   };

@@ -60,9 +60,19 @@ export const routes: RouteRecordRaw[] = [
         props: true
       },
       {
+        path: "pastes",
+        name: AdminRoutes.pastes,
+        component: () => import("../views/AdminPastesView.vue")
+      },
+      {
         path: "short-links",
         name: AdminRoutes.shortLinks,
         component: () => import("../views/AdminShortLinksView.vue")
+      },
+      {
+        path: "uploads",
+        name: AdminRoutes.uploads,
+        component: () => import("../views/AdminUploadsView.vue")
       }
     ]
   },
