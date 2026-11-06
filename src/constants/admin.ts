@@ -3,7 +3,8 @@ import type { Stop } from "./stops";
 /** The admin area's pages: the overview, where every section has its key, and the sections. */
 export const AdminPaths = {
   overview: "/admin",
-  users: "/admin/users"
+  users: "/admin/users",
+  uploads: "/admin/uploads"
 } as const;
 
 /**
@@ -15,7 +16,8 @@ export const AdminRoutes = {
   users: "admin-users",
   /** One account's page (`/admin/users/:id`), opened from its row; not a section of its own. */
   user: "admin-user",
-  userUploads: "admin-user-uploads"
+  userUploads: "admin-user-uploads",
+  uploads: "admin-uploads"
 } as const;
 
 /**
@@ -31,5 +33,12 @@ export const ADMIN_SECTIONS: Stop[] = [
     to: AdminPaths.users,
     status: "open",
     blurb: "Every account, its upload storage and its quota."
+  },
+  {
+    id: "uploads",
+    label: "Uploads",
+    to: AdminPaths.uploads,
+    status: "open",
+    blurb: "Every file on the site and whose it is, to rename, make private or delete."
   }
 ];

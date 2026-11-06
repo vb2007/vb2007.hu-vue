@@ -1,6 +1,7 @@
 import { HttpMethod } from "@/constants/http";
 import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
+  AdminUploadsResponse,
   AdminUserListQuery,
   AdminUserResponse,
   AdminUsersResponse,
@@ -308,6 +309,15 @@ export class Endpoints {
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    /**
+     * Every user's uploads, each with its owner. Edits go through `Uploads.update` and
+     * `Uploads.remove`, which let the superuser past the owner check.
+     */
+    static readonly uploads = defineEndpoint<undefined, AdminUploadsResponse, UploadListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/uploads",
       credentials: true
     });
   };

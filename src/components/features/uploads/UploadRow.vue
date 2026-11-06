@@ -5,9 +5,10 @@ import { useClipboard } from "@/composables/useClipboard";
 import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { isSuperuser } from "@/scripts/authentication/authState";
+import { AdminRoutes } from "@/constants/admin";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
 import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
-import type { Upload, UploadVisibility } from "@/types/api/uploads";
+import type { Upload, UploadOwner, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -20,8 +21,13 @@ import UploadLink from "./UploadLink.vue";
 
 const props = defineProps<{
   upload: Upload;
-  /** Set when the admin looks at someone else's uploads. */
-  ownerName?: string;
+  /**
+   * Whose upload it is, set in the admin's listings (`null` once their account is gone); left out
+   * on the user's own list.
+   */
+  owner?: UploadOwner | null;
+  /** Leads the row's meta line with the owner, for a list of everyone's uploads. */
+  showOwner?: boolean;
   /** The edit running on this row, if any. */
   busy: UploadAction | "";
   error: string;
@@ -35,13 +41,15 @@ const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
 /**
  * Only the owner and the admin get a private file's signed link, but it opens for anyone until it
- * expires. The admin is "you" on their own uploads and on someone else's (`ownerName`).
+ * expires. The admin is "you" on their own uploads and on someone else's (`owner`); a deleted
+ * account's leaves only the admin.
  */
 const audience = computed(() => {
   if (!isPrivate.value) return "Anyone with the link, while it's public";
-  if (props.ownerName)
-    return `${props.ownerName}, you, and anyone with the link (until it expires)`;
-  return isSuperuser.value
+  const { owner } = props;
+  if (owner && owner.id !== userId.value)
+    return `${owner.username}, you, and anyone with the link (until it expires)`;
+  return owner !== undefined || isSuperuser.value
     ? "You, and anyone with the link (until it expires)"
     : "You, the admin, and anyone with the link (until it expires)";
 });
@@ -168,6 +176,18 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
           <AppIcon class="row__chevron" name="chevron" :size="18" />
         </button>
         <p class="row__meta">
+          <template v-if="showOwner">
+            <!-- Whose it is leads, a click from their account; named apart for screen readers. -->
+            <RouterLink
+              v-if="owner"
+              class="row__owner"
+              :to="{ name: AdminRoutes.user, params: { id: owner.id } }"
+              :aria-label="`${owner.username}'s account`"
+              >{{ owner.username }}</RouterLink
+            >
+            <template v-else>Deleted account</template>
+            ·
+          </template>
           {{ formatBytes(upload.fileSize) }} · {{ typeLabel(upload.extension) }} ·
           <time :datetime="upload.uploadedOn">{{ formatDateTime(upload.uploadedOn) }}</time>
         </p>
@@ -408,6 +428,26 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+.row__owner {
+  color: var(--c-action);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--c-hairline);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  overflow-wrap: anywhere;
+  transition: text-decoration-color var(--dur-quick) ease;
+}
+
+.row__owner:hover {
+  text-decoration-color: var(--c-line);
+}
+
+.row__owner:focus-visible {
+  outline: 3px solid var(--c-line);
+  outline-offset: 3px;
 }
 
 .badge svg {

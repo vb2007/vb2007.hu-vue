@@ -264,5 +264,6 @@ export class Messages {
     static userUploadsFailed(name?: string): string {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
     }
+    static readonly uploadsFailed: string = "Failed to load the uploads";
   };
 }
