@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/t
 import { nextTick } from "vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AdminUserRow from "@/components/features/admin/AdminUserRow.vue";
-import { SEARCH_DELAY_MS } from "@/composables/useAdminUsers";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
 import { Limits } from "@/constants/limits";
 import type { AdminUser } from "@/types/api/admin";
 import { anAdminUser } from "@/__tests__/helpers/admin";

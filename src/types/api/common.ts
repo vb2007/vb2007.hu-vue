@@ -17,20 +17,28 @@ export interface ApiErrorBody {
   retryAfter?: number;
 }
 
-/** The `pagination` object of every list route. */
-export interface Pagination<SortBy extends string = string> {
+/** The `pagination` object of every list route; `pages` is 0 for an empty list. */
+export interface BasePagination {
   limit: number;
   page: number;
   total: number;
   pages: number;
+}
+
+/** The `pagination` object of a sorted list route (every one but pending registrations). */
+export interface Pagination<SortBy extends string = string> extends BasePagination {
   sortBy: SortBy;
   sortOrder: SortOrder;
 }
 
-/** The query every list route takes (a type, not an interface, so it fits `QueryValues`). */
-export type ListQuery<SortBy extends string> = {
-  limit: number;
-  page: number;
+/**
+ * The page every list route takes; on its own, the query of a list without a sort (pending
+ * registrations). Types, not interfaces, so they fit `QueryValues`.
+ */
+export type PageQuery = { limit: number; page: number };
+
+/** The query every sorted list route takes. */
+export type ListQuery<SortBy extends string> = PageQuery & {
   sortBy: SortBy;
   sortOrder: SortOrder;
 };

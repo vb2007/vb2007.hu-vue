@@ -263,7 +263,13 @@ Sunk-enamel fill, 2px ink border, 0.5rem radius, 2.875rem tall; Barlow 600 label
 Joined keys for a one-of-few choice (a radio group). One sunk-enamel strip with a 2px ink edge and a 0.1875rem hard ink underside; keys are separated by 2px ink rules, labels in condensed uppercase 700 (1.125rem, 1.0625rem small) in Soft Ink, with an optional icon. Hover lifts a key to enamel and ink. The chosen key is Signal Forest with enamel text, like the current stop. Focus is the standard route-green outline. Legend above in Barlow 600 at 0.875rem.
 
 ### Select
-A sunk field like the text input: sunk-enamel fill, 2px ink border, 0.5rem radius, 2.875rem tall (2.375rem small), native appearance removed and a chevron glyph on the right. Hover and focus behave like inputs (enamel fill; focus adds Signal Forest border and the 4px line halo).
+A sunk field like the text input: sunk-enamel fill, 2px ink border, 0.5rem radius, 2.875rem tall (2.375rem small), native appearance removed and a chevron glyph on the right. Hover and focus behave like inputs (enamel fill; focus adds Signal Forest border and the 4px line halo). A list's sort is one Select labelled "Sort" (`SortSelect`), each option a field and a direction ("Name, A to Z").
+
+### List Pager
+Under a paged list, only once it has more than one page (`ListPager`): small secondary Previous and Next keys at either end, "Page 2 of 5" between them in Soft Ink 600 with tabular numbers. A key is disabled on the first or last page and while a page loads. It wraps on narrow boards.
+
+### Two-click Delete
+Deleting a row takes two clicks (`ConfirmDeleteButton` with `useConfirmDelete`): a small ghost "Delete" key arms on the first, turning solid red as "Confirm delete" (a primary key in the error state, since the ghost hover wash would dull the red); the second deletes, and the key reads "Deleting" with the spinner. It disarms after 4 seconds. There is one armed row per shared instance: the pastes list shares one, so arming another paste disarms the first, while upload rows arm on their own. A trash icon leads it only where the other keys in its line have icons too.
 
 ### Drop Target
 A sunk-enamel panel (0.875rem radius, 2px ink edge, centred content) holding a stop: a 3.5rem route-green ring (5px) on enamel with the upload glyph in Signal Forest, a condensed uppercase title, a secondary "Choose files" key and a soft-ink hint. On drag-over the panel lifts to enamel with a Signal Forest border and the 4px line halo, and the ring fills Signal Forest, scales 1.12 and rises 0.25rem.
