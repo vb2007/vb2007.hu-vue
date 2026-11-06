@@ -12,6 +12,7 @@ import UploadView from "@/views/UploadView.vue";
 import AdminView from "@/views/AdminView.vue";
 import AdminAreaView from "@/views/AdminAreaView.vue";
 import AdminUsersView from "@/views/AdminUsersView.vue";
+import AdminSystemView from "@/views/AdminSystemView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
@@ -226,6 +227,26 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
     expect(wrapper.findComponent(AdminUserList).props("as")).toBe("h1");
     expect(wrapper.find("h1").text()).toBe("Users");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
+  it("AdminAreaView shows the superuser the system tools under one heading", async () => {
+    mockFetch().mockResolvedValue(
+      jsonResponse(200, {
+        pendingRegistrations: [],
+        pagination: { limit: 20, page: 1, total: 0, pages: 0 }
+      })
+    );
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/system");
+
+    expect(wrapper.findComponent(AdminSystemView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.find("h1").text()).toBe("System");
+    expect(wrapper.findAll("h2").map((title) => title.text())).toEqual([
+      "Pending registrations",
+      "Rate limits"
+    ]);
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
   });
 

@@ -1,5 +1,6 @@
 import { SITE_LOCALE } from "@/constants/locale";
 import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
+import type { RateLimitName } from "@/types/api/admin";
 
 /**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
@@ -249,6 +250,38 @@ export class Messages {
     /** `name` is the account's username, when it's known. */
     static userUploadsFailed(name?: string): string {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
+    }
+
+    static readonly pendingRegistrationsFailed: string = "Failed to load the pending registrations";
+    static readonly removePendingRegistrationFailed: string =
+      "Failed to remove the pending registration";
+    static readonly clearRateLimitsFailed: string = "Failed to clear the rate limits";
+    /** The API wants an e-mail, an IP or both; it says so too, but nothing is sent without one. */
+    static readonly rateLimitTargetMissing: string = "Enter an e-mail address, an IP or both.";
+    static readonly invalidIp: string = "That isn't an IPv4 or IPv6 address.";
+    /** What each of the API's rate limiters counts, for the notice of what was cleared. */
+    static readonly rateLimitNames: Record<RateLimitName, string> = {
+      loginPerIp: "Failed log-ins from the IP",
+      loginPerAccount: "Failed log-ins to the address from the IP",
+      loginPerEmail: "Failed log-ins to the address from anywhere",
+      codeChecksPerIp: "Wrong sign-up and password reset codes from the IP",
+      codeChecksPerEmail: "Wrong sign-up and password reset codes for the address",
+      resetLinkChecksPerIp: "Refused password reset links from the IP",
+      mailSendsPerIp: "E-mails requested from the IP",
+      usernameChecksPerIp: "Username checks from the IP",
+      accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
+      passwordChecksPerIp: "Wrong passwords on the account page from the IP"
+    };
+    /** A limiter's plain name, or the API's own one for a limiter added after this list. */
+    static rateLimitName(name: string): string {
+      return Messages.Admin.rateLimitNames[name as RateLimitName] ?? name;
+    }
+    /** `target` names what was cleared, e.g. "anna@example.com and 203.0.113.7". */
+    static rateLimitsCleared(target: string): string {
+      return `Cleared for ${target}:`;
+    }
+    static nothingCleared(target: string): string {
+      return `Nothing was counting for ${target}, so there was nothing to clear.`;
     }
   };
 }

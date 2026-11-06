@@ -13,3 +13,6 @@ export const formatDateTime = (iso: string, locale?: string): string => {
 export const formatDate = (iso: string, locale?: string): string => {
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
 };
+
+/** Whether the moment `iso` names has come, e.g. a pending registration's expiry. */
+export const isPast = (iso: string, now = Date.now()): boolean => Date.parse(iso) <= now;

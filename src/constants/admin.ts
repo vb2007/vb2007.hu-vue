@@ -3,7 +3,8 @@ import type { Stop } from "./stops";
 /** The admin area's pages: the overview, where every section has its key, and the sections. */
 export const AdminPaths = {
   overview: "/admin",
-  users: "/admin/users"
+  users: "/admin/users",
+  system: "/admin/system"
 } as const;
 
 /**
@@ -13,7 +14,8 @@ export const AdminPaths = {
 export const AdminRoutes = {
   overview: "admin",
   users: "admin-users",
-  userUploads: "admin-user-uploads"
+  userUploads: "admin-user-uploads",
+  system: "admin-system"
 } as const;
 
 /**
@@ -29,5 +31,12 @@ export const ADMIN_SECTIONS: Stop[] = [
     to: AdminPaths.users,
     status: "open",
     blurb: "Every account, its upload storage and its quota."
+  },
+  {
+    id: "system",
+    label: "System",
+    to: AdminPaths.system,
+    status: "open",
+    blurb: "Sign-ups waiting for their code, and clearing rate-limit lockouts."
   }
 ];

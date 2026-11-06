@@ -3,6 +3,10 @@ import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
   AdminUserListQuery,
   AdminUsersResponse,
+  ClearRateLimitsBody,
+  ClearRateLimitsResponse,
+  PendingRegistrationListQuery,
+  PendingRegistrationsResponse,
   SetUploadQuotaBody,
   UploadQuotaResponse
 } from "@/types/api/admin";
@@ -295,6 +299,28 @@ export class Endpoints {
     static readonly userUploads = defineEndpoint<undefined, UploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/users/:id/uploads",
+      credentials: true
+    });
+    static readonly pendingRegistrations = defineEndpoint<
+      undefined,
+      PendingRegistrationsResponse,
+      PendingRegistrationListQuery
+    >()({
+      method: HttpMethod.Get,
+      path: "/admin/pending-registrations",
+      credentials: true
+    });
+    static readonly removePendingRegistration = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/pending-registrations/:id",
+      credentials: true
+    });
+    static readonly clearRateLimits = defineEndpoint<
+      ClearRateLimitsBody,
+      ClearRateLimitsResponse
+    >()({
+      method: HttpMethod.Delete,
+      path: "/admin/rate-limits",
       credentials: true
     });
   };
