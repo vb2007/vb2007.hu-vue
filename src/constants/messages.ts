@@ -72,6 +72,12 @@ export class Messages {
       const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
       return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
     }
+    /**
+     * The API's 403 to a request without a working session (its `Responses.notLoggedIn`): none was
+     * sent, or it ended. Other 403s (a wrong password, not the owner) have their own texts, so only
+     * this one tells the page it's logged out (see `onSessionRefused`).
+     */
+    static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
     static readonly sessionEnded: string =
       "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";
@@ -227,6 +233,13 @@ export class Messages {
     static readonly visibilityFailed: string = "Failed to change visibility";
     static readonly deleteFailed: string = "Failed to delete upload";
     static readonly uploadFailed: string = "Upload failed";
+    /** A finished upload's private link couldn't be signed again. */
+    static readonly renewLinkFailed: string = "Failed to renew the link";
+    /** On a queue ticket whose file is gone, so no new link will come. */
+    static readonly linkFileDeleted: string = "This file was deleted, so its link no longer works.";
+    /** On a queue ticket the API won't renew a link for any more, e.g. after the session ended. */
+    static readonly linkNotRenewed: string =
+      "This link couldn't be renewed. Copy it from Your uploads instead.";
     /** The user stopped the upload; not shown as an error. */
     static readonly cancelled: string = "Cancelled";
     static readonly emptyFile: string = "This file is empty.";
