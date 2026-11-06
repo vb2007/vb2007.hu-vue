@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { SEARCH_DELAY_MS, useUploads, type UploadListing } from "@/composables/useUploads";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
+import { useUploads, type UploadListing } from "@/composables/useUploads";
 import { Endpoints } from "@/constants/endpoints";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
