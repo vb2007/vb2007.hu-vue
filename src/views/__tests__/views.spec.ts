@@ -247,6 +247,33 @@ describe("views", () => {
     expect(wrapper.findComponent(AdminUsersView).exists()).toBe(true);
   });
 
+  it("AdminAreaView takes App's fade on its own element, so the gate swaps in plainly", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/users");
+    // A component root would hand App's route fade on to whatever the gate swaps in.
+    expect(wrapper.element.tagName).toBe("DIV");
+
+    isSuperuser.value = false;
+    isLoggedIn.value = false;
+    await flushPromises();
+
+    expect(wrapper.element.tagName).toBe("DIV");
+    expect(wrapper.find(".status").text()).toBe("Log in with the admin account to open this page.");
+    expect(wrapper.findComponent(AdminUsersView).exists()).toBe(false);
+  });
+
+  it("AdminAreaView keeps the last admin page while App fades it out of the area", async () => {
+    mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
+    asSuperuser();
+    const { wrapper, router } = await mountWithRouter(AdminAreaView, {}, "/admin/users");
+
+    await router.push("/upload");
+    await flushPromises();
+
+    expect(wrapper.findComponent(AdminUsersView).exists()).toBe(true);
+  });
+
   it("AdminUserView shows the account from the route with a way back to the users", async () => {
     mockFetch().mockResolvedValue(
       jsonResponse(404, { error: "There is no such user with that ID." })
