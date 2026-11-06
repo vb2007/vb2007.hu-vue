@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import PasteList from "@/components/features/pastebin/PasteList.vue";
+import { CONFIRM_DELETE_MS } from "@/composables/useConfirmDelete";
 import { username } from "@/scripts/authentication/authState";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
@@ -213,7 +214,7 @@ describe("PasteList", () => {
     await deleteButtons()[1].trigger("click");
     expect(labels()).toEqual(["Delete", "Confirm delete"]);
 
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(CONFIRM_DELETE_MS);
 
     expect(labels()).toEqual(["Delete", "Delete"]);
     expect(deleteButtons()[1].classes()).toContain("btn--ghost");
