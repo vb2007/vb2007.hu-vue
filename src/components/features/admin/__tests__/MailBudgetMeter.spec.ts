@@ -40,7 +40,7 @@ describe("MailBudgetMeter", () => {
     ]);
     expect(wrapper.findComponent(StatusMessage).exists()).toBe(false);
     expect(wrapper.find(".mail__note").text()).toMatch(
-      /^Counted by the API since midnight UTC or its last restart, whichever is later\. It starts again from 0 at midnight UTC, .+ your time\.$/
+      /^Counted by the API since midnight UTC or its last restart, whichever is later\. It starts again from 0 at midnight UTC, .+ your time\. Mail sent before a restart isn't counted, so the mail provider's own count can be higher\.$/
     );
     expect(wrapper.find(".mail__note time").attributes("datetime")).toBe(
       "2026-11-07T00:00:00.000Z"
@@ -69,7 +69,25 @@ describe("MailBudgetMeter", () => {
     const notice = wrapper.findComponent(StatusMessage);
     expect(notice.props("tone")).toBe("info");
     expect(notice.text()).toBe(
-      "Sign-up codes have stopped for today. Mail to existing accounts still goes out, up to 250."
+      "Sign-up codes have stopped until midnight UTC or the API's next restart. Mail to existing accounts still goes out, up to 250."
+    );
+  });
+
+  it("writes a large limit with the reader's digit grouping", () => {
+    const wrapper = mountMeter(
+      aMailBudget({
+        sentToday: 8100,
+        dailyLimit: 10000,
+        warningAt: 8000,
+        registrationStopsAt: 8000
+      })
+    );
+
+    expect(wrapper.find(".mail__figure").text()).toBe(
+      `${(8100).toLocaleString()} of ${(10000).toLocaleString()} sent`
+    );
+    expect(wrapper.findComponent(StatusMessage).text()).toContain(
+      `up to ${(10000).toLocaleString()}.`
     );
   });
 
@@ -83,7 +101,7 @@ describe("MailBudgetMeter", () => {
     const notice = wrapper.findComponent(StatusMessage);
     expect(notice.props("tone")).toBe("error");
     expect(notice.text()).toMatch(
-      /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\)\.$/
+      /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\) or the API's next restart\.$/
     );
     expect(wrapper.find(".mail__scale").text()).toBe("0 left");
   });

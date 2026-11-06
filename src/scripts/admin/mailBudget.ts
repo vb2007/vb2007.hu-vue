@@ -30,9 +30,11 @@ export interface MailLine {
 
 /**
  * How close (as a share of the line) a stop's ring may come to the "here" ring before it's left
- * out, so the two never merge into one blob; the stops in words still name it.
+ * out, so the two never merge into one blob; the stops in words still name it. Their centres
+ * need 16px between them (half of the 18px here ring plus half of the 14px stop ring), which
+ * 7 % keeps on a rail down to about 230px: the narrowest phone's (the Pixel 7's is 291px).
  */
-export const MARK_GAP = 0.05;
+export const MARK_GAP = 0.07;
 
 const ORDER: MailStopKind[] = ["registration", "warning", "limit"];
 

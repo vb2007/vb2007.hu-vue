@@ -254,13 +254,16 @@ export class Messages {
     static readonly statsFailed: string = "Failed to load the site's totals";
     static readonly mailBudgetLoading: string = "Loading today's mail…";
     static readonly mailBudgetFailed: string = "Failed to load today's mail";
-    /** `resetsAt` is the reader's local time of the next UTC midnight, when the count starts again. */
+    /**
+     * `resetsAt` is the reader's local time of the next UTC midnight. The API's count also starts
+     * again when it restarts, since it lives in the process's memory.
+     */
     static mailLimitReached(resetsAt: string): string {
-      return `Today's mail limit is used up: no mail goes out until midnight UTC (${resetsAt} your time).`;
+      return `Today's mail limit is used up: no mail goes out until midnight UTC (${resetsAt} your time) or the API's next restart.`;
     }
     /** `dailyLimit` is the number of mails a day, past which nothing is sent. */
     static registrationMailStopped(dailyLimit: number): string {
-      return `Sign-up codes have stopped for today. Mail to existing accounts still goes out, up to ${dailyLimit}.`;
+      return `Sign-up codes have stopped until midnight UTC or the API's next restart. Mail to existing accounts still goes out, up to ${dailyLimit.toLocaleString()}.`;
     }
   };
 }

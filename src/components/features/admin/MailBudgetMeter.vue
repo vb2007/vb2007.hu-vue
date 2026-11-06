@@ -16,9 +16,8 @@ const STOP_LABELS: Record<MailStopKind, string> = {
 };
 
 const line = computed(() => mailLine(props.budget));
-const count = (value: number) => value.toLocaleString();
-const sent = computed(() => count(props.budget.sentToday));
-const limit = computed(() => count(props.budget.dailyLimit));
+const sent = computed(() => props.budget.sentToday.toLocaleString());
+const limit = computed(() => props.budget.dailyLimit.toLocaleString());
 const resetsAt = computed(() => formatTime(props.budget.resetsAt));
 </script>
 
@@ -59,9 +58,9 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
       <span>{{
         line.untilRegistrationStops === null
           ? ""
-          : `${count(line.untilRegistrationStops)} until sign-up codes stop`
+          : `${line.untilRegistrationStops.toLocaleString()} until sign-up codes stop`
       }}</span>
-      <span>{{ count(line.left) }} left</span>
+      <span>{{ line.left.toLocaleString() }} left</span>
     </p>
 
     <ul class="stops" aria-label="Stops on today's mail">
@@ -72,7 +71,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
         :class="[`stops__row--${stop.kind}`, { 'stops__row--reached': stop.reached }]"
       >
         <span class="stops__ring" aria-hidden="true" />
-        <span class="stops__count">{{ count(stop.at) }}</span
+        <span class="stops__count">{{ stop.at.toLocaleString() }}</span
         >{{ " " }}<span class="stops__what">{{ STOP_LABELS[stop.kind] }}</span
         ><template v-if="stop.reached"
           >{{ " " }}<span class="stops__reached">Reached</span></template
@@ -90,6 +89,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
     <p class="mail__note">
       Counted by the API since midnight UTC or its last restart, whichever is later. It starts again
       from 0 at midnight UTC, <time :datetime="budget.resetsAt">{{ resetsAt }}</time> your time.
+      Mail sent before a restart isn't counted, so the mail provider's own count can be higher.
     </p>
   </div>
 </template>

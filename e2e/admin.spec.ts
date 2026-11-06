@@ -71,15 +71,15 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   api.sentMailToday(205);
   await page.reload();
   await expect(mail.getByText("205 of 250 sent")).toBeVisible();
-  await expect(
-    mail.getByText("Sign-up codes have stopped for today.", { exact: false })
-  ).toBeVisible();
+  await expect(mail.getByRole("status")).toHaveText(
+    /^Sign-up codes have stopped until midnight UTC or the API's next restart\. /
+  );
 
   api.sentMailToday(250);
   await page.reload();
   await expect(mail.getByRole("listitem").last()).toHaveText("250 All mail stops Reached");
   await expect(mail.getByRole("alert")).toHaveText(
-    /^Today's mail limit is used up: no mail goes out until .+\.$/
+    /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\) or the API's next restart\.$/
   );
 });
 

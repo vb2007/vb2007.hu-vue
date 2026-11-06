@@ -11,19 +11,17 @@ import MailBudgetMeter from "./MailBudgetMeter.vue";
 const { stats, statsError, mailBudget, mailBudgetError, isLoading, load } = useAdminOverview();
 onMounted(load);
 
-const count = (value: number) => value.toLocaleString();
-
 /** The ledger's rows: a label, its figure, and what the figure counts when the label alone doesn't say. */
 const totals = computed(() => {
   const site = stats.value!;
   return [
-    { label: "Users", figure: count(site.users) },
-    { label: "Pastes", figure: count(site.pastes) },
-    { label: "Short links", figure: count(site.shortUrls) },
+    { label: "Users", figure: site.users.toLocaleString() },
+    { label: "Pastes", figure: site.pastes.toLocaleString() },
+    { label: "Short links", figure: site.shortUrls.toLocaleString() },
     {
       label: "Uploads",
-      figure: count(site.uploads.total),
-      about: `${count(site.uploads.public)} public, ${count(site.uploads.private)} private`
+      figure: site.uploads.total.toLocaleString(),
+      about: `${site.uploads.public.toLocaleString()} public, ${site.uploads.private.toLocaleString()} private`
     },
     {
       label: "Stored",
@@ -32,7 +30,7 @@ const totals = computed(() => {
     },
     {
       label: "Sign-ups waiting",
-      figure: count(site.pendingRegistrations),
+      figure: site.pendingRegistrations.toLocaleString(),
       about: "For their e-mail code"
     }
   ];
