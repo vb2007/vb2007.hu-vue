@@ -44,6 +44,14 @@ describe("router", () => {
     expect(props(resolved)).toEqual({ code: "abc123", preview: true });
   });
 
+  it("opens one user's page for the admin with the user's ID as a prop", () => {
+    const resolved = router.resolve({ name: "admin-user", params: { id: "u9" } });
+
+    expect(resolved.path).toBe("/admin/users/u9");
+    expect(resolved.matched[0].path).toBe(AdminPaths.overview);
+    expect(resolved.matched[1].props.default).toBe(true);
+  });
+
   it("opens one user's uploads for the admin with the user's ID as a prop", () => {
     const resolved = router.resolve({ name: "admin-user-uploads", params: { id: "u9" } });
 
@@ -92,6 +100,7 @@ describe("router", () => {
     ["/r/abc", "redirect"],
     ["/r/abc/preview", "redirect-preview"],
     ["/admin/users/1/uploads", "admin-user-uploads"],
+    ["/admin/users/1", "admin-user"],
     ["/admin/users", "admin-users"],
     ["/admin/", "admin"],
     ["/apierror?url=%2Ffoo", "api-error"]

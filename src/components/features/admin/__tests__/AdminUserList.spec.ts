@@ -82,7 +82,9 @@ describe("AdminUserList", () => {
     await flushPromises();
     expect(lastUrl(fetchMock)).toContain("q=zzz");
     expect(wrapper.find(".count").text()).toBe("0 users found");
-    expect(wrapper.find(".empty .note").text()).toBe("No username matches that search.");
+    expect(wrapper.find(".empty .note").text()).toBe(
+      "No username or e-mail address matches that search."
+    );
 
     fetchMock.mockResolvedValueOnce(listing([anAdminUser("a")]));
     await buttonNamed(wrapper, "Show everyone").trigger("click");

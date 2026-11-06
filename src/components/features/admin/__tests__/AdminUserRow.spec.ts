@@ -45,13 +45,25 @@ describe("AdminUserRow", () => {
     expect(wrapper.find(".details").exists()).toBe(false);
   });
 
-  it("tags the admin and a custom quota", () => {
+  it("tags the admin, a suspension and a custom quota", () => {
     const { wrapper } = mountRow(
       anAdminUser("a", { isSuperuser: true, uploads: { count: 3, hasCustomQuota: true } })
     );
 
     expect(wrapper.find(".row__meta").text()).toMatch(/^3 files/);
     expect(wrapper.findAll(".tag").map((tag) => tag.text())).toEqual(["Admin", "Custom quota"]);
+
+    const suspended = mountRow(anAdminUser("b", { suspendedAt: "2026-11-05T09:00:00.000Z" }));
+    expect(suspended.wrapper.findAll(".tag").map((tag) => tag.text())).toEqual(["Suspended"]);
+    expect(suspended.wrapper.find(".tag--suspended").exists()).toBe(true);
+  });
+
+  it("links the account's page by its encoded ID", async () => {
+    const { wrapper } = mountRow(anAdminUser("a/b"));
+    await open(wrapper);
+
+    expect(wrapper.find('a[href="/admin/users/a%2Fb"]').text()).toBe("View account");
+    expect(wrapper.find('a[href="/admin/users/a%2Fb/uploads"]').text()).toBe("Browse uploads");
   });
 
   it("marks a user over their quota, and a quota of 0, as full", () => {
@@ -86,9 +98,10 @@ describe("AdminUserRow", () => {
     expect(wrapper.find("input").attributes("inputmode")).toBe("decimal");
     expect((wrapper.find("select").element as HTMLSelectElement).value).toBe("GB");
     expect(buttonNamed(wrapper, "Use default").attributes("disabled")).toBeDefined();
+    expect(wrapper.find('a[href="/admin/users/a"]').text()).toBe("View account");
     expect(wrapper.find('a[href="/admin/users/a/uploads"]').text()).toBe("Browse uploads");
     // The name goes along, so the uploads page can say whose they are before they load.
-    expect(wrapper.findComponent(RouterLink).props("to")).toEqual({
+    expect(wrapper.findAllComponents(RouterLink)[1].props("to")).toEqual({
       path: "/admin/users/a/uploads",
       state: { uploadsOwner: "user-a" }
     });

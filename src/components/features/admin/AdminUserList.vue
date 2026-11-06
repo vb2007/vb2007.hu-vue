@@ -58,7 +58,7 @@ onMounted(load);
       <BaseInput
         v-model="query"
         type="search"
-        label="Search by username"
+        label="Search by username or e-mail"
         :maxlength="Limits.Search.maxLength"
       />
       <BaseSelect v-model="sort" label="Sort" :options="SORT_OPTIONS" />
@@ -74,7 +74,7 @@ onMounted(load);
     <p v-if="isLoading && !pagination" class="note">Loading the users…</p>
     <div v-else-if="pagination && pagination.total === 0" class="empty">
       <template v-if="isSearching">
-        <p class="note">No username matches that search.</p>
+        <p class="note">No username or e-mail address matches that search.</p>
         <BaseButton size="sm" variant="secondary" @click="query = ''">Show everyone</BaseButton>
       </template>
       <p v-else class="note">No accounts yet.</p>

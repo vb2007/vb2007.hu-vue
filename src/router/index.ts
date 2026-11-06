@@ -44,6 +44,13 @@ export const routes: RouteRecordRaw[] = [
         name: "admin-users",
         component: () => import("../views/AdminUsersView.vue")
       },
+      // One account, opened from its row in the Users section; it isn't a section of its own.
+      {
+        path: "users/:id",
+        name: "admin-user",
+        component: () => import("../views/AdminUserView.vue"),
+        props: true
+      },
       {
         path: "users/:id/uploads",
         name: "admin-user-uploads",

@@ -6,6 +6,10 @@ export const AdminPaths = {
   users: "/admin/users"
 } as const;
 
+/** One account's page under the Users section (`/admin/users/:id`), and its uploads. */
+export const adminUserPath = (id: string) => `${AdminPaths.users}/${encodeURIComponent(id)}`;
+export const adminUserUploadsPath = (id: string) => `${adminUserPath(id)}/uploads`;
+
 /**
  * The admin area's sections, in the order the overview lists them. A section exists once its
  * route does, so each is open and draws as an open row of the Tools Directory.
