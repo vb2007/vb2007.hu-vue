@@ -75,6 +75,12 @@ export class Messages {
     /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
     static readonly sessionEnded: string =
       "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account.";
+    /**
+     * GitHub login's `?oauthError=accountSuspended` (vb2007/vb2007.hu-api#273): the GitHub account
+     * is linked to a suspended one. A password login gets the API's own 403 text instead.
+     */
+    static readonly githubAccountSuspended: string =
+      "The account linked to this GitHub account is suspended: it can't log in until the site's admin lifts the suspension.";
     static readonly logoutFailed: string = "Failed to log out";
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
@@ -253,6 +259,10 @@ export class Messages {
     static readonly quotaFailed: string = "Failed to change the quota";
     static readonly invalidQuota: string = "Enter a size of 0 or more.";
     static readonly quotaTooLarge: string = "That's more than the API can store.";
+    static readonly suspendFailed: string = "Failed to suspend the account";
+    static readonly unsuspendFailed: string = "Failed to lift the suspension";
+    /** Why the superuser's own page has no Suspend key: the API answers it with 409. */
+    static readonly superuserNotSuspendable: string = "The admin's own account can't be suspended.";
     /** `name` is the account's username, when it's known. */
     static userUploadsFailed(name?: string): string {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";

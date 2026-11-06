@@ -15,11 +15,13 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 import AdminQuotaEditor from "./AdminQuotaEditor.vue";
 import AdminQuotaMeter from "./AdminQuotaMeter.vue";
 import AdminUserAction from "./AdminUserAction.vue";
+import AdminUserSuspension from "./AdminUserSuspension.vue";
 import AdminUserTags from "./AdminUserTags.vue";
 
 const props = defineProps<{ id: string }>();
 
-const { user, isLoading, errorMessage, load, isSavingQuota, quotaError, setQuota } = useAdminUser();
+const { user, isLoading, errorMessage, load, applyUser, isSavingQuota, quotaError, setQuota } =
+  useAdminUser();
 watch(() => props.id, load, { immediate: true });
 
 const storageTitle = useId();
@@ -163,6 +165,7 @@ const password = computed(() => {
               </BaseButton>
             </template>
           </AdminUserAction>
+          <AdminUserSuspension :user="user" @updated="applyUser" />
         </div>
       </section>
     </div>

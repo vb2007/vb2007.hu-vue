@@ -30,6 +30,10 @@ describe("oauthErrorMessage", () => {
     [
       "passwordRequired",
       "Linking GitHub takes your password. Press Link GitHub on this page and enter it there."
+    ],
+    [
+      "accountSuspended",
+      "The account linked to this GitHub account is suspended: it can't log in until the site's admin lifts the suspension."
     ]
   ])("explains %s", (code, message) => {
     expect(oauthErrorMessage(code)).toBe(message);

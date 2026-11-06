@@ -170,7 +170,7 @@ describe("AdminUserPanel", () => {
     await flushPromises();
 
     const actions = wrapper.findAllComponents(AdminUserAction);
-    expect(actions.map((action) => action.props("title"))).toEqual(["Uploads"]);
+    expect(actions.map((action) => action.props("title"))).toEqual(["Uploads", "Suspend account"]);
     expect(actions[0].find(".action__note").text()).toBe(
       "Open, rename, make private or delete user-a's 12 uploads."
     );
@@ -181,6 +181,29 @@ describe("AdminUserPanel", () => {
       params: { id: "a" },
       state: { uploadsOwner: "user-a" }
     });
+  });
+
+  it("tags and dates the account once it's suspended, keeping the details", async () => {
+    const wrapper = await mountPanel(anAdminUserDetails("a", { githubLogin: "octo" }));
+    await flushPromises();
+    expect(wrapper.find(".tag").exists()).toBe(false);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        message: "User suspended successfully: their session was ended.",
+        user: anAdminUser("a", { suspendedAt: "2026-11-06T10:00:00.000Z" })
+      })
+    );
+    await wrapper.find(".actions button").trigger("click");
+    await wrapper.find(".confirm").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.findAll(".tag").map((tag) => tag.text())).toEqual(["Suspended"]);
+    expect(facts(wrapper).Suspended).toMatch(/^Since .+: they can't log in\.$/);
+    expect(facts(wrapper).GitHub).toBe("@octo");
+    expect(wrapper.find(".actions .status--success").text()).toBe(
+      "User suspended successfully: their session was ended."
+    );
   });
 
   it("says when the account has no uploads", async () => {

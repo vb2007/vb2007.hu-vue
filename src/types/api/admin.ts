@@ -60,3 +60,14 @@ export interface SetUploadQuotaBody {
 export interface UploadQuotaResponse extends MessageResponse {
   user: AdminUser;
 }
+
+/** `PATCH /admin/users/:id/suspension` (vb2007/vb2007.hu-api#273) */
+export interface SetSuspensionBody {
+  /** `true` suspends the user and ends their session; `false` lifts the suspension. */
+  suspended: boolean;
+}
+
+/** `PATCH /admin/users/:id/suspension` */
+export interface SuspensionResponse extends MessageResponse {
+  user: AdminUser;
+}
