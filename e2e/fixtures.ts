@@ -1581,7 +1581,7 @@ export class MockApi {
 
   /** Whose an upload is, as the site-wide listing names them: `null` once no account has the name. */
   private ownerOf(uploadId: string) {
-    const name = this.uploadOwners.get(uploadId);
+    const name = this.uploadOwners.get(uploadId)!;
     if (this.user?.username === name) return { id: this.user!._id, username: name };
     const user = this.users.find((item) => item.username === name);
     return user ? { id: user.id, username: user.username } : null;
@@ -1604,8 +1604,8 @@ export class MockApi {
         (upload) =>
           !q ||
           upload.originalFileName.toLowerCase().includes(q) ||
-          // Site-wide, the owner's name matches too.
-          (everyone && this.uploadOwners.get(upload.id)!.toLowerCase().includes(q))
+          // Site-wide, the owner's name matches too, while their account exists.
+          (everyone && this.ownerOf(upload.id)?.username.toLowerCase().includes(q))
       )
       .sort((a, b) => {
         const order = String(a[sortBy]).localeCompare(String(b[sortBy]), "en", { numeric: true });

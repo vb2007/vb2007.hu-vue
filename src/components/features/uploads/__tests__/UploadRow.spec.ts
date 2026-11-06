@@ -51,7 +51,13 @@ describe("UploadRow", () => {
     });
     expect(wrapper.find(".row__name").text()).toBe("file-u1.png");
     expect(wrapper.find(".row__name").attributes("aria-expanded")).toBe("false");
-    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB · PNG · /);
+    // A no-break space keeps each dot with the fact before it.
+    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB\u00a0· PNG\u00a0· /);
+    expect(wrapper.findAll(".row__fact").map((fact) => fact.text())).toEqual([
+      "2 kB",
+      "PNG",
+      expect.stringMatching(/2026/)
+    ]);
     expect(wrapper.find(".badge").text()).toBe("Private");
     expect(wrapper.find(".badge").classes()).toContain("badge--private");
     expect(wrapper.find("a").attributes()).toMatchObject({
@@ -153,7 +159,7 @@ describe("UploadRow", () => {
       "anna, you, and anyone with the link (until it expires)"
     );
     // Only on the list of everyone's uploads does the row name its owner itself.
-    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB · /);
+    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB\s· /);
   });
 
   it("leaves only the admin on their own upload in a listing, or a deleted account's", async () => {
@@ -213,6 +219,28 @@ describe("UploadRow", () => {
     await nextTick();
     expect(wrapper.find("[role=status]").text()).toBe("");
     vi.useRealTimers();
+  });
+
+  it("drops the note once the file goes public or its link is plain, not on a renewal", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    const copyAndCheck = async () => {
+      await buttonNamed(wrapper, "Cop")!.trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".copied-note").text()).toMatch(/^The copied link /);
+    };
+    await copyAndCheck();
+
+    // A renewed link: the copied one still works until it expires.
+    await wrapper.setProps({ upload: anUpload("u1", { url: `${SIGNED}2` }) });
+    expect(wrapper.find(".copied-note").text()).toMatch(/^The copied link /);
+
+    await wrapper.setProps({ upload: anUpload("u1", { url: `${SIGNED}2`, visibility: "public" }) });
+    expect(wrapper.find(".copied-note").classes()).toContain("visually-hidden");
+
+    await wrapper.setProps({ upload: anUpload("u1", { url: SIGNED }) });
+    await copyAndCheck();
+    await wrapper.setProps({ upload: anUpload("u1") });
+    expect(wrapper.find(".copied-note").classes()).toContain("visually-hidden");
   });
 
   it("says when copying failed, and drops the note of an earlier copy", async () => {

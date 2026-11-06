@@ -299,7 +299,7 @@ test("the superuser lists every upload with its owner and moderates them", async
   await expect(page.getByText("4 uploads")).toBeVisible();
   // Newest first, each row led by whose it is.
   const meta = page.locator(".row__meta");
-  await expect(meta).toHaveText([/^Deleted account · /, /^vb2007 · /, /^milo · /, /^anna · /]);
+  await expect(meta).toHaveText([/^Deleted account\s· /, /^vb2007\s· /, /^milo\s· /, /^anna\s· /]);
 
   // Who can open a private file stays true for the admin, on someone else's and on their own.
   await page.getByRole("button", { name: "notes.txt" }).click();
@@ -330,7 +330,7 @@ test("the superuser lists every upload with its owner and moderates them", async
     page.getByText("anna, you, and anyone with the link (until it expires)")
   ).toBeVisible();
   expect(api.uploads[0].visibility).toBe("private");
-  await expect(meta.last()).toHaveText(/^anna · /);
+  await expect(meta.last()).toHaveText(/^anna\s· /);
   await page.getByRole("button", { name: "flyer.pdf" }).click();
 
   await page.getByRole("button", { name: "left.zip" }).click();

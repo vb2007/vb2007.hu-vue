@@ -7,7 +7,7 @@ import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { AdminRoutes } from "@/constants/admin";
 import { isSuperuser, userId } from "@/scripts/authentication/authState";
-import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
+import { categoryOf, linkExpiresAt, typeLabel, validateFileName } from "@/scripts/uploads/upload";
 import type { Upload, UploadOwner, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
@@ -94,6 +94,18 @@ const copyLink = async () => {
   if (copied.value) showCopiedNote(url);
   else clearCopiedNote();
 };
+// The note only holds while the file stays as it was copied: private, behind a signed link. A
+// renewed signed link leaves it, since the copied one still works until it expires.
+watch(
+  () => props.upload.visibility,
+  () => clearCopiedNote()
+);
+watch(
+  () => props.upload.url,
+  (url) => {
+    if (linkExpiresAt(url) === undefined) clearCopiedNote();
+  }
+);
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"
 );
@@ -175,21 +187,25 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
           <span class="row__name-text">{{ upload.originalFileName }}</span>
           <AppIcon class="row__chevron" name="chevron" :size="18" />
         </button>
+        <!-- A no-break space ties each dot to the fact before it, so a line never starts with one. -->
         <p class="row__meta">
           <template v-if="showOwner">
             <!-- Whose it is leads, a click from their account; named apart for screen readers. -->
             <RouterLink
               v-if="owner"
-              class="row__owner"
+              class="meta-link"
               :to="{ name: AdminRoutes.user, params: { id: owner.id } }"
               :aria-label="`${owner.username}'s account`"
               >{{ owner.username }}</RouterLink
             >
-            <template v-else>Deleted account</template>
-            ·
+            <span v-else class="row__fact">Deleted account</span>&nbsp;·
           </template>
-          {{ formatBytes(upload.fileSize) }} · {{ typeLabel(upload.extension) }} ·
-          <time :datetime="upload.uploadedOn">{{ formatDateTime(upload.uploadedOn) }}</time>
+          <span class="row__fact">{{ formatBytes(upload.fileSize) }}</span
+          >&nbsp;· <span class="row__fact">{{ typeLabel(upload.extension) }}</span
+          >&nbsp;·
+          <time class="row__fact" :datetime="upload.uploadedOn">{{
+            formatDateTime(upload.uploadedOn)
+          }}</time>
         </p>
       </div>
 
@@ -430,24 +446,9 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
   font-variant-numeric: tabular-nums;
 }
 
-.row__owner {
-  color: var(--c-action);
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: var(--c-hairline);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 0.2em;
-  overflow-wrap: anywhere;
-  transition: text-decoration-color var(--dur-quick) ease;
-}
-
-.row__owner:hover {
-  text-decoration-color: var(--c-line);
-}
-
-.row__owner:focus-visible {
-  outline: 3px solid var(--c-line);
-  outline-offset: 3px;
+/* Each fact stays whole, and its dot stays with it, so a wrapped line starts with a fact. */
+.row__fact {
+  white-space: nowrap;
 }
 
 .badge svg {

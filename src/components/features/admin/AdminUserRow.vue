@@ -43,7 +43,7 @@ const usage = computed(() => props.user.uploads);
           <time :datetime="user.createdAt">{{ formatDate(user.createdAt) }}</time> ·
           <!-- The whole account, a click away without opening the row; named apart for screen readers. -->
           <RouterLink
-            class="row__page"
+            class="meta-link"
             :to="{ name: AdminRoutes.user, params: { id: user.id } }"
             :aria-label="`View account: ${user.username}`"
             >View account</RouterLink
@@ -182,26 +182,6 @@ const usage = computed(() => props.user.uploads);
 }
 
 /* A text link in Signal Forest on a hairline underline that turns route green on hover. */
-.row__page {
-  color: var(--c-action);
-  font-weight: 600;
-  white-space: nowrap;
-  text-decoration: underline;
-  text-decoration-color: var(--c-hairline);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 0.2em;
-  transition: text-decoration-color var(--dur-quick) ease;
-}
-
-.row__page:hover {
-  text-decoration-color: var(--c-line);
-}
-
-.row__page:focus-visible {
-  outline: 3px solid var(--c-line);
-  outline-offset: 3px;
-}
-
 .row__tags {
   grid-area: tags;
   justify-content: flex-end;
