@@ -71,23 +71,4 @@ provide("userEmail", userEmail);
 .shell__skip:focus {
   top: var(--sp-3);
 }
-
-.route-enter-active {
-  transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
-}
-
-.route-leave-active {
-  transition: opacity 120ms ease;
-}
-
-.route-enter-from {
-  opacity: 0;
-  transform: translateX(1.5rem);
-}
-
-.route-leave-to {
-  opacity: 0;
-}
 </style>

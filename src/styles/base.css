@@ -95,6 +95,23 @@ svg {
   color: var(--c-on-action);
 }
 
+/* A text link in a row's soft-ink meta line, e.g. "View account" or an upload's owner. */
+.meta-link {
+  color: var(--c-action);
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--c-hairline);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--dur-quick) ease;
+}
+
+.meta-link:hover {
+  text-decoration-color: var(--c-line);
+  text-decoration-thickness: 2px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -105,6 +122,29 @@ svg {
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/*
+ * The page change: `<Transition name="route" mode="out-in">` around a RouterView. App uses it for
+ * every route, and a nested area (Admin) for its own child pages, so both read from here.
+ */
+.route-enter-active {
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.route-leave-active {
+  transition: opacity 120ms ease;
+}
+
+.route-enter-from {
+  opacity: 0;
+  transform: translateX(1.5rem);
+}
+
+.route-leave-to {
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

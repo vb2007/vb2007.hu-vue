@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
-import { useUploads, type UploadListing } from "@/composables/useUploads";
+import { useUploads, type ListedUpload, type UploadListing } from "@/composables/useUploads";
 import { Limits } from "@/constants/limits";
 import type { UploadSortBy, UploadVisibility } from "@/types/api/uploads";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -46,16 +46,24 @@ const {
   remove
 } = useUploads(undefined, props.listing);
 
-/** Someone else's uploads read differently from your own. */
-const isOthers = computed(() => Boolean(props.listing));
+/** Someone else's uploads read differently from your own, and everyone's from one user's. */
+const kind = props.listing?.kind ?? "own";
+const isSiteWide = kind === "site";
 const title = computed(() => {
-  if (!isOthers.value) return "Your uploads";
+  if (kind === "own") return "Your uploads";
   return ownerName.value ? `${ownerName.value}'s uploads` : "Uploads";
 });
 const loadingNote = computed(() => {
-  if (!isOthers.value) return "Loading your uploads…";
+  if (kind === "own") return "Loading your uploads…";
+  if (isSiteWide) return "Loading the uploads…";
   return ownerName.value ? `Loading ${ownerName.value}'s uploads…` : "Loading this user's uploads…";
 });
+
+/** Whose a row is: its own owner site-wide, the listing's for one user, nobody's on your own. */
+const ownerOf = (upload: ListedUpload) => {
+  if (kind === "own") return undefined;
+  return isSiteWide ? (upload.owner ?? null) : owner.value;
+};
 
 const SORT_OPTIONS: SortOption<UploadSortBy>[] = [
   { by: "uploadedOn", order: "desc", label: "Newest first" },
@@ -103,7 +111,7 @@ defineExpose({ refresh: () => goToPage(1) });
         v-model="query"
         class="filters__search"
         type="search"
-        label="Search by name"
+        :label="isSiteWide ? 'Search by name or owner' : 'Search by name'"
         :maxlength="Limits.Search.maxLength"
       />
       <SegmentedControl v-model="filter" legend="Show" :options="FILTER_OPTIONS" size="sm" />
@@ -126,12 +134,16 @@ defineExpose({ refresh: () => goToPage(1) });
     <p v-if="isLoading && !pagination" class="note">{{ loadingNote }}</p>
     <div v-else-if="pagination && pagination.total === 0" class="empty">
       <template v-if="isNarrowed">
-        <p class="note">No uploads match. Try another name, or show all of them.</p>
+        <p class="note">
+          No uploads match. Try another {{ isSiteWide ? "name or owner" : "name" }}, or show all of
+          them.
+        </p>
         <BaseButton size="sm" variant="secondary" @click="clearFilters"
           >Show all uploads</BaseButton
         >
       </template>
-      <p v-else-if="isOthers" class="note">No uploads.</p>
+      <p v-else-if="isSiteWide" class="note">Nobody has uploaded anything yet.</p>
+      <p v-else-if="kind === 'user'" class="note">No uploads.</p>
       <p v-else class="note">
         No uploads yet. Drop a file on the Upload board, or choose one, and it shows up here.
       </p>
@@ -142,7 +154,8 @@ defineExpose({ refresh: () => goToPage(1) });
         v-for="upload in uploads"
         :key="upload.id"
         :upload="upload"
-        :owner-name="owner?.username"
+        :owner="ownerOf(upload)"
+        :show-owner="isSiteWide"
         :busy="busyId === upload.id ? busyAction : ''"
         :error="rowError.id === upload.id ? rowError.message : ''"
         :rename="rename"

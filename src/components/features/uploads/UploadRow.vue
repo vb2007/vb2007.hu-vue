@@ -5,9 +5,10 @@ import { useClipboard } from "@/composables/useClipboard";
 import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { isSuperuser } from "@/scripts/authentication/authState";
-import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
-import type { Upload, UploadVisibility } from "@/types/api/uploads";
+import { AdminRoutes } from "@/constants/admin";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
+import { categoryOf, linkExpiresAt, typeLabel, validateFileName } from "@/scripts/uploads/upload";
+import type { Upload, UploadOwner, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -20,8 +21,13 @@ import UploadLink from "./UploadLink.vue";
 
 const props = defineProps<{
   upload: Upload;
-  /** Set when the admin looks at someone else's uploads. */
-  ownerName?: string;
+  /**
+   * Whose upload it is, set in the admin's listings (`null` once their account is gone); left out
+   * on the user's own list.
+   */
+  owner?: UploadOwner | null;
+  /** Leads the row's meta line with the owner, for a list of everyone's uploads. */
+  showOwner?: boolean;
   /** The edit running on this row, if any. */
   busy: UploadAction | "";
   error: string;
@@ -35,13 +41,15 @@ const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
 /**
  * Only the owner and the admin get a private file's signed link, but it opens for anyone until it
- * expires. The admin is "you" on their own uploads and on someone else's (`ownerName`).
+ * expires. The admin is "you" on their own uploads and on someone else's (`owner`); a deleted
+ * account's leaves only the admin.
  */
 const audience = computed(() => {
   if (!isPrivate.value) return "Anyone with the link, while it's public";
-  if (props.ownerName)
-    return `${props.ownerName}, you, and anyone with the link (until it expires)`;
-  return isSuperuser.value
+  const { owner } = props;
+  if (owner && owner.id !== userId.value)
+    return `${owner.username}, you, and anyone with the link (until it expires)`;
+  return owner !== undefined || isSuperuser.value
     ? "You, and anyone with the link (until it expires)"
     : "You, the admin, and anyone with the link (until it expires)";
 });
@@ -86,6 +94,18 @@ const copyLink = async () => {
   if (copied.value) showCopiedNote(url);
   else clearCopiedNote();
 };
+// The note only holds while the file stays as it was copied: private, behind a signed link. A
+// renewed signed link leaves it, since the copied one still works until it expires.
+watch(
+  () => props.upload.visibility,
+  () => clearCopiedNote()
+);
+watch(
+  () => props.upload.url,
+  (url) => {
+    if (linkExpiresAt(url) === undefined) clearCopiedNote();
+  }
+);
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"
 );
@@ -167,9 +187,25 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
           <span class="row__name-text">{{ upload.originalFileName }}</span>
           <AppIcon class="row__chevron" name="chevron" :size="18" />
         </button>
+        <!-- A no-break space ties each dot to the fact before it, so a line never starts with one. -->
         <p class="row__meta">
-          {{ formatBytes(upload.fileSize) }} · {{ typeLabel(upload.extension) }} ·
-          <time :datetime="upload.uploadedOn">{{ formatDateTime(upload.uploadedOn) }}</time>
+          <template v-if="showOwner">
+            <!-- Whose it is leads, a click from their account; named apart for screen readers. -->
+            <RouterLink
+              v-if="owner"
+              class="meta-link"
+              :to="{ name: AdminRoutes.user, params: { id: owner.id } }"
+              :aria-label="`${owner.username}'s account`"
+              >{{ owner.username }}</RouterLink
+            >
+            <span v-else class="row__fact">Deleted account</span>&nbsp;·
+          </template>
+          <span class="row__fact">{{ formatBytes(upload.fileSize) }}</span
+          >&nbsp;· <span class="row__fact">{{ typeLabel(upload.extension) }}</span
+          >&nbsp;·
+          <time class="row__fact" :datetime="upload.uploadedOn">{{
+            formatDateTime(upload.uploadedOn)
+          }}</time>
         </p>
       </div>
 
@@ -408,6 +444,11 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+/* Each fact stays whole, and its dot stays with it, so a wrapped line starts with a fact. */
+.row__fact {
+  white-space: nowrap;
 }
 
 .badge svg {
