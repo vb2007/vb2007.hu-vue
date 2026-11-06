@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatDate, formatDateTime, getCurrentYear, isPast } from "@/scripts/utility/dateUtil";
+import {
+  formatDate,
+  formatDateTime,
+  formatTime,
+  getCurrentYear,
+  isPast
+} from "@/scripts/utility/dateUtil";
 
 describe("isPast", () => {
   const now = Date.parse("2026-11-06T12:00:00.000Z");
@@ -41,5 +47,11 @@ describe("formatDateTime", () => {
 describe("formatDate", () => {
   it("formats a timestamp as a medium date without the time", () => {
     expect(formatDate("2026-10-10T12:00:00.000Z", "en-GB")).toBe("10 Oct 2026");
+  });
+});
+
+describe("formatTime", () => {
+  it("formats a moment as a short time of day", () => {
+    expect(formatTime(Date.UTC(2026, 10, 6, 12, 32), "en-GB")).toMatch(/^\d{2}:\d{2}$/);
   });
 });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, useTemplateRef } from "vue";
+import { isSuperuser } from "@/scripts/authentication/authState";
 import type { UploadVisibility } from "@/types/api/uploads";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -41,8 +42,8 @@ const onDrop = (event: DragEvent) => {
     <p class="visibility-hint">
       {{
         visibility === "private"
-          ? "Only you can open private files, once you're logged in."
-          : "Anyone with the link can open public files."
+          ? `Only you${isSuperuser ? "" : " and the admin"} get the link. Anyone you share it with can open the file until the link expires.`
+          : "Anyone with the link can open the file while it's public."
       }}
     </p>
 
