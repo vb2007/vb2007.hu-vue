@@ -66,7 +66,7 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
   const list = board(page, "Your uploads");
   await list.getByRole("button", { name: "report.pdf" }).click();
   await expect(
-    list.getByText("You and the admin, plus anyone you share the link with until it expires")
+    list.getByText("You, the admin, and anyone with the link (until it expires)")
   ).toBeVisible();
 
   await list.getByRole("button", { name: "Rename" }).click();
@@ -76,7 +76,7 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
   expect(api.uploads[0].originalFileName).toBe("annual report.pdf");
 
   await list.getByRole("button", { name: "Make public" }).click();
-  await expect(list.getByText("Anyone with the link; it never expires")).toBeVisible();
+  await expect(list.getByText("Anyone with the link, while it's public")).toBeVisible();
   expect(api.uploads[0].visibility).toBe("public");
 
   await list.getByRole("button", { name: "Delete", exact: true }).click();
@@ -118,17 +118,17 @@ test("a private link reads without its signature, copies with it and is renewed 
   const first = await copiedLink();
   await expect(list.getByRole("link", { name: /^Open/ })).toHaveAttribute("href", first);
 
-  // A minute before the link runs out, the list asks for a new one.
+  // Ten minutes before the link expires, the list asks for a new one.
   const reload = page.waitForRequest((request) => new URL(request.url()).pathname === "/uploads");
-  api.clockRunsFor(59 * MINUTE);
-  await page.clock.fastForward(59 * MINUTE);
+  api.clockRunsFor(50 * MINUTE);
+  await page.clock.fastForward(50 * MINUTE);
   await reload;
   await expect(list.getByRole("link", { name: /^Open/ })).not.toHaveAttribute("href", first);
   await expect(link).toHaveText(/^cdn\.e2e\.invalid\/useruploads\/a+\/0000…0001\.pdf$/);
 
   const renewed = await copiedLink();
   const expiresOf = (url: string) => Number(SIGNED_LINK.exec(url)![1]);
-  expect(expiresOf(renewed) - expiresOf(first)).toBeGreaterThanOrEqual(59 * 60);
+  expect(expiresOf(renewed) - expiresOf(first)).toBeGreaterThanOrEqual(50 * 60);
 });
 
 test("a just-uploaded private file's ticket keeps a working link", async ({ page, api }) => {
@@ -152,8 +152,8 @@ test("a just-uploaded private file's ticket keeps a working link", async ({ page
   const renew = page.waitForRequest(
     (request) => new URL(request.url()).pathname === `/upload/${api.uploads[0].id}`
   );
-  api.clockRunsFor(59 * MINUTE);
-  await page.clock.fastForward(59 * MINUTE);
+  api.clockRunsFor(50 * MINUTE);
+  await page.clock.fastForward(50 * MINUTE);
   await renew;
   await expect(ticket).not.toHaveAttribute("href", first!);
   await expect(ticket).toHaveAttribute("href", signed);
