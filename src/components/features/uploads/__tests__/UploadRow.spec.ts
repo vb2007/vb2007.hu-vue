@@ -4,6 +4,7 @@ import UploadRow from "@/components/features/uploads/UploadRow.vue";
 import UploadLink from "@/components/features/uploads/UploadLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { CONFIRM_DELETE_MS } from "@/composables/useConfirmDelete";
 import type { Upload } from "@/types/api/uploads";
 import { anUpload } from "@/__tests__/helpers/uploads";
 
@@ -257,7 +258,7 @@ describe("UploadRow", () => {
 
     await buttonNamed(wrapper, "Delete")!.trigger("click");
     expect(buttonNamed(wrapper, "Confirm delete")).toBeTruthy();
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(CONFIRM_DELETE_MS);
     await wrapper.vm.$nextTick();
     expect(buttonNamed(wrapper, "Confirm delete")).toBeUndefined();
     expect(remove).not.toHaveBeenCalled();
