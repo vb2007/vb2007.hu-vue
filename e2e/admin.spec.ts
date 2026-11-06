@@ -18,6 +18,81 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
   }
 });
 
+test("the overview shows the site's totals and today's mail", async ({ page, api }) => {
+  const MB = 1024 ** 2;
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("vb2007");
+  api.hasUser("anna");
+  api.hasUser("milo");
+  api.hasPaste("first");
+  api.hasPaste("second", "anna");
+  api.hasShortLink("abc123", "https://example.com/");
+  api.hasUpload("flyer.pdf", { visibility: "public", owner: "anna", fileSize: 3 * MB });
+  api.hasUpload("notes.txt", { owner: "milo", fileSize: 1 * MB });
+  api.hasUpload("photo.png", { owner: "milo", fileSize: 1 * MB });
+  api.sentMailToday(12);
+
+  await page.goto("/admin");
+  const board = page.locator(".board", {
+    has: page.getByRole("heading", { level: 2, name: "Site" })
+  });
+  const totals = board.getByRole("region", { name: "Totals" });
+  const row = (label: string) =>
+    totals.locator(".ledger__row", { hasText: new RegExp(`^${label}`) });
+  await expect(row("Users").locator("dd")).toHaveText("3");
+  await expect(row("Pastes").locator("dd")).toHaveText("2");
+  await expect(row("Short links").locator("dd")).toHaveText("1");
+  await expect(row("Uploads")).toContainText("1 public, 2 private");
+  await expect(row("Uploads").locator("dd")).toHaveText("3");
+  await expect(row("Stored").locator("dd")).toHaveText("5 MB");
+  await expect(row("Sign-ups waiting").locator("dd")).toHaveText("0");
+  await expect(row("Default quota").locator("dd")).toHaveText("10 GB");
+  await expect(row("Largest file").locator("dd")).toHaveText("100 MB");
+
+  const mail = board.getByRole("region", { name: "Mail today" });
+  await expect(mail.getByText("12 of 250 sent")).toBeVisible();
+  await expect(mail.getByRole("meter", { name: "Mail sent today" })).toHaveAttribute(
+    "aria-valuenow",
+    "12"
+  );
+  await expect(mail.getByRole("listitem")).toHaveText([
+    "200 Sign-up codes stop",
+    "200 The API logs a warning",
+    "250 All mail stops"
+  ]);
+  await expect(mail.getByText(/since midnight UTC or its last restart/)).toBeVisible();
+
+  // The sections still follow, under their own heading.
+  await expect(page.getByRole("heading", { level: 2, name: "Sections" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
+
+  // Past the sign-up stop, then at the limit.
+  api.sentMailToday(205);
+  await page.reload();
+  await expect(mail.getByText("205 of 250 sent")).toBeVisible();
+  await expect(
+    mail.getByText("Sign-up codes have stopped for today.", { exact: false })
+  ).toBeVisible();
+
+  api.sentMailToday(250);
+  await page.reload();
+  await expect(mail.getByRole("listitem").last()).toHaveText("250 All mail stops Reached");
+  await expect(mail.getByRole("alert")).toHaveText(
+    /^Today's mail limit is used up: no mail goes out until .+\.$/
+  );
+});
+
+test("the overview's totals and mail fail on their own", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.statsFail();
+  api.sentMailToday(3);
+
+  await page.goto("/admin");
+  await expect(page.getByText(/^Failed to load the site's totals/)).toBeVisible();
+  await expect(page.getByText("3 of 250 sent")).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
+});
+
 test("the superuser finds a user and changes their quota", async ({ page, api, isMobile }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.hasUser("vb2007", { usedBytes: 3 * GB, count: 40 });
