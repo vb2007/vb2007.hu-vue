@@ -1204,7 +1204,9 @@ export class MockApi {
   }
 
   private changePassword(currentPassword?: string, newPassword?: string) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
     }
@@ -1412,7 +1414,9 @@ export class MockApi {
         body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
       };
     }
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
     if (method === "PATCH") {
       if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
         return { status: 403, body: { error: "You are not authorized." } };

@@ -10,6 +10,8 @@ import {
   validateFile,
   validateFileName
 } from "@/scripts/uploads/upload";
+import { Endpoints } from "@/constants/endpoints";
+import { onSessionRefused } from "@/scripts/api/client";
 import { aFile, anUpload, someUsage } from "@/__tests__/helpers/uploads";
 import { formatTime } from "@/scripts/utility/dateUtil";
 import { mockXhr } from "@/__tests__/helpers/xhr";
@@ -158,6 +160,33 @@ describe("sendUpload", () => {
     requests[0].respond(415, { error: "This file type isn't supported." });
 
     await expect(sent).rejects.toEqual(new UploadError("This file type isn't supported."));
+  });
+
+  it("tells the client about an ended session before it rejects, like apiRequest", async () => {
+    let finish!: () => void;
+    const listener = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    onSessionRefused(listener);
+    const requests = mockXhr();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn());
+    let settled = false;
+    sent.catch(() => (settled = true));
+    requests[0].respond(403, { error: "You must be logged in to perform this action." });
+
+    expect(listener).toHaveBeenCalledWith(Endpoints.Uploads.upload);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await expect(sent).rejects.toThrow("You must be logged in to perform this action.");
+  });
+
+  it("still rejects with the API's error when the session check fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    onSessionRefused(() => Promise.reject(new Error("listener broke")));
+    const requests = mockXhr();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn());
+    requests[0].respond(403, { error: "You must be logged in to perform this action." });
+
+    await expect(sent).rejects.toThrow("You must be logged in to perform this action.");
   });
 
   it("falls back to the status when the error isn't JSON or has no message", async () => {

@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
-import { hasPassword, isLoggedIn, username } from "@/scripts/authentication/authState";
+import {
+  hasPassword,
+  isLoggedIn,
+  sessionEnded,
+  username
+} from "@/scripts/authentication/authState";
 import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
@@ -434,16 +439,30 @@ describe("DeleteAccount", () => {
     wrapper.unmount();
   });
 
-  it.each([
-    "The provided username doesn't match this account.",
-    "You must be logged in to perform this action."
-  ])("keeps another 403 an error, with the delete key: %s", async (error) => {
+  it("keeps another 403 an error, with the delete key", async () => {
+    const error = "The provided username doesn't match this account.";
     const { wrapper } = await sendUsername(403, error);
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(wrapper.find('[role="alert"]').text()).toBe(error);
     expect(githubKey(wrapper).exists()).toBe(false);
     expect(deleteKey(wrapper).exists()).toBe(true);
     expect(document.activeElement).toBe(wrapper.find("input").element);
+    expect(isLoggedIn.value).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("logs the page out when the API says the session ended", async () => {
+    const error = "You must be logged in to perform this action.";
+    // The delete answers it, and so does the GET /user that it sends to check.
+    fetchMock.mockResolvedValue(jsonResponse(403, { error }));
+    const { wrapper } = await sendUsername(403, error);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://api.test/user");
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(isLoggedIn.value).toBe(false);
+    expect(sessionEnded.value).toBe(true);
     wrapper.unmount();
   });
 

@@ -840,6 +840,35 @@ test("a wrong current password is refused and the form keeps its values", async 
   await expect(details.getByRole("alert")).toHaveCount(0);
 });
 
+test("a session that ended elsewhere logs the page out when the password is changed", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+
+  // A login on another device (or a password reset) ends this one: the API keeps one session.
+  api.loggedOut();
+  await details.getByRole("button", { name: "Save password" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  const ended = page.getByRole("status");
+  await expect(ended).toHaveText(
+    "Your session ended, so you're logged out: it expired, the password was reset, or the account was logged in or out elsewhere. Log in again to see your account."
+  );
+  await expect(ended).toBeFocused();
+  await expect(page.getByLabel("Current password")).toHaveCount(0);
+  expect(api.password).toBe(MOCK_PASSWORD);
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+});
+
 test("the password form checks its fields before asking the API", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   await page.goto("/account");
