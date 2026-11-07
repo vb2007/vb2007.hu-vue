@@ -68,7 +68,7 @@ Nothing else may call the API: ESLint rejects `fetch` and `XMLHttpRequest` outsi
 
 The app ships as a compose stack with two services: `frontend` (the production build served by unprivileged nginx) and `cloudflared` (a Cloudflare Tunnel for remote access). No ports are published on the host; the tunnel reaches the app over the internal compose network.
 
-Besides the SPA, `docker/nginx.conf` answers `/.well-known/matrix/server` and `/.well-known/matrix/client` (Matrix delegation to `matrix.vb2007.hu`, so `@user:vb2007.hu` federates) and `/robots.txt` (empty `200` for bots, `403` for everyone else). These routes must stay above the SPA fallback (`location /`). Errors nginx answers itself (a missing file under `/assets/`, the robots `403`, malformed requests) keep their status but get a short plain-text body from the internal `/_plain-error` location instead of nginx's stock HTML page.
+Besides the SPA, `docker/nginx.conf` answers `/.well-known/matrix/server` and `/.well-known/matrix/client` (Matrix delegation to `matrix.vb2007.hu`, so `@user:vb2007.hu` federates) and `/robots.txt` (empty `200` for bots, `403` for everyone else). These routes must stay above the SPA fallback (`location /`). The 4xx/5xx errors nginx answers itself (a missing file under `/assets/`, the robots `403`, malformed requests) keep their status but get a short plain-text body from the internal `/_plain-error` location instead of nginx's stock HTML page. The one exception is `505`, which `error_page` can't catch.
 
 Every response carries `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` from `docker/security-headers.conf`. nginx drops server-level `add_header`s in a location that sets its own, so each such block includes that file again.
 
