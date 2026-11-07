@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { SEARCH_DELAY_MS, useUploads, type UploadListing } from "@/composables/useUploads";
-import { Endpoints } from "@/constants/endpoints";
+import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
+import { SIGNED_LINK_REFRESH_LEAD_MS } from "@/composables/useSignedLinkRefresh";
+import { useUploads, type UploadListing } from "@/composables/useUploads";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { anUpload } from "@/__tests__/helpers/uploads";
@@ -16,7 +17,7 @@ const listing = (uploads: Upload[], { page = 1, pages = 1, total = uploads.lengt
 
 /** One user's uploads for the admin, as the admin's page builds it. */
 const usersUploads = (ownerHint?: string): UploadListing => ({
-  endpoint: Endpoints.Admin.userUploads,
+  kind: "user",
   params: { id: "u9" },
   ownerHint
 });
@@ -101,6 +102,63 @@ describe("useUploads", () => {
     expect(hinted.errorMessage.value).toBe("Failed to load anna's uploads: Server Error");
   });
 
+  describe("site-wide", () => {
+    const anna = { id: "u9", username: "anna" };
+    const siteListing = () =>
+      jsonResponse(200, {
+        uploads: [
+          { ...anUpload("a"), owner: anna },
+          { ...anUpload("b"), owner: null }
+        ],
+        pagination: {
+          limit: 10,
+          page: 1,
+          total: 2,
+          pages: 1,
+          sortBy: "uploadedOn",
+          sortOrder: "desc"
+        }
+      });
+
+    it("lists every user's uploads, each with its owner, and no owner for the list", async () => {
+      fetchMock.mockResolvedValueOnce(siteListing());
+      const { api } = mountComposable(() => useUploads(10, { kind: "site" }));
+      api.query.value = "ann";
+
+      await api.load();
+
+      expect(lastUrl(fetchMock)).toBe(
+        "https://api.test/admin/uploads?limit=10&page=1&sortBy=uploadedOn&sortOrder=desc&q=ann"
+      );
+      expect(api.uploads.value.map((upload) => upload.owner)).toEqual([anna, null]);
+      expect(api.owner.value).toBeNull();
+      expect(api.ownerName.value).toBeUndefined();
+    });
+
+    it("keeps a row's owner through an edit, whose answer leaves it out", async () => {
+      fetchMock.mockResolvedValueOnce(siteListing());
+      const { api } = mountComposable(() => useUploads(10, { kind: "site" }));
+      await api.load();
+
+      const renamed = anUpload("a", { originalFileName: "new.png" });
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { message: "Upload updated successfully.", upload: renamed })
+      );
+      await api.rename("a", "new.png");
+
+      expect(api.uploads.value[0]).toEqual({ ...renamed, owner: anna });
+    });
+
+    it("says the uploads failed to load", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Server Error"));
+      const { api } = mountComposable(() => useUploads(10, { kind: "site" }));
+
+      await api.load();
+
+      expect(api.errorMessage.value).toBe("Failed to load the uploads: Server Error");
+    });
+  });
+
   it("knows no owner for the user's own uploads", () => {
     const { api } = mountComposable(() => useUploads());
 
@@ -173,9 +231,7 @@ describe("useUploads", () => {
   it("aborts a load when a newer one starts, and leaves the list to the newer one", async () => {
     deferResponse(fetchMock);
     const newer = deferResponse(fetchMock);
-    const { api } = mountComposable(() =>
-      useUploads(10, { endpoint: Endpoints.Admin.userUploads, params: { id: "u9" } })
-    );
+    const { api } = mountComposable(() => useUploads(10, { kind: "user", params: { id: "u9" } }));
 
     const older = api.load();
     const pending = api.setVisibilityFilter("private");
@@ -350,6 +406,88 @@ describe("useUploads", () => {
       { method: "DELETE", credentials: "include" }
     ]);
     expect(api.uploads.value).toEqual([anUpload("b")]);
+  });
+
+  describe("signed links", () => {
+    const NOW = Date.UTC(2026, 10, 6, 12);
+    /** When a list of links signed at `NOW` for an hour is due for new ones. */
+    const DUE = 60 * 60_000 - SIGNED_LINK_REFRESH_LEAD_MS;
+    const signedFor = (id: string, minutes = 60) =>
+      anUpload(id, {
+        url: `https://cdn.test/${id}.png?expires=${NOW / 1000 + minutes * 60}&sig=x`
+      });
+
+    beforeEach(() => {
+      vi.useFakeTimers({ now: NOW });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("are loaded again before they expire, unless a load is running", async () => {
+      fetchMock.mockResolvedValueOnce(
+        listing([signedFor("a"), anUpload("b", { visibility: "public" })])
+      );
+      const { api } = mountComposable(() => useUploads());
+      await api.load();
+
+      // The user's own page change is still loading when they're due: it brings new links anyway.
+      const pageTwo = deferResponse(fetchMock);
+      const paging = api.goToPage(2);
+      vi.advanceTimersByTime(DUE);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      pageTwo.respond(listing([signedFor("a")]));
+      await paging;
+      fetchMock.mockResolvedValueOnce(listing([anUpload("a")]));
+      window.dispatchEvent(new Event("focus"));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(lastUrl(fetchMock)).toContain("page=2");
+      expect(api.uploads.value).toEqual([anUpload("a")]);
+    });
+
+    it("are asked for again on the next focus after a reload that failed", async () => {
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a")]));
+      const { api } = mountComposable(() => useUploads());
+      await api.load();
+
+      // Woken before the network is back: the reload fails and the old links stay.
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      vi.advanceTimersByTime(DUE);
+      await flushPromises();
+      expect(api.errorMessage.value).not.toBe("");
+      expect(api.uploads.value).toEqual([signedFor("a")]);
+
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a", 120)]));
+      window.dispatchEvent(new Event("focus"));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(api.errorMessage.value).toBe("");
+      expect(api.uploads.value).toEqual([signedFor("a", 120)]);
+    });
+
+    it("wait while an edit runs, then catch up", async () => {
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a"), signedFor("b", 90)]));
+      const { api } = mountComposable(() => useUploads());
+      await api.load();
+
+      const renaming = deferResponse(fetchMock);
+      const renamed = api.rename("b", "new.png");
+      vi.advanceTimersByTime(DUE);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      fetchMock.mockResolvedValueOnce(listing([signedFor("a", 120), signedFor("b", 120)]));
+      renaming.respond(jsonResponse(200, { upload: signedFor("b", 120) }));
+      await renamed;
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(lastUrl(fetchMock)).toContain("/uploads?");
+    });
   });
 
   it("steps back a page after deleting the last upload on it", async () => {

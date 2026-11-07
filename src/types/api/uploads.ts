@@ -14,7 +14,10 @@ export interface Upload {
   /** Bytes. */
   fileSize: number;
   visibility: UploadVisibility;
-  /** `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`; private ones only open for the owner. */
+  /**
+   * `cdn.vb2007.hu/useruploads/<userId>/<id><extension>`. A private one is signed for an hour
+   * (`?expires=…&sig=…`, see `linkExpiresAt`) and opens for anyone who has it until then.
+   */
   url: string;
   uploadedOn: string;
   updatedOn: string;
@@ -36,16 +39,16 @@ export interface UploadUsage {
   byCategory: { category: UploadCategory; bytes: number; count: number }[];
 }
 
-/** Whose uploads an admin listing shows (vb2007/vb2007.hu-api#122). */
+/** Whose uploads an admin listing shows, or whose one upload is (vb2007/vb2007.hu-api#122). */
 export interface UploadOwner {
   id: string;
   username: string;
 }
 
-/** `GET /uploads` and `GET /admin/users/:id/uploads` */
+/** `GET /uploads`, `GET /admin/users/:id/uploads` and `GET /admin/uploads` */
 export type UploadListQuery = ListQuery<UploadSortBy> & {
   visibility?: UploadVisibility;
-  /** Searches the file names. */
+  /** Searches the file names, and on `GET /admin/uploads` the owners' usernames too. */
   q?: string;
 };
 
@@ -70,6 +73,11 @@ export interface UploadFileFields {
 export interface UpdateUploadBody {
   originalFileName?: string;
   visibility?: UploadVisibility;
+}
+
+/** `GET /upload/:id`: one upload, e.g. for a new signed link. */
+export interface UploadResponse {
+  upload: Upload;
 }
 
 /** `POST /upload` and `PATCH /upload/:id` */

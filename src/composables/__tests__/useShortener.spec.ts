@@ -14,7 +14,7 @@ describe("useShortener", () => {
     const shortener = useShortener();
     shortener.originalUrl.value = "example.com";
 
-    await shortener.shorten();
+    expect(await shortener.shorten()).toBe(false);
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(shortener.errorMessage.value).toBe("Invalid URL / URI format.");
@@ -54,9 +54,9 @@ describe("useShortener", () => {
 
     const pending = shortener.shorten();
     expect(shortener.isLoading.value).toBe(true);
-    await pending;
+    expect(await pending).toBe(true);
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.test/shortenUrl/create", {
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/shortenUrl", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: "https://example.com/long" }),
@@ -75,7 +75,7 @@ describe("useShortener", () => {
     const shortener = useShortener();
     shortener.originalUrl.value = "https://example.com";
 
-    await shortener.shorten();
+    expect(await shortener.shorten()).toBe(false);
 
     expect(shortener.errorMessage.value).toBe("You must be logged in to perform this action.");
     expect(shortener.shortenedCode.value).toBe("");

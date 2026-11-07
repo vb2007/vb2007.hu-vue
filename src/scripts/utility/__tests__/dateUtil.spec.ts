@@ -1,5 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatDate, formatDateTime, getCurrentYear } from "@/scripts/utility/dateUtil";
+import {
+  formatDate,
+  formatDateTime,
+  formatTime,
+  getCurrentYear,
+  isPast
+} from "@/scripts/utility/dateUtil";
+
+describe("isPast", () => {
+  const now = Date.parse("2026-11-06T12:00:00.000Z");
+
+  it("is true from the moment on", () => {
+    expect(isPast("2026-11-06T11:59:59.000Z", now)).toBe(true);
+    expect(isPast("2026-11-06T12:00:00.000Z", now)).toBe(true);
+    expect(isPast("2026-11-06T12:00:01.000Z", now)).toBe(false);
+  });
+
+  it("checks against the clock by default", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    expect(isPast("2026-11-06T11:00:00.000Z")).toBe(true);
+    expect(isPast("2026-11-06T13:00:00.000Z")).toBe(false);
+    vi.useRealTimers();
+  });
+});
 
 describe("getCurrentYear", () => {
   it("returns the current calendar year", () => {
@@ -22,5 +47,18 @@ describe("formatDateTime", () => {
 describe("formatDate", () => {
   it("formats a timestamp as a medium date without the time", () => {
     expect(formatDate("2026-10-10T12:00:00.000Z", "en-GB")).toBe("10 Oct 2026");
+  });
+});
+
+describe("formatTime", () => {
+  it("formats a moment as a short time of day", () => {
+    expect(formatTime(Date.UTC(2026, 10, 6, 12, 32), "en-GB")).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it("takes an ISO timestamp too, and formats it like the same moment in milliseconds", () => {
+    const iso = "2026-10-10T12:00:00.000Z";
+
+    expect(formatTime(iso, "en-GB")).toMatch(/^\d{2}:\d{2}$/);
+    expect(formatTime(iso, "en-GB")).toBe(formatTime(Date.parse(iso), "en-GB"));
   });
 });

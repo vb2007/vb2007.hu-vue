@@ -1,11 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { nextTick } from "vue";
+import { RouterLink } from "vue-router";
 import UploadRow from "@/components/features/uploads/UploadRow.vue";
+import { AdminRoutes } from "@/constants/admin";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
 import UploadLink from "@/components/features/uploads/UploadLink.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { CONFIRM_DELETE_MS } from "@/composables/useConfirmDelete";
 import type { Upload } from "@/types/api/uploads";
 import { anUpload } from "@/__tests__/helpers/uploads";
+import { formatTime } from "@/scripts/utility/dateUtil";
+import { createTestRouter } from "@/__tests__/helpers/mount";
+
+/** A private link as the API signs it. */
+const EXPIRES = Math.floor(Date.now() / 1000) + 3600;
+const SIGNED = `https://cdn.test/useruploads/user1/u1.png?expires=${EXPIRES}&sig=x`;
 
 const buttonNamed = (wrapper: VueWrapper, name: string) =>
   wrapper.findAll("button").find((button) => button.text().includes(name));
@@ -18,7 +29,8 @@ describe("UploadRow", () => {
   const mountRow = (upload: Upload = anUpload("u1"), props: object = {}) =>
     mount(UploadRow, {
       props: { upload, busy: "", error: "", rename, setVisibility, remove, ...props },
-      attachTo: document.body
+      attachTo: document.body,
+      global: { plugins: [createTestRouter()] }
     });
 
   beforeEach(() => {
@@ -40,7 +52,13 @@ describe("UploadRow", () => {
     });
     expect(wrapper.find(".row__name").text()).toBe("file-u1.png");
     expect(wrapper.find(".row__name").attributes("aria-expanded")).toBe("false");
-    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB · PNG · /);
+    // A no-break space keeps each dot with the fact before it.
+    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB\u00a0· PNG\u00a0· /);
+    expect(wrapper.findAll(".row__fact").map((fact) => fact.text())).toEqual([
+      "2 kB",
+      "PNG",
+      expect.stringMatching(/2026/)
+    ]);
     expect(wrapper.find(".badge").text()).toBe("Private");
     expect(wrapper.find(".badge").classes()).toContain("badge--private");
     expect(wrapper.find("a").attributes()).toMatchObject({
@@ -78,7 +96,7 @@ describe("UploadRow", () => {
     expect(facts).toMatchObject({
       Type: "PNG · image/png",
       Size: `2 kB (${(2048).toLocaleString()} bytes)`,
-      "Who can open it": "Anyone with the link"
+      "Who can open it": "Anyone with the link, while it's public"
     });
     expect(facts.Changed).toBeTruthy();
     expect(details.findComponent(UploadLink).props("url")).toBe(anUpload("u1").url);
@@ -105,46 +123,199 @@ describe("UploadRow", () => {
     expect(wrapper.find(".details__icon").findComponent(AppIcon).props("name")).toBe("archive");
     const facts = wrapper.findAll(".facts__row").map((row) => row.find("dt").text());
     expect(facts).not.toContain("Changed");
-    expect(wrapper.find(".facts").text()).toContain("Only you, while you're logged in");
+    expect(wrapper.find(".facts").text()).toContain(
+      "You, the admin, and anyone with the link (until it expires)"
+    );
   });
 
-  it("copies the link and says when a private one only opens for its owner", async () => {
-    const wrapper = mountRow();
+  it("copies a signed link and shows when the copy expires", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
     await buttonNamed(wrapper, "Copy link")!.trigger("click");
     await flushPromises();
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(anUpload("u1").url);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SIGNED);
     expect(buttonNamed(wrapper, "Copied")).toBeTruthy();
-    expect(wrapper.find("[role=status]").text()).toBe(
-      "Link copied. Only you can open it while it's private."
-    );
+    const note = wrapper.find("[role=status]");
+    expect(note.text()).toBe(`The copied link expires at ${formatTime(EXPIRES * 1000)}.`);
+    expect(note.classes()).not.toContain("visually-hidden");
+  });
 
-    const pub = mountRow(anUpload("u2", { visibility: "public" }));
-    await buttonNamed(pub, "Copy link")!.trigger("click");
+  it("only reads out copying a plain link", async () => {
+    const wrapper = mountRow(anUpload("u2", { visibility: "public" }));
+    expect(wrapper.find("[role=status]").text()).toBe("");
+
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
     await flushPromises();
-    expect(pub.find("[role=status]").text()).toBe("Link copied to clipboard");
+    const status = wrapper.find("[role=status]");
+    expect(status.text()).toBe("Link copied to clipboard");
+    expect(status.classes()).toContain("visually-hidden");
   });
 
   it("names the owner and the admin on someone else's private upload", async () => {
-    const wrapper = mountRow(anUpload("u1"), { ownerName: "anna" });
+    isSuperuser.value = true;
+    userId.value = "admin";
+    const wrapper = mountRow(anUpload("u1"), { owner: { id: "u9", username: "anna" } });
     await wrapper.find(".row__name").trigger("click");
-    expect(wrapper.find(".facts").text()).toContain("Only anna and the admin");
+    expect(wrapper.find(".facts").text()).toContain(
+      "anna, you, and anyone with the link (until it expires)"
+    );
+    // Only on the list of everyone's uploads does the row name its owner itself.
+    expect(wrapper.find(".row__meta").text()).toMatch(/^2 kB\s· /);
+  });
 
-    await buttonNamed(wrapper, "Copy link")!.trigger("click");
-    await flushPromises();
-    expect(wrapper.find("[role=status]").text()).toBe(
-      "Link copied. Only anna and the admin can open it while it's private."
+  it("leaves only the admin on their own upload in a listing, or a deleted account's", async () => {
+    isSuperuser.value = true;
+    userId.value = "admin";
+    const own = mountRow(anUpload("u1"), { owner: { id: "admin", username: "vb2007" } });
+    await own.find(".row__name").trigger("click");
+    expect(own.find(".facts").text()).toContain("You, and anyone with the link (until it expires)");
+
+    const orphaned = mountRow(anUpload("u2"), { owner: null });
+    await orphaned.find(".row__name").trigger("click");
+    expect(orphaned.find(".facts").text()).toContain(
+      "You, and anyone with the link (until it expires)"
     );
   });
 
-  it("says when copying failed", async () => {
+  it("leads with the owner on the list of everyone's uploads, linking their account", () => {
+    const wrapper = mountRow(anUpload("u1"), {
+      owner: { id: "u9", username: "anna" },
+      showOwner: true
+    });
+
+    // The page collapses the space either side of the template's dot.
+    const meta = () => wrapper.find(".row__meta").text().replace(/\s+/g, " ");
+    expect(meta()).toMatch(/^anna · 2 kB · PNG · /);
+    const link = wrapper.findComponent(RouterLink);
+    expect(link.props("to")).toEqual({ name: AdminRoutes.user, params: { id: "u9" } });
+    expect(link.attributes("aria-label")).toBe("anna's account");
+  });
+
+  it("says when the owner's account is gone", () => {
+    const wrapper = mountRow(anUpload("u1"), { owner: null, showOwner: true });
+
+    expect(wrapper.find(".row__meta").text().replace(/\s+/g, " ")).toMatch(
+      /^Deleted account · 2 kB · /
+    );
+    expect(wrapper.findComponent(RouterLink).exists()).toBe(false);
+  });
+
+  it("doesn't name the admin to the admin on their own upload", async () => {
+    isSuperuser.value = true;
+    const wrapper = mountRow();
+    await wrapper.find(".row__name").trigger("click");
+    expect(wrapper.find(".facts").text()).toContain(
+      "You, and anyone with the link (until it expires)"
+    );
+  });
+
+  it("drops the note once the copied link has expired", async () => {
+    vi.useFakeTimers();
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=status]").text()).not.toBe("");
+
+    vi.advanceTimersByTime(EXPIRES * 1000 - Date.now());
+    await nextTick();
+    expect(wrapper.find("[role=status]").text()).toBe("");
+    vi.useRealTimers();
+  });
+
+  it("drops the note once the file goes public or its link is plain, not on a renewal", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    const copyAndCheck = async () => {
+      await buttonNamed(wrapper, "Cop")!.trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".copied-note").text()).toMatch(/^The copied link /);
+    };
+    await copyAndCheck();
+
+    // A renewed link: the copied one still works until it expires.
+    await wrapper.setProps({ upload: anUpload("u1", { url: `${SIGNED}2` }) });
+    expect(wrapper.find(".copied-note").text()).toMatch(/^The copied link /);
+
+    await wrapper.setProps({ upload: anUpload("u1", { url: `${SIGNED}2`, visibility: "public" }) });
+    expect(wrapper.find(".copied-note").classes()).toContain("visually-hidden");
+
+    await wrapper.setProps({ upload: anUpload("u1", { url: SIGNED }) });
+    await copyAndCheck();
+    await wrapper.setProps({ upload: anUpload("u1") });
+    expect(wrapper.find(".copied-note").classes()).toContain("visually-hidden");
+  });
+
+  it("says when copying failed, and drops the note of an earlier copy", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=status]").text()).not.toBe("");
+
     navigator.clipboard.writeText = vi.fn(() => Promise.reject(new Error("denied")));
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const wrapper = mountRow();
-    await buttonNamed(wrapper, "Copy link")!.trigger("click");
+    await buttonNamed(wrapper, "Copied")!.trigger("click");
     await flushPromises();
 
     expect(buttonNamed(wrapper, "Copy failed")).toBeTruthy();
+    expect(wrapper.find("[role=status]").text()).toBe("");
+  });
+
+  it("tries the thumbnail again with a new link", async () => {
+    const wrapper = mountRow(anUpload("u1", { url: SIGNED }));
+    await wrapper.find(".thumb__img").trigger("error");
+    expect(wrapper.find(".thumb__img").exists()).toBe(false);
+
+    await wrapper.setProps({ upload: anUpload("u1", { url: `${SIGNED}2` }) });
+    expect(wrapper.find(".thumb__img").attributes("src")).toBe(`${SIGNED}2`);
+  });
+
+  it("keeps a playing video where it was when its link is renewed", async () => {
+    const video = anUpload("u1", { mimeType: "video/mp4", extension: ".mp4", url: SIGNED });
+    const wrapper = mountRow(video);
+    await wrapper.find(".row__name").trigger("click");
+    const player = wrapper.find<HTMLVideoElement>("video").element;
+    player.currentTime = 42;
+    Object.defineProperty(player, "paused", { value: false, configurable: true });
+    // The browser may refuse to play without a click; that stays quiet.
+    player.play = vi.fn(() => Promise.reject(new DOMException("Not allowed", "NotAllowedError")));
+
+    // Renewed twice before the first source loaded: only the latest wait resumes it.
+    await wrapper.setProps({ upload: { ...video, url: `${SIGNED}2` } });
+    await wrapper.setProps({ upload: { ...video, url: `${SIGNED}3` } });
+    expect(player.getAttribute("src")).toBe(`${SIGNED}3`);
+    player.currentTime = 0;
+    player.dispatchEvent(new Event("loadedmetadata"));
+    await flushPromises();
+
+    expect(player.currentTime).toBe(42);
+    expect(player.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops waiting to resume a video once the row is gone", async () => {
+    const video = anUpload("u1", { mimeType: "video/mp4", extension: ".mp4", url: SIGNED });
+    const wrapper = mountRow(video);
+    await wrapper.find(".row__name").trigger("click");
+    const player = wrapper.find<HTMLVideoElement>("video").element;
+    Object.defineProperty(player, "paused", { value: false, configurable: true });
+    player.play = vi.fn(() => Promise.resolve());
+
+    await wrapper.setProps({ upload: { ...video, url: `${SIGNED}2` } });
+    wrapper.unmount();
+    player.dispatchEvent(new Event("loadedmetadata"));
+
+    expect(player.play).not.toHaveBeenCalled();
+  });
+
+  it("leaves a paused song paused when its link is renewed", async () => {
+    const song = anUpload("u1", { mimeType: "audio/mpeg", extension: ".mp3", url: SIGNED });
+    const wrapper = mountRow(song);
+    await wrapper.find(".row__name").trigger("click");
+    const player = wrapper.find<HTMLAudioElement>("audio").element;
+    player.play = vi.fn(() => Promise.resolve());
+
+    await wrapper.setProps({ upload: { ...song, url: `${SIGNED}2` } });
+    player.dispatchEvent(new Event("loadedmetadata"));
+
+    expect(player.play).not.toHaveBeenCalled();
   });
 
   it("renames in place: checks the name, saves it and closes the field", async () => {
@@ -257,7 +428,7 @@ describe("UploadRow", () => {
 
     await buttonNamed(wrapper, "Delete")!.trigger("click");
     expect(buttonNamed(wrapper, "Confirm delete")).toBeTruthy();
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(CONFIRM_DELETE_MS);
     await wrapper.vm.$nextTick();
     expect(buttonNamed(wrapper, "Confirm delete")).toBeUndefined();
     expect(remove).not.toHaveBeenCalled();

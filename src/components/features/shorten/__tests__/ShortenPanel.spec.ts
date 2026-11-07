@@ -42,6 +42,7 @@ describe("ShortenPanel", () => {
     await flushPromises();
 
     expect(wrapper.find('button[type="submit"]').text()).toBe("Shorten");
+    expect(wrapper.emitted("created")).toHaveLength(1);
     expect(wrapper.findComponent(TicketSlip).props()).toMatchObject({
       value: `${window.location.origin}/r/abc123`,
       display: `${window.location.host}/r/abc123`
@@ -61,6 +62,24 @@ describe("ShortenPanel", () => {
     await wrapper.find("form").trigger("submit");
 
     expect(wrapper.find(".field__error").text()).toBe("Invalid URL / URI format.");
+    vi.restoreAllMocks();
+  });
+
+  it("tells nobody a link was created when the API refuses it", async () => {
+    isLoggedIn.value = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, { error: "The URI/URL you've provided isn't valid." })
+    );
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue("https://example.com/a b");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").text()).toBe("The URI/URL you've provided isn't valid.");
+    expect(wrapper.emitted("created")).toBeUndefined();
     vi.restoreAllMocks();
   });
 

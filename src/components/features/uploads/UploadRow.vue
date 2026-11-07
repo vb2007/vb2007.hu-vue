@@ -1,23 +1,33 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch } from "vue";
 import type { UploadAction } from "@/composables/useUploads";
 import { useClipboard } from "@/composables/useClipboard";
+import { useConfirmDelete } from "@/composables/useConfirmDelete";
+import { useCopiedLinkNote } from "@/composables/useCopiedLinkNote";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { categoryOf, typeLabel, validateFileName } from "@/scripts/uploads/upload";
-import type { Upload, UploadVisibility } from "@/types/api/uploads";
+import { AdminRoutes } from "@/constants/admin";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
+import { categoryOf, linkExpiresAt, typeLabel, validateFileName } from "@/scripts/uploads/upload";
+import type { Upload, UploadOwner, UploadVisibility } from "@/types/api/uploads";
 import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
+import ConfirmDeleteButton from "@/components/ui/ConfirmDeleteButton.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { CATEGORY_ICONS } from "./categoryIcon";
 import UploadLink from "./UploadLink.vue";
 
 const props = defineProps<{
   upload: Upload;
-  /** Set when the admin looks at someone else's uploads. */
-  ownerName?: string;
+  /**
+   * Whose upload it is, set in the admin's listings (`null` once their account is gone); left out
+   * on the user's own list.
+   */
+  owner?: UploadOwner | null;
+  /** Leads the row's meta line with the owner, for a list of everyone's uploads. */
+  showOwner?: boolean;
   /** The edit running on this row, if any. */
   busy: UploadAction | "";
   error: string;
@@ -29,24 +39,73 @@ const props = defineProps<{
 const detailsId = useId();
 const category = computed(() => categoryOf(props.upload.mimeType));
 const isPrivate = computed(() => props.upload.visibility === "private");
-const privateAudience = computed(() =>
-  props.ownerName ? `Only ${props.ownerName} and the admin` : "Only you, while you're logged in"
-);
+/**
+ * Only the owner and the admin get a private file's signed link, but it opens for anyone until it
+ * expires. The admin is "you" on their own uploads and on someone else's (`owner`); a deleted
+ * account's leaves only the admin.
+ */
+const audience = computed(() => {
+  if (!isPrivate.value) return "Anyone with the link, while it's public";
+  const { owner } = props;
+  if (owner && owner.id !== userId.value)
+    return `${owner.username}, you, and anyone with the link (until it expires)`;
+  return owner !== undefined || isSuperuser.value
+    ? "You, and anyone with the link (until it expires)"
+    : "You, the admin, and anyone with the link (until it expires)";
+});
 
-/** Thumbnails that fail to load (e.g. a private file after logging out) fall back to the icon. */
+/** Thumbnails that fail to load (e.g. an expired link) fall back to the icon, until a new link. */
 const thumbFailed = ref(false);
 
 const expanded = ref(false);
 
+// A renewed link swaps the preview's source: a playing video or song carries on where it was.
+const media = useTemplateRef<HTMLMediaElement>("media");
+/** The wait for the new source, dropped when another link or the row's end overtakes it. */
+let resume: AbortController | undefined;
+watch(
+  () => props.upload.url,
+  () => {
+    thumbFailed.value = false;
+    resume?.abort();
+    const player = media.value;
+    if (!player) return;
+    const { currentTime, paused } = player;
+    resume = new AbortController();
+    player.addEventListener(
+      "loadedmetadata",
+      () => {
+        player.currentTime = currentTime;
+        // The browser may refuse to play on its own; the user can still press play.
+        if (!paused) player.play()?.catch(() => {});
+      },
+      { once: true, signal: resume.signal }
+    );
+  }
+);
+onBeforeUnmount(() => resume?.abort());
+
 const { copied, failed, copy } = useClipboard();
-/** Announced after copying; a private link warns who can open it. */
-const copyStatus = computed(() => {
-  if (!copied.value) return "";
-  if (!isPrivate.value) return "Link copied to clipboard";
-  return props.ownerName
-    ? `Link copied. Only ${props.ownerName} and the admin can open it while it's private.`
-    : "Link copied. Only you can open it while it's private.";
-});
+/** When the last copied private link expires, until it has. */
+const { note: copiedNote, show: showCopiedNote, clear: clearCopiedNote } = useCopiedLinkNote();
+const copyLink = async () => {
+  const url = props.upload.url;
+  await copy(url);
+  if (copied.value) showCopiedNote(url);
+  else clearCopiedNote();
+};
+// The note only holds while the file stays as it was copied: private, behind a signed link. A
+// renewed signed link leaves it, since the copied one still works until it expires.
+watch(
+  () => props.upload.visibility,
+  () => clearCopiedNote()
+);
+watch(
+  () => props.upload.url,
+  (url) => {
+    if (linkExpiresAt(url) === undefined) clearCopiedNote();
+  }
+);
 const copyLabel = computed(() =>
   copied.value ? "Copied" : failed.value ? "Copy failed" : "Copy link"
 );
@@ -96,20 +155,8 @@ const saveRename = async () => {
 const toggleVisibility = () =>
   props.setVisibility(props.upload.id, isPrivate.value ? "public" : "private");
 
-/** Deleting takes two clicks; the armed state wears off if the user moves on. */
-const confirming = ref(false);
-let confirmTimer: ReturnType<typeof setTimeout> | undefined;
-const onDelete = () => {
-  clearTimeout(confirmTimer);
-  if (!confirming.value) {
-    confirming.value = true;
-    confirmTimer = setTimeout(() => (confirming.value = false), 4000);
-    return;
-  }
-  confirming.value = false;
-  return props.remove(props.upload.id);
-};
-onBeforeUnmount(() => clearTimeout(confirmTimer));
+const confirmDelete = useConfirmDelete();
+const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(props.upload.id));
 </script>
 
 <template>
@@ -140,9 +187,25 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           <span class="row__name-text">{{ upload.originalFileName }}</span>
           <AppIcon class="row__chevron" name="chevron" :size="18" />
         </button>
+        <!-- A no-break space ties each dot to the fact before it, so a line never starts with one. -->
         <p class="row__meta">
-          {{ formatBytes(upload.fileSize) }} · {{ typeLabel(upload.extension) }} ·
-          <time :datetime="upload.uploadedOn">{{ formatDateTime(upload.uploadedOn) }}</time>
+          <template v-if="showOwner">
+            <!-- Whose it is leads, a click from their account; named apart for screen readers. -->
+            <RouterLink
+              v-if="owner"
+              class="meta-link"
+              :to="{ name: AdminRoutes.user, params: { id: owner.id } }"
+              :aria-label="`${owner.username}'s account`"
+              >{{ owner.username }}</RouterLink
+            >
+            <span v-else class="row__fact">Deleted account</span>&nbsp;·
+          </template>
+          <span class="row__fact">{{ formatBytes(upload.fileSize) }}</span
+          >&nbsp;· <span class="row__fact">{{ typeLabel(upload.extension) }}</span
+          >&nbsp;·
+          <time class="row__fact" :datetime="upload.uploadedOn">{{
+            formatDateTime(upload.uploadedOn)
+          }}</time>
         </p>
       </div>
 
@@ -152,7 +215,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       </span>
 
       <div class="row__quick">
-        <BaseButton size="sm" variant="secondary" @click="copy(upload.url)">
+        <BaseButton size="sm" variant="secondary" @click="copyLink">
           {{ copyLabel }}
         </BaseButton>
         <BaseButton size="sm" variant="ghost" :href="upload.url" target="_blank" rel="noopener">
@@ -160,6 +223,11 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         </BaseButton>
       </div>
     </div>
+
+    <!-- Shown for a signed link, whose copy expires; only read out for a plain one. -->
+    <p class="copied-note" :class="{ 'visually-hidden': !copiedNote }" role="status">
+      {{ copiedNote || (copied ? "Link copied to clipboard" : "") }}
+    </p>
 
     <StatusMessage v-if="error" tone="error">{{ error }}</StatusMessage>
 
@@ -170,8 +238,20 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           :src="upload.url"
           :alt="`Preview of ${upload.originalFileName}`"
         />
-        <video v-else-if="category === 'video'" :src="upload.url" controls preload="metadata" />
-        <audio v-else-if="category === 'audio'" :src="upload.url" controls preload="metadata" />
+        <video
+          v-else-if="category === 'video'"
+          ref="media"
+          :src="upload.url"
+          controls
+          preload="metadata"
+        />
+        <audio
+          v-else-if="category === 'audio'"
+          ref="media"
+          :src="upload.url"
+          controls
+          preload="metadata"
+        />
         <span v-else class="details__icon"
           ><AppIcon :name="CATEGORY_ICONS[category]" :size="40"
         /></span>
@@ -204,7 +284,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <div class="facts__row">
           <dt>Who can open it</dt>
           <dd>
-            {{ isPrivate ? privateAudience : "Anyone with the link" }}
+            {{ audience }}
           </dd>
         </div>
         <div class="facts__row facts__row--link">
@@ -253,21 +333,14 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           <AppIcon :name="isPrivate ? 'globe' : 'lock'" :size="16" />
           {{ isPrivate ? "Make public" : "Make private" }}
         </BaseButton>
-        <!-- Armed, it turns solid red; the ghost variant's hover fill would wash that out. -->
-        <BaseButton
-          size="sm"
-          :variant="confirming ? 'primary' : 'ghost'"
-          :error="confirming"
-          :loading="busy === 'delete'"
+        <ConfirmDeleteButton
+          :armed="confirmDelete.isArmed(upload.id)"
+          :busy="busy === 'delete'"
+          icon
           @click="onDelete"
-        >
-          <AppIcon name="trash" :size="16" />
-          {{ busy === "delete" ? "Deleting" : confirming ? "Confirm delete" : "Delete" }}
-        </BaseButton>
+        />
       </div>
     </div>
-
-    <p class="visually-hidden" role="status">{{ copyStatus }}</p>
   </li>
 </template>
 
@@ -277,6 +350,13 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   gap: var(--sp-3);
   padding: var(--sp-4) 0;
   border-bottom: var(--edge) solid var(--c-hairline);
+}
+
+.copied-note {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .row__summary {
@@ -364,6 +444,11 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+/* Each fact stays whole, and its dot stays with it, so a wrapped line starts with a fact. */
+.row__fact {
+  white-space: nowrap;
 }
 
 .badge svg {

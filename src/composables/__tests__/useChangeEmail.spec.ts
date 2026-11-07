@@ -600,7 +600,9 @@ describe("useChangeEmail", () => {
 
         expect(await email.confirm("123456")).toBe(false);
 
-        // The refresh logged the page out; the account page says why, not that the change failed.
+        // One check logged the page out (the client's after a 403, the refresh after a 400); the
+        // account page says why, not that the change failed.
+        expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(isLoggedIn.value).toBe(false);
         expect(sessionEnded.value).toBe(true);
         expect(email.confirmError.value).toBe("");
