@@ -10,7 +10,9 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `GET /admin/uploads` lists every owner's, each with its owner
- * (the logged-in user or a `hasUser(...)` account by that name, else `null`, as for a deleted account), its `q` matching the owner's name too; `api.loggedInAs(..., { superuser: true })` opens the admin page; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
+ * (the logged-in user or a `hasUser(...)` account by that name, else `null`, as for a deleted account), its `q` matching the owner's name too; `api.loggedInAs(..., { superuser: true })` opens the admin page;
+ * its overview counts `GET /admin/stats` from the mock's own admin list, pastes, short links and uploads (`api.statsFail()` makes it a bare 502),
+ * and `GET /admin/mail-budget` reports `api.sentMailToday(n)` mails (0 by default) of the API's default 250; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
  * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
@@ -152,6 +154,10 @@ export const MOCK_EMAIL_CODE = "246810";
 /** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
 export const MOCK_SUPERUSER_EMAIL = "admin@example.com";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
+/** The API's mail budget with `MAIL_DAILY_LIMIT` unset: warned at 80 %, sign-up codes stopped a fifth short. */
+const MAIL_DAILY_LIMIT = 250;
+const MAIL_WARNING_AT = 200;
+const MAIL_REGISTRATION_STOPS_AT = 200;
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
@@ -360,6 +366,9 @@ export class MockApi {
   /** What the admin's view of a user's uploads waits for before it answers (see `holdsUserUploads`). */
   private userUploadsHold: Promise<void> | null = null;
   private userUploadsDown = false;
+  /** Mails the API counted today, for `GET /admin/mail-budget` (see `sentMailToday`). */
+  private mailSentToday = 0;
+  private statsDown = false;
   /** The API host the app was built against, known once the app has called it. */
   apiOrigin = "";
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
@@ -658,6 +667,16 @@ export class MockApi {
     this.userUploadsDown = true;
   }
 
+  /** Sets how many mails `GET /admin/mail-budget` says the API sent today. */
+  sentMailToday(count: number) {
+    this.mailSentToday = count;
+  }
+
+  /** Answers `GET /admin/stats` with a 502 and no `{ error }`, like a gateway, until called with `false`. */
+  statsFail(down = true) {
+    this.statsDown = down;
+  }
+
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
   }
@@ -849,6 +868,10 @@ export class MockApi {
         return this.listPendingRegistrations(query);
       case "DELETE /admin/rate-limits":
         return this.clearRateLimits(body);
+      case "GET /admin/stats":
+        return this.siteStats();
+      case "GET /admin/mail-budget":
+        return this.mailBudget();
       case "GET /uploads":
         return this.listUploads(query, this.user?.username);
       case "GET /admin/uploads":
@@ -1659,6 +1682,48 @@ export class MockApi {
             uploads: user.uploads.count
           }
         }
+      }
+    };
+  }
+
+  /** The site's totals, counted from what the mock holds: the admin list's accounts, pastes, short links and uploads. */
+  private siteStats(): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (this.statsDown) return { status: 502 };
+    const publicUploads = this.uploads.filter((upload) => upload.visibility === "public").length;
+    return {
+      status: 200,
+      body: {
+        users: this.users.length,
+        pastes: this.pastes.length,
+        shortUrls: this.shortLinks.size,
+        uploads: {
+          total: this.uploads.length,
+          public: publicUploads,
+          private: this.uploads.length - publicUploads,
+          storedBytes: this.uploads.reduce((sum, upload) => sum + upload.fileSize, 0)
+        },
+        pendingRegistrations: this.pendingRegistrations.size,
+        settings: { defaultUploadQuotaBytes: DEFAULT_QUOTA, maxFileSizeBytes: 100 * MB }
+      }
+    };
+  }
+
+  /** Today's mail, reset at the next UTC midnight like the API's in-memory count. */
+  private mailBudget(): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    const resetsAt = new Date(this.now());
+    resetsAt.setUTCHours(24, 0, 0, 0);
+    return {
+      status: 200,
+      body: {
+        sentToday: this.mailSentToday,
+        dailyLimit: MAIL_DAILY_LIMIT,
+        warningAt: MAIL_WARNING_AT,
+        registrationStopsAt: MAIL_REGISTRATION_STOPS_AT,
+        resetsAt: resetsAt.toISOString()
       }
     };
   }

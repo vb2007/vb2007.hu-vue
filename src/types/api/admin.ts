@@ -200,3 +200,43 @@ export interface ClearRateLimitsResponse extends MessageResponse {
   /** The limiters that were counting for the key and are emptied now; empty when none was. */
   cleared: RateLimitName[];
 }
+
+/** `GET /admin/stats` (vb2007/vb2007.hu-api#281): the site's totals and its upload settings. */
+export interface AdminStatsResponse {
+  /** Every account, the superuser's included. */
+  users: number;
+  pastes: number;
+  shortUrls: number;
+  uploads: {
+    total: number;
+    public: number;
+    /** Uploads without a stored visibility count as private, like everywhere else. */
+    private: number;
+    /** The sum of every upload's file size. */
+    storedBytes: number;
+  };
+  /** Sign-ups waiting for their e-mail code whose registration hasn't expired yet. */
+  pendingRegistrations: number;
+  settings: {
+    /** The quota of users without one of their own. */
+    defaultUploadQuotaBytes: number;
+    /** The largest file one upload takes. */
+    maxFileSizeBytes: number;
+  };
+}
+
+/**
+ * `GET /admin/mail-budget` (vb2007/vb2007.hu-api#282): today's mail as this API process counts it,
+ * since the last UTC midnight or its last restart, whichever is later.
+ */
+export interface MailBudgetResponse {
+  sentToday: number;
+  /** At it, every mail is refused. */
+  dailyLimit: number;
+  /** From it, the API logs a warning, once a day. */
+  warningAt: number;
+  /** From it, registration codes and their resends are refused; mail to existing accounts goes on. */
+  registrationStopsAt: number;
+  /** The next UTC midnight, when `sentToday` starts again from 0. */
+  resetsAt: string;
+}

@@ -54,4 +54,11 @@ describe("formatTime", () => {
   it("formats a moment as a short time of day", () => {
     expect(formatTime(Date.UTC(2026, 10, 6, 12, 32), "en-GB")).toMatch(/^\d{2}:\d{2}$/);
   });
+
+  it("takes an ISO timestamp too, and formats it like the same moment in milliseconds", () => {
+    const iso = "2026-10-10T12:00:00.000Z";
+
+    expect(formatTime(iso, "en-GB")).toMatch(/^\d{2}:\d{2}$/);
+    expect(formatTime(iso, "en-GB")).toBe(formatTime(Date.parse(iso), "en-GB"));
+  });
 });

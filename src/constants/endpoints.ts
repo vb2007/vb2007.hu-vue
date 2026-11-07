@@ -5,6 +5,7 @@ import type {
   AdminPastesResponse,
   AdminShortUrlListQuery,
   AdminShortUrlsResponse,
+  AdminStatsResponse,
   AdminUploadsResponse,
   AdminUserListQuery,
   AdminUserResponse,
@@ -12,6 +13,7 @@ import type {
   ClearRateLimitsBody,
   ClearRateLimitsResponse,
   LogoutUserResponse,
+  MailBudgetResponse,
   PendingRegistrationListQuery,
   PendingRegistrationsResponse,
   RenameUserBody,
@@ -406,6 +408,16 @@ export class Endpoints {
     >()({
       method: HttpMethod.Delete,
       path: "/admin/rate-limits",
+      credentials: true
+    });
+    static readonly stats = defineEndpoint<undefined, AdminStatsResponse>()({
+      method: HttpMethod.Get,
+      path: "/admin/stats",
+      credentials: true
+    });
+    static readonly mailBudget = defineEndpoint<undefined, MailBudgetResponse>()({
+      method: HttpMethod.Get,
+      path: "/admin/mail-budget",
       credentials: true
     });
   };
