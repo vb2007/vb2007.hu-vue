@@ -85,7 +85,9 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
 .foot__inner {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  /* The links share the contact line's baseline, not the middle of the name and the line */
+  align-items: end;
+  align-items: last baseline;
   justify-content: space-between;
   gap: var(--sp-5);
   max-width: var(--page-max);
@@ -127,7 +129,7 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: baseline;
-    gap: var(--sp-2);
+    gap: var(--sp-3) var(--sp-2);
   }
 
   .foot__reach {
