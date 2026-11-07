@@ -21,6 +21,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const email = ref("");
 const password = ref("");
@@ -159,7 +160,7 @@ watch(isLoggedIn, (loggedIn) => {
           :loading="isLoading"
           :disabled="isHeld"
           :aria-label="isHeld ? hold.name.value : undefined"
-          :aria-describedby="isHeld && failure ? failureId : undefined"
+          :aria-describedby="isHeld && failure ? statusTextId(failureId) : undefined"
           :blocked="!isValid"
           :error="isButtonError"
         >

@@ -16,6 +16,7 @@ import { spokenWait } from "@/scripts/utility/durationUtil";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const codeHint = `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail.`;
 
@@ -212,7 +213,7 @@ const confirmCode = async () => {
         :loading="isConfirming"
         :disabled="isConfirmHeld"
         :aria-label="isConfirmHeld ? confirmHold.name.value : undefined"
-        :aria-describedby="isConfirmHeld ? confirmErrorId : undefined"
+        :aria-describedby="isConfirmHeld ? statusTextId(confirmErrorId) : undefined"
         :blocked="!isCodeValid"
       >
         {{ isConfirming ? "Confirming" : isConfirmHeld ? confirmHold.label.value : "Confirm code" }}
@@ -266,7 +267,7 @@ const confirmCode = async () => {
         :loading="isChanging"
         :disabled="isWaiting"
         :aria-label="sendName"
-        :aria-describedby="errorIsWait ? changeErrorId : undefined"
+        :aria-describedby="errorIsWait ? statusTextId(changeErrorId) : undefined"
         :blocked="!isChangeValid"
       >
         {{

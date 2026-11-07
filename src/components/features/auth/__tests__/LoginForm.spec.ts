@@ -5,6 +5,7 @@ import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -343,9 +344,8 @@ describe("LoginForm", () => {
       expect(key().text()).toBe("Try again in 15 min");
       expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(key().attributes("disabled")).toBeDefined();
-      expect(key().attributes("aria-describedby")).toBe(
-        wrapper.find('[role="alert"]').attributes("id")
-      );
+      // Described by the shown text only, so its counting name is the one wait it states.
+      expect(descriptionOf(key())).toBe(LIMITED);
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(password.element);
 
@@ -415,6 +415,8 @@ describe("LoginForm", () => {
       expect(key().attributes("disabled")).toBeDefined();
       expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
       expect(alert().find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
+      // The held key is described by its own lockout, not the other address's refusal.
+      expect(descriptionOf(key())).toBe(LIMITED);
 
       // The other address's refusal is still the last word about it, and only about it.
       await email.setValue("other@example.com");
@@ -451,6 +453,7 @@ describe("LoginForm", () => {
       await email.setValue("me@example.com");
       expect(key().text()).toBe("Try again in 15 min");
       expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(descriptionOf(key())).toBe(LIMITED);
     });
 
     it("starts no countdown for an answer that lands after the form is gone", async () => {
@@ -490,6 +493,7 @@ describe("LoginForm", () => {
 
       expect(key().attributes("disabled")).toBeDefined();
       expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(descriptionOf(key())).toBe(LIMITED);
     });
 
     it("drops a lockout with its hold once the form is left, so a new visit shows neither", async () => {
