@@ -75,6 +75,24 @@ test("a refused login shows the API's one message and stays logged out", async (
   await expect(main).toContainText("Login successful!");
 });
 
+test("logging out on the login page brings the form back without the password", async ({
+  page,
+  isMobile
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByText("Login successful!")).toBeVisible();
+
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  // Maybe on a shared machine: the next person doesn't get the password. The address stays.
+  await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("E-mail")).toHaveValue(MOCK_EMAIL);
+});
+
 test("a locked-out login points to GitHub and holds the key for that address, counting the wait", async ({
   page,
   api

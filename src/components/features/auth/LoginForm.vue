@@ -107,8 +107,12 @@ onMounted(() => {
   restoreSession();
 });
 
-watch(isLoggedIn, (newVal) => {
-  if (!newVal) {
+watch(isLoggedIn, (loggedIn) => {
+  if (loggedIn) {
+    // The password has done its job: logging out here, maybe on a shared machine, doesn't bring it
+    // back. The address stays, to log in again with.
+    password.value = "";
+  } else {
     forgetLogin();
     reset();
   }
