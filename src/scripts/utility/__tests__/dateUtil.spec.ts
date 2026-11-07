@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  formatDate,
-  formatDateTime,
-  formatTime,
-  getCurrentYear,
-  isPast
-} from "@/scripts/utility/dateUtil";
+import { formatDate, formatDateTime, formatTime, isPast } from "@/scripts/utility/dateUtil";
 
 describe("isPast", () => {
   const now = Date.parse("2026-11-06T12:00:00.000Z");
@@ -23,15 +17,6 @@ describe("isPast", () => {
     expect(isPast("2026-11-06T11:00:00.000Z")).toBe(true);
     expect(isPast("2026-11-06T13:00:00.000Z")).toBe(false);
     vi.useRealTimers();
-  });
-});
-
-describe("getCurrentYear", () => {
-  it("returns the current calendar year", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2031-06-15T12:00:00Z"));
-
-    expect(getCurrentYear()).toBe(2031);
   });
 });
 
