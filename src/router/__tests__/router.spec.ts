@@ -208,9 +208,9 @@ describe("router", () => {
     const removeGuard = router.beforeEach(() => false);
 
     await router.push("/");
+    removeGuard();
     expect(noindexTags()).toHaveLength(1);
 
-    removeGuard();
     await router.push("/");
     const abortAgain = router.beforeEach(() => false);
     await router.push("/no/such/page");
