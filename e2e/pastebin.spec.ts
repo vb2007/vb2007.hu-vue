@@ -214,3 +214,36 @@ test("saving a paste deleted after the session ended elsewhere logs the page out
   await expect(page.getByRole("alert")).toHaveText("You must be logged in to perform this action.");
   await expect(page.getByLabel("Language")).toHaveCount(0);
 });
+
+// WCAG 1.4.10 Reflow: with the browser's text at 200%, a logged-out tool's board shrinks to the
+// window and its keys wrap, rather than the page scrolling sideways or the board cutting its
+// content off (#272).
+for (const path of ["/", "/pastebin", "/shorten", "/upload", "/account"]) {
+  test(`${path} logged out fits the window with the text at 200%`, async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 900 });
+    await page.goto(path);
+    await expect(page.locator("main").getByRole("link", { name: "Log in" })).toBeVisible();
+    await page.addStyleTag({ content: "html { font-size: 200% }" });
+
+    const sideways = () =>
+      page.locator("html").evaluate((html) => html.scrollWidth - html.clientWidth);
+    // What in the page's content passes the window's right edge, or its board's (which cuts it off).
+    const cutOff = () =>
+      page.locator("main").evaluate((main) => {
+        // The e2e tsconfig has no DOM lib, so the element type comes from `main`.
+        const right = (el: Pick<typeof main, "getBoundingClientRect">) =>
+          el.getBoundingClientRect().right;
+        const edge = main.ownerDocument.documentElement.clientWidth;
+        return [...main.querySelectorAll("*")]
+          .filter((el) => right(el) > Math.min(edge, right(el.closest("section") ?? main)) + 0.5)
+          .map((el) => `<${el.tagName.toLowerCase()}> ${el.textContent?.trim().slice(0, 40)}`);
+      });
+
+    // 400 px is about as narrow as the navbar's brand and menu key fit at this text size.
+    for (const width of [640, 400]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(sideways).toBe(0);
+      await expect.poll(cutOff).toEqual([]);
+    }
+  });
+}
