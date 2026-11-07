@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import { test as base, expect, type Route } from "@playwright/test";
+import { test as base, expect, type Page, type Route } from "@playwright/test";
 
 /**
  * Stand-in for the vb2007.hu API. Every request that doesn't go to the preview server is routed
@@ -46,7 +46,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * gets the logged-out 403 on every route the API guards with `isAuthenticated`; the public ones (`PUBLIC_ROUTES`) answer it as a guest's.
  * A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
- * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
+ * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
+ * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
@@ -156,6 +157,89 @@ const PASTE_LANGUAGE_MAX_LENGTH = 32;
 const PASTE_LANGUAGE = new RegExp(
   `^[a-z0-9+#-]{${PASTE_LANGUAGE_MIN_LENGTH},${PASTE_LANGUAGE_MAX_LENGTH}}$`
 );
+
+/** The API's `LIST_MAX_LIMIT` and `LIST_QUERY_MAX_LENGTH`. */
+const LIST_MAX_LIMIT = 50;
+const LIST_QUERY_MAX_LENGTH = 100;
+
+/** A list's query parameter and the API's check of its value, from one of its `…ListValidators` records. */
+type ListParamCheck = [param: string, isValid: (value: string) => boolean];
+
+const isIntegerInRange = (value: string, min: number, max: number) =>
+  /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+const isOneOf =
+  (...values: string[]) =>
+  (value: string) =>
+    values.includes(value);
+
+const LIMIT_CHECK: ListParamCheck = [
+  "limit",
+  (value) => isIntegerInRange(value, 1, LIST_MAX_LIMIT)
+];
+const PAGE_CHECK: ListParamCheck = [
+  "page",
+  (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)
+];
+const SORT_ORDER_CHECK: ListParamCheck = ["sortOrder", isOneOf("asc", "desc")];
+const isListQuery = (value: string) => value.length <= LIST_QUERY_MAX_LENGTH;
+
+/** `findInvalidPasteListParam`'s checks, in its order: a user's pastes take no `q`. */
+const PASTE_LIST_CHECKS: ListParamCheck[] = [
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["sortBy", isOneOf("addedOn")],
+  SORT_ORDER_CHECK
+];
+/** `findInvalidAdminPasteListParam`'s checks, in its order. */
+const ADMIN_PASTE_LIST_CHECKS: ListParamCheck[] = [...PASTE_LIST_CHECKS, ["q", isListQuery]];
+/** `findInvalidShortUrlListParam`'s checks, in its order, for the user's links and the admin's. */
+const SHORT_URL_LIST_CHECKS: ListParamCheck[] = [
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["sortBy", isOneOf("addedOn")],
+  SORT_ORDER_CHECK,
+  ["q", (value) => isListQuery(value) && !value.includes("\0")]
+];
+/** `findInvalidPendingRegistrationListParam`'s checks, in its order: no sorting, so `sortBy` and `sortOrder` pass unread. */
+const PENDING_REGISTRATION_LIST_CHECKS: ListParamCheck[] = [
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["q", isListQuery]
+];
+/** `findInvalidUserListParam`'s checks, in its order. */
+const USER_LIST_CHECKS: ListParamCheck[] = [
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["sortBy", isOneOf("usedBytes", "username", "createdAt")],
+  SORT_ORDER_CHECK,
+  ["q", isListQuery]
+];
+/** `findInvalidUploadListParam`'s checks, in its order: every upload list, the user's and the admin's. */
+const UPLOAD_LIST_CHECKS: ListParamCheck[] = [
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["sortBy", isOneOf("uploadedOn", "originalFileName", "fileSize")],
+  SORT_ORDER_CHECK,
+  ["visibility", isOneOf("public", "private")],
+  ["q", isListQuery]
+];
+
+/**
+ * What the API's `findInvalid…ListParam` refuses: the first parameter in `checks`' order that is sent but fails
+ * its check, answered with a 400. An empty value is checked as `""`, which only `q` takes. A repeated parameter
+ * reaches the API as an array, which no check accepts. So do bracket keys like `limit[]=1` or `q[a]=x` (an array or
+ * an object to the API's qs parser, so refused there), but the double doesn't model them: the site never sends them.
+ */
+function refuseListQuery(
+  query: URLSearchParams,
+  checks: ListParamCheck[]
+): { status: 400; body: { error: string } } | undefined {
+  const invalid = checks.find(
+    ([param, isValid]) =>
+      query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
+  );
+  return invalid && { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+}
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
@@ -390,8 +474,8 @@ export class MockApi {
   private usernameChecksLimited = false;
   /** How often `GET /auth/username-available` was asked, limited or not. */
   usernameChecks = 0;
-  /** Set by `locksLogins`: the `retryAfter` of the login's 429. */
-  private loginLockout: { retryAfter: number | null } | null = null;
+  /** Set by `locksLogins`: the `retryAfter` of the login's 429, and the address it's for, if one. */
+  private loginLockout: { retryAfter: number | null; email?: string } | null = null;
   /** A `POST /auth/github/link` waiting for its trip to the mock's GitHub authorize page. */
   private githubLinkStarted = false;
   private githubUnconfigured = false;
@@ -682,9 +766,12 @@ export class MockApi {
     this.usernameChecksLimited = limited;
   }
 
-  /** Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204). */
-  locksLogins(retryAfter: number | null) {
-    this.loginLockout = { retryAfter };
+  /**
+   * Answers logins with 429, like the API after too many failed attempts (vb2007/vb2007.hu-api#204):
+   * every login, or only `email`'s.
+   */
+  locksLogins(retryAfter: number | null, email?: string) {
+    this.loginLockout = { retryAfter, email: email && normalizeEmail(email) };
   }
 
   /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
@@ -1065,8 +1152,9 @@ export class MockApi {
    * an account without a password, so it doesn't reveal which addresses have accounts.
    */
   private login(email?: string, password?: string): MockResponse {
-    if (this.loginLockout) {
-      const { retryAfter } = this.loginLockout;
+    const lockout = this.loginLockout;
+    if (lockout && (!lockout.email || lockout.email === normalizeEmail(email ?? ""))) {
+      const { retryAfter } = lockout;
       return {
         status: 429,
         body: { error: "Too many failed attempts: try again later.", retryAfter }
@@ -1798,6 +1886,10 @@ export class MockApi {
     if (refusal) return refusal;
     if (this.userUploadsDown) return { status: 502 };
     if (!OBJECT_ID.test(id)) return this.invalidId();
+    // Like the API, the query is checked after the ID's format but before the user is looked up. `listUploads`
+    // checks it again, which only its `/uploads` and `/admin/uploads` callers rely on.
+    const invalid = refuseListQuery(query, UPLOAD_LIST_CHECKS);
+    if (invalid) return invalid;
     const user = this.users.find((item) => item.id === id);
     if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
     const listing = this.listUploads(query, user.username);
@@ -1820,9 +1912,11 @@ export class MockApi {
     return user ? { id: user.id, username: user.username } : null;
   }
 
-  /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. */
+  /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. A bad query answers 400 like the API's. */
   private listUploads(query: URLSearchParams, owner: string | undefined | null) {
     if (!this.user) return NOT_LOGGED_IN;
+    const invalid = refuseListQuery(query, UPLOAD_LIST_CHECKS);
+    if (invalid) return invalid;
     const everyone = owner === null;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
@@ -1866,9 +1960,12 @@ export class MockApi {
     };
   }
 
+  /** Checks the query after the superuser, like the API, whose bad query answers 400. */
   private listUsers(query: URLSearchParams) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
+    const invalid = refuseListQuery(query, USER_LIST_CHECKS);
+    if (invalid) return invalid;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortBy = query.get("sortBy") ?? "usedBytes";
@@ -1985,21 +2082,8 @@ export class MockApi {
   private listAdminPastes(query: URLSearchParams): MockResponse {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
-    const isIntegerInRange = (value: string, min: number, max: number) =>
-      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
-    const validators: [string, (value: string) => boolean][] = [
-      ["limit", (value) => isIntegerInRange(value, 1, 50)],
-      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
-      ["sortBy", (value) => value === "addedOn"],
-      ["sortOrder", (value) => value === "asc" || value === "desc"],
-      ["q", (value) => value.length <= 100]
-    ];
-    // A repeated parameter reaches the API as an array, which no check accepts.
-    const invalid = validators.find(
-      ([param, isValid]) =>
-        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
-    );
-    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+    const invalid = refuseListQuery(query, ADMIN_PASTE_LIST_CHECKS);
+    if (invalid) return invalid;
 
     const ownerOf = (name: string) => {
       const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
@@ -2068,9 +2152,12 @@ export class MockApi {
     return { status: 200, body: { message: "User deleted successfully." } };
   }
 
+  /** Checks the query after the superuser, like the API, whose bad query answers 400. */
   private listPendingRegistrations(query: URLSearchParams) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
+    const invalid = refuseListQuery(query, PENDING_REGISTRATION_LIST_CHECKS);
+    if (invalid) return invalid;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const q = query.get("q")?.toLowerCase();
@@ -2246,20 +2333,8 @@ export class MockApi {
     if (!this.user) {
       return NOT_LOGGED_IN;
     }
-    const isIntegerInRange = (value: string, min: number, max: number) =>
-      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
-    const validators: [string, (value: string) => boolean][] = [
-      ["limit", (value) => isIntegerInRange(value, 1, 50)],
-      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
-      ["sortBy", (value) => value === "addedOn"],
-      ["sortOrder", (value) => value === "asc" || value === "desc"],
-      ["q", (value) => value.length <= 100 && !value.includes("\0")]
-    ];
-    const invalid = validators.find(
-      ([param, isValid]) =>
-        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
-    );
-    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+    const invalid = refuseListQuery(query, SHORT_URL_LIST_CHECKS);
+    if (invalid) return invalid;
 
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
@@ -2301,21 +2376,8 @@ export class MockApi {
   private listAdminShortLinks(query: URLSearchParams): MockResponse {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
-    const isIntegerInRange = (value: string, min: number, max: number) =>
-      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
-    const validators: [string, (value: string) => boolean][] = [
-      ["limit", (value) => isIntegerInRange(value, 1, 50)],
-      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
-      ["sortBy", (value) => value === "addedOn"],
-      ["sortOrder", (value) => value === "asc" || value === "desc"],
-      ["q", (value) => value.length <= 100 && !value.includes("\0")]
-    ];
-    // A repeated parameter reaches the API as an array, which no check accepts.
-    const invalid = validators.find(
-      ([param, isValid]) =>
-        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
-    );
-    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+    const invalid = refuseListQuery(query, SHORT_URL_LIST_CHECKS);
+    if (invalid) return invalid;
 
     const ownerOf = (name: string) => {
       const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
@@ -2388,20 +2450,8 @@ export class MockApi {
     if (!this.user) {
       return NOT_LOGGED_IN;
     }
-    const isIntegerInRange = (value: string, min: number, max: number) =>
-      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
-    const validators: [string, (value: string) => boolean][] = [
-      ["limit", (value) => isIntegerInRange(value, 1, 50)],
-      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
-      ["sortBy", (value) => value === "addedOn"],
-      ["sortOrder", (value) => value === "asc" || value === "desc"]
-    ];
-    // A repeated parameter reaches the API as an array, which no check accepts.
-    const invalid = validators.find(
-      ([param, isValid]) =>
-        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
-    );
-    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+    const invalid = refuseListQuery(query, PASTE_LIST_CHECKS);
+    if (invalid) return invalid;
 
     // Usernames match whatever their case, like the API's collation.
     const sameName = (name?: string) => name?.toLowerCase() === username.toLowerCase();
@@ -2457,5 +2507,17 @@ export const test = base.extend<{ api: MockApi }>({
     { auto: true }
   ]
 });
+
+/**
+ * A `GET` of an API `path` sent from the page itself, so it goes through the double like the site's own calls do:
+ * for queries the site never sends. `api.apiOrigin` is only known once the page has made a request.
+ */
+export async function getFromApi(page: Page, api: MockApi, path: string) {
+  expect(api.apiOrigin, "the API's origin, known once the page has called it").not.toBe("");
+  return page.evaluate(async (url) => {
+    const response = await fetch(url, { credentials: "include" });
+    return { status: response.status, body: (await response.json()) as unknown };
+  }, `${api.apiOrigin}${path}`);
+}
 
 export { expect };

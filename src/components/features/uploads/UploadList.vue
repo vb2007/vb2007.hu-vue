@@ -175,21 +175,26 @@ defineExpose({ refresh: () => goToPage(1) });
 </template>
 
 <style scoped>
+/* Search across the top, then the filter and sort side by side once there's room: sharing the
+   line, but the filter never narrower than its strip, so the sort moves under it rather than
+   the strip running under the sort. */
 .filters {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: var(--sp-4);
   container-type: inline-size;
 }
 
-/* Search across the top, then the filter and sort side by side once there's room. */
-@media (min-width: 36rem) {
-  .filters {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: end;
-  }
+.filters > * {
+  flex: 1 1 100%;
+}
 
-  .filters__search {
-    grid-column: 1 / -1;
+@media (min-width: 36rem) {
+  .filters > :not(.filters__search) {
+    flex-basis: 0;
+    /* Not below its content (the strip, the select), unless the line itself is narrower. */
+    min-width: fit-content;
   }
 }
 

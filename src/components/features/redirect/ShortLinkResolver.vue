@@ -17,6 +17,8 @@ const { state, target, details, errorMessage, resolve } = useShortLink(props.nav
 
 // Only read while previewing, when the target is a parsed, safe URL.
 const host = computed(() => new URL(target.value).host);
+// Each label after a dot may start a line, so a host too long for its line breaks there first.
+const hostParts = computed(() => host.value.split(/(?<=\.)/));
 const addedOn = computed(() =>
   details.value.addedOn ? formatDateTime(details.value.addedOn) : ""
 );
@@ -44,7 +46,11 @@ watch(
         <div class="fact">
           <dt>Leads to</dt>
           <dd>
-            <span class="host">{{ host }}</span>
+            <span class="host"
+              ><template v-for="(part, index) in hostParts" :key="index"
+                ><wbr v-if="index" />{{ part }}</template
+              ></span
+            >
             <span class="target">{{ target }}</span>
           </dd>
         </div>
@@ -60,7 +66,12 @@ watch(
         </div>
       </dl>
       <div class="actions">
-        <BaseButton :href="target">Continue to {{ host }}</BaseButton>
+        <BaseButton :href="target"
+          >Continue to
+          <template v-for="(part, index) in hostParts" :key="index"
+            ><wbr v-if="index" />{{ part }}</template
+          ></BaseButton
+        >
         <BaseButton to="/shorten" variant="secondary">Shorten a link</BaseButton>
       </div>
     </template>

@@ -9,6 +9,8 @@ const props = withDefaults(
     /** Shown instead of `value`, e.g. without the protocol; copying always uses `value`. */
     display?: string;
     caption?: string;
+    /** A quiet line under the link about it, e.g. that it's the user's existing one. */
+    note?: string;
     againLabel?: string;
   }>(),
   { caption: "Your short link", againLabel: "Shorten another" }
@@ -22,6 +24,7 @@ const { copied, failed, copy } = useClipboard();
   <div class="slip">
     <p class="slip__caption">{{ caption }}</p>
     <a class="slip__link" :href="value" target="_blank" rel="noopener">{{ display ?? value }}</a>
+    <p v-if="note" class="slip__note">{{ note }}</p>
     <div class="slip__actions">
       <BaseButton size="sm" @click="copy(props.value)">
         <AppIcon :name="copied ? 'check' : 'copy'" :size="18" />
@@ -73,7 +76,8 @@ const { copied, failed, copy } = useClipboard();
   border-right: 0;
 }
 
-.slip__caption {
+.slip__caption,
+.slip__note {
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-ink-soft);

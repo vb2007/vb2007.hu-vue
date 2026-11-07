@@ -5,6 +5,7 @@ import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -13,6 +14,15 @@ vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   logout: vi.fn(),
   restoreSession: vi.fn()
 }));
+
+/** The API's answer to a wrong password, an unknown address or a GitHub-only account. */
+const REFUSED =
+  "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
+
+/** Like Chromium, which takes the focus off the key while it's disabled for loading; jsdom keeps it. */
+const dropKeyFocus = () => {
+  if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+};
 
 describe("LoginForm", () => {
   beforeEach(() => {
@@ -107,6 +117,30 @@ describe("LoginForm", () => {
     expect(wrapper.find(".field__error").exists()).toBe(false);
   });
 
+  it("forgets the password once logged in, so logging out doesn't bring it back", async () => {
+    vi.mocked(login).mockImplementationOnce(async () => {
+      isLoggedIn.value = true;
+      loginStatus.value = "success";
+      return undefined;
+    });
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    await email.setValue("me@example.com");
+    await password.setValue("secret");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Login successful!");
+
+    isLoggedIn.value = false;
+    await flushPromises();
+
+    // The address stays, to log in again with; nothing calls for a fix in the fields.
+    const [emailAgain, passwordAgain] = wrapper.findAll("input");
+    expect((emailAgain.element as HTMLInputElement).value).toBe("me@example.com");
+    expect((passwordAgain.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+  });
+
   it("shows nothing before an attempt, or after a successful one", async () => {
     const { wrapper } = await mountWithRouter(LoginForm);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -118,8 +152,9 @@ describe("LoginForm", () => {
   });
 
   it("explains an unknown error", async () => {
-    loginStatus.value = "unknown-error";
     const { wrapper } = await mountWithRouter(LoginForm);
+    loginStatus.value = "unknown-error";
+    await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(
       "An unknown error occurred. Please try again later."
@@ -127,22 +162,24 @@ describe("LoginForm", () => {
   });
 
   it("shows other errors as they came from the API", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
     loginStatus.value =
       "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
-    const { wrapper } = await mountWithRouter(LoginForm);
+    await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(
       "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
     );
   });
 
-  it("shows a lockout's wait above the GitHub login it points to", async () => {
-    loginStatus.value = Messages.Auth.loginLockedOut(15);
+  it("shows a lockout above the GitHub login it points to", async () => {
     const { wrapper } = await mountWithRouter(LoginForm);
+    loginStatus.value = Messages.Auth.loginLockedOut;
+    await flushPromises();
 
     const alert = wrapper.find('[role="alert"]');
     expect(alert.text()).toBe(
-      "Too many failed attempts. Try again in 15 minutes, or log in with GitHub below if it's linked to your account."
+      "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."
     );
     const github = wrapper.find('a[href="https://api.test/auth/github"]').element;
     expect(alert.element.compareDocumentPosition(github)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -257,8 +294,8 @@ describe("LoginForm", () => {
 
   it("clears the last status after logging out", async () => {
     isLoggedIn.value = true;
-    loginStatus.value = "success";
     await mountWithRouter(LoginForm);
+    loginStatus.value = "success";
 
     isLoggedIn.value = false;
     await flushPromises();
@@ -267,14 +304,17 @@ describe("LoginForm", () => {
   });
 
   describe("over the login limiter", () => {
-    /** What `login` shows for the lockout, which says its wait in words already. */
-    const LIMITED = Messages.Auth.loginLockedOut(15);
+    /** What `login` shows for the lockout, which names no wait: the key counts it down. */
+    const LIMITED = Messages.Auth.loginLockedOut;
+    let wait: number;
 
     beforeEach(() => {
+      wait = 900;
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
       vi.mocked(login).mockImplementationOnce(async () => {
+        dropKeyFocus();
         loginStatus.value = LIMITED;
-        return 900;
+        return wait;
       });
     });
 
@@ -297,14 +337,15 @@ describe("LoginForm", () => {
     it("holds the key for the wait with the API's message, then lets the user try again", async () => {
       const { wrapper, password, key } = await tryLogin();
 
-      // No spoken wait is added: the message already says it.
-      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      // The only wait on show is the key's; the message reads it out in words for screen readers.
+      const alert = wrapper.find('[role="alert"]');
+      expect(alert.text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(alert.find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
       expect(key().text()).toBe("Try again in 15 min");
       expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(key().attributes("disabled")).toBeDefined();
-      expect(key().attributes("aria-describedby")).toBe(
-        wrapper.find('[role="alert"]').attributes("id")
-      );
+      // Described by the shown text only, so its counting name is the one wait it states.
+      expect(descriptionOf(key())).toBe(LIMITED);
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(password.element);
 
@@ -315,6 +356,8 @@ describe("LoginForm", () => {
       vi.advanceTimersByTime(899_000);
       await flushPromises();
       expect(key().text()).toBe("Try again in 1 sec");
+      // The spoken wait stays as it was when the hold started, like the other held forms'.
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
 
       vi.advanceTimersByTime(1000);
       await flushPromises();
@@ -325,15 +368,144 @@ describe("LoginForm", () => {
     });
 
     it("only holds the address the limiter counted", async () => {
-      const { email, key } = await tryLogin();
+      const { wrapper, email, key } = await tryLogin();
+      const alert = () => wrapper.find('[role="alert"]');
 
+      // The lockout is the held address's, so another shows none of it.
       await email.setValue("other@example.com");
       expect(key().text()).toBe("Log in");
       expect(key().attributes("disabled")).toBeUndefined();
+      expect(key().attributes("aria-describedby")).toBeUndefined();
+      expect(alert().exists()).toBe(false);
 
       // The same address, however it's typed, waits on.
       await email.setValue(" Me@Example.com ");
       expect(key().text()).toBe("Try again in 15 min");
+      expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+    });
+
+    it("holds nothing when the API sent no wait, and reads none out", async () => {
+      wait = 0;
+      const { wrapper, key } = await tryLogin();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      expect(wrapper.find(".visually-hidden").exists()).toBe(false);
+      expect(key().text()).toBe("Log in");
+      expect(key().attributes("disabled")).toBeUndefined();
+      // Nothing waits, so the focus goes back to the key it was on.
+      expect(document.activeElement).toBe(key().element);
+    });
+
+    it("describes a held address by its own lockout, not another address's refusal since", async () => {
+      const { wrapper, email, key } = await tryLogin();
+      const alert = () => wrapper.find('[role="alert"]');
+      vi.mocked(login).mockImplementationOnce(async () => {
+        dropKeyFocus();
+        loginStatus.value = REFUSED;
+        return undefined;
+      });
+      await email.setValue("other@example.com");
+      (key().element as HTMLElement).focus();
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(alert().text()).toBe(REFUSED);
+      expect(document.activeElement).toBe(key().element);
+
+      await email.setValue("me@example.com");
+      expect(key().attributes("disabled")).toBeDefined();
+      expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(alert().find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
+      // The held key is described by its own lockout, not the other address's refusal.
+      expect(descriptionOf(key())).toBe(LIMITED);
+
+      // The other address's refusal is still the last word about it, and only about it.
+      await email.setValue("other@example.com");
+      expect(alert().text()).toBe(REFUSED);
+      await email.setValue("third@example.com");
+      expect(alert().exists()).toBe(false);
+
+      // The end of the hold doesn't bring the other address's refusal over the held one's key.
+      await email.setValue("me@example.com");
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(key().text()).toBe("Log in");
+      expect(alert().exists()).toBe(false);
+    });
+
+    it("holds the address that was sent, even when the field changed before the answer", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      let answer!: (wait?: number) => void;
+      vi.mocked(login).mockReset();
+      vi.mocked(login).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      await wrapper.find("form").trigger("submit");
+
+      await email.setValue("other@example.com");
+      loginStatus.value = LIMITED;
+      answer(900);
+      await flushPromises();
+
+      const key = () => wrapper.find('button[type="submit"]');
+      expect(key().text()).toBe("Log in");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      await email.setValue("me@example.com");
+      expect(key().text()).toBe("Try again in 15 min");
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(descriptionOf(key())).toBe(LIMITED);
+    });
+
+    it("starts no countdown for an answer that lands after the form is gone", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      let answer!: (wait?: number) => void;
+      vi.mocked(login).mockReset();
+      vi.mocked(login).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      await wrapper.find("form").trigger("submit");
+
+      wrapper.unmount();
+      answer(900);
+      await flushPromises();
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("keeps a held address's reason after another account logs in and out", async () => {
+      const { wrapper, email, password, key } = await tryLogin();
+      vi.mocked(login).mockImplementationOnce(async () => {
+        isLoggedIn.value = true;
+        loginStatus.value = "success";
+        return undefined;
+      });
+      await email.setValue("other@example.com");
+      await password.setValue("secret");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(wrapper.text()).toContain("Login successful!");
+
+      isLoggedIn.value = false;
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      await wrapper.find("input").setValue("me@example.com");
+
+      expect(key().attributes("disabled")).toBeDefined();
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(descriptionOf(key())).toBe(LIMITED);
+    });
+
+    it("drops a lockout with its hold once the form is left, so a new visit shows neither", async () => {
+      const { wrapper } = await tryLogin();
+      wrapper.unmount();
+
+      const { wrapper: again } = await mountWithRouter(LoginForm);
+      await again.find("input").setValue("me@example.com");
+
+      expect(again.find('[role="alert"]').exists()).toBe(false);
+      expect(again.find('button[type="submit"]').text()).toBe("Log in");
+      expect(loginStatus.value).toBe("");
     });
 
     it("leaves the focus in the form where it stayed", async () => {
@@ -348,11 +520,31 @@ describe("LoginForm", () => {
 
       expect(document.activeElement).toBe(email.element);
     });
+
+    it("leaves the focus in the field it stayed in after a refusal that holds nothing", async () => {
+      vi.mocked(login).mockReset();
+      vi.mocked(login).mockImplementationOnce(async () => {
+        dropKeyFocus();
+        loginStatus.value = REFUSED;
+        return undefined;
+      });
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      (password.element as HTMLElement).focus();
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(REFUSED);
+      expect(document.activeElement).toBe(password.element);
+    });
   });
 
   it("keeps the status when logging in", async () => {
-    loginStatus.value = "success";
     await mountWithRouter(LoginForm);
+    loginStatus.value = "success";
 
     isLoggedIn.value = true;
     await flushPromises();

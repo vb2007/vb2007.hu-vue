@@ -60,9 +60,12 @@ export const useRetryHold = (error: Ref<string>) => {
   /** The error to show: the form's own, or the hold's message while it holds `id`. */
   const shown = (id = "") => error.value || (isHeld(id) ? note.value : "");
 
-  /** The spoken wait, while the message on show is the hold's own; "" otherwise. */
-  const spokenFor = (id = "") =>
-    isHeld(id) && note.value && shown(id) === note.value ? spoken.value : "";
+  /**
+   * The spoken wait, while the message on show is the hold's own; "" otherwise. A form that picks
+   * its message itself, rather than with `shown`, passes the one it shows.
+   */
+  const spokenFor = (id = "", message = shown(id)) =>
+    isHeld(id) && note.value && message === note.value ? spoken.value : "";
 
   /** The held key's label, counting down ("Try again in 15 min"). */
   const label = computed(() => Messages.tryAgainIn(countdown.remaining.value));

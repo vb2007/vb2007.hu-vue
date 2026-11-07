@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import ChangePassword from "@/components/features/account/ChangePassword.vue";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { userEmail } from "@/scripts/authentication/authState";
 
@@ -204,7 +205,8 @@ describe("ChangePassword", () => {
     // Closing cleared the refusal, but the held key still says why.
     const alert = wrapper.find('[role="alert"]');
     expect(alert.text()).toBe(`${error} Try again in 15 minutes.`);
-    expect(buttons()[0].attributes("aria-describedby")).toBe(alert.attributes("id"));
+    // Described by the shown text only, so the counting key states one wait.
+    expect(descriptionOf(buttons()[0])).toBe(error);
 
     vi.advanceTimersByTime(900_000);
     await flushPromises();

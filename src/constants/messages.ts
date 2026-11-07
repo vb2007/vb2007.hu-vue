@@ -31,11 +31,20 @@ export class Messages {
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";
+    /** The API answers whitespace with `invalidUrl`'s text; these say where it is and what to do. */
+    static readonly edgeWhitespace: string = "Remove the space at the start or end of the URL.";
+    static readonly innerWhitespace: string = "A URL can't contain spaces: write each one as %20.";
     /** Names the length too, so a pasted link shows how much has to go. */
     static tooLong(length: number, max: number): string {
       return `This URL is ${length.toLocaleString()} characters; the limit is ${max.toLocaleString()}.`;
     }
     static readonly shortenFailed: string = "Failed to shorten URL";
+    /**
+     * Under the slip when the API answers a repeat with the user's existing link (a 200, not a
+     * 201). The site's own words rather than the API's, since it has to say no new link was made.
+     */
+    static readonly alreadyShortened: string =
+      "You've already shortened this URL, so no new link was made.";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";
     static readonly listFailed: string = "Failed to load your short links";
@@ -71,14 +80,13 @@ export class Messages {
     static readonly sessionNotKept: string =
       "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
     /**
-     * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204), with the wait in whole
-     * minutes; 0 or less means the API sent no usable `retryAfter`. GitHub login isn't locked out,
-     * but only gets into an account it's linked to.
+     * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204). Like the other held
+     * forms' messages it names no wait: the held Log in key counts it down, and the hold reads it out
+     * (`tryAgainSpoken`); without a usable `retryAfter` nothing is held, and "later" is all it knows.
+     * GitHub login isn't locked out, but only gets into an account it's linked to.
      */
-    static loginLockedOut(minutes: number): string {
-      const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
-      return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
-    }
+    static readonly loginLockedOut: string =
+      "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account.";
     /**
      * The API's 403 to a request without a working session (its `Responses.notLoggedIn`): none was
      * sent, or it ended. Other 403s (a wrong password, not the owner) have their own texts, so only

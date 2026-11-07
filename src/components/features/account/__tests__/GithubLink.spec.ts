@@ -9,6 +9,8 @@ import {
   userEmail
 } from "@/scripts/authentication/authState";
 import { LEAVING_GRACE_MS } from "@/composables/useGithubLink";
+import { statusTextId } from "@/components/ui/statusMessage";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -178,7 +180,7 @@ describe("GithubLink", () => {
       const alert = wrapper.find('[role="alert"]');
       expect(alert.text()).toBe(body.error);
       expect(passwordInput(wrapper).attributes("aria-describedby")).toContain(
-        alert.attributes("id")
+        statusTextId(alert.attributes("id")!)
       );
       expect(passwordInput(wrapper).element.value).toBe("wrong");
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
@@ -200,14 +202,17 @@ describe("GithubLink", () => {
 
       const alert = wrapper.find('[role="alert"]');
       expect(alert.text()).toBe(`${error} Try again in 15 minutes.`);
+      // The field is described by the message as shown: the wait in words is the alert's alone.
       expect(passwordInput(wrapper).attributes("aria-describedby")).toContain(
-        alert.attributes("id")
+        statusTextId(alert.attributes("id")!)
       );
+      expect(descriptionOf(passwordInput(wrapper))).toContain(error);
+      expect(descriptionOf(passwordInput(wrapper))).not.toContain("Try again in 15 minutes.");
       expect(passwordInput(wrapper).element.value).toBe("wrong");
       expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
       expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
-      expect(confirmKey(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(descriptionOf(confirmKey(wrapper))).toBe(error);
       expect(assign).not.toHaveBeenCalled();
       // The focused key disabled, so the field takes the focus.
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
@@ -392,7 +397,8 @@ describe("GithubLink", () => {
       const alert = wrapper.find('[role="alert"]');
       expect(document.activeElement).toBe(alert.element);
       expect(alert.attributes("tabindex")).toBe("-1");
-      expect(opener(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      // Described by the shown text only: the key's counting name is the one wait it states.
+      expect(descriptionOf(opener(wrapper))).toBe(error);
       await opener(wrapper).trigger("click");
       expect(wrapper.emitted("start")).toHaveLength(1);
 
@@ -508,7 +514,7 @@ describe("GithubLink", () => {
       const alert = wrapper.find('[role="alert"]');
       expect(alert.text()).toBe("The provided password is incorrect.");
       expect(passwordInput(wrapper).attributes("aria-describedby")).toContain(
-        alert.attributes("id")
+        statusTextId(alert.attributes("id")!)
       );
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
       expect(wrapper.emitted("unlinked")).toBeUndefined();
@@ -530,6 +536,8 @@ describe("GithubLink", () => {
       expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
       expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
+      expect(descriptionOf(confirmKey(wrapper))).toBe(error);
+      expect(descriptionOf(passwordInput(wrapper))).not.toContain("Try again in 15 minutes.");
       expect(confirmKey(wrapper).classes()).not.toContain("btn--error");
       expect(githubLinked.value).toBe(true);
 

@@ -1,21 +1,33 @@
 <script setup lang="ts">
 import AppIcon from "./AppIcon.vue";
+import { statusTextId } from "./statusMessage";
 
 defineProps<{
   tone: "success" | "error" | "info";
-  /** Read out after the message but not shown, e.g. a held key's wait, which is shown on the key. */
+  /** Its shown text gets `statusTextId(id)`, for keys described by the message as it's shown. */
+  id?: string;
+  /**
+   * Read out after the message but not shown, e.g. a held key's wait, which is shown on the key.
+   * It's left out of the text `statusTextId(id)` names.
+   */
   spoken?: string;
 }>();
 </script>
 
 <template>
-  <div class="status" :class="`status--${tone}`" :role="tone === 'error' ? 'alert' : 'status'">
+  <div
+    :id="id"
+    class="status"
+    :class="`status--${tone}`"
+    :role="tone === 'error' ? 'alert' : 'status'"
+  >
     <AppIcon
       :name="tone === 'success' ? 'check' : tone === 'error' ? 'alert' : 'info'"
       :size="22"
     />
     <p class="status__text">
-      <slot /><span v-if="spoken" class="visually-hidden">{{ ` ${spoken}` }}</span>
+      <span :id="id ? statusTextId(id) : undefined"><slot /></span
+      ><span v-if="spoken" class="visually-hidden">{{ ` ${spoken}` }}</span>
     </p>
   </div>
 </template>

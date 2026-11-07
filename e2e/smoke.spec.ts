@@ -7,7 +7,9 @@ test("home page renders the hero, the shortener gate and the tools directory", a
   await expect(page.getByText("only logged-in users can shorten links")).toBeVisible();
   const tools = page.getByRole("region", { name: "Tools" });
   await expect(tools.getByRole("heading", { name: "Tools" })).toBeVisible();
-  await expect(tools.getByText("Planned", { exact: true })).toHaveCount(1);
+  await expect(
+    tools.getByText("Opening a shared link, paste or file needs no account; making one does.")
+  ).toBeVisible();
 
   // Each row carries its own description and is itself the way in.
   await tools.getByRole("link", { name: /^Paste Share text and code snippets/ }).click();
@@ -35,7 +37,7 @@ test("a board header keeps its padding above the kerb hatch", async ({ page }) =
   expect(bottom).toBeCloseTo(top + hatch, 1);
 });
 
-test("footer links lead to each page", async ({ page }) => {
+test("footer links lead to each page", async ({ page, isMobile }) => {
   await page.goto("/");
   const footer = page.getByRole("navigation", { name: "Footer" });
 
@@ -58,6 +60,27 @@ test("footer links lead to each page", async ({ page }) => {
   await footer.getByRole("link", { name: "Upload" }).click();
   await expect(page).toHaveURL("/upload");
   await expect(page.getByRole("heading", { level: 1, name: "Upload" })).toBeVisible();
+
+  // The contact links leave the site, so they're checked rather than followed.
+  const contact = page.getByRole("contentinfo").locator("address");
+  await expect(
+    contact.getByRole("link", { name: "E-mail: balazs@vb2007.hu", exact: true })
+  ).toHaveAttribute("href", "mailto:balazs@vb2007.hu");
+  const matrix = contact.getByRole("link", {
+    name: "Matrix: @vb2007:vb2007.hu (opens in a new tab)",
+    exact: true
+  });
+  await expect(matrix).toHaveAttribute("href", "https://matrix.to/#/@vb2007:vb2007.hu");
+  await expect(matrix).toHaveAttribute("target", "_blank");
+  await expect(matrix).toHaveAttribute("rel", "noopener");
+
+  // A wide footer shows the addresses beside their labels; a phone's shows only the labels, the
+  // addresses kept in the names. Visually hidden still has a 1px box, so the width tells them apart.
+  for (const address of ["balazs@vb2007.hu", "@vb2007:vb2007.hu"]) {
+    const box = await contact.getByText(address, { exact: true }).boundingBox();
+    if (isMobile) expect(box!.width).toBeLessThanOrEqual(1);
+    else expect(box!.width).toBeGreaterThan(50);
+  }
 });
 
 test("the mobile menu opens and closes", async ({ page, isMobile }) => {
@@ -73,4 +96,43 @@ test("the mobile menu opens and closes", async ({ page, isMobile }) => {
 
   await page.keyboard.press("Escape");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a logged-out visit logs no errors", async ({ page }) => {
+  // The one error that belongs here is the browser's own line for the expected `GET /user` 403
+  // ("Failed to load resource: the server responded with a status of 403 (Forbidden)"), which the
+  // page can't silence. Only that line, for that path and status, is set aside, and each visit
+  // must log it exactly once (a second logged-out lookup fails too). Anything else, such as
+  // `apiRequest`'s own "Failed to load the user", fails the test.
+  const userForbidden = "Failed to load resource: the server responded with a status of 403";
+  let lookupLines = 0;
+  let errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const { url } = message.location();
+    const expected =
+      url !== "" && new URL(url).pathname === "/user" && message.text().startsWith(userForbidden);
+    if (expected) lookupLines++;
+    else errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  // Each page's gate shows once the session check is done, so its answer has been handled by then.
+  for (const [path, gate] of [
+    ["/", "only logged-in users can shorten links"],
+    ["/pastebin", "Only logged-in users can create pastes"],
+    ["/upload", "Only logged-in users can upload files"],
+    ["/shorten", "only logged-in users can shorten links"]
+  ]) {
+    lookupLines = 0;
+    errors = [];
+    const lookup = page.waitForResponse((response) => new URL(response.url()).pathname === "/user");
+    await page.goto(path);
+
+    expect((await lookup).status()).toBe(403);
+    await expect(page.getByText(gate)).toBeVisible();
+    // Let any later request (e.g. a second lookup) finish before counting.
+    await page.waitForLoadState("networkidle");
+    expect({ path, lookupLines, errors }).toEqual({ path, lookupLines: 1, errors: [] });
+  }
 });

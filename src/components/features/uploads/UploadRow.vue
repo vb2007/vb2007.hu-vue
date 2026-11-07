@@ -548,9 +548,16 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
 
 .facts__row {
   display: grid;
-  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
-  gap: var(--sp-3);
+  gap: var(--sp-1) var(--sp-3);
   font-size: var(--fs-sm);
+}
+
+/* Labels beside the values once the list has room, over them below that, so a value (the link)
+   keeps the row's width on a phone or with a large font. */
+@container (min-width: 20rem) {
+  .facts__row {
+    grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  }
 }
 
 .facts dt {

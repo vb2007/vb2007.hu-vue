@@ -9,6 +9,7 @@ import {
   requestPasswordReset,
   type PasswordResetAnswer
 } from "@/scripts/authentication/passwordReset";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/passwordReset", async (importOriginal) => ({
@@ -165,9 +166,8 @@ describe("PasswordResetForm", () => {
     // A held key doesn't shake: it says when to try again instead.
     expect(submitButton(wrapper).classes()).not.toContain("btn--error");
     expect(submitButton(wrapper).text()).toBe("Try again in 57 min");
-    expect(submitButton(wrapper).attributes("aria-describedby")).toBe(
-      wrapper.find('[role="alert"]').attributes("id")
-    );
+    // Described by the shown text only, so its counting name is the one wait it states.
+    expect(descriptionOf(submitButton(wrapper))).toBe(TOO_MANY);
     expect(submitButton(wrapper).attributes("aria-label")).toBe("Try again in 57 minutes");
     expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
     expect(emailInput(wrapper).exists()).toBe(true);
@@ -442,9 +442,7 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).text()).toBe("Send again in 1 hr 5 min");
     // "1 hour 5 minutes" wouldn't contain what the key shows.
     expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
-    expect(resendButton(wrapper).attributes("aria-describedby")).toBe(
-      wrapper.find('[role="alert"]').attributes("id")
-    );
+    expect(descriptionOf(resendButton(wrapper))).toBe(TOO_MANY);
   });
 
   it("keeps a wrong code's error when the mail limit's wait ends", async () => {
@@ -924,7 +922,9 @@ describe("PasswordResetForm", () => {
       expect(submitButton(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
       // A held key doesn't shake: it says when to try again instead.
       expect(submitButton(wrapper).classes()).not.toContain("btn--error");
-      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(descriptionOf(submitButton(wrapper))).toBe(
+        "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent."
+      );
       expect(document.activeElement).toBe(linkPassword(wrapper).element);
       expect(wrapper.find(".alt p").text()).toBe("Can't wait? Get a code instead");
 
@@ -1012,7 +1012,10 @@ describe("PasswordResetForm", () => {
       await router.push(`/reset-password#token=${TOKEN}`);
       await flushPromises();
       await linkPassword(wrapper).setValue("new password");
-      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({ error: LIMITED, retryAfter: 900 });
+      vi.mocked(confirmPasswordResetLink).mockResolvedValueOnce({
+        error: LIMITED,
+        retryAfter: 900
+      });
       await wrapper.find("form").trigger("submit");
       await flushPromises();
 
@@ -1024,8 +1027,8 @@ describe("PasswordResetForm", () => {
         `${LIMITED} The link wasn't used up: it works until 30 minutes after it was sent. Try again in 15 minutes.`
       );
       expect(submitButton(wrapper).text()).toBe("Try again in 14 min");
-      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(
-        wrapper.find('[role="alert"]').attributes("id")
+      expect(descriptionOf(submitButton(wrapper))).toBe(
+        `${LIMITED} The link wasn't used up: it works until 30 minutes after it was sent.`
       );
     });
 

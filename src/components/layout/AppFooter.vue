@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
-import { SITE_NAME } from "@/constants/site";
+import { CONTACT_EMAIL, CONTACT_MAILTO, MATRIX_ID, MATRIX_URL, SITE_NAME } from "@/constants/site";
 import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { getCurrentYear } from "@/scripts/utility/dateUtil";
-
-const currentYear = getCurrentYear();
 
 // Only tools that exist today: the name already leads home, and planned stops have no page yet.
 const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.id !== "home");
@@ -16,7 +13,22 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
     <div class="foot__inner">
       <div class="foot__board">
         <RouterLink to="/" class="foot__name">{{ SITE_NAME }}</RouterLink>
-        <p class="foot__meta">Built by VB2007 &middot; 2023 &ndash; {{ currentYear }}</p>
+        <!--
+          Each link is named "Label: address". A wide footer shows the address too, since mailto does
+          nothing without a mail app and a Matrix ID can be pasted into any client; a narrower one
+          shows only the label, so the line takes no more room than the name.
+        -->
+        <address class="foot__contact">
+          <a :href="CONTACT_MAILTO" class="foot__reach">
+            <span class="foot__label">E-mail<span class="foot__colon">: </span></span>
+            <span class="foot__address">{{ CONTACT_EMAIL }}</span>
+          </a>
+          <a :href="MATRIX_URL" class="foot__reach" target="_blank" rel="noopener">
+            <span class="foot__label">Matrix<span class="foot__colon">: </span></span>
+            <span class="foot__address">{{ MATRIX_ID }}</span>
+            <span class="visually-hidden"> (opens in a new tab)</span>
+          </a>
+        </address>
       </div>
       <nav class="foot__links" aria-label="Footer">
         <div class="foot__group">
@@ -38,6 +50,7 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
 
 <style scoped>
 .foot {
+  container: foot / inline-size;
   position: relative;
   margin-top: var(--sp-8);
   background: var(--c-deep);
@@ -76,7 +89,9 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
 .foot__inner {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  /* The links share the contact line's baseline, not the middle of the name and the line */
+  align-items: end;
+  align-items: last baseline;
   justify-content: space-between;
   gap: var(--sp-5);
   max-width: var(--page-max);
@@ -95,10 +110,84 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
   text-decoration: none;
 }
 
-.foot__meta {
-  margin-top: var(--sp-2);
+/*
+  One row under the name. Each link's line is 1.5rem tall, so it is a 24px target, and the line sits
+  close enough to the name that the band is no taller than the name and one line of text.
+*/
+.foot__contact {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--sp-5);
+  margin-top: var(--sp-1);
   font-size: var(--fs-sm);
+  font-style: normal;
+  line-height: 1.5rem;
+}
+
+.foot__reach {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* A wider hit area to the sides only: the name sits just above */
+.foot__reach::after {
+  content: "";
+  position: absolute;
+  inset: 0 calc(-1 * var(--sp-2));
+}
+
+/* With the address shown, the label is its quiet caption and the address is what's underlined */
+.foot__label {
   opacity: 0.8;
+}
+
+/*
+  Heard, not seen: the colon and the space after it make the text, and so the name,
+  "E-mail: address" without relying on how a browser spaces flex items. It stays inline, since a
+  positioned (visually-hidden) colon would be split off with a space ("E-mail : address").
+*/
+.foot__colon {
+  font-size: 0;
+  line-height: 0;
+}
+
+.foot__address {
+  text-decoration: underline;
+  text-decoration-thickness: 0.09em;
+}
+
+.foot__reach:hover .foot__address {
+  text-decoration-thickness: 0.16em;
+}
+
+/* Too narrow for the addresses beside the links: the label is the link, the address only in its name */
+@container foot (width < 54rem) {
+  .foot__label {
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-thickness: 0.09em;
+  }
+
+  .foot__reach:hover .foot__label {
+    text-decoration-thickness: 0.16em;
+  }
+
+  /* The global .visually-hidden (base.css), repeated: a class can't be switched on by a container query */
+  .foot__address {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 /* Tools and account links are two groups, so a narrow footer wraps between them, never inside a group */
@@ -109,12 +198,14 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
   gap: var(--sp-5);
 }
 
+.foot__reach,
 .foot__links a {
   color: inherit;
   font-weight: 500;
   text-underline-offset: 0.25em;
 }
 
+.foot__reach:hover,
 .foot__links a:hover {
   color: var(--c-line-on-deep);
 }
