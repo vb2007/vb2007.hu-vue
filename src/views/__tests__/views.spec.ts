@@ -39,7 +39,6 @@ import UploadList from "@/components/features/uploads/UploadList.vue";
 import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
-import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
 import { ADMIN_SECTIONS } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
