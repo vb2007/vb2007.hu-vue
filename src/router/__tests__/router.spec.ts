@@ -21,6 +21,7 @@ describe("router", () => {
     ["admin", "/admin"],
     ["admin-users", "/admin/users"],
     ["admin-pastes", "/admin/pastes"],
+    ["admin-short-links", "/admin/short-links"],
     ["account", "/account"],
     ["login", "/login"],
     ["register", "/register"],
@@ -104,6 +105,7 @@ describe("router", () => {
     ["/admin/users/1", "admin-user"],
     ["/admin/users", "admin-users"],
     ["/admin/pastes", "admin-pastes"],
+    ["/admin/short-links", "admin-short-links"],
     ["/admin/", "admin"],
     ["/apierror?url=%2Ffoo", "api-error"]
   ])("still resolves %s to its own route, not the catch-all", (path, name) => {

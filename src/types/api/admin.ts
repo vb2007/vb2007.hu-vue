@@ -1,5 +1,6 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
 import type { PasteSortBy } from "@/types/api/pastebin";
+import type { OwnShortUrl, ShortUrlSortBy } from "@/types/api/shortener";
 import type { Upload, UploadOwner, UploadSortBy } from "@/types/api/uploads";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
@@ -114,6 +115,24 @@ export type AdminPasteListQuery = ListQuery<PasteSortBy> & {
 export interface AdminPastesResponse {
   pastes: AdminPaste[];
   pagination: Pagination<PasteSortBy>;
+}
+
+/** A short link as `GET /admin/short-urls` lists it (vb2007/vb2007.hu-api#279). */
+export interface AdminShortUrl extends OwnShortUrl {
+  /** `null` once the owner's account no longer exists. */
+  owner: UploadOwner | null;
+}
+
+/** `GET /admin/short-urls` */
+export type AdminShortUrlListQuery = ListQuery<ShortUrlSortBy> & {
+  /** Matches part of the code, the target or the owner's username, whatever its case. */
+  q?: string;
+};
+
+/** `GET /admin/short-urls` */
+export interface AdminShortUrlsResponse {
+  shortUrls: AdminShortUrl[];
+  pagination: Pagination<ShortUrlSortBy>;
 }
 
 /** An upload in the admin's site-wide list, with whose it is (vb2007/vb2007.hu-api#280). */

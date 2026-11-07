@@ -5,6 +5,7 @@ export const AdminPaths = {
   overview: "/admin",
   users: "/admin/users",
   pastes: "/admin/pastes",
+  shortLinks: "/admin/short-links",
   uploads: "/admin/uploads"
 } as const;
 
@@ -19,6 +20,7 @@ export const AdminRoutes = {
   user: "admin-user",
   userUploads: "admin-user-uploads",
   pastes: "admin-pastes",
+  shortLinks: "admin-short-links",
   uploads: "admin-uploads"
 } as const;
 
@@ -42,6 +44,13 @@ export const ADMIN_SECTIONS: Stop[] = [
     to: AdminPaths.pastes,
     status: "open",
     blurb: "Every paste on the site, whoever made it, to open or delete."
+  },
+  {
+    id: "short-links",
+    label: "Short links",
+    to: AdminPaths.shortLinks,
+    status: "open",
+    blurb: "Every short link on the site, where it leads and who made it, to check or delete."
   },
   {
     id: "uploads",

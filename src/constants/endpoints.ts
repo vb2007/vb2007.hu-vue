@@ -3,6 +3,8 @@ import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
   AdminPasteListQuery,
   AdminPastesResponse,
+  AdminShortUrlListQuery,
+  AdminShortUrlsResponse,
   AdminUploadsResponse,
   AdminUserListQuery,
   AdminUserResponse,
@@ -359,6 +361,16 @@ export class Endpoints {
     static readonly pastes = defineEndpoint<undefined, AdminPastesResponse, AdminPasteListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/pastes",
+      credentials: true
+    });
+    /** Every short link on the site; delete one with `ShortUrl.remove`, which lets the superuser through. */
+    static readonly shortUrls = defineEndpoint<
+      undefined,
+      AdminShortUrlsResponse,
+      AdminShortUrlListQuery
+    >()({
+      method: HttpMethod.Get,
+      path: "/admin/short-urls",
       credentials: true
     });
     /**
