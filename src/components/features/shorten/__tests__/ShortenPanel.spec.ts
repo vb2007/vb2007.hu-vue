@@ -6,6 +6,9 @@ import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
+const INNER_SPACE = "A URL can't contain spaces: write each one as %20.";
+const EDGE_SPACE = "Remove the space at the start or end of the URL.";
+
 describe("ShortenPanel", () => {
   it("renders only the board while the session is still being checked", async () => {
     const { wrapper } = await mountWithRouter(ShortenPanel);
@@ -74,7 +77,7 @@ describe("ShortenPanel", () => {
     );
     const { wrapper } = await mountWithRouter(ShortenPanel);
 
-    await wrapper.find("input").setValue("https://example.com/a b");
+    await wrapper.find("input").setValue("https://example.com/a");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
@@ -121,6 +124,74 @@ describe("ShortenPanel", () => {
     await input.setValue(url(2000));
     expect(wrapper.find(".field__error").exists()).toBe(false);
     expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("refuses a URL with a space without sending it", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue("https://example.com/a b");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").text()).toBe(INNER_SPACE);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names a space as it's typed, but not the format of a URL still being typed", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+    const input = wrapper.find("input");
+    /** The field's error after each of `steps`, typed in turn without leaving the field. */
+    const errorsWhileTyping = async (steps: string[]) => {
+      const shown: string[] = [];
+      for (const step of steps) {
+        await input.setValue(step);
+        const error = wrapper.find(".field__error");
+        shown.push(error.exists() ? error.text() : "");
+      }
+      return shown;
+    };
+
+    expect(await errorsWhileTyping([" ", " h", " https:", " https://example.com"])).toEqual([
+      "",
+      "",
+      "",
+      EDGE_SPACE
+    ]);
+    expect(
+      await errorsWhileTyping([
+        "example.com/a",
+        "example.com/a b",
+        "https://example.com/a",
+        "https://example.com/a ",
+        "https://example.com/a b"
+      ])
+    ).toEqual(["", "", "", "", INNER_SPACE]);
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+  });
+
+  it("names a pasted URL's leading space straight away", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue(" https://example.com/a");
+    expect(wrapper.find(".field__error").text()).toBe(EDGE_SPACE);
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names a space before the length in a long pasted URL, like the API", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue(`https://example.com/a b${"c".repeat(2000)}`);
+
+    expect(wrapper.find(".field__error").text()).toBe(INNER_SPACE);
   });
 
   it("names the format first for a long URL without a scheme", async () => {

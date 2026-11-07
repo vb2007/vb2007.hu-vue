@@ -7,6 +7,7 @@ import {
   pendingEmail,
   userEmail
 } from "@/scripts/authentication/authState";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 /** `GET /user` after the change, shaped like the API's answer. */
@@ -487,10 +488,10 @@ describe("ChangeEmail", () => {
       );
       expect(button("Try again in 23 hr 45 min").attributes("disabled")).toBeDefined();
       // "23 hours" doesn't contain the visible "23 hr", so the label names the key (spokenWait),
-      // and the alert it points at says the wait in words.
+      // and the alert says the wait in words. The key is described by the alert's shown text only,
+      // so its counting label is the one wait it states.
       expect(button("Try again in 23 hr 45 min").attributes("aria-label")).toBeUndefined();
-      const describedBy = button("Try again in 23 hr 45 min").attributes("aria-describedby");
-      expect(describedBy).toBe(wrapper.find('[role="alert"]').attributes("id"));
+      expect(descriptionOf(button("Try again in 23 hr 45 min"))).toBe(error);
       expect(button("Change e-mail").attributes("disabled")).toBeUndefined();
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(codeInput().element);
@@ -736,9 +737,7 @@ describe("ChangeEmail", () => {
       expect(button("Send code in 15 min").attributes("aria-label")).toBe(
         "Send code in 15 minutes"
       );
-      expect(button("Send code in 15 min").attributes("aria-describedby")).toBe(
-        wrapper.find('[role="alert"]').attributes("id")
-      );
+      expect(descriptionOf(button("Send code in 15 min"))).toBe(error);
 
       // Closed and opened again, the waiting key still says why.
       await button("Cancel").trigger("click");

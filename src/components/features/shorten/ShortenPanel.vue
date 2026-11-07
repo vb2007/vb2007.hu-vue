@@ -3,8 +3,7 @@ import { useTemplateRef, watch } from "vue";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useShortener } from "@/composables/useShortener";
-import { Limits } from "@/constants/limits";
-import { validateShortUrl } from "@/scripts/shorten/shortUrl";
+import { validateShortUrl, validateShortUrlWhileTyping } from "@/scripts/shorten/shortUrl";
 import { displayLink } from "@/scripts/utility/text";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -30,11 +29,8 @@ const {
   url: {
     value: originalUrl,
     check: () => validateShortUrl(originalUrl.value),
-    // A pasted URL over the limit can't be fixed by typing on, so that shows straight away.
-    early: () =>
-      originalUrl.value.length > Limits.ShortUrl.maxLength
-        ? validateShortUrl(originalUrl.value)
-        : ""
+    // What typing on can't fix (a pasted URL over the limit, a space) shows straight away.
+    early: () => validateShortUrlWhileTyping(originalUrl.value)
   }
 });
 

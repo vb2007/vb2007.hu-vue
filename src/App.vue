@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import { provide } from "vue";
 import { RouterView } from "vue-router";
 import AppNavbar from "@/components/layout/AppNavbar.vue";
 import AppFooter from "@/components/layout/AppFooter.vue";
-import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
-
-provide("isLoggedIn", isLoggedIn);
-provide("userEmail", userEmail);
 </script>
 
 <template>

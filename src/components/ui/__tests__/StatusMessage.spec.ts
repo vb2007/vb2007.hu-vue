@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 describe("StatusMessage", () => {
   it.each([
@@ -28,5 +29,27 @@ describe("StatusMessage", () => {
       "Too many failed attempts: try again later. Try again in 15 minutes."
     );
     expect(wrapper.find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
+  });
+
+  it("names its shown text apart from the spoken one, for keys described by what it shows", () => {
+    const wrapper = mount(StatusMessage, {
+      props: { tone: "error", id: "login-failure", spoken: "Try again in 15 minutes." },
+      slots: { default: "Too many failed attempts: try again later." }
+    });
+
+    expect(wrapper.attributes("id")).toBe("login-failure");
+    const shown = wrapper.find(`[id="${statusTextId("login-failure")}"]`);
+    expect(shown.text()).toBe("Too many failed attempts: try again later.");
+    expect(shown.find(".visually-hidden").exists()).toBe(false);
+    // The alert still reads the wait out with the message.
+    expect(wrapper.text()).toBe(
+      "Too many failed attempts: try again later. Try again in 15 minutes."
+    );
+  });
+
+  it("gives its text no id without one of its own", () => {
+    const wrapper = mount(StatusMessage, { props: { tone: "info" }, slots: { default: "Hello" } });
+
+    expect(wrapper.find("[id]").exists()).toBe(false);
   });
 });
