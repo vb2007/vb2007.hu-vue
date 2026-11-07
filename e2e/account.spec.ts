@@ -106,10 +106,10 @@ test("a locked-out login points to GitHub and holds the key for that address, co
   await expect(key).toHaveAccessibleDescription(`${LOCKED_OUT} Try again in 15 minutes.`);
   await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
 
-  // The lockout can be about the address alone, so another one may go at once, its wait unsaid.
+  // The lockout can be about the address alone, so another one may go at once, without it.
   await page.getByLabel("E-mail").fill("other@example.com");
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
-  await expect(alert).toHaveText(LOCKED_OUT);
+  await expect(alert).toHaveCount(0);
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await expect(key).toBeDisabled();
   await expect(alert).toHaveText(`${LOCKED_OUT} Try again in 15 minutes.`);
@@ -148,6 +148,11 @@ test("a held address keeps its own lockout after another address is refused", as
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await expect(key).toBeDisabled();
   await expect(alert).toHaveText(`${LOCKED_OUT} Try again in 15 minutes.`);
+
+  // Once the wait is over, the other address's refusal doesn't come over this one's key.
+  await page.clock.fastForward(845_000);
+  await expect(logIn).toBeEnabled();
+  await expect(alert).toHaveCount(0);
 });
 
 test("a lockout goes with its hold once the login form is left", async ({ page, api }) => {

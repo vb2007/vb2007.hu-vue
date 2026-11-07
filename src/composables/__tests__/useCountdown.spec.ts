@@ -105,6 +105,16 @@ describe("useCountdown", () => {
 
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("counts nothing started after its component is gone, e.g. from an answer that landed late", () => {
+    const { wrapper, api } = mountComposable(useCountdown);
+    wrapper.unmount();
+
+    api.start(30);
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(api.active.value).toBe(false);
+  });
 });
 
 describe("useCountdown with a storage key", () => {

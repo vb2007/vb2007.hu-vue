@@ -47,7 +47,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
- * API's per-account limiter (`loginPerAccount`), whatever its case.
+ * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
  * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.

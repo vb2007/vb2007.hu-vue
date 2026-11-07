@@ -557,6 +557,46 @@ describe("login", () => {
 
     expect(loginStatus.value).toBe("unknown-error");
   });
+
+  it("forgets the last outcome when asked", async () => {
+    const { forgetLogin, loginStatus } = await load();
+    loginStatus.value = "Wrong password.";
+
+    forgetLogin();
+
+    expect(loginStatus.value).toBe("");
+  });
+
+  it("reports nothing, and holds nothing, for a lockout that lands after it was forgotten", async () => {
+    // e.g. the form was left and opened again while the login was on its way.
+    const response = deferResponse(fetchMock);
+    const { forgetLogin, login, loginStatus } = await load();
+
+    const pending = login("me@example.com", "nope");
+    forgetLogin();
+    response.respond(
+      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+    );
+
+    await expect(pending).resolves.toBeUndefined();
+    expect(loginStatus.value).toBe("");
+  });
+
+  it("still logs in when forgotten on the way, but reports nothing", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+    const lookup = deferResponse(fetchMock);
+    const { forgetLogin, login, loginStatus, isLoggedIn } = await load();
+
+    const pending = login("me@example.com", "secret");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    forgetLogin();
+    lookup.respond(jsonResponse(200, { email: "me@example.com" }));
+    await pending;
+
+    // The session is real, whatever the form shows.
+    expect(isLoggedIn.value).toBe(true);
+    expect(loginStatus.value).toBe("");
+  });
 });
 
 describe("clearSession", () => {

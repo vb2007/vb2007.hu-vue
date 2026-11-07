@@ -39,6 +39,9 @@ export const useCountdown = (storageKey?: string) => {
     }
   };
 
+  /** Set once its component is gone: a start from an answer that landed after it counts nothing. */
+  let isDisposed = false;
+
   const runUntil = (end: number) => {
     stop();
     deadline = end;
@@ -52,7 +55,7 @@ export const useCountdown = (storageKey?: string) => {
    */
   const start = (seconds: number, id?: string, reason = "") => {
     note.value = reason;
-    if (seconds <= 0) {
+    if (seconds <= 0 || isDisposed) {
       stop();
       return;
     }
@@ -79,7 +82,10 @@ export const useCountdown = (storageKey?: string) => {
     return true;
   };
 
-  onScopeDispose(stop);
+  onScopeDispose(() => {
+    isDisposed = true;
+    stop();
+  });
 
   return { remaining, active, note, start, resume, stop };
 };

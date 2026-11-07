@@ -347,12 +347,12 @@ describe("LoginForm", () => {
       const { wrapper, email, key } = await tryLogin();
       const alert = () => wrapper.find('[role="alert"]');
 
-      // The message stays, but its wait is the held address's, so it isn't read out for another.
+      // The lockout is the held address's, so another shows none of it.
       await email.setValue("other@example.com");
       expect(key().text()).toBe("Log in");
       expect(key().attributes("disabled")).toBeUndefined();
       expect(key().attributes("aria-describedby")).toBeUndefined();
-      expect(alert().text()).toBe(LIMITED);
+      expect(alert().exists()).toBe(false);
 
       // The same address, however it's typed, waits on.
       await email.setValue(" Me@Example.com ");
@@ -392,9 +392,58 @@ describe("LoginForm", () => {
       expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
       expect(alert().find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
 
-      // The other address's refusal is still the last word about it.
+      // The other address's refusal is still the last word about it, and only about it.
       await email.setValue("other@example.com");
       expect(alert().text()).toBe(REFUSED);
+      await email.setValue("third@example.com");
+      expect(alert().exists()).toBe(false);
+
+      // The end of the hold doesn't bring the other address's refusal over the held one's key.
+      await email.setValue("me@example.com");
+      vi.advanceTimersByTime(900_000);
+      await flushPromises();
+      expect(key().text()).toBe("Log in");
+      expect(alert().exists()).toBe(false);
+    });
+
+    it("holds the address that was sent, even when the field changed before the answer", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      let answer!: (wait?: number) => void;
+      vi.mocked(login).mockReset();
+      vi.mocked(login).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      await wrapper.find("form").trigger("submit");
+
+      await email.setValue("other@example.com");
+      loginStatus.value = LIMITED;
+      answer(900);
+      await flushPromises();
+
+      const key = () => wrapper.find('button[type="submit"]');
+      expect(key().text()).toBe("Log in");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      await email.setValue("me@example.com");
+      expect(key().text()).toBe("Try again in 15 min");
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+    });
+
+    it("starts no countdown for an answer that lands after the form is gone", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      let answer!: (wait?: number) => void;
+      vi.mocked(login).mockReset();
+      vi.mocked(login).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      await wrapper.find("form").trigger("submit");
+
+      wrapper.unmount();
+      answer(900);
+      await flushPromises();
+
+      expect(vi.getTimerCount()).toBe(0);
     });
 
     it("keeps a held address's reason after another account logs in and out", async () => {
@@ -442,6 +491,26 @@ describe("LoginForm", () => {
       await flushPromises();
 
       expect(document.activeElement).toBe(email.element);
+    });
+
+    it("leaves the focus in the field it stayed in after a refusal that holds nothing", async () => {
+      vi.mocked(login).mockReset();
+      vi.mocked(login).mockImplementationOnce(async () => {
+        dropKeyFocus();
+        loginStatus.value = REFUSED;
+        return undefined;
+      });
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("nope");
+      (password.element as HTMLElement).focus();
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(REFUSED);
+      expect(document.activeElement).toBe(password.element);
     });
   });
 

@@ -32,6 +32,18 @@ let appliedLookup = 0;
 export const loginStatus = ref("");
 
 /**
+ * Logins are numbered as they're sent: only the newest one reports, and none sent before
+ * `forgetLogin`, e.g. one still on its way when the form was left.
+ */
+let sentLogins = 0;
+
+/** Forgets the last login's outcome, and the one of any login still on its way. */
+export const forgetLogin = () => {
+  sentLogins++;
+  loginStatus.value = "";
+};
+
+/**
  * The session lives in an HttpOnly cookie set by the API, so the page can't read it.
  * Whether the user is logged in is only known by asking the API (with credentials).
  */
@@ -105,15 +117,20 @@ export const restoreSession = () => {
 
 /**
  * Logs in; `loginStatus` says how it went. After the login limiter's 429 (vb2007/vb2007.hu-api#204)
- * it returns the seconds the API refuses even the right password for: 0 when it didn't say.
+ * it returns the seconds the API refuses even the right password for: 0 when it didn't say. A
+ * login that's no longer the newest (see `forgetLogin`) reports nothing and holds nothing.
  */
 export const login = async (email: string, password: string): Promise<number | undefined> => {
+  const attempt = ++sentLogins;
   // Cleared while it works, so the same refusal again is shown (and announced) afresh.
   loginStatus.value = "";
   const result = await apiRequest(Endpoints.Auth.login, {
     body: { email, password },
     failure: Messages.Auth.loginFailed
   });
+  /** Whether a newer login, or `forgetLogin`, came since: then this one's outcome is no one's. */
+  const isStale = () => attempt !== sentLogins;
+  if (isStale()) return;
 
   if (!result.ok && result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
     // Locked out for up to 15 minutes: the form holds its key for the wait and counts it down there.
@@ -126,9 +143,9 @@ export const login = async (email: string, password: string): Promise<number | u
   }
 
   // The API answered 200, but only a working session cookie makes the login real.
-  loginStatus.value = (await fetchUserDetails())
-    ? LoginStatus.Success
-    : Messages.Auth.sessionNotKept;
+  const kept = await fetchUserDetails();
+  if (isStale()) return;
+  loginStatus.value = kept ? LoginStatus.Success : Messages.Auth.sessionNotKept;
 };
 
 const forgetUser = () => {
