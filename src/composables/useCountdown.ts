@@ -45,6 +45,8 @@ export const useCountdown = (storageKey?: string) => {
   const runUntil = (end: number) => {
     stop();
     deadline = end;
+    // Nothing on screen to count for, but a kept deadline still counts for a reload.
+    if (isDisposed) return;
     tick();
     timer = setInterval(tick, 250);
   };
@@ -55,7 +57,7 @@ export const useCountdown = (storageKey?: string) => {
    */
   const start = (seconds: number, id?: string, reason = "") => {
     note.value = reason;
-    if (seconds <= 0 || isDisposed) {
+    if (seconds <= 0) {
       stop();
       return;
     }

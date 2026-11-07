@@ -179,6 +179,33 @@ test("a lockout goes with its hold once the login form is left", async ({ page, 
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("a login still on its way when the form is left logs the page in once it lands", async ({
+  page,
+  isMobile
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  let answer!: () => void;
+  const answered = new Promise<void>((resolve) => (answer = resolve));
+  await page.route("**/auth/login", async (route) => {
+    await answered;
+    await route.fallback();
+  });
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+
+  await page.getByRole("main").getByRole("link", { name: "Register" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Register" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
+  answer();
+
+  // The API's session is live, so the page says so, with the way to end it.
+  await expect(page.getByText("Login successful!")).toBeVisible();
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+});
+
 test("the account page asks visitors to log in", async ({ page }) => {
   await page.goto("/account");
 

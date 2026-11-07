@@ -145,6 +145,36 @@ describe("useCountdown with a storage key", () => {
     expect(api.active.value).toBe(false);
   });
 
+  it("still keeps a deadline started after its component is gone, without counting it there", () => {
+    // e.g. an answer that landed after the page was left: a reload still waits it out.
+    const first = mountComposable(keyed);
+    first.wrapper.unmount();
+    // Counted by its intervals: jsdom's storage events take timers of their own.
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    first.api.start(60, "me@example.com");
+    expect(intervals).not.toHaveBeenCalled();
+    expect(first.api.active.value).toBe(false);
+
+    const { api } = mountComposable(keyed);
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.remaining.value).toBe(60);
+  });
+
+  it("resumes nothing on screen once its component is gone", () => {
+    const first = mountComposable(keyed);
+    first.api.start(60, "me@example.com");
+    const late = mountComposable(keyed);
+    late.wrapper.unmount();
+    const intervals = vi.spyOn(globalThis, "setInterval");
+
+    expect(late.api.resume("me@example.com")).toBe(true);
+
+    // Only the first one's count runs.
+    expect(intervals).not.toHaveBeenCalled();
+    expect(late.api.active.value).toBe(false);
+    first.wrapper.unmount();
+  });
+
   it("keeps why it waits with the deadline, and gives it back on resume", () => {
     const first = mountComposable(keyed);
     first.api.start(900, "me@example.com", "Too many failed attempts: try again later.");
