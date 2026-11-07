@@ -232,6 +232,27 @@ test("a GitHub link started without the password is explained", async ({ page, a
   await expect(page.getByText("Not linked")).toBeVisible();
 });
 
+test("a GitHub link visit from a session replaced elsewhere asks to log in again", async ({
+  page,
+  api
+}) => {
+  // A real login, so the browser holds a __Host-VB-AUTH cookie the API can replace.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByText("Login successful!")).toBeVisible();
+
+  // A login on another device replaces this session, so the API sends the visit back as logged out.
+  api.replacesSession();
+  await page.goto(`${api.apiOrigin}/auth/github/link`);
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Your session ended before GitHub could be linked. Log in, then link GitHub again."
+  );
+});
+
 test("a GitHub link that wasn't started here is turned away", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   await page.goto("/account");

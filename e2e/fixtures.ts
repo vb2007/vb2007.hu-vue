@@ -41,8 +41,10 @@ import { test as base, expect, type Route } from "@playwright/test";
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
- * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API; a request that carries an older one is
- * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
+ * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API, and `api.replacesSession()` stands
+ * in for a login elsewhere, which keeps the account logged in on a cookie the browser doesn't have. A request that carries an older one
+ * gets the logged-out 403 on every route the API guards with `isAuthenticated`; the public ones (`PUBLIC_ROUTES`) answer it as a guest's.
+ * A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
@@ -135,6 +137,25 @@ const NOT_LOGGED_IN = {
   status: 403,
   body: { error: "You must be logged in to perform this action." }
 } satisfies MockResponse;
+
+/**
+ * The routes the API serves without `isAuthenticated` (`src/router/*.ts` in vb2007/vb2007.hu-api, which has no session
+ * middleware), so a session it has replaced still gets through, as a guest. Every other route refuses that session first.
+ * `GET /e2e-github/authorize` stands in for the public `GET /auth/github/callback`.
+ */
+const PUBLIC_ROUTES = [
+  /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
+  /^GET \/auth\/(username-available|github\/link)$/,
+  /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
+  /^GET \/e2e-github\/authorize$/
+];
+
+/** The API's `PASTE_LANGUAGE_MIN_LENGTH` and `PASTE_LANGUAGE_MAX_LENGTH`, and its `pasteLanguagePattern`. */
+const PASTE_LANGUAGE_MIN_LENGTH = 1;
+const PASTE_LANGUAGE_MAX_LENGTH = 32;
+const PASTE_LANGUAGE = new RegExp(
+  `^[a-z0-9+#-]{${PASTE_LANGUAGE_MIN_LENGTH},${PASTE_LANGUAGE_MAX_LENGTH}}$`
+);
 
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
@@ -389,6 +410,14 @@ export class MockApi {
 
   loggedOut() {
     this.user = null;
+  }
+
+  /**
+   * A login elsewhere, which the API's one session per account replaces this browser's with: the account stays
+   * logged in, but the browser's `__Host-VB-AUTH` cookie no longer works.
+   */
+  replacesSession() {
+    this.session = `e2e-session-${++this.sessionCount}`;
   }
 
   loggedInAs(
@@ -737,17 +766,21 @@ export class MockApi {
 
     const cookie = (await request.headerValue("cookie")) ?? "";
     const sentSession = cookie.match(/(?:^|;\s*)__Host-VB-AUTH=([^;]+)/)?.[1];
+    const staleSession = sentSession !== undefined && sentSession !== this.session;
+    const endpoint = `${request.method()} ${url.pathname}`;
     const contentType = (await request.headerValue("content-type")) ?? "";
-    // An upload passes the same session checks first, like `isAuthenticated` before `handleUpload`.
-    const response =
-      sentSession && sentSession !== this.session
-        ? this.staleSession()
+    // Only `isAuthenticated` refuses a session the API replaced; a public route answers it as a guest's.
+    // An upload is guarded too, so it gets the same session checks before its body is read.
+    const response: MockResponse | undefined =
+      staleSession && !PUBLIC_ROUTES.some((route) => route.test(endpoint))
+        ? NOT_LOGGED_IN
         : contentType.startsWith("multipart/form-data")
-          ? this.receiveUpload(parseMultipart(request.postDataBuffer()!, contentType))
+          ? this.receiveUpload(request.postDataBuffer(), contentType)
           : this.respond(
-              `${request.method()} ${url.pathname}`,
+              endpoint,
               request.postDataJSON(),
-              url.searchParams
+              url.searchParams,
+              staleSession ? null : this.user
             );
     if (!response) {
       this.unhandled.push(`${request.method()} ${request.url()}`);
@@ -768,11 +801,6 @@ export class MockApi {
     return route.fulfill({ status: response.status, headers, json: response.body ?? {} });
   }
 
-  /** What the API answers a session it has replaced: logged out. */
-  private staleSession(): MockResponse {
-    return NOT_LOGGED_IN;
-  }
-
   private respond(
     endpoint: string,
     body: {
@@ -791,7 +819,13 @@ export class MockApi {
       suspended?: unknown;
       ip?: unknown;
     } | null,
-    query: URLSearchParams
+    query: URLSearchParams,
+    /**
+     * Whose session the request carries: `null` for a guest or a replaced session. Only the public routes that
+     * read the session (`getSessionUser` in the API) need it: to the others, e.g. the username check or a
+     * password reset, `this.user` is still the account itself.
+     */
+    sessionUser: MockUser | null
   ): MockResponse | undefined {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
@@ -897,14 +931,15 @@ export class MockApi {
       case "DELETE /user":
         return this.deleteAccount(body);
       case "POST /auth/logout":
-        this.user = null;
+        // A replaced session's logout only clears the browser's cookie: the session that replaced it lives on.
+        if (sessionUser) this.user = null;
         return { status: 200 };
       case "GET /auth/github/link":
-        if (!this.user) {
+        if (!sessionUser) {
           return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
         }
         // Only an account without a password may link through a plain navigation (vb2007/vb2007.hu-api#243).
-        if (this.user.hasPassword) {
+        if (sessionUser.hasPassword) {
           return {
             status: 302,
             location: `${this.appOrigin}/account?oauthError=passwordRequired`
@@ -919,6 +954,10 @@ export class MockApi {
           return { status: 302, location: `${this.appOrigin}/account?oauthError=invalidState` };
         }
         this.githubLinkStarted = false;
+        // Like the callback's link check, which needs the session that started the link.
+        if (!sessionUser) {
+          return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
+        }
         return this.linkGithub();
       case "POST /user/password":
         return this.setPassword(body?.password);
@@ -1552,14 +1591,20 @@ export class MockApi {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
     if (method === "PATCH") {
-      if (!/^[a-z0-9+#-]{1,32}$/.test(language ?? "")) {
-        return { status: 400, body: { error: "That isn't a valid language." } };
+      if (!PASTE_LANGUAGE.test(language ?? "")) {
+        return {
+          status: 400,
+          body: {
+            error: `The language is invalid: it must be ${PASTE_LANGUAGE_MIN_LENGTH}-${PASTE_LANGUAGE_MAX_LENGTH} lowercase letters, digits or +#- characters.`
+          }
+        };
       }
       paste.language = language;
       return { status: 200, body: { message: "Paste updated successfully.", paste } };
     }
-    const [deleted] = this.pastes.splice(index, 1);
-    return { status: 200, body: { message: "Paste deleted successfully.", paste: deleted } };
+    this.pastes.splice(index, 1);
+    // Like the API's `deletePaste`, which sends only the deleted paste's ID.
+    return { status: 200, body: { message: "Paste deleted successfully.", paste: { id } } };
   }
 
   private usedBytes() {
@@ -1590,8 +1635,14 @@ export class MockApi {
     };
   }
 
-  private receiveUpload(part: ReturnType<typeof parseMultipart>): MockResponse {
+  /** `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`. */
+  private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
+    if (!/boundary=.+$/.test(contentType)) {
+      return { status: 400, body: { error: "Multipart: Boundary not found" } };
+    }
+    if (!body?.length) return { status: 400, body: { error: "Unexpected end of form" } };
+    const part = parseMultipart(body, contentType);
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };

@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 test("a user creates, opens, lists and deletes a paste", async ({ page, api, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -64,6 +64,28 @@ test("logged-out visitors can read a shared paste but not create one", async ({ 
   await page.getByRole("link", { name: "New paste" }).click();
   await expect(page.getByText("Only logged-in users can create pastes")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Your pastes" })).toBeHidden();
+});
+
+test("a shared paste still opens after the session was replaced elsewhere", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  const paste = api.hasPaste("shared with the world", "other");
+  // A real login, so the browser holds a __Host-VB-AUTH cookie the API can replace.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByText("Login successful!")).toBeVisible();
+
+  // A login on another device replaces this session, but reading a paste doesn't need one.
+  api.replacesSession();
+  await page.goto(`/pastebin/${paste._id}`);
+
+  await expect(page.getByLabel("Paste content")).toHaveText("shared with the world");
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
 });
 
 test("a missing or malformed paste link explains itself", async ({ page }) => {
