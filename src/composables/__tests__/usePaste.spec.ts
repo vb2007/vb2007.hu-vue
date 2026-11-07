@@ -143,7 +143,7 @@ describe("usePaste", () => {
     it("does nothing before a paste is loaded", async () => {
       const single = usePaste();
 
-      await single.setLanguage("python");
+      await expect(single.setLanguage("python")).resolves.toBe("gone");
 
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -156,7 +156,7 @@ describe("usePaste", () => {
 
       const pending = single.setLanguage("python");
       expect(single.isSaving.value).toBe(true);
-      await pending;
+      await expect(pending).resolves.toBe("saved");
 
       expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/paste/p1", {
         method: "PATCH",
@@ -173,11 +173,85 @@ describe("usePaste", () => {
       const single = await loaded();
       fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not authorized." }));
 
-      await single.setLanguage("python");
+      await expect(single.setLanguage("python")).resolves.toBe("failed");
 
       expect(single.saveError.value).toBe("You are not authorized.");
       expect(single.paste.value?.language).toBe("plaintext");
       expect(single.isSaving.value).toBe(false);
+    });
+
+    const other = { ...owned, _id: "p2", language: "rust" };
+
+    it("leaves the next paste alone when a save lands after moving to it", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: other }));
+
+      const saving = single.setLanguage("python");
+      await single.load("p2");
+      expect(single.isSaving.value).toBe(false);
+      save.respond(jsonResponse(200, { paste: { ...paste, language: "python" } }));
+
+      await expect(saving).resolves.toBe("gone");
+      expect(single.paste.value).toEqual(other);
+      expect(single.isSaving.value).toBe(false);
+    });
+
+    it("leaves the paste empty when a save lands while the next one loads", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      const next = deferResponse(fetchMock);
+
+      const saving = single.setLanguage("python");
+      const loading = single.load("p2");
+      save.respond(jsonResponse(200, { paste: { ...paste, language: "python" } }));
+      await expect(saving).resolves.toBe("gone");
+      expect(single.paste.value).toBeNull();
+
+      next.respond(jsonResponse(200, { paste: other }));
+      await loading;
+      expect(single.paste.value).toEqual(other);
+    });
+
+    it("keeps a save's failure off the next paste", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: other }));
+
+      const saving = single.setLanguage("python");
+      await single.load("p2");
+      save.respond(jsonResponse(403, { error: "You are not authorized." }));
+
+      await expect(saving).resolves.toBe("gone");
+      expect(single.saveError.value).toBe("");
+      expect(single.paste.value).toEqual(other);
+    });
+
+    it("takes a save that lands before moving on, then shows the next paste as it is", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      const next = deferResponse(fetchMock);
+
+      const saving = single.setLanguage("python");
+      save.respond(jsonResponse(200, { paste: { ...paste, language: "python" } }));
+      await expect(saving).resolves.toBe("saved");
+      expect(single.paste.value?.language).toBe("python");
+
+      const loading = single.load("p2");
+      next.respond(jsonResponse(200, { paste: other }));
+      await loading;
+      expect(single.paste.value).toEqual(other);
+    });
+
+    it("clears a failed save's error when another paste loads", async () => {
+      const single = await loaded();
+      fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not authorized." }));
+      await single.setLanguage("python");
+      expect(single.saveError.value).toBe("You are not authorized.");
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: other }));
+      await single.load("p2");
+      expect(single.saveError.value).toBe("");
     });
 
     it("reports an unreachable server", async () => {

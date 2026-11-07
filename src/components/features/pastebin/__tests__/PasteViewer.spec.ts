@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 import { isSuperuser, username } from "@/scripts/authentication/authState";
 
@@ -214,6 +214,31 @@ describe("PasteViewer", () => {
 
       expect(wrapper.find(".note__language").text()).toBe("Ruby");
       expect(wrapper.find('[role="status"]').text()).toBe("Language changed to Ruby");
+    });
+
+    it("shows the next paste as it is when a change lands after moving to it", async () => {
+      username.value = "anna";
+      const fetchMock = mockFetch();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
+      const wrapper = await mountViewer();
+      await flushPromises();
+
+      const save = deferResponse(fetchMock);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { paste: { ...owned("fn main() {}", "rust"), _id: "p2" } })
+      );
+      await wrapper.find("select").setValue("ruby");
+      await wrapper.setProps({ id: "p2" });
+      await flushPromises();
+      expect(wrapper.find("select").element.value).toBe("rust");
+
+      save.respond(jsonResponse(200, { paste: { ...paste("p1"), language: "ruby" } }));
+      await flushPromises();
+
+      expect(wrapper.find("select").element.value).toBe("rust");
+      expect(wrapper.find(".note__language").text()).toBe("Rust");
+      expect(wrapper.find('[role="status"]').text()).toBe("");
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     });
 
     it("goes back to the stored language when the change fails", async () => {
