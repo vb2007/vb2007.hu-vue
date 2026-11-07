@@ -57,8 +57,13 @@ withDefaults(
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
+  /* The label stays on one line wherever it fits: a key never shrinks below it in a flex row or a
+     grid track, unless its container is narrower (e.g. enlarged text in a narrow window), where the
+     key takes the container's width and the label wraps. */
+  min-width: fit-content;
+  max-width: 100%;
   min-height: 2.875rem;
-  padding: 0 var(--sp-5);
+  padding: var(--sp-2) var(--sp-5);
   border: var(--edge) solid transparent;
   border-radius: var(--radius-sm);
   background: var(--btn-bg);
@@ -66,10 +71,12 @@ withDefaults(
   font-family: var(--font-board);
   font-size: 1.25rem;
   font-weight: 700;
+  line-height: 1.15;
   letter-spacing: 0.04em;
+  text-align: center;
   text-transform: uppercase;
   text-decoration: none;
-  white-space: nowrap;
+  text-wrap: balance;
   cursor: pointer;
   box-shadow: 0 var(--lift) 0 var(--btn-depth);
   transform: translateY(0);
@@ -81,7 +88,7 @@ withDefaults(
 
 .btn--sm {
   min-height: 2.25rem;
-  padding: 0 var(--sp-4);
+  padding: var(--sp-1) var(--sp-4);
   font-size: 1.0625rem;
   --lift: 0.1875rem;
 }
