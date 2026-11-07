@@ -35,7 +35,7 @@ One personal, self-hosted home that holds both working tools and the owner's inf
 
 ## Brand Commitments
 - Name: `vb2007.hu` (wordmark in the navbar). Owner handle: VB2007.
-- Existing identity is minimal: a favicon and a text wordmark. No logo system is established. `src/assets/logo.svg` is the default Vue template logo, not a brand asset.
+- Existing identity is minimal: a favicon (`public/favicon.ico`, still the Vue template's, not a brand asset) and a text wordmark. No logo system is established.
 
 ## Evidence on Hand
 - Working URL shortener and pastebin flows against a real API.
