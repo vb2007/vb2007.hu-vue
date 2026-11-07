@@ -32,12 +32,14 @@ describe("AppFooter", () => {
       "balazs@vb2007.hu",
       "@vb2007:vb2007.hu"
     ]);
-    // Named "Label: address" by their text (e2e checks the computed names), with a colon only heard.
-    expect(wrapper.findAll(".foot__label").map((label) => label.element.textContent)).toEqual([
-      "E-mail:",
-      "Matrix:"
+    // Named "Label: address" by their own text, spaces included, whatever the layout; the colon is
+    // only heard. e2e checks the names the browser computes.
+    expect(email.element.textContent).toBe("E-mail: balazs@vb2007.hu");
+    expect(matrix.element.textContent).toBe("Matrix: @vb2007:vb2007.hu (opens in a new tab)");
+    expect(wrapper.findAll(".foot__colon").map((colon) => colon.element.textContent)).toEqual([
+      ": ",
+      ": "
     ]);
-    expect(wrapper.findAll(".foot__colon")).toHaveLength(2);
     expect(email.attributes("href")).toBe("mailto:balazs@vb2007.hu");
     expect(email.attributes("target")).toBeUndefined();
     expect(matrix.find(".visually-hidden").text()).toBe("(opens in a new tab)");

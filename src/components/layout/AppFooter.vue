@@ -20,13 +20,13 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
         -->
         <address class="foot__contact">
           <a :href="CONTACT_MAILTO" class="foot__reach">
-            <span class="foot__label">E-mail<span class="foot__colon">:</span></span>
+            <span class="foot__label">E-mail<span class="foot__colon">: </span></span>
             <span class="foot__address">{{ CONTACT_EMAIL }}</span>
           </a>
           <a :href="MATRIX_URL" class="foot__reach" target="_blank" rel="noopener">
-            <span class="foot__label">Matrix<span class="foot__colon">:</span></span>
+            <span class="foot__label">Matrix<span class="foot__colon">: </span></span>
             <span class="foot__address">{{ MATRIX_ID }}</span>
-            <span class="visually-hidden">(opens in a new tab)</span>
+            <span class="visually-hidden"> (opens in a new tab)</span>
           </a>
         </address>
       </div>
@@ -146,7 +146,8 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
 }
 
 /*
-  Heard, not seen: it makes the name "E-mail: address". It stays inline and in the text, since a
+  Heard, not seen: the colon and the space after it make the text, and so the name,
+  "E-mail: address" without relying on how a browser spaces flex items. It stays inline, since a
   positioned (visually-hidden) colon would be split off with a space ("E-mail : address").
 */
 .foot__colon {
@@ -175,13 +176,16 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
     text-decoration-thickness: 0.16em;
   }
 
+  /* The global .visually-hidden (base.css), repeated: a class can't be switched on by a container query */
   .foot__address {
     position: absolute;
     width: 1px;
     height: 1px;
     margin: -1px;
+    padding: 0;
     overflow: hidden;
     clip: rect(0 0 0 0);
+    white-space: nowrap;
     border: 0;
   }
 }
