@@ -1,6 +1,18 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 import { AdminPaths, AdminRoutes } from "@/constants/admin";
+import { pageTitle } from "@/constants/site";
 import HomeView from "../views/HomeView.vue";
+
+declare module "vue-router" {
+  interface RouteMeta {
+    /**
+     * The page's own title, shown in the tab before the site's name ("Paste · vb2007.hu"). Home has
+     * none, so its tab reads just the site's name. A child route merges its parent's meta, so each
+     * admin page sets its own.
+     */
+    title?: string;
+  }
+}
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -11,27 +23,31 @@ export const routes: RouteRecordRaw[] = [
   {
     path: "/shorten",
     name: "shorten",
+    meta: { title: "Shorten" },
     component: () => import("../views/ShortenView.vue")
   },
   {
     path: "/pastebin",
     name: "pastebin",
+    meta: { title: "Paste" },
     component: () => import("../views/PastebinView.vue")
   },
   {
     path: "/pastebin/:id",
     name: "paste",
+    meta: { title: "Paste" },
     component: () => import("../views/PasteView.vue"),
     props: true
   },
   {
     path: "/upload",
     name: "upload",
+    meta: { title: "Upload" },
     component: () => import("../views/UploadView.vue")
   },
   // The admin area: the gate stands in front of every child, and the overview lists the sections
   // in `ADMIN_SECTIONS` (`src/constants/admin.ts`, with `AdminPaths` and `AdminRoutes`). A new
-  // section is one more child here.
+  // section is one more child here, with its own `meta.title`.
   {
     path: AdminPaths.overview,
     component: () => import("../views/AdminAreaView.vue"),
@@ -39,44 +55,52 @@ export const routes: RouteRecordRaw[] = [
       {
         path: "",
         name: AdminRoutes.overview,
+        meta: { title: "Admin" },
         component: () => import("../views/AdminView.vue")
       },
       {
         path: "users",
         name: AdminRoutes.users,
+        meta: { title: "Users" },
         component: () => import("../views/AdminUsersView.vue")
       },
       // One account, opened from its row in the Users section; it isn't a section of its own.
       {
         path: "users/:id",
         name: AdminRoutes.user,
+        meta: { title: "User" },
         component: () => import("../views/AdminUserView.vue"),
         props: true
       },
       {
         path: "users/:id/uploads",
         name: AdminRoutes.userUploads,
+        meta: { title: "User uploads" },
         component: () => import("../views/AdminUserUploadsView.vue"),
         props: true
       },
       {
         path: "pastes",
         name: AdminRoutes.pastes,
+        meta: { title: "Pastes" },
         component: () => import("../views/AdminPastesView.vue")
       },
       {
         path: "short-links",
         name: AdminRoutes.shortLinks,
+        meta: { title: "Short links" },
         component: () => import("../views/AdminShortLinksView.vue")
       },
       {
         path: "uploads",
         name: AdminRoutes.uploads,
+        meta: { title: "Uploads" },
         component: () => import("../views/AdminUploadsView.vue")
       },
       {
         path: "system",
         name: AdminRoutes.system,
+        meta: { title: "System" },
         component: () => import("../views/AdminSystemView.vue")
       }
     ]
@@ -84,33 +108,39 @@ export const routes: RouteRecordRaw[] = [
   {
     path: "/r/:code",
     name: "redirect",
+    meta: { title: "Short link" },
     component: () => import("../views/RedirectView.vue"),
     props: true
   },
   {
     path: "/r/:code/preview",
     name: "redirect-preview",
+    meta: { title: "Short link preview" },
     component: () => import("../views/RedirectView.vue"),
     props: (route) => ({ code: route.params.code, preview: true })
   },
   {
     path: "/account",
     name: "account",
+    meta: { title: "Account" },
     component: () => import("../views/AccountView.vue")
   },
   {
     path: "/login",
     name: "login",
+    meta: { title: "Log in" },
     component: () => import("../views/LoginView.vue")
   },
   {
     path: "/register",
     name: "register",
+    meta: { title: "Register" },
     component: () => import("../views/RegisterView.vue")
   },
   {
     path: "/reset-password",
     name: "reset-password",
+    meta: { title: "Reset password" },
     component: () => import("../views/PasswordResetView.vue")
   },
   // The API redirects a browser that opens a route it doesn't have here, with `?url=` the path it
@@ -118,12 +148,14 @@ export const routes: RouteRecordRaw[] = [
   {
     path: "/apierror",
     name: "api-error",
+    meta: { title: "API route not found" },
     component: () => import("../views/ApiErrorView.vue")
   },
   // Any path no route above matches gets the not-found board (a catch-all ranks below them all).
   {
     path: "/:pathMatch(.*)*",
     name: "not-found",
+    meta: { title: "Page not found" },
     component: () => import("../views/NotFoundView.vue")
   }
 ];
@@ -131,6 +163,11 @@ export const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes
+});
+
+// Each page's tab and history entry carry its own title (`meta.title`).
+router.afterEach((to) => {
+  document.title = pageTitle(to.meta.title);
 });
 
 export default router;
