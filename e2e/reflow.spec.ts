@@ -63,6 +63,8 @@ const browserFontSize = async (page: Page, px: number) => {
 };
 
 const expectReflow = async (page: Page) => {
+  // Measure in the site's fonts, not a fallback that's about to be swapped out.
+  await page.locator("html").evaluate((html) => html.ownerDocument.fonts.ready);
   await expect.poll(() => sideways(page)).toBe(0);
   await expect.poll(() => cutOff(page)).toEqual([]);
 };
@@ -122,6 +124,13 @@ test("with a 32 px browser font size, the gate, a preview and an upload's link f
 
   for (const path of ["/", "/r/abc123/preview"]) {
     await page.goto(path);
+    await expect
+      .poll(() =>
+        page
+          .locator("html")
+          .evaluate((html) => html.ownerDocument.defaultView!.getComputedStyle(html).fontSize)
+      )
+      .toBe("32px");
     await expect(page.locator("main").getByRole("link").first()).toBeVisible();
     await expectReflow(page);
   }
@@ -137,9 +146,10 @@ test("with a 32 px browser font size, the gate, a preview and an upload's link f
 test("the GitHub key's icon stays beside its label, wrapped or not", async ({ page }) => {
   await page.goto("/login");
   const key = page.getByRole("link", { name: "Log in with GitHub" });
-  // From the icon's right edge to the first line's text, and how many lines the label takes.
+  // Where the icon sits against the label's first line, and how many lines the label takes.
   const layout = () =>
-    key.evaluate((el) => {
+    key.evaluate(async (el) => {
+      await el.ownerDocument.fonts.ready;
       const icon = el.querySelector("svg")!.getBoundingClientRect();
       // The label's text, from its first letter.
       const text = [...el.querySelector("span")!.childNodes].find((node) =>
@@ -149,15 +159,48 @@ test("the GitHub key's icon stays beside its label, wrapped or not", async ({ pa
       range.setStart(text, text.textContent!.search(/\S/));
       range.setEnd(text, text.textContent!.length);
       const rects = [...range.getClientRects()].filter((rect) => rect.width > 1);
+      const first = rects[0];
+      const gap = first.left - icon.right;
       return {
-        gap: Math.round(rects[0].left - icon.right),
+        // On the first line's row, a small gap before its letters.
+        besideFirstLine: icon.top < first.bottom && icon.bottom > first.top && gap > 2 && gap < 16,
         lines: new Set(rects.map((rect) => Math.round(rect.top))).size
       };
     });
 
   // One line from 330 px; at 320 the icon leads the first line, rather than waiting at the edge.
   await page.setViewportSize({ width: 330, height: 800 });
-  await expect.poll(layout).toEqual({ gap: 8, lines: 1 });
+  await expect.poll(layout).toEqual({ besideFirstLine: true, lines: 1 });
   await page.setViewportSize({ width: 320, height: 800 });
-  await expect.poll(layout).toEqual({ gap: 8, lines: 2 });
+  await expect.poll(layout).toEqual({ besideFirstLine: true, lines: 2 });
+});
+
+test("the uploads filter keeps to its own column, clear of the Sort select", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  api.hasUpload("holiday-photo-from-the-beach.png");
+  await page.goto("/upload");
+  const filter = page.getByRole("group", { name: "Show" });
+  await expect(filter).toBeVisible();
+  const sort = page.getByLabel("Sort");
+  // How far the strip passes its fieldset, and how far it runs under the Sort select.
+  const overlap = async () => {
+    const strip = (await filter.locator("> div").boundingBox())!;
+    const field = (await filter.boundingBox())!;
+    const select = (await sort.boundingBox())!;
+    const sameRow = strip.y < select.y + select.height && select.y < strip.y + strip.height;
+    return {
+      pastFieldset: Math.max(0, Math.round(strip.x + strip.width - (field.x + field.width))),
+      underSort: sameRow ? Math.max(0, Math.round(strip.x + strip.width - select.x)) : 0
+    };
+  };
+
+  for (const width of [576, 992, 1024, 1100]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(overlap, { message: `at ${width} px` })
+      .toEqual({ pastFieldset: 0, underSort: 0 });
+  }
 });

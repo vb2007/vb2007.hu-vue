@@ -111,8 +111,9 @@ const name = useId();
   font-size: 1.0625rem;
 }
 
-/* In a narrow container (a phone), the keys give up some side padding before the strip would
-   outgrow it. */
+/* In a narrow query container (the uploads filter's and the dropzone's, on a phone), the keys give
+   up some side padding before the strip would outgrow it. Without one, as in the paste viewer's
+   toolbar, they keep it. */
 @container (max-width: 16rem) {
   .segment__key {
     padding: 0 var(--sp-2);
