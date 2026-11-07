@@ -58,8 +58,8 @@ withDefaults(
   justify-content: center;
   gap: var(--sp-2);
   /* The label stays on one line wherever it fits: a key never shrinks below it in a flex row or a
-     grid track, unless its container is narrower (e.g. enlarged text in a narrow window), where the
-     key takes the container's width and the label wraps. */
+     grid track. Only in a narrower container does the key take the container's width, and the label
+     wraps, within a word too if one alone is wider (a long host). */
   min-width: fit-content;
   max-width: 100%;
   min-height: 2.875rem;
@@ -77,6 +77,7 @@ withDefaults(
   text-transform: uppercase;
   text-decoration: none;
   text-wrap: balance;
+  overflow-wrap: anywhere;
   cursor: pointer;
   box-shadow: 0 var(--lift) 0 var(--btn-depth);
   transform: translateY(0);
@@ -90,6 +91,7 @@ withDefaults(
   min-height: 2.25rem;
   padding: var(--sp-1) var(--sp-4);
   font-size: 1.0625rem;
+  line-height: 1.2;
   --lift: 0.1875rem;
 }
 
@@ -142,9 +144,20 @@ withDefaults(
 }
 
 .btn__label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
+  display: inline;
+}
+
+/* The icon is part of the text, so it stays with the first line when the label wraps. Its margin,
+   less the space after it (about 0.19em in the label face, plus the letter spacing), leaves the 0.5rem
+   gap; the negative block margins keep it from growing the line, and the nudge centres it on the
+   capitals' line. */
+.btn__label > :deep(svg) {
+  display: inline-block;
+  position: relative;
+  top: -0.13em;
+  margin-block: -1em;
+  margin-right: calc(var(--sp-2) - 0.23em);
+  vertical-align: middle;
 }
 
 .btn--loading {

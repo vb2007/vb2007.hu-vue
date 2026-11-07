@@ -111,6 +111,14 @@ const name = useId();
   font-size: 1.0625rem;
 }
 
+/* In a narrow container (a phone), the keys give up some side padding before the strip would
+   outgrow it. */
+@container (max-width: 16rem) {
+  .segment__key {
+    padding: 0 var(--sp-2);
+  }
+}
+
 .segment:first-child .segment__key {
   border-radius: calc(var(--radius-sm) - var(--edge)) 0 0 calc(var(--radius-sm) - var(--edge));
 }
