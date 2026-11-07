@@ -118,8 +118,13 @@ watch(isLoggedIn, (newVal) => {
           />
           <RouterLink class="forgot" to="/reset-password">Forgot password?</RouterLink>
         </div>
-        <!-- The lockout's message says its wait in words already, so the hold adds no spoken one. -->
-        <StatusMessage v-if="failure" :id="failureId" tone="error">{{ failure }}</StatusMessage>
+        <StatusMessage
+          v-if="failure"
+          :id="failureId"
+          tone="error"
+          :spoken="hold.spokenFor(heldId)"
+          >{{ failure }}</StatusMessage
+        >
         <BaseButton
           type="submit"
           block

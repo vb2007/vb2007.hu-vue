@@ -1,23 +1,18 @@
 # vb2007.hu-vue
 
-This template should help get you started developing with Vue 3 in Vite.
+The frontend of [vb2007.hu](https://vb2007.hu), the personal site and tools hub of one developer: a URL shortener, a pastebin, file uploads and an admin area for the site's owner. It's a Vue 3 + Vite + TypeScript single-page app (vue-router, history mode).
 
-## Recommended IDE Setup
+There is no backend in this repo. The site calls the separate API, [vb2007/vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api), at `VITE_API_BASE_URL`. Locally that value comes from `.env` (copy it from `.env.example`); without it the build has no API address, and every request misses the API. The Docker stack and the releases default to `https://api.vb2007.hu`. Vite bakes the URL into the bundle at build time, so changing it needs a new build.
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
+- [`PRODUCT.md`](PRODUCT.md): what the site is and isn't, who uses it and what it ships today.
+- [`DESIGN.md`](DESIGN.md): the visual rules (colours, type, layout).
+- [`CLAUDE.md`](CLAUDE.md): the workflow for issues, branches and PRs, and the rules for calling the API.
 
 ## Project Setup
 
 ```sh
 npm install
+cp .env.example .env   # sets VITE_API_BASE_URL, which the build bakes in
 ```
 
 ### Compile and Hot-Reload for Development
@@ -45,6 +40,8 @@ npm run test:coverage   # single run with the coverage gate
 npx playwright install chromium   # once, unless CHROMIUM_PATH points at a local Chromium
 npm run test:e2e                  # builds the app, serves it with vite preview, runs e2e/
 ```
+
+Locally (without `CI`), Playwright reuses whatever server already answers on its port (`reuseExistingServer`), which may be another checkout's build. When something else may be serving 4173, pick a free port with `E2E_PORT`, e.g. `E2E_PORT=4321 npm run test:e2e`.
 
 ### Lint with [ESLint](https://eslint.org/)
 
@@ -102,7 +99,7 @@ git pull && docker compose up -d --build   # deploy an update
 docker compose down                # stop and remove the containers
 ```
 
-`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. `VITE_API_BASE_URL` defaults to `https://api.vb2007.hu`; Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
+`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. In the stack `VITE_API_BASE_URL` defaults to `https://api.vb2007.hu` (`compose.yaml`); Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
 
 ## Releases & deployment
 
@@ -148,11 +145,36 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
 - **Coverage must stay at 100%** (lines, branches, functions and statements). Every file under `src/` counts, even one no test imports yet, so new code without tests fails CI.
 - **Unit and component tests** live next to the code in `__tests__/` folders (`src/**/__tests__/*.spec.ts`) and run in jsdom.
-  - `src/__tests__/setup.ts` stubs `matchMedia` and the clipboard, and resets the shared auth state after each test.
-  - `src/__tests__/helpers/` has `mockFetch()`/`jsonResponse()` for API calls and `mountWithRouter()` for components that use router links.
+  - `src/__tests__/setup.ts` stubs `matchMedia` and the clipboard. After each test it clears `localStorage`, resets the shared auth state (`authState.ts`) and restores mocks, globals and real timers.
+  - `src/__tests__/helpers/` holds the shared helpers:
+
+    | File | Exports |
+    |---|---|
+    | `fetch.ts` | `mockFetch()` replaces `fetch`, `jsonResponse(status, body)` builds a response, `deferResponse(fetchMock)` holds one until the test answers it |
+    | `xhr.ts` | `mockXhr()` and `FakeXhr`, for the upload's XHR (`progress`, `respond`, `fail`) |
+    | `mount.ts` | `mountWithRouter()` for components that use router links, `createTestRouter()` |
+    | `host.ts` | `mountComposable()` runs a composable inside a tiny component |
+    | `uploads.ts` | `anUpload()`, `someUsage()`, `aFile()` |
+    | `admin.ts` | `someStats()`, `aMailBudget()`, `anAdminUser()`, `anAdminUserDetails()` |
+
+  - Queue a response for every request the code under test makes (`mockFetch().mockResolvedValueOnce(jsonResponse(...))`): an unqueued one fails as an unhandled rejection.
 - **E2E tests** live in `e2e/` and run against the production build in desktop and mobile Chromium.
-  - The `api` fixture in `e2e/fixtures.ts` answers every API request. Set up state with `api.loggedInAs(...)`, `api.shortenReturns(...)`, `api.hasShortLink(...)` or `api.hasPaste(...)` before navigating. Short links shortened in a test resolve through the mocked lookup endpoint and API redirect. Pastes live in an in-memory store (`api.pastes`) that the create, list, view and delete endpoints share.
+  - The `api` fixture (`MockApi` in `e2e/fixtures.ts`) answers every API request. Set up state before navigating, e.g.:
+
+    | Area | Setup |
+    |---|---|
+    | Session | `api.loggedInAs(email, username, { superuser, githubLinked, password, emailVerified })`, `api.loggedOut()`, `api.replacesSession()` |
+    | Short links | `api.shortenReturns(code)`, `api.hasShortLink(...)` |
+    | Pastes | `api.hasPaste(content, username, language)` |
+    | Uploads | `api.hasUpload(name, { fileSize, visibility, owner })`, `api.quotaIs(bytes)` |
+    | Admin | `api.hasUser(username, {...})`, `api.hasPendingRegistration(email)`, `api.countsRateLimit(name, key)`, `api.sentMailToday(count)` |
+    | Account and mail | `api.hasPendingEmail(email)`, `api.mailsResetLink()`, `api.failsNextMail()` |
+    | Time | `api.clockRunsFor(ms)` moves the mock's clock (codes, cooldowns, signed links) |
+    | Failures and limits | `api.limitsMailSends()`, `api.locksLogins(retryAfter)`, `api.statsFail()`, and the other fault and limit switches (see the `MockApi` doc comment in `e2e/fixtures.ts`) |
+
+    The endpoints share in-memory stores that tests can also read or change directly: `api.shortLinks`, `api.pastes`, `api.uploads` and `api.users`. Short links shortened in a test resolve through the mocked lookup endpoint and API redirect.
   - A request to an endpoint the fixture doesn't know fails the test, so add a case to `MockApi.respond` when the app starts calling a new endpoint.
+  - `e2e/fixtures.ts` is an independent double of the API, matched by path: don't import `Endpoints` there, or the e2e suite would check the code against itself.
 
 ## CI
 
