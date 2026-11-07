@@ -1,6 +1,9 @@
 import { expect, MOCK_EMAIL, MOCK_PASSWORD, PASSWORD_RESET_SENT as SENT, test } from "./fixtures";
 
-/** The API's message once its minute is over: the code went out, but not in the last minute. */
+/**
+ * The site's own text once the API's minute is over (`Messages.Auth.resetCodeSent`): a code went
+ * out, but not in the last minute.
+ */
 const CODE_WENT_OUT =
   "If an account uses this address, a password reset code was sent to it: use the latest one.";
 

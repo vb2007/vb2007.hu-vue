@@ -317,14 +317,6 @@ describe("PasswordResetForm", () => {
     );
   });
 
-  it("adds no message when the countdown ends on the e-mail step", async () => {
-    const { wrapper } = await mountOnCodeStep();
-    await changeButton(wrapper).trigger("click");
-    await waitOutCountdown();
-
-    expect(wrapper.find('[role="status"]').exists()).toBe(false);
-  });
-
   it("goes back to change the address, keeping it and its countdown", async () => {
     const { wrapper } = await mountOnCodeStep();
     await fillCodeStep(wrapper);
@@ -392,6 +384,12 @@ describe("PasswordResetForm", () => {
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+
+    // This page didn't see the API's answer, so the countdown's end adds no message.
+    vi.advanceTimersByTime(40_000);
+    await flushPromises();
+    expect(resendButton(wrapper).text()).toBe("Send again");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("goes back to the code without a request when the address's code is still recent after a reload", async () => {
@@ -516,6 +514,30 @@ describe("PasswordResetForm", () => {
 
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+  });
+
+  it("doesn't say a code went out to an address whose code the page didn't see sent", async () => {
+    // A code went to other@example.com; me@example.com's code step was entered, not asked for.
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
+    await sendTo(wrapper, "other@example.com");
+    await changeButton(wrapper).trigger("click");
+    await emailInput(wrapper).setValue("me@example.com");
+    await enterCodeButton(wrapper).trigger("click");
+    await flushPromises();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
+    await resendButton(wrapper).trigger("click");
+    await flushPromises();
+
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(requestPasswordReset).toHaveBeenCalledTimes(2);
+    expect(wrapper.find(".sent-to__address").text()).toBe("me@example.com");
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("only says a code went out, within the page during the mail limit's wait", async () => {

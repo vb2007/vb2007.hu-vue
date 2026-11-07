@@ -185,9 +185,11 @@ const focusFirstField = async () => {
 
 /**
  * Holds the resend key back for `address`; the wait outlives a reload of the page. `reason` is
- * the mail limit's message when that's what it waits out, kept with it to show again.
+ * the mail limit's message when that's what it waits out, kept with it to show again. The API's
+ * message for another address doesn't carry over to this one.
  */
 const waitBeforeResend = (address: string, seconds: number, reason = "") => {
+  if (normalizeEmail(address) !== normalizeEmail(lastSentTo.value)) lastMessage.value = "";
   lastSentTo.value = address;
   resend.start(seconds, normalizeEmail(address), reason);
 };
@@ -245,8 +247,8 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
       return null;
     }
 
-    lastMessage.value = answer.message!;
     waitBeforeResend(address, RESEND_SECONDS);
+    lastMessage.value = answer.message!;
     return answer.message!;
   } finally {
     isSending.value = false;
