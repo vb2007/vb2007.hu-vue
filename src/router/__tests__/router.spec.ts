@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RouteRecordRaw } from "vue-router";
+import { isNavigationFailure, NavigationFailureType, type RouteRecordRaw } from "vue-router";
 import router, { routes } from "@/router";
 import { ADMIN_SECTIONS, AdminPaths } from "@/constants/admin";
 
@@ -110,6 +110,81 @@ describe("router", () => {
     ["/apierror?url=%2Ffoo", "api-error"]
   ])("still resolves %s to its own route, not the catch-all", (path, name) => {
     expect(router.resolve(path).name).toBe(name);
+  });
+
+  it.each([
+    ["/", "vb2007.hu"],
+    ["/shorten", "Shorten · vb2007.hu"],
+    ["/pastebin", "Paste · vb2007.hu"],
+    ["/pastebin/abc123", "Paste · vb2007.hu"],
+    ["/upload", "Upload · vb2007.hu"],
+    ["/admin", "Admin · vb2007.hu"],
+    ["/admin/users", "Users · vb2007.hu"],
+    ["/admin/users/u9", "User · vb2007.hu"],
+    ["/admin/users/u9/uploads", "User uploads · vb2007.hu"],
+    ["/admin/pastes", "Pastes · vb2007.hu"],
+    ["/admin/short-links", "Short links · vb2007.hu"],
+    ["/admin/uploads", "Uploads · vb2007.hu"],
+    ["/admin/system", "System · vb2007.hu"],
+    ["/r/abc123", "Short link · vb2007.hu"],
+    ["/r/abc123/preview", "Short link preview · vb2007.hu"],
+    ["/account", "Account · vb2007.hu"],
+    ["/login", "Log in · vb2007.hu"],
+    ["/register", "Register · vb2007.hu"],
+    ["/reset-password", "Reset password · vb2007.hu"],
+    ["/apierror?url=%2Ffoo", "API route not found · vb2007.hu"],
+    ["/no/such/page", "Page not found · vb2007.hu"]
+  ])("titles the tab of %s %j", async (path, title) => {
+    await router.push(path);
+
+    expect(document.title).toBe(title);
+  });
+
+  it("gives every named route but home a title of its own", () => {
+    const untitled = flatten(routes)
+      .filter(([, route]) => route.name && route.name !== "home" && !route.meta?.title)
+      .map(([path]) => path);
+
+    expect(untitled).toEqual([]);
+  });
+
+  it("leaves the title alone when a navigation is aborted", async () => {
+    await router.push("/shorten");
+    const removeGuard = router.beforeEach(() => false);
+
+    await router.push("/login");
+    removeGuard();
+
+    expect(router.currentRoute.value.path).toBe("/shorten");
+    expect(document.title).toBe("Shorten · vb2007.hu");
+  });
+
+  it("keeps the title of the page shown when a slow navigation is overtaken", async () => {
+    await router.push("/");
+    // A page whose chunk is still loading when the visitor clicks on to another one.
+    let loadChunk!: (chunk: { default: object }) => void;
+    let chunkRequested!: () => void;
+    const requested = new Promise<void>((resolve) => (chunkRequested = resolve));
+    const chunk = new Promise<{ default: object }>((resolve) => (loadChunk = resolve));
+    const removeRoute = router.addRoute({
+      path: "/slow",
+      meta: { title: "Slow" },
+      component: () => {
+        chunkRequested();
+        return chunk;
+      }
+    });
+
+    const stale = router.push("/slow");
+    await requested;
+    await router.push("/register");
+    loadChunk({ default: {} });
+    const failure = await stale;
+    removeRoute();
+
+    expect(isNavigationFailure(failure, NavigationFailureType.cancelled)).toBe(true);
+    expect(router.currentRoute.value.path).toBe("/register");
+    expect(document.title).toBe("Register · vb2007.hu");
   });
 
   it.each(flatten(routes))("loads the component for %s", async (_path, route) => {

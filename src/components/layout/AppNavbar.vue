@@ -9,6 +9,7 @@ import {
 } from "@/scripts/authentication/authState";
 import { logout, restoreSession } from "@/scripts/authentication/user";
 import { AdminPaths, AdminRoutes } from "@/constants/admin";
+import { SITE_NAME } from "@/constants/site";
 import { TOOLS_LINE } from "@/constants/stops";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -55,9 +56,9 @@ watch(() => route.fullPath, closeMenu);
 <template>
   <header class="bar">
     <div class="bar__inner">
-      <RouterLink to="/" class="bar__brand" aria-label="vb2007.hu, home">
+      <RouterLink to="/" class="bar__brand" :aria-label="`${SITE_NAME}, home`">
         <BrandMark />
-        <span class="bar__name">vb2007.hu</span>
+        <span class="bar__name">{{ SITE_NAME }}</span>
       </RouterLink>
 
       <button
