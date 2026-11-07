@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
-import { AdminPaths, AdminRoutes } from "@/constants/admin";
+import { ADMIN_SECTIONS, AdminPaths, AdminRoutes } from "@/constants/admin";
 import { pageTitle } from "@/constants/site";
+import { TOOLS_LINE } from "@/constants/stops";
 import { setNoindex } from "@/scripts/utility/robotsMeta";
 import HomeView from "../views/HomeView.vue";
 
@@ -20,6 +21,11 @@ declare module "vue-router" {
   }
 }
 
+// A tool's or an admin section's page is titled with the label its stop already has, so the tab, the
+// navbar and the overview read the same.
+const toolLabel = (id: string) => TOOLS_LINE.stops.find((stop) => stop.id === id)!.label;
+const sectionLabel = (id: string) => ADMIN_SECTIONS.find((section) => section.id === id)!.label;
+
 export const routes: RouteRecordRaw[] = [
   {
     path: "/",
@@ -29,26 +35,26 @@ export const routes: RouteRecordRaw[] = [
   {
     path: "/shorten",
     name: "shorten",
-    meta: { title: "Shorten" },
+    meta: { title: toolLabel("shorten") },
     component: () => import("../views/ShortenView.vue")
   },
   {
     path: "/pastebin",
     name: "pastebin",
-    meta: { title: "Paste" },
+    meta: { title: toolLabel("paste") },
     component: () => import("../views/PastebinView.vue")
   },
   {
     path: "/pastebin/:id",
     name: "paste",
-    meta: { title: "Paste" },
+    meta: { title: toolLabel("paste") },
     component: () => import("../views/PasteView.vue"),
     props: true
   },
   {
     path: "/upload",
     name: "upload",
-    meta: { title: "Upload" },
+    meta: { title: toolLabel("upload") },
     component: () => import("../views/UploadView.vue")
   },
   // The admin area: the gate stands in front of every child, and the overview lists the sections
@@ -67,7 +73,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: "users",
         name: AdminRoutes.users,
-        meta: { title: "Users" },
+        meta: { title: sectionLabel("users") },
         component: () => import("../views/AdminUsersView.vue")
       },
       // One account, opened from its row in the Users section; it isn't a section of its own.
@@ -88,25 +94,25 @@ export const routes: RouteRecordRaw[] = [
       {
         path: "pastes",
         name: AdminRoutes.pastes,
-        meta: { title: "Pastes" },
+        meta: { title: sectionLabel("pastes") },
         component: () => import("../views/AdminPastesView.vue")
       },
       {
         path: "short-links",
         name: AdminRoutes.shortLinks,
-        meta: { title: "Short links" },
+        meta: { title: sectionLabel("short-links") },
         component: () => import("../views/AdminShortLinksView.vue")
       },
       {
         path: "uploads",
         name: AdminRoutes.uploads,
-        meta: { title: "Uploads" },
+        meta: { title: sectionLabel("uploads") },
         component: () => import("../views/AdminUploadsView.vue")
       },
       {
         path: "system",
         name: AdminRoutes.system,
-        meta: { title: "System" },
+        meta: { title: sectionLabel("system") },
         component: () => import("../views/AdminSystemView.vue")
       }
     ]
@@ -172,8 +178,11 @@ const router = createRouter({
 });
 
 // Each page's tab and history entry carry its own title (`meta.title`), and only the pages marked
-// `meta.noindex` carry the robots tag.
-router.afterEach((to) => {
+// `meta.noindex` carry the robots tag. A navigation that failed (cancelled by a newer one, aborted or
+// duplicated) leaves both alone, so a slow page overtaken by a faster one can't put its own title or
+// tag over the page shown.
+router.afterEach((to, _from, failure) => {
+  if (failure) return;
   document.title = pageTitle(to.meta.title);
   setNoindex(to.meta.noindex === true);
 });

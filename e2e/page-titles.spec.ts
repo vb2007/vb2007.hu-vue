@@ -24,7 +24,6 @@ test.describe("page titles", () => {
     await footer.getByRole("link", { name: "Register" }).click();
     await expect(page).toHaveURL("/register");
     await expect(page).toHaveTitle("Register · vb2007.hu");
-    expect(await page.title()).toBe("Register · vb2007.hu");
 
     await page.goBack();
     await expect(page).toHaveURL("/");

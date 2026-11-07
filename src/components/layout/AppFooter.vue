@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+import { SITE_NAME } from "@/constants/site";
 import { TOOLS_LINE } from "@/constants/stops";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { getCurrentYear } from "@/scripts/utility/dateUtil";
@@ -14,7 +15,7 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
   <footer class="foot">
     <div class="foot__inner">
       <div class="foot__board">
-        <RouterLink to="/" class="foot__name">vb2007.hu</RouterLink>
+        <RouterLink to="/" class="foot__name">{{ SITE_NAME }}</RouterLink>
         <p class="foot__meta">Built by VB2007 &middot; 2023 &ndash; {{ currentYear }}</p>
       </div>
       <nav class="foot__links" aria-label="Footer">
