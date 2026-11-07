@@ -130,6 +130,12 @@ const USERNAME_CHECKS_LIMITED: MockResponse = {
   body: { error: "Too many username checks requested: try again later.", retryAfter: 42 }
 };
 
+/** The API's `Responses.notLoggedIn`: what `isAuthenticated` and its controllers tell a guest. */
+const NOT_LOGGED_IN = {
+  status: 403,
+  body: { error: "You must be logged in to perform this action." }
+} satisfies MockResponse;
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -766,7 +772,7 @@ export class MockApi {
 
   /** What the API answers a session it has replaced: logged out. */
   private staleSession(): MockResponse {
-    return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    return NOT_LOGGED_IN;
   }
 
   private respond(
@@ -887,7 +893,7 @@ export class MockApi {
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
               }
             }
-          : { status: 403, body: { error: "You must be logged in to perform this action." } };
+          : NOT_LOGGED_IN;
       case "POST /auth/login":
         return this.login(body?.email, body?.password);
       case "DELETE /user":
@@ -997,7 +1003,7 @@ export class MockApi {
       case "GET /shortenUrls":
         return this.listShortLinks(query);
       case "POST /paste":
-        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+        if (!this.user) return NOT_LOGGED_IN;
         return {
           status: 201,
           body: {
@@ -1066,7 +1072,7 @@ export class MockApi {
    */
   private guardGithubLink(): MockResponse | undefined {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1145,7 +1151,7 @@ export class MockApi {
    */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1306,7 +1312,7 @@ export class MockApi {
    */
   private confirmEmail(code?: string) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
     if (!this.claims(this.emailChange) || normalizeCode(code) !== MOCK_EMAIL_CODE) {
@@ -1331,7 +1337,7 @@ export class MockApi {
 
   private changePassword(currentPassword?: string, newPassword?: string) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1367,7 +1373,7 @@ export class MockApi {
 
   private setPassword(password: string | undefined) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!password) return { status: 400, body: { error: "You must provide a password." } };
     const length = [...password].length;
@@ -1399,7 +1405,7 @@ export class MockApi {
 
   private deleteAccount(body: { password?: string; username?: string } | null) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1541,7 +1547,7 @@ export class MockApi {
       };
     }
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
     if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
@@ -1563,7 +1569,7 @@ export class MockApi {
   }
 
   private usage() {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const categoryOf = (upload: MockUpload) =>
       ALLOWED_TYPES.find((type) => type.mimeType === upload.mimeType)!.category;
     return {
@@ -1587,7 +1593,7 @@ export class MockApi {
   }
 
   private receiveUpload(part: ReturnType<typeof parseMultipart>) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
@@ -1610,7 +1616,7 @@ export class MockApi {
     id: string,
     body: { originalFileName?: string; visibility?: MockUpload["visibility"] } | null
   ) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const index = this.uploads.findIndex((upload) => upload.id === id);
     if (index === -1) return { status: 404, body: { error: "There is no such upload." } };
     if (method === "GET") {
@@ -1641,7 +1647,7 @@ export class MockApi {
   /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
   private refuseNonSuperuser(): MockResponse | undefined {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!this.user.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
@@ -1758,7 +1764,7 @@ export class MockApi {
 
   /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. */
   private listUploads(query: URLSearchParams, owner: string | undefined | null) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const everyone = owner === null;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
@@ -2143,7 +2149,7 @@ export class MockApi {
    */
   private shorten(url: unknown): MockResponse {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!isValidUri(url)) {
       return { status: 400, body: { error: "The URI/URL you've provided isn't valid." } };
@@ -2180,7 +2186,7 @@ export class MockApi {
    */
   private listShortLinks(query: URLSearchParams): MockResponse {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     const isIntegerInRange = (value: string, min: number, max: number) =>
       /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
@@ -2305,7 +2311,7 @@ export class MockApi {
   /** `DELETE /shortenUrl/:shortenedUrl` (vb2007/vb2007.hu-api#278): the owner's own link, or any for the superuser. */
   private deleteShortLink(code: string): MockResponse {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     const link = this.shortLinks.get(code);
     if (!link) return { status: 404, body: { error: "The shortened URL cannot be found." } };
@@ -2322,7 +2328,7 @@ export class MockApi {
   /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
   private listPastes(username: string, query: URLSearchParams) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     const isIntegerInRange = (value: string, min: number, max: number) =>
       /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
