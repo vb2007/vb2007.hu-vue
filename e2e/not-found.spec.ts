@@ -21,6 +21,21 @@ test("a bidi override in the path stays escaped and can't reorder the sentence",
   await expect(path).toHaveCSS("unicode-bidi", "isolate");
 });
 
+test("the not-found page has its own title and stays out of search results", async ({ page }) => {
+  await page.goto("/no/such/page");
+  const robots = page.locator('head meta[name="robots"]');
+
+  await expect(page).toHaveTitle("Page not found · vb2007.hu");
+  await expect(robots).toHaveCount(1);
+  await expect(robots).toHaveAttribute("content", "noindex");
+
+  // Back to home is a router link, so the tag goes in the router's afterEach, not with a page load.
+  await page.getByRole("link", { name: "Back to home" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page).toHaveTitle("vb2007.hu");
+  await expect(robots).toHaveCount(0);
+});
+
 test("the not-found board leads to the open tools only", async ({ page }) => {
   await page.goto("/no/such/page");
   const tools = page.getByRole("region", { name: "Tools" });

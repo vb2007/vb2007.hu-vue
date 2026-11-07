@@ -153,6 +153,33 @@ describe("router", () => {
     expect(router.resolve(AdminPaths.overview).meta.title).toBe("Admin");
   });
 
+  it.each([
+    ["the not-found page", "/no/such/page"],
+    ["the API's unknown-route page", "/apierror?url=%2Ffoo"]
+  ])("keeps %s out of search results until the visitor moves on", async (_page, path) => {
+    const noindexTags = () => document.head.querySelectorAll('meta[name="robots"]');
+
+    await router.push(path);
+    expect(noindexTags()).toHaveLength(1);
+    expect(noindexTags()[0].getAttribute("content")).toBe("noindex");
+
+    // Another noindex page doesn't add a second tag.
+    await router.push("/another/missing/page");
+    expect(noindexTags()).toHaveLength(1);
+
+    await router.push("/");
+    expect(noindexTags()).toHaveLength(0);
+    expect(document.title).toBe("vb2007.hu");
+  });
+
+  it("marks only the not-found pages noindex", () => {
+    const noindex = flatten(routes)
+      .filter(([, route]) => route.meta?.noindex)
+      .map(([, route]) => route.name);
+
+    expect(noindex).toEqual(["api-error", "not-found"]);
+  });
+
   it.each(flatten(routes))("loads the component for %s", async (_path, route) => {
     const component =
       "component" in route && typeof route.component === "function"
