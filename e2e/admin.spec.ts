@@ -7,6 +7,8 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
   await page.goto("/admin/users");
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
+  await page.goto("/admin/system");
+  await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
 
   api.loggedInAs();
   for (const path of [
@@ -15,7 +17,8 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
     `/admin/users/${"b".repeat(24)}`,
     "/admin/pastes",
     "/admin/short-links",
-    "/admin/uploads"
+    "/admin/uploads",
+    "/admin/system"
   ]) {
     await page.goto(path);
     await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
@@ -780,4 +783,93 @@ test("the site-wide list renews its private links once they run out", async ({ p
   await expect(open).not.toHaveAttribute("href", first!);
   await expect(open).toHaveAttribute("href", /\?expires=\d+&sig=/);
   await expect(page.getByRole("link", { name: "anna's account" })).toBeVisible();
+});
+
+test("the superuser finds and removes a pending registration", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasPendingRegistration("old@example.com", { expiresInMinutes: -30 });
+  api.hasPendingRegistration("anna@example.com");
+  api.hasPendingRegistration("milo@example.com", { expiresInMinutes: 60 });
+
+  await page.goto("/admin");
+  await page.getByRole("link", { name: /^System/ }).click();
+
+  await expect(page).toHaveURL(/\/admin\/system$/);
+  await expect(page.getByRole("heading", { level: 1, name: "System" })).toBeVisible();
+  await expect(page.locator(".bar__admin")).toHaveAttribute("aria-current", "true");
+  await expect(page.getByText("3 pending registrations")).toBeVisible();
+  // The newest sign-ups first, and the one past its time marked.
+  const rows = page.locator(".row");
+  await expect(rows.locator(".row__email")).toHaveText([
+    "anna@example.com",
+    "milo@example.com",
+    "old@example.com"
+  ]);
+  await expect(rows.nth(1)).toContainText("Expires");
+  await expect(rows.nth(2).getByText("Expired")).toBeVisible();
+
+  await page.getByLabel("Search by e-mail").fill("mil");
+  await expect(page.getByText("1 pending registration found")).toBeVisible();
+  await page.getByLabel("Search by e-mail").fill("nobody");
+  await expect(page.getByText("No address matches that search.")).toBeVisible();
+  await page.getByRole("button", { name: "Show all" }).click();
+  await expect(page.getByText("3 pending registrations")).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete anna@example.com" }).click();
+  await page.getByRole("button", { name: "Confirm delete anna@example.com" }).click();
+  await expect(page.getByText("2 pending registrations")).toBeVisible();
+  await expect(rows.locator(".row__email")).toHaveText(["milo@example.com", "old@example.com"]);
+  expect(api.adminPendingRegistrations.map((item) => item.email)).toEqual([
+    "old@example.com",
+    "milo@example.com"
+  ]);
+});
+
+test("the superuser lifts a log-in lockout with the e-mail and the IP", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.countsRateLimit("loginPerAccount", { email: "anna@example.com", ip: "203.0.113.7" });
+  api.countsRateLimit("loginPerIp", { ip: "203.0.113.7" });
+  api.countsRateLimit("codeChecksPerEmail", { email: "anna@example.com" });
+
+  await page.goto("/admin/system");
+  await expect(page.getByText("so lifting it needs both")).toBeVisible();
+  const email = page.getByLabel("E-mail", { exact: true });
+  const ip = page.getByLabel("IP address");
+  const clear = page.getByRole("button", { name: "Clear rate limits" });
+
+  // Blocked until the form passes, but pressing it shows why.
+  await expect(clear).toHaveAttribute("aria-disabled", "true");
+  await clear.click({ force: true });
+  await expect(page.getByText("Enter an e-mail address, an IP or both.")).toBeVisible();
+  await expect(email).toBeFocused();
+
+  // The e-mail alone leaves the lockout of the address from one IP.
+  await email.fill("Anna@example.com");
+  await clear.click();
+  const notice = page.locator(".status--success");
+  await expect(notice).toContainText("Cleared for Anna@example.com:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Wrong sign-up and password reset codes for the address."
+  ]);
+
+  await ip.fill("203.0.113");
+  await clear.click({ force: true });
+  await expect(page.getByText("That isn't an IPv4 or IPv6 address.")).toBeVisible();
+  await expect(ip).toBeFocused();
+
+  await ip.fill("203.0.113.7");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for Anna@example.com and 203.0.113.7:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Failed log-ins from the IP.",
+    "Failed log-ins to the address from the IP."
+  ]);
+
+  await clear.click();
+  await expect(
+    page.getByText(
+      "Nothing was counting for Anna@example.com and 203.0.113.7, so there was nothing to clear."
+    )
+  ).toBeVisible();
+  await expect(notice).toHaveCount(0);
 });

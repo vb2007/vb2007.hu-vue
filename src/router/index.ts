@@ -73,6 +73,11 @@ export const routes: RouteRecordRaw[] = [
         path: "uploads",
         name: AdminRoutes.uploads,
         component: () => import("../views/AdminUploadsView.vue")
+      },
+      {
+        path: "system",
+        name: AdminRoutes.system,
+        component: () => import("../views/AdminSystemView.vue")
       }
     ]
   },

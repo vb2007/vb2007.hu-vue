@@ -9,7 +9,11 @@ import type {
   AdminUserListQuery,
   AdminUserResponse,
   AdminUsersResponse,
+  ClearRateLimitsBody,
+  ClearRateLimitsResponse,
   LogoutUserResponse,
+  PendingRegistrationListQuery,
+  PendingRegistrationsResponse,
   RenameUserBody,
   RenameUserResponse,
   SetSuspensionBody,
@@ -380,6 +384,28 @@ export class Endpoints {
     static readonly uploads = defineEndpoint<undefined, AdminUploadsResponse, UploadListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/uploads",
+      credentials: true
+    });
+    static readonly pendingRegistrations = defineEndpoint<
+      undefined,
+      PendingRegistrationsResponse,
+      PendingRegistrationListQuery
+    >()({
+      method: HttpMethod.Get,
+      path: "/admin/pending-registrations",
+      credentials: true
+    });
+    static readonly removePendingRegistration = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/pending-registrations/:id",
+      credentials: true
+    });
+    static readonly clearRateLimits = defineEndpoint<
+      ClearRateLimitsBody,
+      ClearRateLimitsResponse
+    >()({
+      method: HttpMethod.Delete,
+      path: "/admin/rate-limits",
       credentials: true
     });
   };

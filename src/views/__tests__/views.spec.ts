@@ -15,6 +15,7 @@ import AdminUsersView from "@/views/AdminUsersView.vue";
 import AdminPastesView from "@/views/AdminPastesView.vue";
 import AdminShortLinksView from "@/views/AdminShortLinksView.vue";
 import AdminShortLinkList from "@/components/features/admin/AdminShortLinkList.vue";
+import AdminSystemView from "@/views/AdminSystemView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import AdminUploadsView from "@/views/AdminUploadsView.vue";
@@ -324,6 +325,26 @@ describe("views", () => {
     expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
     expect(wrapper.findComponent(AdminShortLinkList).props("as")).toBe("h1");
     expect(wrapper.find("h1").text()).toBe("Short links");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+  });
+
+  it("AdminAreaView shows the superuser the system tools under one heading", async () => {
+    mockFetch().mockResolvedValue(
+      jsonResponse(200, {
+        pendingRegistrations: [],
+        pagination: { limit: 20, page: 1, total: 0, pages: 0 }
+      })
+    );
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/system");
+
+    expect(wrapper.findComponent(AdminSystemView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("wide");
+    expect(wrapper.find("h1").text()).toBe("System");
+    expect(wrapper.findAll("h2").map((title) => title.text())).toEqual([
+      "Pending registrations",
+      "Rate limits"
+    ]);
     expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
   });
 

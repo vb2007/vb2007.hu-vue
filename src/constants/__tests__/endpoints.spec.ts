@@ -53,7 +53,10 @@ describe("Endpoints", () => {
     [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true],
     [Endpoints.Admin.pastes, "GET", "/admin/pastes", true],
     [Endpoints.Admin.shortUrls, "GET", "/admin/short-urls", true],
-    [Endpoints.Admin.uploads, "GET", "/admin/uploads", true]
+    [Endpoints.Admin.uploads, "GET", "/admin/uploads", true],
+    [Endpoints.Admin.pendingRegistrations, "GET", "/admin/pending-registrations", true],
+    [Endpoints.Admin.removePendingRegistration, "DELETE", "/admin/pending-registrations/:id", true],
+    [Endpoints.Admin.clearRateLimits, "DELETE", "/admin/rate-limits", true]
   ])("declares %o", (endpoint, method, path, credentials) => {
     expect(endpoint).toMatchObject({ method, path, credentials });
   });

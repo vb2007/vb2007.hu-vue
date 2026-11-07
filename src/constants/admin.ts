@@ -6,7 +6,8 @@ export const AdminPaths = {
   users: "/admin/users",
   pastes: "/admin/pastes",
   shortLinks: "/admin/short-links",
-  uploads: "/admin/uploads"
+  uploads: "/admin/uploads",
+  system: "/admin/system"
 } as const;
 
 /**
@@ -21,7 +22,8 @@ export const AdminRoutes = {
   userUploads: "admin-user-uploads",
   pastes: "admin-pastes",
   shortLinks: "admin-short-links",
-  uploads: "admin-uploads"
+  uploads: "admin-uploads",
+  system: "admin-system"
 } as const;
 
 /**
@@ -58,5 +60,12 @@ export const ADMIN_SECTIONS: Stop[] = [
     to: AdminPaths.uploads,
     status: "open",
     blurb: "Every file on the site and whose it is, to rename, make private or delete."
+  },
+  {
+    id: "system",
+    label: "System",
+    to: AdminPaths.system,
+    status: "open",
+    blurb: "Sign-ups waiting for their code, and clearing rate-limit lockouts."
   }
 ];

@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { test as base, expect, type Route } from "@playwright/test";
 
 /**
@@ -54,6 +55,10 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
  * `GET /admin/short-urls` lists every account's links from the same store for the superuser, with a `null` owner for an `addedBy` no account has.
+ * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
+ * register flow's own codes) and removes them by id. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
+ * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given (both for `loginPerAccount`), answers their names in
+ * the API's order (vb2007/vb2007.hu-api#284), and checks the body like the API.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
@@ -159,6 +164,22 @@ export const DISPOSABLE_DOMAINS = ["mailinator.com"];
 export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+/** The API's rate limiters in the order `DELETE /admin/rate-limits` names them, with what keys each. */
+const RATE_LIMITERS = {
+  loginPerIp: ["ip"],
+  loginPerAccount: ["email", "ip"],
+  loginPerEmail: ["email"],
+  codeChecksPerIp: ["ip"],
+  codeChecksPerEmail: ["email"],
+  resetLinkChecksPerIp: ["ip"],
+  mailSendsPerIp: ["ip"],
+  usernameChecksPerIp: ["ip"],
+  accountCodeChecksPerIp: ["ip"],
+  passwordChecksPerIp: ["ip"]
+} as const;
+export type MockRateLimiter = keyof typeof RATE_LIMITERS;
+type RateLimitKey = { email?: string; ip?: string };
 const normalizeCode = (code?: string) => code?.replace(/\s/g, "");
 
 /** The API's refusal of an address's domain, if it has one. */
@@ -302,6 +323,10 @@ export class MockApi {
   readonly loggedOutUsers: string[] = [];
   /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
   private readonly userPendingEmails = new Map<string, string>();
+  /** Sign-ups the admin's System page lists (see `hasPendingRegistration`). */
+  readonly adminPendingRegistrations: { id: string; email: string; expiresAt: string }[] = [];
+  /** Rate limiters counting for a key (see `countsRateLimit`). */
+  private rateLimitCounts: (RateLimitKey & { name: MockRateLimiter })[] = [];
   /** What `PATCH /user/password` checks the current password against, and changes. */
   password = MOCK_PASSWORD;
   /** The only `__Host-VB-AUTH` value still accepted; each new session replaces it. */
@@ -442,6 +467,22 @@ export class MockApi {
       });
     }
     return user;
+  }
+
+  /** Lists a sign-up waiting for its code on the admin's System page; a negative time has expired. */
+  hasPendingRegistration(email: string, { expiresInMinutes = 24 * 60 } = {}) {
+    const registration = {
+      id: `${this.adminPendingRegistrations.length + 1}`.padStart(24, "c"),
+      email,
+      expiresAt: new Date(this.now() + expiresInMinutes * 60_000).toISOString()
+    };
+    this.adminPendingRegistrations.push(registration);
+    return registration;
+  }
+
+  /** A rate limiter counting for `email`, `ip` or both, as its key needs. */
+  countsRateLimit(name: MockRateLimiter, { email, ip }: RateLimitKey) {
+    this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip });
   }
 
   /** Stores a paste as if `username` had created it, in `language` if given, and returns it. */
@@ -725,6 +766,7 @@ export class MockApi {
       username?: string;
       token?: string;
       suspended?: unknown;
+      ip?: unknown;
     } | null,
     query: URLSearchParams
   ): MockResponse | undefined {
@@ -783,6 +825,10 @@ export class MockApi {
     if (logoutRoute) {
       return this.logoutUser(decodeURIComponent(logoutRoute[1]));
     }
+    const pendingRoute = endpoint.match(/^DELETE \/admin\/pending-registrations\/([^/]+)$/);
+    if (pendingRoute) {
+      return this.removePendingRegistration(decodeURIComponent(pendingRoute[1]));
+    }
     const quotaRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/upload-quota$/);
     if (quotaRoute) {
       return this.setQuota(decodeURIComponent(quotaRoute[1]), body?.quotaBytes);
@@ -799,6 +845,10 @@ export class MockApi {
         return this.listAdminPastes(query);
       case "GET /admin/short-urls":
         return this.listAdminShortLinks(query);
+      case "GET /admin/pending-registrations":
+        return this.listPendingRegistrations(query);
+      case "DELETE /admin/rate-limits":
+        return this.clearRateLimits(body);
       case "GET /uploads":
         return this.listUploads(query, this.user?.username);
       case "GET /admin/uploads":
@@ -1887,6 +1937,82 @@ export class MockApi {
     const keptUploads = this.uploads.filter((upload) => this.uploadOwners.get(upload.id) !== name);
     this.uploads.splice(0, this.uploads.length, ...keptUploads);
     return { status: 200, body: { message: "User deleted successfully." } };
+  }
+
+  private listPendingRegistrations(query: URLSearchParams) {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    const limit = Number(query.get("limit") ?? 20);
+    const page = Number(query.get("page") ?? 1);
+    const q = query.get("q")?.toLowerCase();
+    const matching = this.adminPendingRegistrations
+      .filter((registration) => !q || registration.email.toLowerCase().includes(q))
+      .sort((a, b) => b.expiresAt.localeCompare(a.expiresAt));
+    return {
+      status: 200,
+      body: {
+        pendingRegistrations: matching.slice((page - 1) * limit, page * limit),
+        pagination: {
+          limit,
+          page,
+          total: matching.length,
+          pages: Math.ceil(matching.length / limit)
+        }
+      }
+    };
+  }
+
+  private removePendingRegistration(id: string) {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
+    const index = this.adminPendingRegistrations.findIndex((item) => item.id === id);
+    if (index === -1) {
+      return {
+        status: 404,
+        body: { error: "There is no such pending registration with that ID." }
+      };
+    }
+    this.adminPendingRegistrations.splice(index, 1);
+    return { status: 200, body: { message: "Pending registration removed successfully." } };
+  }
+
+  /** The API's `clearRateLimitLockouts`: each limiter whose whole key is given, in its order. */
+  private clearRateLimits(body: { email?: unknown; ip?: unknown } | null) {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    const { email, ip } = body ?? {};
+    if (email === undefined && ip === undefined) {
+      return {
+        status: 400,
+        body: { error: "Send an email, an ip or both to clear their rate limits." }
+      };
+    }
+    if (email !== undefined && (typeof email !== "string" || !email.trim())) {
+      return { status: 400, body: { error: "email must be a non-empty string." } };
+    }
+    if (ip !== undefined && (typeof ip !== "string" || !isIP(ip))) {
+      return { status: 400, body: { error: "ip must be a valid IPv4 or IPv6 address." } };
+    }
+    const key: RateLimitKey = {
+      email: email === undefined ? undefined : normalizeEmail(email),
+      ip
+    };
+    const matches = (count: RateLimitKey & { name: MockRateLimiter }) =>
+      RATE_LIMITERS[count.name].every(
+        (part) => key[part] !== undefined && key[part] === count[part]
+      );
+    const cleared = new Set(this.rateLimitCounts.filter(matches).map((count) => count.name));
+    this.rateLimitCounts = this.rateLimitCounts.filter((count) => !matches(count));
+    return {
+      status: 200,
+      body: {
+        message: "Rate limits cleared.",
+        cleared: (Object.keys(RATE_LIMITERS) as MockRateLimiter[]).filter((name) =>
+          cleared.has(name)
+        )
+      }
+    };
   }
 
   private setQuota(id: string, quotaBytes: number | null | undefined) {
