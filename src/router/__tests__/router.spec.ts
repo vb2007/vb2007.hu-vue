@@ -112,6 +112,47 @@ describe("router", () => {
     expect(router.resolve(path).name).toBe(name);
   });
 
+  it.each([
+    ["/", "vb2007.hu"],
+    ["/shorten", "Shorten · vb2007.hu"],
+    ["/pastebin", "Paste · vb2007.hu"],
+    ["/pastebin/abc123", "Paste · vb2007.hu"],
+    ["/upload", "Upload · vb2007.hu"],
+    ["/admin", "Admin · vb2007.hu"],
+    ["/admin/users", "Users · vb2007.hu"],
+    ["/admin/users/u9", "User · vb2007.hu"],
+    ["/admin/users/u9/uploads", "User uploads · vb2007.hu"],
+    ["/admin/pastes", "Pastes · vb2007.hu"],
+    ["/admin/short-links", "Short links · vb2007.hu"],
+    ["/admin/uploads", "Uploads · vb2007.hu"],
+    ["/admin/system", "System · vb2007.hu"],
+    ["/r/abc123", "Short link · vb2007.hu"],
+    ["/r/abc123/preview", "Short link preview · vb2007.hu"],
+    ["/account", "Account · vb2007.hu"],
+    ["/login", "Log in · vb2007.hu"],
+    ["/register", "Register · vb2007.hu"],
+    ["/reset-password", "Reset password · vb2007.hu"],
+    ["/apierror?url=%2Ffoo", "API route not found · vb2007.hu"],
+    ["/no/such/page", "Page not found · vb2007.hu"]
+  ])("titles the tab of %s %j", async (path, title) => {
+    await router.push(path);
+
+    expect(document.title).toBe(title);
+  });
+
+  it("gives every named route but home a title of its own", () => {
+    const untitled = flatten(routes)
+      .filter(([, route]) => route.name && route.name !== "home" && !route.meta?.title)
+      .map(([path]) => path);
+
+    expect(untitled).toEqual([]);
+  });
+
+  it("titles each admin page itself rather than through the area's meta", () => {
+    expect(areaRoute.meta).toBeUndefined();
+    expect(router.resolve(AdminPaths.overview).meta.title).toBe("Admin");
+  });
+
   it.each(flatten(routes))("loads the component for %s", async (_path, route) => {
     const component =
       "component" in route && typeof route.component === "function"
