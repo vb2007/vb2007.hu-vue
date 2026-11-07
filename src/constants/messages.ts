@@ -31,9 +31,9 @@ export class Messages {
 
   static readonly ShortUrl = class {
     static readonly invalidUrl: string = "Invalid URL / URI format.";
-    /** The API answers this with `invalidUrl`'s text; naming the space finds one at either end. */
-    static readonly containsWhitespace: string =
-      "A URL can't contain spaces. Remove them, or write each one as %20.";
+    /** The API answers whitespace with `invalidUrl`'s text; these say where it is and what to do. */
+    static readonly edgeWhitespace: string = "Remove the space at the start or end of the URL.";
+    static readonly innerWhitespace: string = "A URL can't contain spaces: write each one as %20.";
     /** Names the length too, so a pasted link shows how much has to go. */
     static tooLong(length: number, max: number): string {
       return `This URL is ${length.toLocaleString()} characters; the limit is ${max.toLocaleString()}.`;
