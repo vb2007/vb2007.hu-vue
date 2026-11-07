@@ -217,7 +217,9 @@ describe("useUploadQueue", () => {
       const { api } = await finish(60);
       fetchMock
         .mockResolvedValueOnce(jsonResponse(404, { error: "There is no such upload." }))
-        .mockResolvedValueOnce(jsonResponse(403, { error: "You are not logged in." }));
+        .mockResolvedValueOnce(
+          jsonResponse(403, { error: "You must be logged in to perform this action." })
+        );
 
       vi.advanceTimersByTime(DUE);
       await flushPromises();
