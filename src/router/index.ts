@@ -166,7 +166,10 @@ const router = createRouter({
 });
 
 // Each page's tab and history entry carry its own title (`meta.title`).
-router.afterEach((to) => {
+// A navigation that failed (cancelled by a newer one, aborted or duplicated) leaves the tab alone, so
+// a slow page overtaken by a faster one can't put its own title over the page shown.
+router.afterEach((to, _from, failure) => {
+  if (failure) return;
   document.title = pageTitle(to.meta.title);
 });
 

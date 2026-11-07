@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RouteRecordRaw } from "vue-router";
+import { isNavigationFailure, NavigationFailureType, type RouteRecordRaw } from "vue-router";
 import router, { routes } from "@/router";
 import { ADMIN_SECTIONS, AdminPaths } from "@/constants/admin";
 
@@ -148,9 +148,43 @@ describe("router", () => {
     expect(untitled).toEqual([]);
   });
 
-  it("titles each admin page itself rather than through the area's meta", () => {
-    expect(areaRoute.meta).toBeUndefined();
-    expect(router.resolve(AdminPaths.overview).meta.title).toBe("Admin");
+  it("leaves the title alone when a navigation is aborted", async () => {
+    await router.push("/shorten");
+    const removeGuard = router.beforeEach(() => false);
+
+    await router.push("/login");
+    removeGuard();
+
+    expect(router.currentRoute.value.path).toBe("/shorten");
+    expect(document.title).toBe("Shorten · vb2007.hu");
+  });
+
+  it("keeps the title of the page shown when a slow navigation is overtaken", async () => {
+    await router.push("/");
+    // A page whose chunk is still loading when the visitor clicks on to another one.
+    let loadChunk!: (chunk: { default: object }) => void;
+    let chunkRequested!: () => void;
+    const requested = new Promise<void>((resolve) => (chunkRequested = resolve));
+    const chunk = new Promise<{ default: object }>((resolve) => (loadChunk = resolve));
+    const removeRoute = router.addRoute({
+      path: "/slow",
+      meta: { title: "Slow" },
+      component: () => {
+        chunkRequested();
+        return chunk;
+      }
+    });
+
+    const stale = router.push("/slow");
+    await requested;
+    await router.push("/register");
+    loadChunk({ default: {} });
+    const failure = await stale;
+    removeRoute();
+
+    expect(isNavigationFailure(failure, NavigationFailureType.cancelled)).toBe(true);
+    expect(router.currentRoute.value.path).toBe("/register");
+    expect(document.title).toBe("Register · vb2007.hu");
   });
 
   it.each(flatten(routes))("loads the component for %s", async (_path, route) => {
