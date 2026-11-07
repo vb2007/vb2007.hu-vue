@@ -184,17 +184,19 @@ test("a wrong password doesn't start the GitHub link", async ({ page, api }) => 
   await expect(github.getByRole("button", { name: "Link GitHub", exact: true })).toBeFocused();
 });
 
-for (const [what, arrange, error] of [
+for (const [what, arrange, error, spoken] of [
   [
     "too many failed tries",
     (api: MockApi) => api.limitsPasswordChecks(),
+    "Too many failed attempts: try again later.",
     // The held key's wait, read out with the message.
-    "Too many failed attempts: try again later. Try again in 15 minutes."
+    "Try again in 15 minutes."
   ],
   [
     "an API without GitHub",
     (api: MockApi) => api.githubIsNotConfigured(),
-    "GitHub login isn't available right now."
+    "GitHub login isn't available right now.",
+    ""
   ],
   [
     // The API's password limit runs before the link route checks for GitHub (vb2007/vb2007.hu-api#243).
@@ -203,7 +205,8 @@ for (const [what, arrange, error] of [
       api.limitsPasswordChecks();
       api.githubIsNotConfigured();
     },
-    "Too many failed attempts: try again later. Try again in 15 minutes."
+    "Too many failed attempts: try again later.",
+    "Try again in 15 minutes."
   ]
 ] as const) {
   test(`a GitHub link refused for ${what} says why`, async ({ page, api }) => {
@@ -216,7 +219,17 @@ for (const [what, arrange, error] of [
     await github.getByLabel("Password").fill(MOCK_PASSWORD);
     await github.getByRole("button", { name: "Continue to GitHub" }).click();
 
-    await expect(github.getByRole("alert")).toHaveText(error);
+    await expect(github.getByRole("alert")).toHaveText(spoken ? `${error} ${spoken}` : error);
+    // The field is described by the message as shown, then its hint: the wait in words is the
+    // alert's alone, so it never contradicts the held key's count.
+    await expect(github.getByLabel("Password")).toHaveAccessibleDescription(
+      `${error} Confirms it's you. GitHub opens next, to approve the link.`
+    );
+    if (spoken) {
+      await expect(
+        github.getByRole("button", { name: /^Try again in/ })
+      ).toHaveAccessibleDescription(error);
+    }
     await expect(page).toHaveURL("/account");
   });
 }
@@ -1314,6 +1327,10 @@ test("deleting the account can be cancelled, and says when to try again", async 
   await expect(key).toHaveAccessibleDescription("Too many failed attempts: try again later.");
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Password")).toBeFocused();
+  // The focused field is described by the message as shown too: the wait in words is the alert's.
+  await expect(page.getByLabel("Password")).toHaveAccessibleDescription(
+    "Too many failed attempts: try again later."
+  );
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByLabel("Password")).toHaveCount(0);

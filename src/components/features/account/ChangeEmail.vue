@@ -267,7 +267,7 @@ const confirmCode = async () => {
         :loading="isChanging"
         :disabled="isWaiting"
         :aria-label="sendName"
-        :aria-describedby="errorIsWait ? changeErrorId : undefined"
+        :aria-describedby="errorIsWait ? statusTextId(changeErrorId) : undefined"
         :blocked="!isChangeValid"
       >
         {{

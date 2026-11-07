@@ -54,8 +54,9 @@ const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
 const githubLink = apiUrl(Endpoints.Auth.githubLink);
 const describedBy = computed(
   () =>
-    [githubConfirmed.value && confirmedId, shownError.value && errorId].filter(Boolean).join(" ") ||
-    undefined
+    [githubConfirmed.value && confirmedId, shownError.value && statusTextId(errorId)]
+      .filter(Boolean)
+      .join(" ") || undefined
 );
 
 /** The password typed, or the username matched exactly; until then the key looks disabled. */

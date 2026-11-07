@@ -169,7 +169,7 @@ const submit = async () => {
       type="password"
       autocomplete="current-password"
       :hint="githubLinked ? UNLINK_HINT : LINK_HINT"
-      :describedby="confirmError ? errorId : undefined"
+      :describedby="confirmError ? statusTextId(errorId) : undefined"
       :error="errors.password"
       required
       @blur="leave('password')"

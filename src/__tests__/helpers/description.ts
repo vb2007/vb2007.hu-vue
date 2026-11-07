@@ -8,7 +8,7 @@ import type { DOMWrapper } from "@vue/test-utils";
 export const descriptionOf = (element: DOMWrapper<Element>) => {
   const root = element.element.getRootNode() as ParentNode;
   return (element.attributes("aria-describedby") ?? "")
-    .split(" ")
+    .split(/\s+/)
     .filter(Boolean)
     .map((id) => root.querySelector(`[id="${id}"]`)?.textContent ?? "")
     .join(" ")
