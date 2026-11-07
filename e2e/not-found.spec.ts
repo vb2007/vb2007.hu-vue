@@ -34,6 +34,13 @@ test("the not-found page has its own title and stays out of search results", asy
   await expect(page).toHaveURL("/");
   await expect(page).toHaveTitle("vb2007.hu");
   await expect(robots).toHaveCount(0);
+
+  // Going back is a popstate, which runs through the same afterEach.
+  await page.goBack();
+  await expect(page).toHaveURL("/no/such/page");
+  await expect(page).toHaveTitle("Page not found · vb2007.hu");
+  await expect(robots).toHaveCount(1);
+  await expect(robots).toHaveAttribute("content", "noindex");
 });
 
 test("the not-found board leads to the open tools only", async ({ page }) => {

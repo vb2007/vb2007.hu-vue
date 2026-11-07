@@ -17,7 +17,7 @@ test("the API's unknown-route redirect names the address with a way home", async
 });
 
 test("the API error page has its own title and stays out of search results", async ({ page }) => {
-  await page.goto("/apierror?url=/foo");
+  await page.goto(apiErrorPage);
   const robots = page.locator('head meta[name="robots"]');
 
   await expect(page).toHaveTitle("API route not found · vb2007.hu");
@@ -28,6 +28,12 @@ test("the API error page has its own title and stays out of search results", asy
   await expect(page).toHaveURL("/");
   await expect(page).toHaveTitle("vb2007.hu");
   await expect(robots).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(apiErrorPage);
+  await expect(page).toHaveTitle("API route not found · vb2007.hu");
+  await expect(robots).toHaveCount(1);
+  await expect(robots).toHaveAttribute("content", "noindex");
 });
 
 test("the API error page leads to the open tools", async ({ page }) => {
