@@ -736,25 +736,23 @@ export class MockApi {
       await this.userUploadsHold;
     }
 
-    const contentType = (await request.headerValue("content-type")) ?? "";
-    if (contentType.startsWith("multipart/form-data")) {
-      const response = this.receiveUpload(parseMultipart(request.postDataBuffer()!, contentType));
-      return route.fulfill({ status: response.status, headers, json: response.body });
-    }
-
     // Suspending ends the account's session, like the API's: it answers as logged out from then on.
     if (this.user && this.isSuspended(this.user.email)) this.user = null;
 
     const cookie = (await request.headerValue("cookie")) ?? "";
     const sentSession = cookie.match(/(?:^|;\s*)__Host-VB-AUTH=([^;]+)/)?.[1];
+    const contentType = (await request.headerValue("content-type")) ?? "";
+    // An upload passes the same session checks first, like `isAuthenticated` before `handleUpload`.
     const response =
       sentSession && sentSession !== this.session
         ? this.staleSession()
-        : this.respond(
-            `${request.method()} ${url.pathname}`,
-            request.postDataJSON(),
-            url.searchParams
-          );
+        : contentType.startsWith("multipart/form-data")
+          ? this.receiveUpload(parseMultipart(request.postDataBuffer()!, contentType))
+          : this.respond(
+              `${request.method()} ${url.pathname}`,
+              request.postDataJSON(),
+              url.searchParams
+            );
     if (!response) {
       this.unhandled.push(`${request.method()} ${request.url()}`);
       return route.abort();
@@ -1532,10 +1530,13 @@ export class MockApi {
     };
   }
 
+  /**
+   * `GET /paste/:id` is public. `PATCH` and `DELETE` run the API's `isAuthenticated` first, so a guest
+   * is logged out before the ID is checked, then `isPasteOwner`: the ID's format, the 404, the owner.
+   */
   private respondPaste(method: string, id: string, language?: string) {
-    if (!/^[0-9a-f]{24}$/.test(id)) {
-      return { status: 400, body: { error: "Invalid ID format." } };
-    }
+    if (method !== "GET" && !this.user) return NOT_LOGGED_IN;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const index = this.pastes.findIndex((paste) => paste._id === id);
     if (index === -1) {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
@@ -1548,11 +1549,8 @@ export class MockApi {
         body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
       };
     }
-    if (!this.user) {
-      return NOT_LOGGED_IN;
-    }
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
-    if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
+    if (paste.addedBy !== this.user!.username && !this.user!.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
     if (method === "PATCH") {
@@ -1594,7 +1592,7 @@ export class MockApi {
     };
   }
 
-  private receiveUpload(part: ReturnType<typeof parseMultipart>) {
+  private receiveUpload(part: ReturnType<typeof parseMultipart>): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
@@ -1656,7 +1654,7 @@ export class MockApi {
     }
   }
 
-  /** The API's `validateMongooseId`: admin routes run it on `:id` after the superuser check. */
+  /** The API's `validateMongooseId` on `:id`: admin routes run it after the superuser check, paste routes after the session. */
   private invalidId(): MockResponse {
     return {
       status: 400,
