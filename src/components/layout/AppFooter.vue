@@ -13,18 +13,21 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
     <div class="foot__inner">
       <div class="foot__board">
         <RouterLink to="/" class="foot__name">{{ SITE_NAME }}</RouterLink>
-        <!-- The address shows as text too: mailto does nothing without a mail app, and a Matrix ID can be pasted into any client. -->
+        <!--
+          Each link is named "Label: address". A wide footer shows the address too, since mailto does
+          nothing without a mail app and a Matrix ID can be pasted into any client; a narrower one
+          shows only the label, so the line takes no more room than the name.
+        -->
         <address class="foot__contact">
-          <span class="foot__reach">
-            <span class="foot__label">E-mail</span>
-            <a :href="CONTACT_MAILTO">{{ CONTACT_EMAIL }}</a>
-          </span>
-          <span class="foot__reach">
-            <span class="foot__label">Matrix</span>
-            <a :href="MATRIX_URL" target="_blank" rel="noopener"
-              >{{ MATRIX_ID }}<span class="visually-hidden"> (opens in a new tab)</span></a
-            >
-          </span>
+          <a :href="CONTACT_MAILTO" class="foot__reach">
+            <span class="foot__label">E-mail<span class="foot__colon">:</span></span>
+            <span class="foot__address">{{ CONTACT_EMAIL }}</span>
+          </a>
+          <a :href="MATRIX_URL" class="foot__reach" target="_blank" rel="noopener">
+            <span class="foot__label">Matrix<span class="foot__colon">:</span></span>
+            <span class="foot__address">{{ MATRIX_ID }}</span>
+            <span class="visually-hidden">(opens in a new tab)</span>
+          </a>
         </address>
       </div>
       <nav class="foot__links" aria-label="Footer">
@@ -47,6 +50,7 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
 
 <style scoped>
 .foot {
+  container: foot / inline-size;
   position: relative;
   margin-top: var(--sp-8);
   background: var(--c-deep);
@@ -106,43 +110,80 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
   text-decoration: none;
 }
 
-/* Each label stays with its address, so a narrow footer wraps between the two, never inside one */
+/*
+  One row under the name. Each link's line is 1.5rem tall, so it is a 24px target, and the line sits
+  close enough to the name that the band is no taller than the name and one line of text.
+*/
 .foot__contact {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2) var(--sp-5);
-  margin-top: var(--sp-3);
+  column-gap: var(--sp-5);
+  margin-top: var(--sp-1);
   font-size: var(--fs-sm);
   font-style: normal;
+  line-height: 1.5rem;
 }
 
 .foot__reach {
+  position: relative;
   display: inline-flex;
   align-items: baseline;
   gap: var(--sp-2);
   white-space: nowrap;
+  text-decoration: none;
 }
 
-/* Too narrow for one row: the two stack, with the addresses lined up after their labels */
-@media (max-width: 26rem) {
-  .foot__contact {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: baseline;
-    gap: var(--sp-3) var(--sp-2);
-  }
-
-  .foot__reach {
-    display: contents;
-  }
-
-  .foot__contact a {
-    justify-self: start;
-  }
+/* A wider hit area to the sides only: the name sits just above */
+.foot__reach::after {
+  content: "";
+  position: absolute;
+  inset: 0 calc(-1 * var(--sp-2));
 }
 
+/* With the address shown, the label is its quiet caption and the address is what's underlined */
 .foot__label {
   opacity: 0.8;
+}
+
+/*
+  Heard, not seen: it makes the name "E-mail: address". It stays inline and in the text, since a
+  positioned (visually-hidden) colon would be split off with a space ("E-mail : address").
+*/
+.foot__colon {
+  font-size: 0;
+  line-height: 0;
+}
+
+.foot__address {
+  text-decoration: underline;
+  text-decoration-thickness: 0.09em;
+}
+
+.foot__reach:hover .foot__address {
+  text-decoration-thickness: 0.16em;
+}
+
+/* Too narrow for the addresses beside the links: the label is the link, the address only in its name */
+@container foot (width < 54rem) {
+  .foot__label {
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-thickness: 0.09em;
+  }
+
+  .foot__reach:hover .foot__label {
+    text-decoration-thickness: 0.16em;
+  }
+
+  .foot__address {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+  }
 }
 
 /* Tools and account links are two groups, so a narrow footer wraps between them, never inside a group */
@@ -153,14 +194,14 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
   gap: var(--sp-5);
 }
 
-.foot__contact a,
+.foot__reach,
 .foot__links a {
   color: inherit;
   font-weight: 500;
   text-underline-offset: 0.25em;
 }
 
-.foot__contact a:hover,
+.foot__reach:hover,
 .foot__links a:hover {
   color: var(--c-line-on-deep);
 }

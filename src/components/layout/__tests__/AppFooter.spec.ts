@@ -23,19 +23,23 @@ describe("AppFooter", () => {
     ]);
   });
 
-  it("names the e-mail address and the Matrix ID, each as its own link", async () => {
+  it("links the e-mail address and the Matrix ID, each named by its label and address", async () => {
     const { wrapper } = await mountWithRouter(AppFooter);
     const [email, matrix] = wrapper.findAll(".foot__contact a");
 
     expect(wrapper.find(".foot__contact").element.tagName).toBe("ADDRESS");
-    expect(wrapper.findAll(".foot__label").map((label) => label.text())).toEqual([
-      "E-mail",
-      "Matrix"
+    expect(wrapper.findAll(".foot__address").map((address) => address.text())).toEqual([
+      "balazs@vb2007.hu",
+      "@vb2007:vb2007.hu"
     ]);
-    expect(email.text()).toBe("balazs@vb2007.hu");
+    // Named "Label: address" by their text (e2e checks the computed names), with a colon only heard.
+    expect(wrapper.findAll(".foot__label").map((label) => label.element.textContent)).toEqual([
+      "E-mail:",
+      "Matrix:"
+    ]);
+    expect(wrapper.findAll(".foot__colon")).toHaveLength(2);
     expect(email.attributes("href")).toBe("mailto:balazs@vb2007.hu");
     expect(email.attributes("target")).toBeUndefined();
-    expect(matrix.text()).toBe("@vb2007:vb2007.hu (opens in a new tab)");
     expect(matrix.find(".visually-hidden").text()).toBe("(opens in a new tab)");
     expect(matrix.attributes("href")).toBe("https://matrix.to/#/@vb2007:vb2007.hu");
     expect(matrix.attributes("target")).toBe("_blank");
