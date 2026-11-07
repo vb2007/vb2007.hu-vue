@@ -273,6 +273,30 @@ describe("RegisterForm", () => {
     vi.useRealTimers();
   });
 
+  it("drops an older name's answer that lands while the next name waits to be checked", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let answer!: (availability: "taken") => void;
+    vi.mocked(checkUsername)
+      .mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce("free");
+    const wrapper = await mountForm();
+    await wrapper.find(FIELDS.username).setValue("anna");
+    vi.advanceTimersByTime(400);
+
+    await wrapper.find(FIELDS.username).setValue("anna2");
+    expect(vi.mocked(checkUsername).mock.calls[0][1]!.aborted).toBe(true);
+    answer("taken");
+    await flushPromises();
+    expect(errorUnder(wrapper, FIELDS.username)).toBeUndefined();
+
+    vi.advanceTimersByTime(400);
+    await flushPromises();
+    expect(checkUsername).toHaveBeenLastCalledWith("anna2", expect.any(AbortSignal));
+    expect(vi.mocked(checkUsername).mock.calls[1][1]!.aborted).toBe(false);
+    expect(errorUnder(wrapper, FIELDS.username)).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   it("stops waiting to check the username when it's gone", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const wrapper = await mountForm();

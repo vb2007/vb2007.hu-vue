@@ -33,6 +33,7 @@ import {
 import { restoreSession } from "@/scripts/authentication/user";
 import { spokenWait } from "@/scripts/utility/durationUtil";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { useRetryHold } from "@/composables/useRetryHold";
 import {
   RESEND_COOLDOWN_SECONDS,
@@ -383,25 +384,23 @@ watch(code, (value) => {
   if (value) codeError.value = codeFieldError.value = "";
 });
 
-/* The username is checked with the API once typing pauses and its length is right. */
+/*
+ * The username is checked with the API once typing pauses and its length is right. Each edit
+ * aborts the check before it, so an answer about an older name never lands; leaving does too.
+ */
 let usernameTimer: ReturnType<typeof setTimeout> | undefined;
-let usernameRequest: AbortController | undefined;
-const stopUsernameCheck = () => {
-  clearTimeout(usernameTimer);
-  usernameRequest?.abort();
-};
+const usernameCheck = useLatestRequest();
 watch(username, (name) => {
-  stopUsernameCheck();
+  clearTimeout(usernameTimer);
+  const signal = usernameCheck.next();
   usernameTaken.value = false;
   if (usernameError(name)) return;
   usernameTimer = setTimeout(async () => {
-    const request = new AbortController();
-    usernameRequest = request;
-    const availability = await checkUsername(name, request.signal);
-    if (!request.signal.aborted) usernameTaken.value = availability === "taken";
+    const availability = await checkUsername(name, signal);
+    if (!signal.aborted) usernameTaken.value = availability === "taken";
   }, USERNAME_CHECK_DELAY);
 });
-onBeforeUnmount(stopUsernameCheck);
+onBeforeUnmount(() => clearTimeout(usernameTimer));
 
 onMounted(async () => {
   registerStatus.value = "";

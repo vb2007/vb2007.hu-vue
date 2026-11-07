@@ -4,6 +4,7 @@ import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { OauthError } from "@/constants/oauth";
 import { retryAfterFrom } from "@/composables/useCountdown";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import { oauthErrorMessage } from "@/scripts/authentication/github";
@@ -29,7 +30,9 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
   /** After the password checks' 429 (too many wrong passwords), linking waits its `retryAfter`. */
   const hold = useRetryHold(linkError);
   let stallTimer: ReturnType<typeof setTimeout> | undefined;
-  let request: AbortController | undefined;
+  // Leaving the page before the API answers aborts the start: the browser mustn't be sent to
+  // GitHub from elsewhere.
+  const latest = useLatestRequest();
 
   /** Gives up on a start: the next one may begin. */
   const stop = () => {
@@ -49,8 +52,6 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
   onScopeDispose(() => {
     window.removeEventListener("pageshow", onPageShow);
     clearTimeout(stallTimer);
-    // Leaving the page before the API answers must not send the browser to GitHub from elsewhere.
-    request?.abort();
   }, true);
 
   /** Returns whether the browser is on its way to GitHub. */
@@ -58,17 +59,16 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
     if (isLinking.value) return false;
     isLinking.value = true;
     linkError.value = "";
-    const controller = (request = new AbortController());
+    const signal = latest.next();
 
     const result = await apiRequest(Endpoints.Auth.githubStartLink, {
       body: password === undefined ? undefined : { password },
       failure: Messages.Account.githubLinkFailed,
-      signal: controller.signal
+      signal
     });
-    request = undefined;
 
     // The page that asked is gone, even if the answer came in just before.
-    if (controller.signal.aborted) return false;
+    if (signal.aborted) return false;
     if (result.ok) {
       navigate(result.data.url);
       stallTimer = setTimeout(() => (isStalled.value = true), LEAVING_GRACE_MS);

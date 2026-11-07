@@ -22,7 +22,8 @@ export const useAdminUsers = (limit = USERS_PER_PAGE) => {
     errorMessage,
     load,
     goToPage,
-    setSort
+    setSort,
+    updateItems
   } = usePagedList({
     limit,
     sort: DEFAULT_SORT,
@@ -52,7 +53,7 @@ export const useAdminUsers = (limit = USERS_PER_PAGE) => {
 
     if (result.ok) {
       const { user } = result.data;
-      users.value = users.value.map((item) => (item.id === id ? user : item));
+      updateItems((item) => (item.id === id ? user : item));
     } else {
       rowError.value = { id, message: result.error };
     }

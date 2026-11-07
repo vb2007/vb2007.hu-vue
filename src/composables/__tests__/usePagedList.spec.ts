@@ -185,6 +185,32 @@ describe("usePagedList", () => {
     expect(api.isLoading.value).toBe(false);
   });
 
+  it("gives a load on its way the row edits made meanwhile, but not a load that starts after", async () => {
+    const { fetch, answer } = route<Unsorted>();
+    const { api } = mountComposable(() =>
+      usePagedList({ limit: 2, fetch, items: (data) => data.rows })
+    );
+    const renamed = (from: string, to: string) => (row: Row) =>
+      row.id === from ? { id: to } : row;
+
+    const loading = api.load();
+    api.updateItems(renamed("b", "b2"));
+    expect(api.items.value).toEqual([]);
+    await answer(ok({ rows: rows("a", "b"), pagination: counts(2) }));
+    await loading;
+    expect(api.items.value).toEqual(rows("a", "b2"));
+
+    // Nothing on its way: only the rows on show change.
+    api.updateItems(renamed("a", "a2"));
+    expect(api.items.value).toEqual(rows("a2", "b2"));
+
+    // A load that asks after the edits gets them from the API, and isn't changed again.
+    const reloading = api.load();
+    await answer(ok({ rows: rows("a", "b"), pagination: counts(2) }));
+    await reloading;
+    expect(api.items.value).toEqual(rows("a", "b"));
+  });
+
   it("steps back a page after the last row on a later page is deleted", async () => {
     const { fetch, answer, lastQuery } = route<Unsorted>();
     const { api } = mountComposable(() =>

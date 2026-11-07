@@ -72,6 +72,11 @@ export interface PagedList<Item, P extends BasePagination> {
   goToPage: (page: number) => Promise<void>;
   /** Reloads after a row was deleted, a page back if it was the last one on a later page. */
   reloadAfterRemove: () => Promise<void>;
+  /**
+   * Changes rows in place after an edit, e.g. swaps in the row its answer brought. A load already
+   * on its way may have asked before the edit, so its answer gets the same change when it lands.
+   */
+  updateItems: (edit: (item: Item) => Item) => void;
 }
 
 export interface SortedPagedList<
@@ -118,11 +123,15 @@ export function usePagedList(
   /** The search the list was last loaded with. */
   let loadedSearch = "";
   const latest = useLatestRequest();
+  /** Edits made while the load in flight was on its way, which its answer may be missing. */
+  let lateEdits: ((item: unknown) => unknown)[] = [];
 
   const load = async () => {
     const search = query.value.trim();
     loadedSearch = search;
     const signal = latest.next();
+    // This load asks after every edit made so far.
+    lateEdits = [];
 
     isLoading.value = true;
     errorMessage.value = "";
@@ -142,7 +151,7 @@ export function usePagedList(
     if (signal.aborted) return;
 
     if (result.ok) {
-      items.value = options.items(result.data);
+      items.value = lateEdits.reduce((rows, edit) => rows.map(edit), options.items(result.data));
       pagination.value = result.data.pagination;
       options.onLoad?.(result.data);
     } else {
@@ -170,6 +179,11 @@ export function usePagedList(
     return load();
   };
 
+  const updateItems = (edit: (item: unknown) => unknown) => {
+    items.value = items.value.map(edit);
+    if (isLoading.value) lateEdits.push(edit);
+  };
+
   // Typing in the search box reloads once the user pauses, unless the list already shows that
   // search (e.g. only spaces changed, or clearing the filters loaded it already).
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -190,7 +204,8 @@ export function usePagedList(
     errorMessage,
     load,
     goToPage,
-    reloadAfterRemove
+    reloadAfterRemove,
+    updateItems
   };
   return options.sort ? { ...list, sortBy, sortOrder, setSort } : list;
 }
