@@ -582,6 +582,23 @@ describe("login", () => {
     expect(loginStatus.value).toBe("");
   });
 
+  it("still takes on the session of a login forgotten before the API answered", async () => {
+    // e.g. the form was left and opened again while the right password was on its way.
+    const response = deferResponse(fetchMock);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { forgetLogin, login, loginStatus, isLoggedIn, userEmail } = await load();
+
+    const pending = login("me@example.com", "secret");
+    forgetLogin();
+    response.respond(jsonResponse(200, {}));
+
+    await expect(pending).resolves.toBeUndefined();
+    // The API's cookie is live, so the page is logged in; the form it was sent from is gone.
+    expect(isLoggedIn.value).toBe(true);
+    expect(userEmail.value).toBe("me@example.com");
+    expect(loginStatus.value).toBe("");
+  });
+
   it("still logs in when forgotten on the way, but reports nothing", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
     const lookup = deferResponse(fetchMock);

@@ -118,7 +118,8 @@ export const restoreSession = () => {
 /**
  * Logs in; `loginStatus` says how it went. After the login limiter's 429 (vb2007/vb2007.hu-api#204)
  * it returns the seconds the API refuses even the right password for: 0 when it didn't say. A
- * login that's no longer the newest (see `forgetLogin`) reports nothing and holds nothing.
+ * login that's no longer the newest (see `forgetLogin`) reports nothing and holds nothing, but a
+ * session it started still logs the page in.
  */
 export const login = async (email: string, password: string): Promise<number | undefined> => {
   const attempt = ++sentLogins;
@@ -130,19 +131,21 @@ export const login = async (email: string, password: string): Promise<number | u
   });
   /** Whether a newer login, or `forgetLogin`, came since: then this one's outcome is no one's. */
   const isStale = () => attempt !== sentLogins;
-  if (isStale()) return;
 
-  if (!result.ok && result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
-    // Locked out for up to 15 minutes: the form holds its key for the wait and counts it down there.
-    loginStatus.value = Messages.Auth.loginLockedOut;
-    return retryAfterFrom(result.body, 0);
-  }
   if (!result.ok) {
+    if (isStale()) return;
+    if (result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
+      // Locked out for up to 15 minutes: the form holds its key for the wait and counts it down
+      // there.
+      loginStatus.value = Messages.Auth.loginLockedOut;
+      return retryAfterFrom(result.body, 0);
+    }
     loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
     return;
   }
 
-  // The API answered 200, but only a working session cookie makes the login real.
+  // The API answered 200, but only a working session cookie makes the login real. A stale login
+  // still started a session, so the page takes it on.
   const kept = await fetchUserDetails();
   if (isStale()) return;
   loginStatus.value = kept ? LoginStatus.Success : Messages.Auth.sessionNotKept;
