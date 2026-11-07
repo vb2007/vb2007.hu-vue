@@ -14,6 +14,15 @@ vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   restoreSession: vi.fn()
 }));
 
+/** The API's answer to a wrong password, an unknown address or a GitHub-only account. */
+const REFUSED =
+  "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
+
+/** Like Chromium, which takes the focus off the key while it's disabled for loading; jsdom keeps it. */
+const dropKeyFocus = () => {
+  if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+};
+
 describe("LoginForm", () => {
   beforeEach(() => {
     vi.mocked(login).mockReset();
@@ -118,8 +127,9 @@ describe("LoginForm", () => {
   });
 
   it("explains an unknown error", async () => {
-    loginStatus.value = "unknown-error";
     const { wrapper } = await mountWithRouter(LoginForm);
+    loginStatus.value = "unknown-error";
+    await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(
       "An unknown error occurred. Please try again later."
@@ -127,9 +137,10 @@ describe("LoginForm", () => {
   });
 
   it("shows other errors as they came from the API", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
     loginStatus.value =
       "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub.";
-    const { wrapper } = await mountWithRouter(LoginForm);
+    await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(
       "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
@@ -137,8 +148,9 @@ describe("LoginForm", () => {
   });
 
   it("shows a lockout above the GitHub login it points to", async () => {
-    loginStatus.value = Messages.Auth.loginLockedOut;
     const { wrapper } = await mountWithRouter(LoginForm);
+    loginStatus.value = Messages.Auth.loginLockedOut;
+    await flushPromises();
 
     const alert = wrapper.find('[role="alert"]');
     expect(alert.text()).toBe(
@@ -257,8 +269,8 @@ describe("LoginForm", () => {
 
   it("clears the last status after logging out", async () => {
     isLoggedIn.value = true;
-    loginStatus.value = "success";
     await mountWithRouter(LoginForm);
+    loginStatus.value = "success";
 
     isLoggedIn.value = false;
     await flushPromises();
@@ -275,6 +287,7 @@ describe("LoginForm", () => {
       wait = 900;
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
       vi.mocked(login).mockImplementationOnce(async () => {
+        dropKeyFocus();
         loginStatus.value = LIMITED;
         return wait;
       });
@@ -355,6 +368,67 @@ describe("LoginForm", () => {
       expect(wrapper.find(".visually-hidden").exists()).toBe(false);
       expect(key().text()).toBe("Log in");
       expect(key().attributes("disabled")).toBeUndefined();
+      // Nothing waits, so the focus goes back to the key it was on.
+      expect(document.activeElement).toBe(key().element);
+    });
+
+    it("describes a held address by its own lockout, not another address's refusal since", async () => {
+      const { wrapper, email, key } = await tryLogin();
+      const alert = () => wrapper.find('[role="alert"]');
+      vi.mocked(login).mockImplementationOnce(async () => {
+        dropKeyFocus();
+        loginStatus.value = REFUSED;
+        return undefined;
+      });
+      await email.setValue("other@example.com");
+      (key().element as HTMLElement).focus();
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(alert().text()).toBe(REFUSED);
+      expect(document.activeElement).toBe(key().element);
+
+      await email.setValue("me@example.com");
+      expect(key().attributes("disabled")).toBeDefined();
+      expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(alert().find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
+
+      // The other address's refusal is still the last word about it.
+      await email.setValue("other@example.com");
+      expect(alert().text()).toBe(REFUSED);
+    });
+
+    it("keeps a held address's reason after another account logs in and out", async () => {
+      const { wrapper, email, password, key } = await tryLogin();
+      vi.mocked(login).mockImplementationOnce(async () => {
+        isLoggedIn.value = true;
+        loginStatus.value = "success";
+        return undefined;
+      });
+      await email.setValue("other@example.com");
+      await password.setValue("secret");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(wrapper.text()).toContain("Login successful!");
+
+      isLoggedIn.value = false;
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      await wrapper.find("input").setValue("me@example.com");
+
+      expect(key().attributes("disabled")).toBeDefined();
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+    });
+
+    it("drops a lockout with its hold once the form is left, so a new visit shows neither", async () => {
+      const { wrapper } = await tryLogin();
+      wrapper.unmount();
+
+      const { wrapper: again } = await mountWithRouter(LoginForm);
+      await again.find("input").setValue("me@example.com");
+
+      expect(again.find('[role="alert"]').exists()).toBe(false);
+      expect(again.find('button[type="submit"]').text()).toBe("Log in");
+      expect(loginStatus.value).toBe("");
     });
 
     it("leaves the focus in the form where it stayed", async () => {
@@ -372,8 +446,8 @@ describe("LoginForm", () => {
   });
 
   it("keeps the status when logging in", async () => {
-    loginStatus.value = "success";
     await mountWithRouter(LoginForm);
+    loginStatus.value = "success";
 
     isLoggedIn.value = true;
     await flushPromises();

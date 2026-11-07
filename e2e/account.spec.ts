@@ -91,6 +91,8 @@ test("a locked-out login points to GitHub and holds the key for that address, co
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText(LOCKED_OUT);
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
+  // It was disabled while it loaded, which drops the focus; the focus goes back to it.
+  await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeFocused();
 
   // With one, the key counts it down and is the only wait on show; screen readers hear it in words.
   api.locksLogins(14 * 60 + 5);
@@ -116,6 +118,60 @@ test("a locked-out login points to GitHub and holds the key for that address, co
   await page.clock.fastForward(845_000);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
+});
+
+test("a held address keeps its own lockout after another address is refused", async ({
+  page,
+  api
+}) => {
+  const LOCKED_OUT =
+    "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account.";
+  await page.clock.install();
+  await page.goto("/login");
+  const logIn = page.getByRole("button", { name: "Log in", exact: true });
+  const key = page.getByRole("button", { name: /^Try again in \d+ minutes$/ });
+  const alert = page.getByRole("alert");
+  api.locksLogins(14 * 60 + 5, MOCK_EMAIL);
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill("a-wrong-password");
+  await logIn.click();
+  await expect(key).toBeDisabled();
+
+  // Another address may go at once; its refusal is about it, not the held one.
+  await page.getByLabel("E-mail").fill("other@example.com");
+  await logIn.click();
+  await expect(alert).toHaveText(
+    "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+  );
+  await expect(logIn).toBeFocused();
+
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await expect(key).toBeDisabled();
+  await expect(alert).toHaveText(`${LOCKED_OUT} Try again in 15 minutes.`);
+});
+
+test("a lockout goes with its hold once the login form is left", async ({ page, api }) => {
+  await page.clock.install();
+  await page.goto("/login");
+  api.locksLogins(14 * 60 + 5, MOCK_EMAIL);
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill("a-wrong-password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Try again in \d+ minutes$/ })).toBeDisabled();
+  await expect(page.getByRole("alert")).toContainText("Too many failed attempts.");
+
+  // Within the page, so the module's state stays: a reload would forget it anyway.
+  await page.getByRole("main").getByRole("link", { name: "Register" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Register" })).toBeVisible();
+  await page.goBack();
+  // The register form leaves before this one comes, and has an "E-mail" field too.
+  await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
+
+  // The form is new, and so is its key: no hold, so no lockout above it either.
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill("a-wrong-password");
+  await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("the account page asks visitors to log in", async ({ page }) => {

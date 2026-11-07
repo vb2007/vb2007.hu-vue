@@ -94,6 +94,9 @@ describe("useRetryHold", () => {
     error.value = "Wrong.";
     expect(hold.shown("me@example.com")).toBe("Wrong.");
     expect(hold.spokenFor("me@example.com")).toBe("");
+    // A form showing the hold's reason over that error (the login's, for another address) hears it.
+    expect(hold.spokenFor("me@example.com", LIMITED)).toBe("Try again in 23 hours 45 minutes.");
+    expect(hold.spokenFor("you@example.com", LIMITED)).toBe("");
 
     // The words stay as they were when it started; the key's label counts down.
     error.value = "";

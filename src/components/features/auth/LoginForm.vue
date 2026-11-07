@@ -33,6 +33,9 @@ const oauthError = useOauthError();
 // time of the reset, so logging in here drops it.
 const resetNotice = ref(passwordResetNotice.value);
 passwordResetNotice.value = "";
+// The last attempt's outcome is kept by the module, but a hold only by this form: kept from an
+// earlier visit, a lockout would outlive its hold, over a key that no longer waits.
+loginStatus.value = "";
 // The login limiter counts per address, so another address may be tried during the hold.
 const hold = useRetryHold(loginStatus);
 const heldId = computed(() => normalizeEmail(email.value));
@@ -61,22 +64,29 @@ const handleSubmit = async () => {
   } finally {
     isLoading.value = false;
   }
-  if (wait) {
-    hold.start(wait, heldId.value);
-    // The key is disabled for the wait, which can't keep the focus; the password is what's left.
-    await nextTick();
-    if (!form.value?.querySelector(":focus:not(:disabled)")) {
-      form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
-    }
+  if (wait) hold.start(wait, heldId.value);
+  // The key was disabled while it loaded, which drops the focus: after a refusal it goes back to
+  // the key, or to the password while the key waits. Logged in, the form is gone.
+  await nextTick();
+  if (form.value && !form.value.querySelector(":focus:not(:disabled)")) {
+    (
+      form.value.querySelector<HTMLButtonElement>("button[type=submit]:not(:disabled)") ??
+      form.value.querySelector<HTMLInputElement>("input[type=password]")
+    )?.focus();
   }
 };
 
+/**
+ * Why the typed address can't log in: while it's held, the hold's reason, since `loginStatus` may
+ * be another address's outcome by then; otherwise the last attempt's.
+ */
+const status = computed(() => (isHeld.value ? hold.note.value : loginStatus.value));
 const failure = computed(() => {
-  if (!loginStatus.value || loginStatus.value === LoginStatus.Success) return "";
-  if (loginStatus.value === LoginStatus.UnknownError) {
+  if (!status.value || status.value === LoginStatus.Success) return "";
+  if (status.value === LoginStatus.UnknownError) {
     return Messages.Auth.loginUnknownError;
   }
-  return loginStatus.value;
+  return status.value;
 });
 
 onMounted(() => {
@@ -122,7 +132,7 @@ watch(isLoggedIn, (newVal) => {
           v-if="failure"
           :id="failureId"
           tone="error"
-          :spoken="hold.spokenFor(heldId)"
+          :spoken="hold.spokenFor(heldId, status)"
           >{{ failure }}</StatusMessage
         >
         <BaseButton
