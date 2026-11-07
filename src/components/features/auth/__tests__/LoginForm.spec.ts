@@ -117,6 +117,30 @@ describe("LoginForm", () => {
     expect(wrapper.find(".field__error").exists()).toBe(false);
   });
 
+  it("forgets the password once logged in, so logging out doesn't bring it back", async () => {
+    vi.mocked(login).mockImplementationOnce(async () => {
+      isLoggedIn.value = true;
+      loginStatus.value = "success";
+      return undefined;
+    });
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    await email.setValue("me@example.com");
+    await password.setValue("secret");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Login successful!");
+
+    isLoggedIn.value = false;
+    await flushPromises();
+
+    // The address stays, to log in again with; nothing calls for a fix in the fields.
+    const [emailAgain, passwordAgain] = wrapper.findAll("input");
+    expect((emailAgain.element as HTMLInputElement).value).toBe("me@example.com");
+    expect((passwordAgain.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+  });
+
   it("shows nothing before an attempt, or after a successful one", async () => {
     const { wrapper } = await mountWithRouter(LoginForm);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
