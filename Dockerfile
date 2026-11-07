@@ -19,6 +19,12 @@ RUN npm run build-only
 # --- runtime: static files behind unprivileged nginx -------------------------
 FROM nginxinc/nginx-unprivileged:1.31.6-alpine AS runtime
 
+# Drop the base image's stock pages (50x.html, index.html) so only the build is served.
+# They are root-owned, so this needs root before going back to the image's uid 101.
+USER root
+RUN rm -rf /usr/share/nginx/html
+USER 101
+
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 # Not in conf.d: the base image includes conf.d/*.conf at http level.
 COPY docker/security-headers.conf /etc/nginx/snippets/security-headers.conf
