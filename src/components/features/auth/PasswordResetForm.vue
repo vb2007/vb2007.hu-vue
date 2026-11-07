@@ -29,6 +29,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const codeHint = `The ${Limits.Code.digits}-digit code from the e-mail. It works for ${Limits.Code.passwordResetValidMinutes} minutes.`;
 const linkIntro = `Choose a new password for your account. The link from the e-mail works once, for ${Limits.Code.passwordResetValidMinutes} minutes after it was sent.`;
@@ -504,7 +505,7 @@ watch(
           :blocked="!isLinkValid"
           :error="isButtonError"
           :aria-label="isLinkHeld ? linkHold.name.value : undefined"
-          :aria-describedby="isLinkHeld ? failureId : undefined"
+          :aria-describedby="isLinkHeld ? statusTextId(failureId) : undefined"
         >
           {{ isResetting ? "Resetting" : isLinkHeld ? linkHold.label.value : "Reset password" }}
         </BaseButton>
@@ -546,7 +547,7 @@ watch(
           :loading="isSending"
           :disabled="isSendHeld"
           :aria-label="isSendHeld ? sendHold.name.value : undefined"
-          :aria-describedby="isSendHeld ? emailFailureId : undefined"
+          :aria-describedby="isSendHeld ? statusTextId(emailFailureId) : undefined"
           :blocked="!isEmailValid"
           :error="isButtonError"
         >
@@ -622,7 +623,7 @@ watch(
           :loading="isResetting"
           :disabled="isResetHeld"
           :aria-label="isResetHeld ? resetHold.name.value : undefined"
-          :aria-describedby="isResetHeld ? failureId : undefined"
+          :aria-describedby="isResetHeld ? statusTextId(failureId) : undefined"
           :blocked="!isResetValid"
           :error="isButtonError"
         >
@@ -638,7 +639,7 @@ watch(
           :loading="isSending"
           :disabled="isResendWaiting"
           :aria-label="resendName"
-          :aria-describedby="failureIsWait ? failureId : undefined"
+          :aria-describedby="failureIsWait ? statusTextId(failureId) : undefined"
           @click="sendAgain"
         >
           {{

@@ -9,6 +9,7 @@ import {
   type RegisterAnswer
 } from "@/scripts/authentication/register";
 import { fetchUserDetails, restoreSession } from "@/scripts/authentication/user";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -653,7 +654,10 @@ describe("RegisterForm", () => {
       expect(submitButton(wrapper).text()).toBe("Try again in 23 hr 45 min");
       // "23 hours" doesn't contain the visible "23 hr", so the label names the key (spokenWait).
       expect(submitButton(wrapper).attributes("aria-label")).toBeUndefined();
-      expect(submitButton(wrapper).attributes("aria-describedby")).toBe(alert().attributes("id"));
+      // Described by the shown text only, so its counting label is the one wait it states.
+      expect(descriptionOf(submitButton(wrapper))).toBe(
+        `${error} A new code won't help: no code is accepted for this address until the wait ends.`
+      );
       expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
       expect(submitButton(wrapper).classes()).not.toContain("btn--error");
       expect(document.activeElement).toBe(wrapper.find("input").element);
@@ -1102,8 +1106,7 @@ describe("RegisterForm", () => {
       // The short units are for the eye; the key's name spells them out.
       expect(resendButton(wrapper).attributes("aria-label")).toBe("Resend in 57 minutes");
 
-      const alert = wrapper.find('[role="alert"]');
-      expect(resendButton(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(descriptionOf(resendButton(wrapper))).toBe(error);
 
       vi.advanceTimersByTime(3_412_000);
       await flushPromises();

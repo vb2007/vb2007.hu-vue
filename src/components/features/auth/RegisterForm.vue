@@ -45,6 +45,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const USERNAME_TAKEN = Messages.Auth.usernameTaken;
 
@@ -471,7 +472,7 @@ watch(isLoggedIn, (newVal) => {
         :loading="isVerifying"
         :disabled="isResending || verifyWaiting"
         :aria-label="verifyWaiting ? verifyHold.name.value : undefined"
-        :aria-describedby="verifyWaiting ? codeErrorId : undefined"
+        :aria-describedby="verifyWaiting ? statusTextId(codeErrorId) : undefined"
         :blocked="!isCodeValid"
         :error="isButtonError"
       >
@@ -485,7 +486,7 @@ watch(isLoggedIn, (newVal) => {
           :loading="isResending"
           :disabled="resendWaiting || isVerifying"
           :aria-label="resendName"
-          :aria-describedby="errorIsWait ? codeErrorId : undefined"
+          :aria-describedby="errorIsWait ? statusTextId(codeErrorId) : undefined"
           @click="sendAgain"
         >
           {{
@@ -552,7 +553,7 @@ watch(isLoggedIn, (newVal) => {
           :loading="isLoading"
           :disabled="isRegisterHeld"
           :aria-label="isRegisterHeld ? registerHold.name.value : undefined"
-          :aria-describedby="isRegisterHeld ? formErrorId : undefined"
+          :aria-describedby="isRegisterHeld ? statusTextId(formErrorId) : undefined"
           :blocked="!isValid"
           :error="isButtonError"
         >

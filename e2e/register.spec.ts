@@ -156,6 +156,7 @@ test("registering over the mail limit stays on the form, since no code was sent"
   // The limit is per IP, so Register waits it out whatever the address.
   const key = page.locator("form").getByRole("button", { name: /^(Register|Try again)/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toHaveAccessibleDescription("Too many e-mails requested: try again later.");
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("E-mail")).toBeFocused();
 });
@@ -177,10 +178,12 @@ test("a code past the daily cap of wrong codes holds Confirm code for hours", as
   );
   const key = page.getByRole("button", { name: /^Try again in/ });
   await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
-  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
-  // it points at says the wait in words.
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the alert says
+  // the wait in words. The key is described by the message as shown, so it states one wait.
   await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
-  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
+  await expect(key).toHaveAccessibleDescription(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends."
+  );
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
   await expect(page.getByText("Registration successful!")).toHaveCount(0);

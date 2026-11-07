@@ -5,6 +5,7 @@ import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
 import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
@@ -306,9 +307,8 @@ describe("LoginForm", () => {
       expect(key().text()).toBe("Try again in 15 min");
       expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(key().attributes("disabled")).toBeDefined();
-      expect(key().attributes("aria-describedby")).toBe(
-        wrapper.find('[role="alert"]').attributes("id")
-      );
+      // Described by the shown text only, so its counting name is the one wait it states.
+      expect(descriptionOf(key())).toBe(LIMITED);
       // The disabled key can't keep the focus.
       expect(document.activeElement).toBe(password.element);
 
