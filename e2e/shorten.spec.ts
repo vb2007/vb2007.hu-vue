@@ -117,16 +117,66 @@ test("the URL is checked once it's left", async ({ page, api }) => {
   await expect(url).not.toHaveAttribute("aria-invalid", "true");
 });
 
+test("a URL with a space is refused before it's sent", async ({ page, api }) => {
+  api.loggedInAs();
+  api.shortenReturns("abc123");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/shortenUrl") sent.push(request.url());
+  });
+  await page.goto("/shorten");
+  const url = page.getByLabel("URL");
+  const shorten = page.getByRole("button", { name: "Shorten", exact: true });
+  const inner = "A URL can't contain spaces: write each one as %20.";
+  const edge = "Remove the space at the start or end of the URL.";
+
+  await url.fill("https://example.com/a b");
+  await expect(url).toHaveAccessibleDescription(inner);
+  await url.press("Enter");
+  await expect(url).toHaveAccessibleDescription(inner);
+  await expect(shorten).toHaveAttribute("aria-disabled", "true");
+  await expect(url).toHaveValue("https://example.com/a b");
+
+  // A space at either end is as easy to paste as it is to miss.
+  await url.fill("https://example.com/a ");
+  await expect(url).toHaveAccessibleDescription(edge);
+  await url.press("Enter");
+  await url.fill(" https://example.com/a");
+  await expect(url).toHaveAccessibleDescription(edge);
+  await url.press("Enter");
+  await expect(url).toHaveValue(" https://example.com/a");
+  expect(sent).toEqual([]);
+
+  await url.fill("https://example.com/a%20b");
+  await expect(url).not.toHaveAttribute("aria-invalid", "true");
+  await shorten.click();
+  await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+  expect(sent).toHaveLength(1);
+});
+
 test("a URL the API refuses shows its reason", async ({ page, api }) => {
   api.loggedInAs();
+  // A refusal the form doesn't check for, such as a rule the API adds later.
+  let refused = 0;
+  await page.route("**/shortenUrl", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fallback();
+    refused++;
+    return route.fulfill({
+      status: 400,
+      headers: {
+        "Access-Control-Allow-Origin": new URL(page.url()).origin,
+        "Access-Control-Allow-Credentials": "true"
+      },
+      json: { error: "The URI/URL you've provided isn't valid." }
+    });
+  });
   await page.goto("/shorten");
   const url = page.getByLabel("URL");
 
-  // The form lets whitespace through; the API doesn't.
-  await url.fill("https://example.com/a b");
+  await url.fill("https://example.com/a");
   await page.getByRole("button", { name: "Shorten", exact: true }).click();
 
   await expect(url).toHaveAccessibleDescription("The URI/URL you've provided isn't valid.");
-  await expect(url).toHaveValue("https://example.com/a b");
-  expect(api.shortLinks.size).toBe(0);
+  await expect(url).toHaveValue("https://example.com/a");
+  expect(refused).toBe(1);
 });
