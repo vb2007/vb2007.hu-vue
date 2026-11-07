@@ -7,7 +7,9 @@ import type {
   LogoutUserResponse,
   RenameUserBody,
   RenameUserResponse,
+  SetSuspensionBody,
   SetUploadQuotaBody,
+  SuspensionResponse,
   UploadQuotaResponse
 } from "@/types/api/admin";
 import type {
@@ -322,6 +324,12 @@ export class Endpoints {
     static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({
       method: HttpMethod.Patch,
       path: "/admin/users/:id/upload-quota",
+      credentials: true
+    });
+    /** Suspending ends the user's session; the superuser's own account answers 409. */
+    static readonly setSuspension = defineEndpoint<SetSuspensionBody, SuspensionResponse>()({
+      method: HttpMethod.Patch,
+      path: "/admin/users/:id/suspension",
       credentials: true
     });
     /** Answers like `Uploads.list`, plus whose uploads they are. */

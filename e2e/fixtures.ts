@@ -35,6 +35,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
+ * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
+ * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
  * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API; a request that carries an older one is
  * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
@@ -661,6 +663,9 @@ export class MockApi {
       return route.fulfill({ status: response.status, headers, json: response.body });
     }
 
+    // Suspending ends the account's session, like the API's: it answers as logged out from then on.
+    if (this.user && this.isSuspended(this.user.email)) this.user = null;
+
     const cookie = (await request.headerValue("cookie")) ?? "";
     const sentSession = cookie.match(/(?:^|;\s*)__Host-VB-AUTH=([^;]+)/)?.[1];
     const response =
@@ -710,6 +715,7 @@ export class MockApi {
       newPassword?: string;
       username?: string;
       token?: string;
+      suspended?: unknown;
     } | null,
     query: URLSearchParams
   ): MockResponse | undefined {
@@ -767,6 +773,10 @@ export class MockApi {
     const quotaRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/upload-quota$/);
     if (quotaRoute) {
       return this.setQuota(decodeURIComponent(quotaRoute[1]), body?.quotaBytes);
+    }
+    const suspensionRoute = endpoint.match(/^PATCH \/admin\/users\/([^/]+)\/suspension$/);
+    if (suspensionRoute) {
+      return this.setSuspension(decodeURIComponent(suspensionRoute[1]), body?.suspended);
     }
 
     switch (endpoint) {
@@ -930,6 +940,16 @@ export class MockApi {
         body: {
           error:
             "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+        }
+      };
+    }
+    // Only after the right password, so a wrong one doesn't reveal the suspension.
+    if (this.isSuspended(account.email)) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "This account is suspended: it can't log in until the superuser lifts the suspension."
         }
       };
     }
@@ -1774,6 +1794,41 @@ export class MockApi {
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
     return { status: 200, body: { message: "Upload quota updated successfully.", user } };
+  }
+
+  /** Whether the `hasUser(...)` account at `email` is suspended. */
+  private isSuspended(email: string) {
+    return this.users.some(
+      (user) => user.suspendedAt && normalizeEmail(user.email) === normalizeEmail(email)
+    );
+  }
+
+  /**
+   * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
+   * the first `suspendedAt`, and the superuser's row answers 409.
+   */
+  private setSuspension(id: string, suspended: unknown): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
+    const user = this.users.find((item) => item.id === id);
+    if (!user) return { status: 404, body: { error: "There is no such user with that ID." } };
+    if (typeof suspended !== "boolean") {
+      return { status: 400, body: { error: "suspended must be true or false." } };
+    }
+    if (user.isSuperuser) {
+      return { status: 409, body: { error: "The superuser's account can't be suspended." } };
+    }
+    user.suspendedAt = suspended ? (user.suspendedAt ?? new Date(this.now()).toISOString()) : null;
+    return {
+      status: 200,
+      body: {
+        message: suspended
+          ? "User suspended successfully: their session was ended."
+          : "User unsuspended successfully.",
+        user
+      }
+    };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, MOCK_PASSWORD, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
@@ -272,6 +272,100 @@ test("a user page's link that leads to no account says so", async ({ page, api }
   await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
 });
 
+test("the superuser suspends a user after confirming, then lifts it", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const admin = api.hasUser("vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
+  const actions = page.locator(".actions");
+  await expect(actions.getByRole("heading", { level: 3 })).toHaveText([
+    "Uploads",
+    "Rename",
+    "Log out everywhere",
+    "Suspend account",
+    "Delete account"
+  ]);
+
+  // It asks first, and backing out sends nothing.
+  await actions.getByRole("button", { name: "Suspend", exact: true }).click();
+  await expect(page.getByText("Suspend anna? They're logged out at once")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Suspend anna" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Suspend anna" })).toHaveCount(0);
+  await expect(actions.getByRole("button", { name: "Suspend", exact: true })).toBeFocused();
+  expect(anna.suspendedAt).toBeNull();
+
+  await actions.getByRole("button", { name: "Suspend", exact: true }).click();
+  await page.getByRole("button", { name: "Suspend anna" }).click();
+  await expect(actions.getByRole("status")).toHaveText(
+    "User suspended successfully: their session was ended."
+  );
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toBeVisible();
+  await expect(page.locator(".fact--suspended dd")).toHaveText(/Since .+: they can't log in\./);
+  await expect(page.getByRole("button", { name: "Lift suspension" })).toBeFocused();
+  expect(anna.suspendedAt).not.toBeNull();
+
+  // The list says so too.
+  await page.getByRole("link", { name: "All users" }).click();
+  await expect(
+    page.locator(".row").filter({ hasText: "anna" }).getByText("Suspended")
+  ).toBeVisible();
+  await page.goBack();
+
+  await page.getByRole("button", { name: "Lift suspension" }).click();
+  await expect(actions.getByRole("status")).toHaveText("User unsuspended successfully.");
+  await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
+  await expect(page.locator(".fact--suspended")).toHaveCount(0);
+  expect(anna.suspendedAt).toBeNull();
+
+  // The admin's own account can't be suspended, so its row only says so.
+  await page.goto(`/admin/users/${admin.id}`);
+  await expect(page.getByText("The admin's own account can't be suspended.")).toBeVisible();
+  await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
+});
+
+test("a suspended account is logged out and refused, but only after the right password", async ({
+  page,
+  api
+}) => {
+  // Logged in when the suspension came: the session answers as logged out.
+  api.loggedInAs("anna@example.com", "anna");
+  api.hasUser("anna", { suspendedAt: "2026-11-05T09:00:00.000Z" });
+  await page.goto("/account");
+  await expect(page.getByText("Log in to see your account.")).toBeVisible();
+
+  await page.goto("/login");
+  const main = page.getByRole("main");
+  const logIn = main.getByRole("button", { name: "Log in", exact: true });
+  await page.getByLabel("E-mail").fill("anna@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("not-the-password");
+  await logIn.click();
+  await expect(main.getByRole("alert")).toHaveText(
+    "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
+  );
+
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await logIn.click();
+  await expect(main.getByRole("alert")).toHaveText(
+    "This account is suspended: it can't log in until the superuser lifts the suspension."
+  );
+  await expect(main).not.toContainText("Login successful!");
+  const cookies = await page.context().cookies();
+  expect(cookies.map((cookie) => cookie.name)).not.toContain("__Host-VB-AUTH");
+});
+
+test("a GitHub login into a suspended account is explained", async ({ page }) => {
+  await page.goto("/login?oauthError=accountSuspended");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension."
+  );
+  await expect(page).toHaveURL("/login");
+});
+
 test("the superuser renames a user and logs them out everywhere", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   const anna = api.hasUser("anna");
@@ -284,6 +378,7 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
     "Uploads",
     "Rename",
     "Log out everywhere",
+    "Suspend account",
     "Delete account"
   ]);
 

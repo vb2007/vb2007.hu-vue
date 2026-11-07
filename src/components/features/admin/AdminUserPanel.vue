@@ -18,6 +18,7 @@ import AdminQuotaEditor from "./AdminQuotaEditor.vue";
 import AdminQuotaMeter from "./AdminQuotaMeter.vue";
 import AdminRenameUser from "./AdminRenameUser.vue";
 import AdminUserAction from "./AdminUserAction.vue";
+import AdminUserSuspension from "./AdminUserSuspension.vue";
 import AdminUserTags from "./AdminUserTags.vue";
 
 const props = defineProps<{ id: string }>();
@@ -183,6 +184,7 @@ const password = computed(() => {
           </AdminUserAction>
           <AdminRenameUser :user="user" @updated="applyUser" />
           <AdminLogoutUser :user="user" />
+          <AdminUserSuspension :user="user" @updated="applyUser" />
           <AdminDeleteUser :user="user" />
         </div>
       </section>
