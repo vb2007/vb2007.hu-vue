@@ -17,7 +17,8 @@ vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   clearSession: vi.fn()
 }));
 
-const SENT = "If an account uses this address, a password reset code was sent to it.";
+const SENT =
+  "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
 const RESET = "Password reset successfully: log in with the new password.";
 const USER_ID = "0123456789abcdef01234567";
 const TOKEN = `${USER_ID}.${"a".repeat(40)}-_9`;

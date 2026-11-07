@@ -167,6 +167,10 @@ const MAIL_REGISTRATION_STOPS_AT = 200;
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
+/** The API's answer to `POST /auth/password-reset`: its `passwordResetSent` (vb2007/vb2007.hu-api#232). */
+export const PASSWORD_RESET_SENT =
+  "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
+
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
 
@@ -986,9 +990,7 @@ export class MockApi {
         }
         return {
           status: 200,
-          body: {
-            message: "If an account uses this address, a password reset code was sent to it."
-          }
+          body: { message: PASSWORD_RESET_SENT }
         };
       }
       case "POST /auth/password-reset/confirm":
