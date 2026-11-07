@@ -117,6 +117,13 @@ export class Messages {
       "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.";
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
+    /**
+     * Back on an address whose reset code is still recent, with no message of the API's to show
+     * again (e.g. after a reload). Worded like the API's `passwordResetSent`, without its "just now",
+     * since nothing was asked for.
+     */
+    static readonly resetCodeRecent: string =
+      "If an account uses this address, a password reset code was sent to it in the last minute: use the latest one.";
     /** A reset link whose token can't be one the API mailed. */
     static readonly resetLinkMalformed: string =
       "This reset link isn't complete or was changed: request a new one.";

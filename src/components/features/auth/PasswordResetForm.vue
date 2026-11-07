@@ -39,15 +39,6 @@ const passwordHint = Messages.Auth.lengthHint(
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = Limits.Code.cooldownSeconds;
-/**
- * The API answers a resend like the first code, but sends nothing within a minute of the last one,
- * which another tab or a lost countdown can't rule out.
- */
-const RESENT_MESSAGE =
-  "If an account uses this address, a new code is on its way, unless one was sent in the last minute: then the one before still works.";
-/** Back on an address whose code is still recent, with no message of the API's to show again. */
-const RECENT_MESSAGE =
-  "If an account uses this address, a code was sent to it in the last minute and still works.";
 
 const linkStillWorks = Messages.Auth.resetLinkStillWorks(Limits.Code.passwordResetValidMinutes);
 
@@ -246,7 +237,11 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
         sendHold.start(answer.retryAfter);
         return null;
       }
-      if (answer.retryAfter) waitBeforeResend(address, answer.retryAfter, answer.error);
+      if (answer.retryAfter) {
+        waitBeforeResend(address, answer.retryAfter, answer.error);
+        // The code on show went out over a minute ago: the limit's message says why none followed.
+        sentMessage.value = "";
+      }
       flagError();
       return null;
     }
@@ -266,11 +261,12 @@ const handleSend = async () => {
   }
 
   // A code went to this address moments ago and the API wouldn't send another yet. A wait for
-  // the mail limit says so instead: the last code may be older than a minute. Either way it goes
-  // back to the code step without a request, so the mail limit's hold doesn't stand in the way.
+  // the mail limit says so instead, without the API's message: the last code may be older than a
+  // minute. Either way it goes back to the code step without a request, so the mail limit's hold
+  // doesn't stand in the way.
   if (isWaitingFor(email.value)) {
     const limit = resend.note.value;
-    await showCodeStep(lastMessage.value || (limit ? "" : RECENT_MESSAGE), limit);
+    await showCodeStep(limit ? "" : lastMessage.value || Messages.Auth.resetCodeRecent, limit);
     return;
   }
   if (isSendHeld.value) return;
@@ -295,8 +291,9 @@ const enterCode = async () => {
 };
 
 const sendAgain = async () => {
-  if ((await askForCode(sentTo.value, true)) !== null) {
-    sentMessage.value = RESENT_MESSAGE;
+  const message = await askForCode(sentTo.value, true);
+  if (message !== null) {
+    sentMessage.value = message;
     // A code typed before was most likely the one that didn't work.
     code.value = "";
     resetChecks.reset();

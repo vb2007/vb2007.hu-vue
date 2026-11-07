@@ -981,7 +981,8 @@ export class MockApi {
         return {
           status: 200,
           body: {
-            message: "If an account uses this address, a password reset code was sent to it."
+            message:
+              "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one."
           }
         };
       }

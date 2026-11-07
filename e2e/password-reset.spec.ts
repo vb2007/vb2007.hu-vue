@@ -1,6 +1,7 @@
 import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
-const SENT = "If an account uses this address, a password reset code was sent to it.";
+const SENT =
+  "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
 
 test("a forgotten password is reset with the mailed code, then the user logs in", async ({
   page,
@@ -74,9 +75,7 @@ test("the code can be sent again once the countdown ends, and the address change
   await expect(resend).toHaveText("Send again");
   await resend.click();
   await expect(resend).toHaveText(/^Send again in \d+ sec$/);
-  await expect(page.getByRole("status")).toHaveText(
-    "If an account uses this address, a new code is on its way, unless one was sent in the last minute: then the one before still works."
-  );
+  await expect(page.getByRole("status")).toHaveText(SENT);
   await expect(page.getByLabel("Code")).toBeFocused();
   await expect(page.getByLabel("Code")).toHaveValue("");
   expect(api.passwordResets).toEqual(["typo@example.com", "me@example.com", "me@example.com"]);
@@ -96,6 +95,8 @@ test("the code can be sent again once the countdown ends, and the address change
   await expect(page.getByRole("alert")).toHaveText("Too many e-mails requested: try again later.");
   await expect(resend).toHaveText("Send again in 30 min");
   await expect(resend).toBeDisabled();
+  // The last code went out over a minute ago: no message says it was just sent.
+  await expect(page.getByRole("status")).toHaveCount(0);
 });
 
 test("a code that already arrived is entered after a reload, without sending another", async ({
@@ -137,6 +138,8 @@ test("a resend over the mail limit is still explained after a reload, not taken 
   await page.getByLabel("E-mail").fill("me@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
   await expect(page.getByLabel("Code")).toBeFocused();
+  const codeSent = page.getByRole("main").getByText(/code was sent/);
+  await expect(codeSent).toHaveText(SENT);
   await page.clock.runFor(60_000);
   api.limitsMailSends();
 
@@ -148,15 +151,25 @@ test("a resend over the mail limit is still explained after a reload, not taken 
   await expect(resend).toHaveAccessibleName("Send again in 57 minutes");
   await expect(resend).toHaveAccessibleDescription(tooMany);
   expect(api.limitedPasswordResets).toEqual(["me@example.com"]);
+  // The wait is the mail limit's, and the last code went out over a minute ago: nothing on the
+  // page says a code was sent, neither the API's message nor the one for a recent code.
+  await expect(codeSent).toHaveCount(0);
+
+  // Back to the address within the page, nothing is asked for and still nothing claims a code.
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  await expect(page.getByRole("alert")).toHaveText(tooMany);
+  await expect(codeSent).toHaveCount(0);
 
   await page.reload();
   await page.getByLabel("E-mail").fill("me@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
 
-  // The wait is the mail limit's: no "sent in the last minute", and nothing new is asked for.
+  // Still the mail limit's wait after the reload: its error, no code claimed, nothing asked for.
   await expect(page.getByLabel("Code")).toBeFocused();
   await expect(page.getByRole("alert")).toHaveText(tooMany);
-  await expect(page.getByText("in the last minute")).toHaveCount(0);
+  await expect(codeSent).toHaveCount(0);
   await expect(resend).toBeDisabled();
   // Neither sent nor refused: the mock saw no request after the reload.
   expect(api.passwordResets).toEqual(["me@example.com"]);
