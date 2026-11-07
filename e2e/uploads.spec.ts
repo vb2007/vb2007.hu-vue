@@ -58,6 +58,28 @@ test("a user uploads files, copies the link and sees them listed", async ({
   await expect(queue).toHaveCount(0);
 });
 
+test("an upload after the account was suspended logs the page out", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.loggedInAs("mallory@example.com", "mallory");
+  const account = api.hasUser("mallory");
+  await page.goto("/upload");
+  await expect(page.getByText("No uploads yet.")).toBeVisible();
+
+  // The admin suspends the account behind the page's back, which ends its session.
+  account.suspendedAt = "2026-10-12T09:00:00.000Z";
+  await page
+    .getByLabel("Files to upload")
+    .setInputFiles([{ name: "holiday.png", mimeType: "image/png", buffer: Buffer.alloc(4096) }]);
+
+  await expect(page.getByText("Only logged-in users can upload files.")).toBeVisible();
+  expect(api.uploads).toHaveLength(0);
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
+});
+
 test("a user renames, re-scopes and deletes an upload", async ({ page, api }) => {
   api.loggedInAs();
   api.hasUpload("report.pdf", { fileSize: 50_000 });
