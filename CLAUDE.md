@@ -5,10 +5,37 @@ These rules apply to every change, however small.
 ## Workflow
 
 1. **Every PR needs an issue first**, however small the job. If none exists yet, create it before branching: a minimal issue describing the work, using the matching template in `.github/ISSUE_TEMPLATE/` (`bug.yml`, `feature.yml` or `documentation.yml`). Fill in the template's fields as `###` headings, and apply its label and assignee.
-2. **Branch from `dev`**, named `dev-<short-topic>` (e.g. `dev-nginx-legacy-routes`).
-3. **PRs only target `dev`.** Never open a PR to `main`: the owner merges `dev` into `main` afterwards, usually in batches.
-4. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. It closes the issue once `dev` reaches `main`, but on a PR into `dev` it doesn't link the issue under the PR's "Development". Neither `gh` nor GitHub's API can link it (`gh issue develop` only links a branch, which doesn't show on the PR), so the owner links it by hand: when reporting a new PR, remind them which issue to link.
-5. **Assign and label every PR:** assignee `vb2007`, and the label of its issue's template (`feature`, `bug` or `documentation`), e.g. `gh pr create --base dev --assignee vb2007 --label feature`.
+2. **Move the issue to "In Progress" when you start working on it.** This is mandatory for every issue you work on, new or existing. The issues live in the project "vb2007.hu Frontend development progress tracking" (`vb2007` project 8), and GitHub's automation adds each one there as "Todo". Wait until it has, then set the status with `gh` (this needs the token's `project` scope: `gh auth refresh -h github.com -s project`):
+
+   ```bash
+   issue=<issue>
+   for _ in $(seq 30); do
+     status=$(gh issue view "$issue" --json projectItems --jq '.projectItems[] | select(.title == "vb2007.hu Frontend development progress tracking") | .status.name')
+     [ -n "$status" ] && break
+     sleep 10
+   done
+   [ "$status" = "In Progress" ] || gh project item-edit 8 --owner vb2007 --field Status --value "In Progress" \
+     --url "https://github.com/vb2007/vb2007.hu-vue/issues/$issue"
+   ```
+
+   Never set an issue to "Done" yourself: the project's "Auto-close issue" workflow would close it before `dev` reaches `main`. Closing needs no handling, since the issue closes and moves to "Done" on its own once its PR reaches `main`.
+
+3. **Branch from `dev`**, named `dev-<short-topic>` (e.g. `dev-nginx-legacy-routes`).
+4. **PRs only target `dev`.** Never open a PR to `main`: the owner merges `dev` into `main` afterwards, usually in batches.
+5. **Link the issue with a closing keyword** on its own line at the end of the PR description, before the footer: `Resolves: #<issue>`. Use one line per issue if there are several. It closes the issue once `dev` reaches `main`, but on a PR into `dev` it doesn't link the issue under the PR's "Development".
+6. **Link the issue to the PR through the API as soon as the PR is open.** This is mandatory: don't leave it to the owner. `gh` can't do it (`gh issue develop` only links a branch, which doesn't show on the PR), but GraphQL's `addCloseIssueReferences` can. Run it once per issue, then check that the PR lists the issue:
+
+   ```bash
+   id() { gh api graphql -F n="$1" --jq '.data.repository.issueOrPullRequest.id' \
+     -f query='query($n:Int!){repository(owner:"vb2007",name:"vb2007.hu-vue"){issueOrPullRequest(number:$n){... on Issue{id} ... on PullRequest{id}}}}'; }
+   gh api graphql -f i="$(id <issue>)" -f p[]="$(id <pr>)" \
+     -f query='mutation($i:ID!,$p:[ID!]!){addCloseIssueReferences(input:{issueId:$i,pullRequestIds:$p}){clientMutationId}}'
+   gh pr view <pr> --json closingIssuesReferences --jq '[.closingIssuesReferences[].number]'
+   ```
+
+   `removeCloseIssueReferences` takes the same input and undoes a wrong link.
+
+7. **Assign and label every PR:** assignee `vb2007`, and the label of its issue's template (`feature`, `bug` or `documentation`), e.g. `gh pr create --base dev --assignee vb2007 --label feature`.
 
 ## Issue schema
 

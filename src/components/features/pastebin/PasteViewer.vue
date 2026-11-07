@@ -50,9 +50,12 @@ const chosenLanguage = computed({
   get: () => pendingLanguage.value || language.value,
   set: async (id: string) => {
     pendingLanguage.value = id;
-    await setLanguage(id);
+    const outcome = await setLanguage(id);
+    // The save was for a paste no longer on show: leave the pick alone, since it may be one made
+    // on the paste now on show, still saving. (The watch below cleared this save's own pick.)
+    if (outcome === "gone") return;
     pendingLanguage.value = "";
-    if (!saveError.value) savedLanguage.value = languageLabel(id);
+    if (outcome === "saved") savedLanguage.value = languageLabel(id);
   }
 });
 
@@ -61,6 +64,7 @@ watch(paste, (current, previous) => {
     showLineNumbers.value = (current?.content.split("\n").length ?? 0) > 1;
     view.value = "rendered";
     savedLanguage.value = "";
+    pendingLanguage.value = "";
   }
 });
 watch(() => props.id, load, { immediate: true });

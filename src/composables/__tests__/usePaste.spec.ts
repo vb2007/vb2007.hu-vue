@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { mountComposable } from "@/__tests__/helpers/host";
 import { usePaste } from "@/composables/usePaste";
 
 const paste = {
@@ -27,15 +28,81 @@ describe("usePaste", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/paste/p1", {
       method: "GET",
-      credentials: "include"
+      credentials: "include",
+      signal: expect.any(AbortSignal)
     });
     expect(single.paste.value).toEqual(paste);
     expect(single.errorMessage.value).toBe("");
     expect(single.isLoading.value).toBe(false);
   });
 
+  it("shows each paste in turn when the answers come in order", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { paste }))
+      .mockResolvedValueOnce(jsonResponse(200, { paste: { ...paste, _id: "p2" } }));
+    const single = usePaste();
+
+    await single.load("p1");
+    expect(single.paste.value?._id).toBe("p1");
+    await single.load("p2");
+
+    expect(single.paste.value?._id).toBe("p2");
+    expect(single.isLoading.value).toBe(false);
+  });
+
+  it("ignores the previous paste's answer when it arrives after the next one's", async () => {
+    const first = deferResponse(fetchMock, { ignoreAbort: true });
+    const second = deferResponse(fetchMock);
+    const single = usePaste();
+
+    const loadingFirst = single.load("p1");
+    const loadingSecond = single.load("p2");
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+
+    second.respond(jsonResponse(200, { paste: { ...paste, _id: "p2" } }));
+    await loadingSecond;
+    first.respond(jsonResponse(200, { paste }));
+    await loadingFirst;
+
+    expect(single.paste.value?._id).toBe("p2");
+    expect(single.isLoading.value).toBe(false);
+  });
+
+  it("leaves an aborted load's paste to the next one, without an error", async () => {
+    deferResponse(fetchMock);
+    const second = deferResponse(fetchMock);
+    const single = usePaste();
+
+    const loadingFirst = single.load("p1");
+    const loadingSecond = single.load("p2");
+    await loadingFirst;
+    expect(single.errorMessage.value).toBe("");
+    expect(single.isLoading.value).toBe(true);
+
+    second.respond(jsonResponse(200, { paste: { ...paste, _id: "p2" } }));
+    await loadingSecond;
+    expect(single.paste.value?._id).toBe("p2");
+    expect(single.isLoading.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("aborts the load in flight when it goes away", async () => {
+    deferResponse(fetchMock);
+    const { api, wrapper } = mountComposable(() => usePaste());
+
+    const pending = api.load("p1");
+    wrapper.unmount();
+    await pending;
+
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(api.errorMessage.value).toBe("");
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
   it("explains a malformed ID", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: "Invalid ID format." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, { error: "Invalid ID format: must be a 24 character HEX string." })
+    );
     const single = usePaste();
 
     await single.load("nope");
@@ -78,7 +145,7 @@ describe("usePaste", () => {
     it("does nothing before a paste is loaded", async () => {
       const single = usePaste();
 
-      await single.setLanguage("python");
+      await expect(single.setLanguage("python")).resolves.toBe("gone");
 
       expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -91,7 +158,7 @@ describe("usePaste", () => {
 
       const pending = single.setLanguage("python");
       expect(single.isSaving.value).toBe(true);
-      await pending;
+      await expect(pending).resolves.toBe("saved");
 
       expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/paste/p1", {
         method: "PATCH",
@@ -108,11 +175,85 @@ describe("usePaste", () => {
       const single = await loaded();
       fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not authorized." }));
 
-      await single.setLanguage("python");
+      await expect(single.setLanguage("python")).resolves.toBe("failed");
 
       expect(single.saveError.value).toBe("You are not authorized.");
       expect(single.paste.value?.language).toBe("plaintext");
       expect(single.isSaving.value).toBe(false);
+    });
+
+    const other = { ...owned, _id: "p2", language: "rust" };
+
+    it("leaves the next paste alone when a save lands after moving to it", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: other }));
+
+      const saving = single.setLanguage("python");
+      await single.load("p2");
+      expect(single.isSaving.value).toBe(false);
+      save.respond(jsonResponse(200, { paste: { ...paste, language: "python" } }));
+
+      await expect(saving).resolves.toBe("gone");
+      expect(single.paste.value).toEqual(other);
+      expect(single.isSaving.value).toBe(false);
+    });
+
+    it("leaves the paste empty when a save lands while the next one loads", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      const next = deferResponse(fetchMock);
+
+      const saving = single.setLanguage("python");
+      const loading = single.load("p2");
+      save.respond(jsonResponse(200, { paste: { ...paste, language: "python" } }));
+      await expect(saving).resolves.toBe("gone");
+      expect(single.paste.value).toBeNull();
+
+      next.respond(jsonResponse(200, { paste: other }));
+      await loading;
+      expect(single.paste.value).toEqual(other);
+    });
+
+    it("keeps a save's failure off the next paste", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: other }));
+
+      const saving = single.setLanguage("python");
+      await single.load("p2");
+      save.respond(jsonResponse(403, { error: "You are not authorized." }));
+
+      await expect(saving).resolves.toBe("gone");
+      expect(single.saveError.value).toBe("");
+      expect(single.paste.value).toEqual(other);
+    });
+
+    it("takes a save that lands before moving on, then shows the next paste as it is", async () => {
+      const single = await loaded();
+      const save = deferResponse(fetchMock);
+      const next = deferResponse(fetchMock);
+
+      const saving = single.setLanguage("python");
+      save.respond(jsonResponse(200, { paste: { ...paste, language: "python" } }));
+      await expect(saving).resolves.toBe("saved");
+      expect(single.paste.value?.language).toBe("python");
+
+      const loading = single.load("p2");
+      next.respond(jsonResponse(200, { paste: other }));
+      await loading;
+      expect(single.paste.value).toEqual(other);
+    });
+
+    it("clears a failed save's error when another paste loads", async () => {
+      const single = await loaded();
+      fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "You are not authorized." }));
+      await single.setLanguage("python");
+      expect(single.saveError.value).toBe("You are not authorized.");
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: other }));
+      await single.load("p2");
+      expect(single.saveError.value).toBe("");
     });
 
     it("reports an unreachable server", async () => {

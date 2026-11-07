@@ -34,15 +34,17 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
- * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
+ * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
- * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API; a request that carries an older one is
- * answered as logged out. A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
+ * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API, and `api.replacesSession()` stands
+ * in for a login elsewhere, which keeps the account logged in on a cookie the browser doesn't have. A request that carries an older one
+ * gets the logged-out 403 on every route the API guards with `isAuthenticated`; the public ones (`PUBLIC_ROUTES`) answer it as a guest's.
+ * A test that arranges the user with `loggedInAs` sends no cookie, so this never gets in its way.
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`).
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
@@ -130,6 +132,31 @@ const USERNAME_CHECKS_LIMITED: MockResponse = {
   body: { error: "Too many username checks requested: try again later.", retryAfter: 42 }
 };
 
+/** The API's `Responses.notLoggedIn`: what `isAuthenticated` and its controllers tell a guest. */
+const NOT_LOGGED_IN = {
+  status: 403,
+  body: { error: "You must be logged in to perform this action." }
+} satisfies MockResponse;
+
+/**
+ * The routes the API serves without `isAuthenticated` (`src/router/*.ts` in vb2007/vb2007.hu-api, which has no session
+ * middleware), so a session it has replaced still gets through, as a guest. Every other route refuses that session first.
+ * `GET /e2e-github/authorize` stands in for the public `GET /auth/github/callback`.
+ */
+const PUBLIC_ROUTES = [
+  /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
+  /^GET \/auth\/(username-available|github\/link)$/,
+  /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
+  /^GET \/e2e-github\/authorize$/
+];
+
+/** The API's `PASTE_LANGUAGE_MIN_LENGTH` and `PASTE_LANGUAGE_MAX_LENGTH`, and its `pasteLanguagePattern`. */
+const PASTE_LANGUAGE_MIN_LENGTH = 1;
+const PASTE_LANGUAGE_MAX_LENGTH = 32;
+const PASTE_LANGUAGE = new RegExp(
+  `^[a-z0-9+#-]{${PASTE_LANGUAGE_MIN_LENGTH},${PASTE_LANGUAGE_MAX_LENGTH}}$`
+);
+
 type UploadCategory = "image" | "video" | "audio" | "document" | "archive";
 
 /** A subset of the API's allowlist (vb2007/vb2007.hu-api#82), enough for the e2e files. */
@@ -160,6 +187,10 @@ const MAIL_WARNING_AT = 200;
 const MAIL_REGISTRATION_STOPS_AT = 200;
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/** The API's answer to `POST /auth/password-reset`: its `passwordResetSent` (vb2007/vb2007.hu-api#232). */
+export const PASSWORD_RESET_SENT =
+  "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -225,6 +256,7 @@ const parseMultipart = (body: Buffer, contentType: string) => {
   const filePart = parts.find((part) => part.includes('name="file"')) ?? "";
   const [headers, ...content] = filePart.split("\r\n\r\n");
   return {
+    hasFile: filePart !== "",
     visibility: field("visibility")?.replace(/\r\n$/, ""),
     fileName: headers.match(/filename="([^"]*)"/)?.[1] ?? "",
     mimeType: headers.match(/Content-Type: (\S+)/i)?.[1] ?? "",
@@ -383,6 +415,14 @@ export class MockApi {
 
   loggedOut() {
     this.user = null;
+  }
+
+  /**
+   * A login elsewhere, which the API's one session per account replaces this browser's with: the account stays
+   * logged in, but the browser's `__Host-VB-AUTH` cookie no longer works.
+   */
+  replacesSession() {
+    this.session = `e2e-session-${++this.sessionCount}`;
   }
 
   loggedInAs(
@@ -726,25 +766,27 @@ export class MockApi {
       await this.userUploadsHold;
     }
 
-    const contentType = (await request.headerValue("content-type")) ?? "";
-    if (contentType.startsWith("multipart/form-data")) {
-      const response = this.receiveUpload(parseMultipart(request.postDataBuffer()!, contentType));
-      return route.fulfill({ status: response.status, headers, json: response.body });
-    }
-
     // Suspending ends the account's session, like the API's: it answers as logged out from then on.
     if (this.user && this.isSuspended(this.user.email)) this.user = null;
 
     const cookie = (await request.headerValue("cookie")) ?? "";
     const sentSession = cookie.match(/(?:^|;\s*)__Host-VB-AUTH=([^;]+)/)?.[1];
-    const response =
-      sentSession && sentSession !== this.session
-        ? this.staleSession()
-        : this.respond(
-            `${request.method()} ${url.pathname}`,
-            request.postDataJSON(),
-            url.searchParams
-          );
+    const staleSession = sentSession !== undefined && sentSession !== this.session;
+    const endpoint = `${request.method()} ${url.pathname}`;
+    const contentType = (await request.headerValue("content-type")) ?? "";
+    // Only `isAuthenticated` refuses a session the API replaced; a public route answers it as a guest's.
+    // An upload is guarded too, so it gets the same session checks before its body is read.
+    const response: MockResponse | undefined =
+      staleSession && !PUBLIC_ROUTES.some((route) => route.test(endpoint))
+        ? NOT_LOGGED_IN
+        : contentType.startsWith("multipart/form-data")
+          ? this.receiveUpload(request.postDataBuffer(), contentType)
+          : this.respond(
+              endpoint,
+              request.postDataJSON(),
+              url.searchParams,
+              staleSession ? null : this.user
+            );
     if (!response) {
       this.unhandled.push(`${request.method()} ${request.url()}`);
       return route.abort();
@@ -762,11 +804,6 @@ export class MockApi {
       });
     }
     return route.fulfill({ status: response.status, headers, json: response.body ?? {} });
-  }
-
-  /** What the API answers a session it has replaced: logged out. */
-  private staleSession(): MockResponse {
-    return { status: 403, body: { error: "You must be logged in to perform this action." } };
   }
 
   private respond(
@@ -787,7 +824,13 @@ export class MockApi {
       suspended?: unknown;
       ip?: unknown;
     } | null,
-    query: URLSearchParams
+    query: URLSearchParams,
+    /**
+     * Whose session the request carries: `null` for a guest or a replaced session. Only the public routes that
+     * read the session (`getSessionUser` in the API) need it: to the others, e.g. the username check or a
+     * password reset, `this.user` is still the account itself.
+     */
+    sessionUser: MockUser | null
   ): MockResponse | undefined {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
@@ -887,24 +930,29 @@ export class MockApi {
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
               }
             }
-          : { status: 403, body: { error: "You must be logged in to perform this action." } };
+          : NOT_LOGGED_IN;
       case "POST /auth/login":
         return this.login(body?.email, body?.password);
       case "DELETE /user":
         return this.deleteAccount(body);
       case "POST /auth/logout":
-        this.user = null;
+        // A replaced session's logout only clears the browser's cookie: the session that replaced it lives on.
+        if (sessionUser) this.user = null;
         return { status: 200 };
       case "GET /auth/github/link":
-        if (!this.user) {
+        if (!sessionUser) {
           return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
         }
         // Only an account without a password may link through a plain navigation (vb2007/vb2007.hu-api#243).
-        if (this.user.hasPassword) {
+        if (sessionUser.hasPassword) {
           return {
             status: 302,
             location: `${this.appOrigin}/account?oauthError=passwordRequired`
           };
+        }
+        // Checked after the session and the password, like the API's `githubLink`.
+        if (this.githubUnconfigured) {
+          return { status: 302, location: `${this.appOrigin}/account?oauthError=notConfigured` };
         }
         return this.linkGithub();
       case "POST /auth/github/link":
@@ -915,6 +963,10 @@ export class MockApi {
           return { status: 302, location: `${this.appOrigin}/account?oauthError=invalidState` };
         }
         this.githubLinkStarted = false;
+        // Like the callback's link check, which needs the session that started the link.
+        if (!sessionUser) {
+          return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
+        }
         return this.linkGithub();
       case "POST /user/password":
         return this.setPassword(body?.password);
@@ -980,9 +1032,7 @@ export class MockApi {
         }
         return {
           status: 200,
-          body: {
-            message: "If an account uses this address, a password reset code was sent to it."
-          }
+          body: { message: PASSWORD_RESET_SENT }
         };
       }
       case "POST /auth/password-reset/confirm":
@@ -997,7 +1047,7 @@ export class MockApi {
       case "GET /shortenUrls":
         return this.listShortLinks(query);
       case "POST /paste":
-        if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+        if (!this.user) return NOT_LOGGED_IN;
         return {
           status: 201,
           body: {
@@ -1066,7 +1116,7 @@ export class MockApi {
    */
   private guardGithubLink(): MockResponse | undefined {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1145,7 +1195,7 @@ export class MockApi {
    */
   private changeEmail(email?: string, password?: string) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1306,7 +1356,7 @@ export class MockApi {
    */
   private confirmEmail(code?: string) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!code) return { status: 400, body: { error: "You must provide the confirmation code." } };
     if (!this.claims(this.emailChange) || normalizeCode(code) !== MOCK_EMAIL_CODE) {
@@ -1331,7 +1381,7 @@ export class MockApi {
 
   private changePassword(currentPassword?: string, newPassword?: string) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1367,7 +1417,7 @@ export class MockApi {
 
   private setPassword(password: string | undefined) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!password) return { status: 400, body: { error: "You must provide a password." } };
     const length = [...password].length;
@@ -1399,7 +1449,7 @@ export class MockApi {
 
   private deleteAccount(body: { password?: string; username?: string } | null) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (this.passwordChecksLimited) {
       return PASSWORD_CHECKS_LIMITED;
@@ -1524,10 +1574,13 @@ export class MockApi {
     };
   }
 
+  /**
+   * `GET /paste/:id` is public. `PATCH` and `DELETE` run the API's `isAuthenticated` first, so a guest
+   * is logged out before the ID is checked, then `isPasteOwner`: the ID's format, the 404, the owner.
+   */
   private respondPaste(method: string, id: string, language?: string) {
-    if (!/^[0-9a-f]{24}$/.test(id)) {
-      return { status: 400, body: { error: "Invalid ID format." } };
-    }
+    if (method !== "GET" && !this.user) return NOT_LOGGED_IN;
+    if (!OBJECT_ID.test(id)) return this.invalidId();
     const index = this.pastes.findIndex((paste) => paste._id === id);
     if (index === -1) {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
@@ -1540,22 +1593,25 @@ export class MockApi {
         body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
       };
     }
-    if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
-    }
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
-    if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
+    if (paste.addedBy !== this.user!.username && !this.user!.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
     if (method === "PATCH") {
-      if (!/^[a-z0-9+#-]{1,32}$/.test(language ?? "")) {
-        return { status: 400, body: { error: "That isn't a valid language." } };
+      if (!PASTE_LANGUAGE.test(language ?? "")) {
+        return {
+          status: 400,
+          body: {
+            error: `The language is invalid: it must be ${PASTE_LANGUAGE_MIN_LENGTH}-${PASTE_LANGUAGE_MAX_LENGTH} lowercase letters, digits or +#- characters.`
+          }
+        };
       }
       paste.language = language;
       return { status: 200, body: { message: "Paste updated successfully.", paste } };
     }
-    const [deleted] = this.pastes.splice(index, 1);
-    return { status: 200, body: { message: "Paste deleted successfully.", paste: deleted } };
+    this.pastes.splice(index, 1);
+    // Like the API's `deletePaste`, which sends only the deleted paste's ID.
+    return { status: 200, body: { message: "Paste deleted successfully.", paste: { id } } };
   }
 
   private usedBytes() {
@@ -1563,7 +1619,7 @@ export class MockApi {
   }
 
   private usage() {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const categoryOf = (upload: MockUpload) =>
       ALLOWED_TYPES.find((type) => type.mimeType === upload.mimeType)!.category;
     return {
@@ -1586,8 +1642,16 @@ export class MockApi {
     };
   }
 
-  private receiveUpload(part: ReturnType<typeof parseMultipart>) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+  /** `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`. */
+  private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    if (!/boundary=.+$/.test(contentType)) {
+      return { status: 400, body: { error: "Multipart: Boundary not found" } };
+    }
+    if (!body?.length) return { status: 400, body: { error: "Unexpected end of form" } };
+    const part = parseMultipart(body, contentType);
+    // `verifyUploadType` and `checkUploadQuota` pass a body without a file on to `uploadFile`, which refuses it.
+    if (!part.hasFile) return { status: 400, body: { error: "No file was provided." } };
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
@@ -1610,7 +1674,7 @@ export class MockApi {
     id: string,
     body: { originalFileName?: string; visibility?: MockUpload["visibility"] } | null
   ) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const index = this.uploads.findIndex((upload) => upload.id === id);
     if (index === -1) return { status: 404, body: { error: "There is no such upload." } };
     if (method === "GET") {
@@ -1641,14 +1705,14 @@ export class MockApi {
   /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
   private refuseNonSuperuser(): MockResponse | undefined {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!this.user.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
   }
 
-  /** The API's `validateMongooseId`: admin routes run it on `:id` after the superuser check. */
+  /** The API's `validateMongooseId` on `:id`: admin routes run it after the superuser check, paste routes after the session. */
   private invalidId(): MockResponse {
     return {
       status: 400,
@@ -1758,7 +1822,7 @@ export class MockApi {
 
   /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. */
   private listUploads(query: URLSearchParams, owner: string | undefined | null) {
-    if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
+    if (!this.user) return NOT_LOGGED_IN;
     const everyone = owner === null;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
@@ -2143,7 +2207,7 @@ export class MockApi {
    */
   private shorten(url: unknown): MockResponse {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     if (!isValidUri(url)) {
       return { status: 400, body: { error: "The URI/URL you've provided isn't valid." } };
@@ -2180,7 +2244,7 @@ export class MockApi {
    */
   private listShortLinks(query: URLSearchParams): MockResponse {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     const isIntegerInRange = (value: string, min: number, max: number) =>
       /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
@@ -2305,7 +2369,7 @@ export class MockApi {
   /** `DELETE /shortenUrl/:shortenedUrl` (vb2007/vb2007.hu-api#278): the owner's own link, or any for the superuser. */
   private deleteShortLink(code: string): MockResponse {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     const link = this.shortLinks.get(code);
     if (!link) return { status: 404, body: { error: "The shortened URL cannot be found." } };
@@ -2322,7 +2386,7 @@ export class MockApi {
   /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
   private listPastes(username: string, query: URLSearchParams) {
     if (!this.user) {
-      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+      return NOT_LOGGED_IN;
     }
     const isIntegerInRange = (value: string, min: number, max: number) =>
       /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;

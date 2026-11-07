@@ -348,6 +348,26 @@ describe("useUploads", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a rename when a list load that was on its way lands after it", async () => {
+    fetchMock.mockResolvedValueOnce(listing([anUpload("a"), anUpload("b")]));
+    const { api } = mountComposable(() => useUploads());
+    await api.load();
+
+    const sorted = deferResponse(fetchMock);
+    const renamed = anUpload("b", { originalFileName: "new name.png" });
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { upload: renamed }));
+    const sorting = api.setSort("originalFileName", "asc");
+    await expect(api.rename("b", "new name.png")).resolves.toBe(true);
+    expect(api.uploads.value).toEqual([anUpload("a"), renamed]);
+
+    // The list asked before the rename, so it still has the old name.
+    sorted.respond(listing([anUpload("b"), anUpload("a")]));
+    await sorting;
+
+    expect(api.uploads.value).toEqual([renamed, anUpload("a")]);
+    expect(api.isLoading.value).toBe(false);
+  });
+
   it("changes visibility in place, or reloads when the filter would now hide it", async () => {
     fetchMock.mockResolvedValueOnce(listing([anUpload("a")]));
     const { api } = mountComposable(() => useUploads());

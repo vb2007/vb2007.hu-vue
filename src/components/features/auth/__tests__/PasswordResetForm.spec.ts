@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises, type VueWrapper } from "@vue/test-utils";
 import PasswordResetForm from "@/components/features/auth/PasswordResetForm.vue";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
 import {
   confirmPasswordReset,
@@ -17,11 +18,10 @@ vi.mock("@/scripts/authentication/passwordReset", async (importOriginal) => ({
   confirmPasswordResetLink: vi.fn()
 }));
 
-const SENT = "If an account uses this address, a password reset code was sent to it.";
-const RESENT =
-  "If an account uses this address, a new code is on its way, unless one was sent in the last minute: then the one before still works.";
-const RECENT =
-  "If an account uses this address, a code was sent to it in the last minute and still works.";
+const SENT =
+  "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
+/** Back on a recent code's address with no message of the API's, and once the API's minute is over. */
+const { resetCodeRecent: RECENT, resetCodeSent: CODE_WENT_OUT } = Messages.Auth;
 const WRONG_CODE = "The code is wrong, expired or already used: check it or request a new one.";
 const TOO_MANY = "Too many e-mails requested: try again later.";
 const USER_ID = "0123456789abcdef01234567";
@@ -246,7 +246,7 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
   });
 
-  it("sends the code again, says so, restarts the countdown and returns to an empty code", async () => {
+  it("sends the code again, shows the API's message, restarts the countdown and returns to an empty code", async () => {
     const { wrapper } = await mountOnCodeStep();
     await fillCodeStep(wrapper, "000000");
     await waitOutCountdown();
@@ -259,10 +259,10 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).text()).toBe("Sending");
     expect(changeButton(wrapper).attributes("disabled")).toBeDefined();
 
-    settle({ message: SENT });
+    settle({ message: "The API's answer to the resend." });
     await flushPromises();
 
-    expect(wrapper.find('[role="status"]').text()).toBe(RESENT);
+    expect(wrapper.find('[role="status"]').text()).toBe("The API's answer to the resend.");
     expect(resendButton(wrapper).text()).toBe("Send again in 60 sec");
     expect(changeButton(wrapper).attributes("disabled")).toBeUndefined();
     expect(document.activeElement).toBe(codeInput(wrapper).element);
@@ -279,7 +279,8 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
-    expect(wrapper.find('[role="status"]').text()).toBe(SENT);
+    // The code before went out over a minute ago: no "in the last minute".
+    expect(wrapper.find('[role="status"]').text()).toBe(CODE_WENT_OUT);
     expect(resendButton(wrapper).text()).toBe("Send again in 57 min");
     expect(document.activeElement).toBe(codeInput(wrapper).element);
     // No new code was sent, so the one typed may still be right.
@@ -295,7 +296,25 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe("Error connecting to server");
+    // The code before still went out, over a minute ago.
+    expect(wrapper.find('[role="status"]').text()).toBe(CODE_WENT_OUT);
     expect(resendButton(wrapper).text()).toBe("Send again");
+  });
+
+  it("stops saying the code went out in the last minute once the countdown ends", async () => {
+    const { wrapper } = await mountOnCodeStep();
+    expect(wrapper.find('[role="status"]').text()).toBe(SENT);
+    vi.advanceTimersByTime(59_000);
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(SENT);
+
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+
+    expect(wrapper.find('[role="status"]').text()).toBe(CODE_WENT_OUT);
+    expect(codeInput(wrapper).attributes("aria-describedby")).toContain(
+      wrapper.find('[role="status"]').attributes("id")
+    );
   });
 
   it("goes back to change the address, keeping it and its countdown", async () => {
@@ -365,6 +384,12 @@ describe("PasswordResetForm", () => {
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+
+    // This page didn't see the API's answer, so the countdown's end adds no message.
+    vi.advanceTimersByTime(40_000);
+    await flushPromises();
+    expect(resendButton(wrapper).text()).toBe("Send again");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("goes back to the code without a request when the address's code is still recent after a reload", async () => {
@@ -378,6 +403,10 @@ describe("PasswordResetForm", () => {
     expect(requestPasswordReset).toHaveBeenCalledOnce();
     expect(wrapper.find('[role="status"]').text()).toBe(RECENT);
     expect(resendButton(wrapper).text()).toBe("Send again in 40 sec");
+
+    vi.advanceTimersByTime(40_000);
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(CODE_WENT_OUT);
   });
 
   /** On the code step for me@example.com, with "Send again" refused by the mail limit. */
@@ -487,7 +516,31 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
   });
 
-  it("shows the earlier message again within the page during the mail limit's wait", async () => {
+  it("doesn't say a code went out to an address whose code the page didn't see sent", async () => {
+    // A code went to other@example.com; me@example.com's code step was entered, not asked for.
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+    const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
+    await sendTo(wrapper, "other@example.com");
+    await changeButton(wrapper).trigger("click");
+    await emailInput(wrapper).setValue("me@example.com");
+    await enterCodeButton(wrapper).trigger("click");
+    await flushPromises();
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ error: TOO_MANY, retryAfter: 3412 });
+    await resendButton(wrapper).trigger("click");
+    await flushPromises();
+
+    await changeButton(wrapper).trigger("click");
+    await flushPromises();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(requestPasswordReset).toHaveBeenCalledTimes(2);
+    expect(wrapper.find(".sent-to__address").text()).toBe("me@example.com");
+    expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  });
+
+  it("only says a code went out, within the page during the mail limit's wait", async () => {
     const { wrapper } = await mountRateLimited();
     await changeButton(wrapper).trigger("click");
     await flushPromises();
@@ -495,7 +548,9 @@ describe("PasswordResetForm", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find('[role="status"]').text()).toBe(SENT);
+    // The API's message says a code went out in the last minute, which the limit's wait outlasts.
+    expect(requestPasswordReset).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[role="status"]').text()).toBe(CODE_WENT_OUT);
     expect(wrapper.find('[role="alert"]').text()).toBe(TOO_MANY);
   });
 

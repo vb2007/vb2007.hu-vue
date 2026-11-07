@@ -39,15 +39,6 @@ const passwordHint = Messages.Auth.lengthHint(
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = Limits.Code.cooldownSeconds;
-/**
- * The API answers a resend like the first code, but sends nothing within a minute of the last one,
- * which another tab or a lost countdown can't rule out.
- */
-const RESENT_MESSAGE =
-  "If an account uses this address, a new code is on its way, unless one was sent in the last minute: then the one before still works.";
-/** Back on an address whose code is still recent, with no message of the API's to show again. */
-const RECENT_MESSAGE =
-  "If an account uses this address, a code was sent to it in the last minute and still works.";
 
 const linkStillWorks = Messages.Auth.resetLinkStillWorks(Limits.Code.passwordResetValidMinutes);
 
@@ -194,9 +185,11 @@ const focusFirstField = async () => {
 
 /**
  * Holds the resend key back for `address`; the wait outlives a reload of the page. `reason` is
- * the mail limit's message when that's what it waits out, kept with it to show again.
+ * the mail limit's message when that's what it waits out, kept with it to show again. The API's
+ * message for another address doesn't carry over to this one.
  */
 const waitBeforeResend = (address: string, seconds: number, reason = "") => {
+  if (normalizeEmail(address) !== normalizeEmail(lastSentTo.value)) lastMessage.value = "";
   lastSentTo.value = address;
   resend.start(seconds, normalizeEmail(address), reason);
 };
@@ -206,9 +199,12 @@ const isWaitShownFor = () =>
   normalizeEmail(sentTo.value || email.value) === normalizeEmail(lastSentTo.value);
 
 // The mail limit's message only holds until its countdown ends, like the key's wait; an error
-// about another address, or another error, stays.
+// about another address, or another error, stays. The API's message says its code went out in the
+// last minute, which stops being true as the countdown ends: then it just says a code went out.
 watch(resend.active, (waiting) => {
-  if (!waiting && failure.value === resend.note.value && isWaitShownFor()) failure.value = "";
+  if (waiting) return;
+  if (failure.value === resend.note.value && isWaitShownFor()) failure.value = "";
+  if (sentMessage.value) sentMessage.value = Messages.Auth.resetCodeSent;
 });
 
 /** Whether `address` still has to wait for another code, also counting from before a reload. */
@@ -251,8 +247,8 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
       return null;
     }
 
-    lastMessage.value = answer.message!;
     waitBeforeResend(address, RESEND_SECONDS);
+    lastMessage.value = answer.message!;
     return answer.message!;
   } finally {
     isSending.value = false;
@@ -266,11 +262,15 @@ const handleSend = async () => {
   }
 
   // A code went to this address moments ago and the API wouldn't send another yet. A wait for
-  // the mail limit says so instead: the last code may be older than a minute. Either way it goes
-  // back to the code step without a request, so the mail limit's hold doesn't stand in the way.
+  // the mail limit says so instead: the last code is over a minute old, so it's only said to have
+  // gone out, and only when the page saw the API answer (after a reload it didn't). Either way it
+  // goes back to the code step without a request, so the mail limit's hold doesn't stand in the way.
   if (isWaitingFor(email.value)) {
     const limit = resend.note.value;
-    await showCodeStep(lastMessage.value || (limit ? "" : RECENT_MESSAGE), limit);
+    const message = limit
+      ? lastMessage.value && Messages.Auth.resetCodeSent
+      : lastMessage.value || Messages.Auth.resetCodeRecent;
+    await showCodeStep(message, limit);
     return;
   }
   if (isSendHeld.value) return;
@@ -295,8 +295,9 @@ const enterCode = async () => {
 };
 
 const sendAgain = async () => {
-  if ((await askForCode(sentTo.value, true)) !== null) {
-    sentMessage.value = RESENT_MESSAGE;
+  const message = await askForCode(sentTo.value, true);
+  if (message !== null) {
+    sentMessage.value = message;
     // A code typed before was most likely the one that didn't work.
     code.value = "";
     resetChecks.reset();

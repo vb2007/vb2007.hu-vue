@@ -105,7 +105,8 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
     load,
     goToPage,
     setSort,
-    reloadAfterRemove
+    reloadAfterRemove,
+    updateItems
   } = usePagedList({
     limit,
     sort: DEFAULT_SORT,
@@ -167,9 +168,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
         if (visibilityFilter.value && upload.visibility !== visibilityFilter.value) {
           await load();
         } else {
-          uploads.value = uploads.value.map((item) =>
-            item.id === id ? { ...item, ...upload } : item
-          );
+          updateItems((item) => (item.id === id ? { ...item, ...upload } : item));
         }
       }
     );

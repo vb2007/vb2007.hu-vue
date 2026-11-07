@@ -32,7 +32,7 @@ export const AdminRoutes = {
  * Add a section by appending it here, with its path in `AdminPaths` and its route as a child of
  * `/admin` in the router; the overview follows.
  */
-export const ADMIN_SECTIONS: Stop[] = [
+const SECTION_STOPS = [
   {
     id: "users",
     label: "Users",
@@ -68,4 +68,9 @@ export const ADMIN_SECTIONS: Stop[] = [
     status: "open",
     blurb: "Sign-ups waiting for their code, and clearing rate-limit lockouts."
   }
-];
+] as const satisfies readonly Stop[];
+
+/** An admin section's id, e.g. for titling its route with the section's label. */
+export type AdminSectionId = (typeof SECTION_STOPS)[number]["id"];
+
+export const ADMIN_SECTIONS: Stop[] = [...SECTION_STOPS];
