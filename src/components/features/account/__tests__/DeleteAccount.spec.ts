@@ -8,6 +8,7 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -270,9 +271,8 @@ describe("DeleteAccount", () => {
 
     await wrapper.find("form").trigger("submit");
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(deleteKey(wrapper).attributes("aria-describedby")).toBe(
-      wrapper.find('[role="alert"]').attributes("id")
-    );
+    // Described by the shown text only, so its counting name is the one wait it states.
+    expect(descriptionOf(deleteKey(wrapper))).toBe(error);
 
     // Cancel forgets the refusal; opened again, the held key still says why.
     await wrapper.find("form").trigger("keydown", { key: "Escape" });
@@ -357,8 +357,7 @@ describe("DeleteAccount", () => {
     expect(confirm.text()).toBe("Confirm with GitHub");
     expect(confirm.classes()).toContain("btn--primary");
     expect(document.activeElement).toBe(confirm.element);
-    expect(confirm.attributes("aria-describedby")).toBe(info.attributes("id"));
-    expect(confirm.attributes("aria-describedby")).toBeTruthy();
+    expect(descriptionOf(confirm)).toBe(REAUTH);
     const hintId = wrapper.find(".field__hint").attributes("id");
     expect(wrapper.find("input").attributes("aria-describedby")).toBe(
       `${info.attributes("id")} ${hintId}`

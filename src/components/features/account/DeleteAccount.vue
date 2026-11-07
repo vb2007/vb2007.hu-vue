@@ -28,6 +28,7 @@ import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const props = defineProps<{
   /** Opens the form on arrival: the user is back from GitHub, which confirmed it's them. */
@@ -194,7 +195,7 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
           v-if="needsGithub"
           ref="githubKey"
           size="sm"
-          :aria-describedby="errorId"
+          :aria-describedby="statusTextId(errorId)"
           :href="githubLink"
           @click="confirmWithGithub"
         >
@@ -208,7 +209,7 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
           :error="isValid && !isHeld"
           :disabled="isHeld"
           :aria-label="isHeld ? hold.name.value : undefined"
-          :aria-describedby="isHeld ? errorId : undefined"
+          :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
           :blocked="!isValid"
           :loading="isDeleting"
         >

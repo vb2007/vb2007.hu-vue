@@ -101,7 +101,8 @@ test("a locked-out login points to GitHub and holds the key for that address, co
   const key = page.getByRole("button", { name: /^Try again in \d+ minutes$/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();
-  await expect(key).toHaveAccessibleDescription(`${LOCKED_OUT} Try again in 15 minutes.`);
+  // Described by the message as shown, so its counting name is the one wait it states.
+  await expect(key).toHaveAccessibleDescription(LOCKED_OUT);
   await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
 
   // The lockout can be about the address alone, so another one may go at once, its wait unsaid.
@@ -472,10 +473,10 @@ test("a code past the daily cap of wrong codes holds Confirm code for hours", as
   await expect(page.getByRole("alert")).toHaveText(
     "Too many failed attempts: try again later. Try again in 23 hours 45 minutes."
   );
-  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
-  // it points at says the wait in words.
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the alert says
+  // the wait in words. The key is described by the message as shown, so it states one wait.
   const key = page.getByRole("button", { name: /^Try again in \d+ hr \d+ min$/ });
-  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
+  await expect(key).toHaveAccessibleDescription("Too many failed attempts: try again later.");
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
   // Asking for a new code has limits of its own.
@@ -999,6 +1000,7 @@ test("a password change that's rate limited says when to try again", async ({ pa
   expect(api.password).toBe(MOCK_PASSWORD);
   const key = details.getByRole("button", { name: /^Try again in \d+ minutes$/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toHaveAccessibleDescription("Too many failed attempts: try again later.");
   await expect(key).toBeDisabled();
   await expect(details.getByLabel("Current password")).toBeFocused();
 });
@@ -1309,6 +1311,7 @@ test("deleting the account can be cancelled, and says when to try again", async 
   );
   const key = page.getByRole("button", { name: /^Try again in \d+ minutes$/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toHaveAccessibleDescription("Too many failed attempts: try again later.");
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Password")).toBeFocused();
 

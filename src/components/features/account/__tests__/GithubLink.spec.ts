@@ -9,6 +9,7 @@ import {
   userEmail
 } from "@/scripts/authentication/authState";
 import { LEAVING_GRACE_MS } from "@/composables/useGithubLink";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -207,7 +208,7 @@ describe("GithubLink", () => {
       expect(confirmKey(wrapper).text()).toBe("Try again in 15 min");
       expect(confirmKey(wrapper).attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(confirmKey(wrapper).attributes("disabled")).toBeDefined();
-      expect(confirmKey(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      expect(descriptionOf(confirmKey(wrapper))).toBe(error);
       expect(assign).not.toHaveBeenCalled();
       // The focused key disabled, so the field takes the focus.
       expect(document.activeElement).toBe(passwordInput(wrapper).element);
@@ -392,7 +393,8 @@ describe("GithubLink", () => {
       const alert = wrapper.find('[role="alert"]');
       expect(document.activeElement).toBe(alert.element);
       expect(alert.attributes("tabindex")).toBe("-1");
-      expect(opener(wrapper).attributes("aria-describedby")).toBe(alert.attributes("id"));
+      // Described by the shown text only: the key's counting name is the one wait it states.
+      expect(descriptionOf(opener(wrapper))).toBe(error);
       await opener(wrapper).trigger("click");
       expect(wrapper.emitted("start")).toHaveLength(1);
 
