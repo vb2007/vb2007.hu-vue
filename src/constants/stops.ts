@@ -20,44 +20,49 @@ export interface Line {
  * planned stops are tools that have not been built yet.
  * Add a new tool by appending a stop here; the navbar strip, the home tools directory and the footer follow.
  */
+const TOOL_STOPS = [
+  {
+    id: "home",
+    label: "Home",
+    to: "/",
+    status: "open",
+    blurb: "Where every route starts."
+  },
+  {
+    id: "shorten",
+    label: "Shorten",
+    to: "/shorten",
+    status: "open",
+    blurb: "Turn a long link into a short one."
+  },
+  {
+    id: "paste",
+    label: "Paste",
+    to: "/pastebin",
+    status: "open",
+    blurb: "Share text and code snippets."
+  },
+  {
+    id: "upload",
+    label: "Upload",
+    to: "/upload",
+    status: "open",
+    blurb: "Upload and share files."
+  },
+  {
+    id: "contact",
+    label: "Contact",
+    to: "/contact",
+    status: "planned",
+    blurb: "Get in touch."
+  }
+] as const satisfies readonly Stop[];
+
+/** A tool's stop id, e.g. for titling its route with the stop's label. */
+export type ToolId = (typeof TOOL_STOPS)[number]["id"];
+
 export const TOOLS_LINE: Line = {
   id: "tools",
   name: "Tools",
-  stops: [
-    {
-      id: "home",
-      label: "Home",
-      to: "/",
-      status: "open",
-      blurb: "Where every route starts."
-    },
-    {
-      id: "shorten",
-      label: "Shorten",
-      to: "/shorten",
-      status: "open",
-      blurb: "Turn a long link into a short one."
-    },
-    {
-      id: "paste",
-      label: "Paste",
-      to: "/pastebin",
-      status: "open",
-      blurb: "Share text and code snippets."
-    },
-    {
-      id: "upload",
-      label: "Upload",
-      to: "/upload",
-      status: "open",
-      blurb: "Upload and share files."
-    },
-    {
-      id: "contact",
-      label: "Contact",
-      to: "/contact",
-      status: "planned",
-      blurb: "Get in touch."
-    }
-  ]
+  stops: [...TOOL_STOPS]
 };
