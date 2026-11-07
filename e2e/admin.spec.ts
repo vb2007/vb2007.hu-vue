@@ -297,7 +297,9 @@ test("the user and upload lists refuse the queries the API refuses", async ({ pa
     ["limit=10&limit=20", "limit"],
     ["q=a&q=b", "q"],
     [`q=${tooLong}&sortBy=nope&page=0`, "page"],
-    ["sortOrder=up&limit=51", "limit"]
+    ["sortOrder=up&limit=51", "limit"],
+    ["page=0&limit=0", "limit"],
+    ["sortOrder=up&sortBy=nope", "sortBy"]
   ];
   const uploadLists: [query: string, param: string][] = [
     ...everyList,
@@ -309,7 +311,10 @@ test("the user and upload lists refuse the queries the API refuses", async ({ pa
     ["visibility=all&sortOrder=up", "sortOrder"]
   ];
   const lists: [path: string, checks: [string, string][]][] = [
-    ["/admin/users", [...everyList, ["sortBy=uploadedOn", "sortBy"]]],
+    [
+      "/admin/users",
+      [...everyList, ["sortBy=uploadedOn", "sortBy"], [`q=${tooLong}&sortOrder=up`, "sortOrder"]]
+    ],
     [`/admin/users/${anna.id}/uploads`, uploadLists],
     ["/admin/uploads", uploadLists]
   ];
@@ -365,8 +370,8 @@ test("the pending registrations list refuses the queries the API refuses", async
 }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.hasPendingRegistration("anna@example.com");
-  await page.goto("/admin/users");
-  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+  await page.goto("/admin/system");
+  await expect(page.getByText("1 pending registration", { exact: true })).toBeVisible();
 
   const path = "/admin/pending-registrations";
   const tooLong = "a".repeat(101);
@@ -381,7 +386,8 @@ test("the pending registrations list refuses the queries the API refuses", async
     // A repeated parameter reaches the API as an array.
     ["page=1&page=2", "page"],
     ["q=a&q=b", "q"],
-    [`q=${tooLong}&page=0&limit=51`, "limit"]
+    [`q=${tooLong}&page=0&limit=51`, "limit"],
+    [`q=${tooLong}&page=0`, "page"]
   ]) {
     expect(await getFromApi(page, api, `${path}?${query}`), query).toEqual({
       status: 400,

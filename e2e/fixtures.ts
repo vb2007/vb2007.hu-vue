@@ -193,7 +193,10 @@ const PASTE_LIST_CHECKS: ListParamCheck[] = [
 const ADMIN_PASTE_LIST_CHECKS: ListParamCheck[] = [...PASTE_LIST_CHECKS, ["q", isListQuery]];
 /** `findInvalidShortUrlListParam`'s checks, in its order, for the user's links and the admin's. */
 const SHORT_URL_LIST_CHECKS: ListParamCheck[] = [
-  ...PASTE_LIST_CHECKS,
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["sortBy", isOneOf("addedOn")],
+  SORT_ORDER_CHECK,
   ["q", (value) => isListQuery(value) && !value.includes("\0")]
 ];
 /** `findInvalidPendingRegistrationListParam`'s checks, in its order: no sorting, so `sortBy` and `sortOrder` pass unread. */
@@ -223,7 +226,8 @@ const UPLOAD_LIST_CHECKS: ListParamCheck[] = [
 /**
  * What the API's `findInvalid…ListParam` refuses: the first parameter in `checks`' order that is sent but fails
  * its check, answered with a 400. An empty value is checked as `""`, which only `q` takes. A repeated parameter
- * reaches the API as an array, which no check accepts.
+ * reaches the API as an array, which no check accepts. So do bracket keys like `limit[]=1` or `q[a]=x` (an array or
+ * an object to the API's qs parser, so refused there), but the double doesn't model them: the site never sends them.
  */
 function refuseListQuery(
   query: URLSearchParams,
@@ -1877,7 +1881,8 @@ export class MockApi {
     if (refusal) return refusal;
     if (this.userUploadsDown) return { status: 502 };
     if (!OBJECT_ID.test(id)) return this.invalidId();
-    // Like the API, the query is checked after the ID's format but before the user is looked up.
+    // Like the API, the query is checked after the ID's format but before the user is looked up. `listUploads`
+    // checks it again, which only its `/uploads` and `/admin/uploads` callers rely on.
     const invalid = refuseListQuery(query, UPLOAD_LIST_CHECKS);
     if (invalid) return invalid;
     const user = this.users.find((item) => item.id === id);

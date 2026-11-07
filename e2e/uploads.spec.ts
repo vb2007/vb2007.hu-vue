@@ -289,7 +289,11 @@ test("the list refuses the queries the API refuses, after the login check", asyn
     [`q=${tooLong}`, "q"],
     // A repeated parameter reaches the API as an array.
     ["sortBy=fileSize&sortBy=fileSize", "sortBy"],
-    [`q=${tooLong}&visibility=all&page=0`, "page"]
+    [`q=${tooLong}&visibility=all&page=0`, "page"],
+    ["page=0&limit=0", "limit"],
+    ["sortOrder=up&sortBy=nope", "sortBy"],
+    ["visibility=all&sortOrder=up", "sortOrder"],
+    [`q=${tooLong}&visibility=all`, "visibility"]
   ]) {
     expect(await getFromApi(page, api, `/uploads?${query}`), query).toEqual({
       status: 400,
