@@ -1,8 +1,8 @@
 # vb2007.hu-vue
 
-The frontend of [vb2007.hu](https://vb2007.hu), one person's personal site and tools hub: a URL shortener, a pastebin, file uploads and an admin area for the site's owner. It's a Vue 3 + Vite + TypeScript single-page app (vue-router, history mode).
+The frontend of [vb2007.hu](https://vb2007.hu), the personal site and tools hub of one developer: a URL shortener, a pastebin, file uploads and an admin area for the site's owner. It's a Vue 3 + Vite + TypeScript single-page app (vue-router, history mode).
 
-There is no backend in this repo. The site calls the separate API, [vb2007/vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api), at `VITE_API_BASE_URL` (default `https://api.vb2007.hu`, see `.env.example`). Vite bakes that URL into the bundle at build time, so changing it needs a new build.
+There is no backend in this repo. The site calls the separate API, [vb2007/vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api), at `VITE_API_BASE_URL`. Locally that value comes from `.env` (copy it from `.env.example`); without it the build has no API address, and every request misses the API. The Docker stack and the releases default to `https://api.vb2007.hu`. Vite bakes the URL into the bundle at build time, so changing it needs a new build.
 
 - [`PRODUCT.md`](PRODUCT.md): what the site is and isn't, who uses it and what it ships today.
 - [`DESIGN.md`](DESIGN.md): the visual rules (colours, type, layout).
@@ -12,6 +12,7 @@ There is no backend in this repo. The site calls the separate API, [vb2007/vb200
 
 ```sh
 npm install
+cp .env.example .env   # sets VITE_API_BASE_URL, which the build bakes in
 ```
 
 ### Compile and Hot-Reload for Development
@@ -39,6 +40,8 @@ npm run test:coverage   # single run with the coverage gate
 npx playwright install chromium   # once, unless CHROMIUM_PATH points at a local Chromium
 npm run test:e2e                  # builds the app, serves it with vite preview, runs e2e/
 ```
+
+Locally (without `CI`), Playwright reuses whatever server already answers on its port (`reuseExistingServer`), which may be another checkout's build. When something else may be serving 4173, pick a free port with `E2E_PORT`, e.g. `E2E_PORT=4321 npm run test:e2e`.
 
 ### Lint with [ESLint](https://eslint.org/)
 
@@ -96,7 +99,7 @@ git pull && docker compose up -d --build   # deploy an update
 docker compose down                # stop and remove the containers
 ```
 
-`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. `VITE_API_BASE_URL` defaults to `https://api.vb2007.hu`; Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
+`VITE_API_BASE_URL` is baked into the bundle at build time, so after changing it run `docker compose up -d --build` again. In the stack `VITE_API_BASE_URL` defaults to `https://api.vb2007.hu` (`compose.yaml`); Compose refuses to start if `TUNNEL_TOKEN` is missing. `.env` is gitignored: keep the token out of version control.
 
 ## Releases & deployment
 
@@ -160,13 +163,14 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
 
     | Area | Setup |
     |---|---|
-    | Session | `api.loggedInAs(...)` (`{ superuser, githubLinked, password, emailVerified }`), `api.loggedOut()`, `api.replacesSession()` |
+    | Session | `api.loggedInAs(email, username, { superuser, githubLinked, password, emailVerified })`, `api.loggedOut()`, `api.replacesSession()` |
     | Short links | `api.shortenReturns(code)`, `api.hasShortLink(...)` |
     | Pastes | `api.hasPaste(content, username, language)` |
     | Uploads | `api.hasUpload(name, { fileSize, visibility, owner })`, `api.quotaIs(bytes)` |
     | Admin | `api.hasUser(username, {...})`, `api.hasPendingRegistration(email)`, `api.countsRateLimit(name, key)`, `api.sentMailToday(count)` |
     | Account and mail | `api.hasPendingEmail(email)`, `api.mailsResetLink()`, `api.failsNextMail()` |
-    | Failures and limits | `api.limitsMailSends()`, `api.locksLogins(retryAfter)`, `api.statsFail()`, `api.clockRunsFor(ms)`, and the other `limits*`/`*Fail` methods |
+    | Time | `api.clockRunsFor(ms)` moves the mock's clock (codes, cooldowns, signed links) |
+    | Failures and limits | `api.limitsMailSends()`, `api.locksLogins(retryAfter)`, `api.statsFail()`, and the other fault and limit switches (see the `MockApi` doc comment in `e2e/fixtures.ts`) |
 
     The endpoints share in-memory stores that tests can also read or change directly: `api.shortLinks`, `api.pastes`, `api.uploads` and `api.users`. Short links shortened in a test resolve through the mocked lookup endpoint and API redirect.
   - A request to an endpoint the fixture doesn't know fails the test, so add a case to `MockApi.respond` when the app starts calling a new endpoint.
