@@ -138,6 +138,18 @@ describe("ShortenPanel", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("names a space while the URL is still in the field", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue("https://example.com/a b");
+
+    expect(wrapper.find(".field__error").text()).toBe(
+      "A URL can't contain spaces. Remove them, or write each one as %20."
+    );
+    expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+  });
+
   it("names a space before the length in a long pasted URL, like the API", async () => {
     isLoggedIn.value = true;
     const { wrapper } = await mountWithRouter(ShortenPanel);

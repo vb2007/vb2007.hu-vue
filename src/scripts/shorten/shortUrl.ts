@@ -2,8 +2,8 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { validateUrl } from "@/scripts/utility/text";
 
-/** Whitespace as the API's `containsWhitespace` finds it: spaces, tabs, line breaks, no-break spaces. */
-const WHITESPACE = /\s/;
+/** Whether `url` has whitespace, like the API's `containsWhitespace`: a space, tab or line break. */
+export const containsWhitespace = (url: string) => /\s/.test(url);
 
 /**
  * Why a URL isn't sent to be shortened, or "" when it is, in the order the API checks: a scheme it
@@ -13,7 +13,7 @@ const WHITESPACE = /\s/;
  */
 export const validateShortUrl = (url: string) => {
   if (!validateUrl(url.trimStart())) return Messages.ShortUrl.invalidUrl;
-  if (WHITESPACE.test(url)) return Messages.ShortUrl.containsWhitespace;
+  if (containsWhitespace(url)) return Messages.ShortUrl.containsWhitespace;
   if (url.length > Limits.ShortUrl.maxLength) {
     return Messages.ShortUrl.tooLong(url.length, Limits.ShortUrl.maxLength);
   }
