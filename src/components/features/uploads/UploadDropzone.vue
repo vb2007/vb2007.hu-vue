@@ -78,6 +78,8 @@ const onDrop = (event: DragEvent) => {
 .dropzone-wrap {
   display: grid;
   gap: var(--sp-2);
+  /* The visibility strip's keys measure this, to give up side padding when it's narrow. */
+  container-type: inline-size;
 }
 
 .visibility-hint,

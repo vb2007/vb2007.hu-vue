@@ -40,6 +40,8 @@ defineProps<{ stops: Stop[] }>();
 <style scoped>
 .directory {
   display: grid;
+  /* A zero minimum, so a long name or description wraps instead of widening the list. */
+  grid-template-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;

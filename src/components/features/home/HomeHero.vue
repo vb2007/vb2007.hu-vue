@@ -17,6 +17,8 @@ import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
 <style scoped>
 .hero {
   display: grid;
+  /* Zero minimums, so the columns shrink to the window and the content reflows in them. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-6);
   align-items: center;
 }
@@ -40,7 +42,7 @@ import ShortenPanel from "@/components/features/shorten/ShortenPanel.vue";
 
 @media (min-width: 62rem) {
   .hero {
-    grid-template-columns: 1.05fr 1fr;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
     gap: var(--sp-8);
   }
 }

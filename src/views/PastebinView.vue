@@ -26,6 +26,8 @@ const onCreated = () => list.value!.refresh();
 <style scoped>
 .workspace {
   display: grid;
+  /* A zero minimum, so the column shrinks to the window and the boards reflow in it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-6);
 }
 

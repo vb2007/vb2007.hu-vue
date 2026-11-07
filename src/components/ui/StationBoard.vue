@@ -56,6 +56,8 @@ withDefaults(defineProps<{ title: string; as?: "h1" | "h2" | "h3" }>(), { as: "h
 
 .board__body {
   display: grid;
+  /* A zero minimum, so wide content can't widen the column past the board, which would cut it off. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-5);
   padding: var(--sp-5);
 }
