@@ -241,6 +241,37 @@ describe("PasteViewer", () => {
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     });
 
+    it("keeps the next paste's pick while the previous paste's change lands", async () => {
+      username.value = "anna";
+      const fetchMock = mockFetch();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
+      const wrapper = await mountViewer();
+      await flushPromises();
+
+      const firstSave = deferResponse(fetchMock);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { paste: { ...owned("fn main() {}", "rust"), _id: "p2" } })
+      );
+      await wrapper.find("select").setValue("ruby");
+      await wrapper.setProps({ id: "p2" });
+      await flushPromises();
+
+      const secondSave = deferResponse(fetchMock);
+      await wrapper.find("select").setValue("go");
+      expect(fetchMock.mock.calls[3][0]).toBe("https://api.test/paste/p2");
+
+      firstSave.respond(jsonResponse(200, { paste: { ...paste("p1"), language: "ruby" } }));
+      await flushPromises();
+      expect(wrapper.find("select").element.value).toBe("go");
+      expect(wrapper.find('[role="status"]').text()).toBe("");
+
+      secondSave.respond(jsonResponse(200, { paste: { ...paste("p2"), language: "go" } }));
+      await flushPromises();
+      expect(wrapper.find("select").element.value).toBe("go");
+      expect(wrapper.find(".note__language").text()).toBe("Go");
+      expect(wrapper.find('[role="status"]').text()).toBe("Language changed to Go");
+    });
+
     it("goes back to the stored language when the change fails", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       username.value = "someone";

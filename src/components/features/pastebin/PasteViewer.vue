@@ -51,7 +51,8 @@ const chosenLanguage = computed({
   set: async (id: string) => {
     pendingLanguage.value = id;
     const outcome = await setLanguage(id);
-    // Another paste is on show: the watch below already cleared the pick for it.
+    // The save was for a paste no longer on show: leave the pick alone, since it may be one made
+    // on the paste now on show, still saving. (The watch below cleared this save's own pick.)
     if (outcome === "gone") return;
     pendingLanguage.value = "";
     if (outcome === "saved") savedLanguage.value = languageLabel(id);
