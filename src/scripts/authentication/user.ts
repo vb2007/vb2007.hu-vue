@@ -116,10 +116,9 @@ export const login = async (email: string, password: string): Promise<number | u
   });
 
   if (!result.ok && result.kind === "http" && result.status === HttpStatus.TooManyRequests) {
-    // Locked out for up to 15 minutes: the message says it in whole minutes, the held key counts it.
-    const seconds = retryAfterFrom(result.body, 0);
-    loginStatus.value = Messages.Auth.loginLockedOut(Math.ceil(seconds / 60));
-    return seconds;
+    // Locked out for up to 15 minutes: the form holds its key for the wait and counts it down there.
+    loginStatus.value = Messages.Auth.loginLockedOut;
+    return retryAfterFrom(result.body, 0);
   }
   if (!result.ok) {
     loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;

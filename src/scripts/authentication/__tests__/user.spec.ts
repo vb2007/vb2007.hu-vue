@@ -484,15 +484,9 @@ describe("login", () => {
     expect(loginStatus.value).toBe("Wrong password.");
   });
 
-  it.each([
-    [900, "in 15 minutes"],
-    [841, "in 15 minutes"],
-    [61, "in 2 minutes"],
-    [60, "in a minute"],
-    [5, "in a minute"]
-  ])(
-    "says how long a lockout of %i seconds lasts, rounded up to minutes, and returns its wait",
-    async (seconds, wait) => {
+  it.each([900, 61, 5])(
+    "explains a lockout of %i seconds without naming the wait, and returns it",
+    async (seconds) => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(429, {
           error: "Too many failed attempts: try again later.",
@@ -501,11 +495,11 @@ describe("login", () => {
       );
       const { login, loginStatus } = await load();
 
-      // The wait the form holds its key for.
+      // The wait the form holds its key for, which counts it down: the message can't keep up.
       await expect(login("me@example.com", "nope")).resolves.toBe(seconds);
 
       expect(loginStatus.value).toBe(
-        `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`
+        "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."
       );
     }
   );
@@ -516,7 +510,7 @@ describe("login", () => {
     ["with a negative retryAfter", { retryAfter: -30 }],
     ["with a zero retryAfter", { retryAfter: 0 }],
     ["with a retryAfter that isn't a number", { retryAfter: "900" }]
-  ])("still explains a lockout %s, only without the wait", async (_, body) => {
+  ])("still explains a lockout %s, with nothing to wait for", async (_, body) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(429, body));
     const { login, loginStatus } = await load();
 

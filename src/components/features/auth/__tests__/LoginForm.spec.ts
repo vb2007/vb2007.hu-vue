@@ -136,13 +136,13 @@ describe("LoginForm", () => {
     );
   });
 
-  it("shows a lockout's wait above the GitHub login it points to", async () => {
-    loginStatus.value = Messages.Auth.loginLockedOut(15);
+  it("shows a lockout above the GitHub login it points to", async () => {
+    loginStatus.value = Messages.Auth.loginLockedOut;
     const { wrapper } = await mountWithRouter(LoginForm);
 
     const alert = wrapper.find('[role="alert"]');
     expect(alert.text()).toBe(
-      "Too many failed attempts. Try again in 15 minutes, or log in with GitHub below if it's linked to your account."
+      "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."
     );
     const github = wrapper.find('a[href="https://api.test/auth/github"]').element;
     expect(alert.element.compareDocumentPosition(github)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -267,14 +267,16 @@ describe("LoginForm", () => {
   });
 
   describe("over the login limiter", () => {
-    /** What `login` shows for the lockout, which says its wait in words already. */
-    const LIMITED = Messages.Auth.loginLockedOut(15);
+    /** What `login` shows for the lockout, which names no wait: the key counts it down. */
+    const LIMITED = Messages.Auth.loginLockedOut;
+    let wait: number;
 
     beforeEach(() => {
+      wait = 900;
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
       vi.mocked(login).mockImplementationOnce(async () => {
         loginStatus.value = LIMITED;
-        return 900;
+        return wait;
       });
     });
 
@@ -297,8 +299,10 @@ describe("LoginForm", () => {
     it("holds the key for the wait with the API's message, then lets the user try again", async () => {
       const { wrapper, password, key } = await tryLogin();
 
-      // No spoken wait is added: the message already says it.
-      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      // The only wait on show is the key's; the message reads it out in words for screen readers.
+      const alert = wrapper.find('[role="alert"]');
+      expect(alert.text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(alert.find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
       expect(key().text()).toBe("Try again in 15 min");
       expect(key().attributes("aria-label")).toBe("Try again in 15 minutes");
       expect(key().attributes("disabled")).toBeDefined();
@@ -315,6 +319,8 @@ describe("LoginForm", () => {
       vi.advanceTimersByTime(899_000);
       await flushPromises();
       expect(key().text()).toBe("Try again in 1 sec");
+      // The spoken wait stays as it was when the hold started, like the other held forms'.
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
 
       vi.advanceTimersByTime(1000);
       await flushPromises();
@@ -325,15 +331,30 @@ describe("LoginForm", () => {
     });
 
     it("only holds the address the limiter counted", async () => {
-      const { email, key } = await tryLogin();
+      const { wrapper, email, key } = await tryLogin();
+      const alert = () => wrapper.find('[role="alert"]');
 
+      // The message stays, but its wait is the held address's, so it isn't read out for another.
       await email.setValue("other@example.com");
       expect(key().text()).toBe("Log in");
       expect(key().attributes("disabled")).toBeUndefined();
+      expect(key().attributes("aria-describedby")).toBeUndefined();
+      expect(alert().text()).toBe(LIMITED);
 
       // The same address, however it's typed, waits on.
       await email.setValue(" Me@Example.com ");
       expect(key().text()).toBe("Try again in 15 min");
+      expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+    });
+
+    it("holds nothing when the API sent no wait, and reads none out", async () => {
+      wait = 0;
+      const { wrapper, key } = await tryLogin();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(LIMITED);
+      expect(wrapper.find(".visually-hidden").exists()).toBe(false);
+      expect(key().text()).toBe("Log in");
+      expect(key().attributes("disabled")).toBeUndefined();
     });
 
     it("leaves the focus in the form where it stayed", async () => {

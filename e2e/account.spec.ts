@@ -75,10 +75,12 @@ test("a refused login shows the API's one message and stays logged out", async (
   await expect(main).toContainText("Login successful!");
 });
 
-test("a locked-out login says how long to wait, points to GitHub and holds the key for that address", async ({
+test("a locked-out login points to GitHub and holds the key for that address, counting the wait", async ({
   page,
   api
 }) => {
+  const LOCKED_OUT =
+    "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account.";
   await page.clock.install();
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
@@ -87,27 +89,28 @@ test("a locked-out login says how long to wait, points to GitHub and holds the k
   // Without a wait from the API, it still explains the lockout, and there's nothing to hold.
   api.locksLogins(null);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account."
-  );
+  await expect(page.getByRole("alert")).toHaveText(LOCKED_OUT);
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
 
+  // With one, the key counts it down and is the only wait on show; screen readers hear it in words.
   api.locksLogins(14 * 60 + 5);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Too many failed attempts. Try again in 15 minutes, or log in with GitHub below if it's linked to your account."
-  );
+  const alert = page.getByRole("alert");
+  await expect(alert).toHaveText(`${LOCKED_OUT} Try again in 15 minutes.`);
   await expect(page.getByRole("link", { name: "Log in with GitHub" })).toBeVisible();
   const key = page.getByRole("button", { name: /^Try again in \d+ minutes$/ });
   await expect(key).toHaveText(/^Try again in \d+ min$/);
   await expect(key).toBeDisabled();
+  await expect(key).toHaveAccessibleDescription(`${LOCKED_OUT} Try again in 15 minutes.`);
   await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
 
-  // The lockout can be about the address alone, so another one may go at once.
+  // The lockout can be about the address alone, so another one may go at once, its wait unsaid.
   await page.getByLabel("E-mail").fill("other@example.com");
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeEnabled();
+  await expect(alert).toHaveText(LOCKED_OUT);
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await expect(key).toBeDisabled();
+  await expect(alert).toHaveText(`${LOCKED_OUT} Try again in 15 minutes.`);
 
   // A jump, rather than every tick of the countdown on the way.
   await page.clock.fastForward(845_000);
