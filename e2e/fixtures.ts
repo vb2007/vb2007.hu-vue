@@ -51,6 +51,8 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Each address waits for its own code, and a resend within a minute of the last code gets the API's 429.
  * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
+ * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
+ * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
@@ -282,7 +284,7 @@ export class MockApi {
   /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
   private emailCooldownOnSend: number | null = null;
   private shortCode = "e2e123";
-  /** Short code -> link, filled by shortening and by `hasShortLink`. */
+  /** Short code -> link, oldest first, filled by shortening and by `hasShortLink`; `addedBy` is a username. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
   /** In-memory paste store, oldest first. */
   readonly pastes: MockPaste[] = [];
@@ -622,8 +624,13 @@ export class MockApi {
     this.shortCode = code;
   }
 
-  hasShortLink(code: string, target: string, addedBy = "e2e") {
-    this.shortLinks.set(code, { target, addedBy, addedOn: "2026-10-10T12:00:00.000Z" });
+  hasShortLink(
+    code: string,
+    target: string,
+    addedBy = "e2e",
+    addedOn = "2026-10-10T12:00:00.000Z"
+  ) {
+    this.shortLinks.set(code, { target, addedBy, addedOn });
   }
 
   async handle(route: Route, appOrigin: string) {
@@ -734,6 +741,10 @@ export class MockApi {
             }
           }
         : { status: 404, body: { error: "The shortened URL cannot be found." } };
+    }
+    const deleteShortLinkRoute = endpoint.match(/^DELETE \/shortenUrl\/([^/]+)$/);
+    if (deleteShortLinkRoute) {
+      return this.deleteShortLink(decodeURIComponent(deleteShortLinkRoute[1]));
     }
     const redirectRoute = endpoint.match(/^GET \/r\/([^/]+)$/);
     if (redirectRoute) {
@@ -905,8 +916,10 @@ export class MockApi {
         // The limit counts failed tries, like the password checks', and uses no link up.
         if (this.resetLinksLimited) return PASSWORD_CHECKS_LIMITED;
         return this.confirmPasswordResetLink(body);
-      case "POST /shortenUrl/create":
+      case "POST /shortenUrl":
         return this.shorten((body as { url?: unknown } | null)?.url);
+      case "GET /shortenUrls":
+        return this.listShortLinks(query);
       case "POST /paste":
         if (!this.user) return { status: 403, body: { error: "You are not logged in." } };
         return {
@@ -1930,7 +1943,7 @@ export class MockApi {
   }
 
   /**
-   * `POST /shortenUrl/create`, per user like the API (vb2007/vb2007.hu-api#247): the same user's URL again gets
+   * `POST /shortenUrl`, per user like the API (vb2007/vb2007.hu-api#247): the same user's URL again gets
    * their link back with a 200, anyone else's link to it doesn't count. A new link takes `shortenReturns`' code,
    * or that code numbered when it's taken.
    */
@@ -1963,8 +1976,82 @@ export class MockApi {
 
     let code = this.shortCode;
     for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;
-    this.hasShortLink(code, url, username);
+    this.hasShortLink(code, url, username, new Date(this.now()).toISOString());
     return answer(201, "URL shortened successfully", code);
+  }
+
+  /**
+   * `GET /shortenUrls` (vb2007/vb2007.hu-api#285): the logged-in user's links, newest first by default; `q` matches
+   * part of the code or the target, whatever its case. A bad parameter answers 400 like the API's.
+   */
+  private listShortLinks(query: URLSearchParams): MockResponse {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    const isIntegerInRange = (value: string, min: number, max: number) =>
+      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+    const validators: [string, (value: string) => boolean][] = [
+      ["limit", (value) => isIntegerInRange(value, 1, 50)],
+      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
+      ["sortBy", (value) => value === "addedOn"],
+      ["sortOrder", (value) => value === "asc" || value === "desc"],
+      ["q", (value) => value.length <= 100 && !value.includes("\0")]
+    ];
+    const invalid = validators.find(
+      ([param, isValid]) =>
+        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
+    );
+    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+
+    const limit = Number(query.get("limit") ?? 10);
+    const page = Number(query.get("page") ?? 1);
+    const sortOrder = query.get("sortOrder") ?? "desc";
+    const q = query.get("q")?.toLowerCase() ?? "";
+    const username = this.user.username;
+    const owned = [...this.shortLinks]
+      .filter(([, link]) => link.addedBy === username)
+      .filter(
+        ([code, link]) => code.toLowerCase().includes(q) || link.target.toLowerCase().includes(q)
+      )
+      .map(([code, link]) => ({
+        shortenedUrl: code,
+        originalUrl: link.target,
+        addedOn: link.addedOn
+      }));
+    // By date, like the API; links added at the same moment (`hasShortLink`'s default date) keep the order they were added in.
+    const oldestFirst = owned.sort((a, b) => a.addedOn.localeCompare(b.addedOn));
+    const sorted = sortOrder === "asc" ? oldestFirst : oldestFirst.reverse();
+    return {
+      status: 200,
+      body: {
+        shortUrls: sorted.slice((page - 1) * limit, page * limit),
+        pagination: {
+          limit,
+          page,
+          total: owned.length,
+          pages: Math.ceil(owned.length / limit),
+          sortBy: "addedOn",
+          sortOrder
+        }
+      }
+    };
+  }
+
+  /** `DELETE /shortenUrl/:shortenedUrl` (vb2007/vb2007.hu-api#278): the owner's own link, or any for the superuser. */
+  private deleteShortLink(code: string): MockResponse {
+    if (!this.user) {
+      return { status: 403, body: { error: "You must be logged in to perform this action." } };
+    }
+    const link = this.shortLinks.get(code);
+    if (!link) return { status: 404, body: { error: "The shortened URL cannot be found." } };
+    if (link.addedBy !== this.user.username && !this.user.isSuperuser) {
+      return {
+        status: 403,
+        body: { error: "You can only delete URLs created with your account." }
+      };
+    }
+    this.shortLinks.delete(code);
+    return { status: 200, body: { message: "Shortened URL deleted successfully." } };
   }
 
   /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
