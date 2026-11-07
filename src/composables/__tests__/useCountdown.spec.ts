@@ -105,6 +105,16 @@ describe("useCountdown", () => {
 
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("counts nothing started after its component is gone, e.g. from an answer that landed late", () => {
+    const { wrapper, api } = mountComposable(useCountdown);
+    wrapper.unmount();
+
+    api.start(30);
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(api.active.value).toBe(false);
+  });
 });
 
 describe("useCountdown with a storage key", () => {
@@ -133,6 +143,36 @@ describe("useCountdown with a storage key", () => {
     expect(api.remaining.value).toBe(40);
     vi.advanceTimersByTime(40_000);
     expect(api.active.value).toBe(false);
+  });
+
+  it("still keeps a deadline started after its component is gone, without counting it there", () => {
+    // e.g. an answer that landed after the page was left: a reload still waits it out.
+    const first = mountComposable(keyed);
+    first.wrapper.unmount();
+    // Counted by its intervals: jsdom's storage events take timers of their own.
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    first.api.start(60, "me@example.com");
+    expect(intervals).not.toHaveBeenCalled();
+    expect(first.api.active.value).toBe(false);
+
+    const { api } = mountComposable(keyed);
+    expect(api.resume("me@example.com")).toBe(true);
+    expect(api.remaining.value).toBe(60);
+  });
+
+  it("resumes nothing on screen once its component is gone", () => {
+    const first = mountComposable(keyed);
+    first.api.start(60, "me@example.com");
+    const late = mountComposable(keyed);
+    late.wrapper.unmount();
+    const intervals = vi.spyOn(globalThis, "setInterval");
+
+    expect(late.api.resume("me@example.com")).toBe(true);
+
+    // Only the first one's count runs.
+    expect(intervals).not.toHaveBeenCalled();
+    expect(late.api.active.value).toBe(false);
+    first.wrapper.unmount();
   });
 
   it("keeps why it waits with the deadline, and gives it back on resume", () => {

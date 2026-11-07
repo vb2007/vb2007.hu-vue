@@ -39,9 +39,14 @@ export const useCountdown = (storageKey?: string) => {
     }
   };
 
+  /** Set once its component is gone: a start from an answer that landed after it counts nothing. */
+  let isDisposed = false;
+
   const runUntil = (end: number) => {
     stop();
     deadline = end;
+    // Nothing on screen to count for, but a kept deadline still counts for a reload.
+    if (isDisposed) return;
     tick();
     timer = setInterval(tick, 250);
   };
@@ -79,7 +84,10 @@ export const useCountdown = (storageKey?: string) => {
     return true;
   };
 
-  onScopeDispose(stop);
+  onScopeDispose(() => {
+    isDisposed = true;
+    stop();
+  });
 
   return { remaining, active, note, start, resume, stop };
 };
