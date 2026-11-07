@@ -100,7 +100,9 @@ describe("usePaste", () => {
   });
 
   it("explains a malformed ID", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: "Invalid ID format." }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, { error: "Invalid ID format: must be a 24 character HEX string." })
+    );
     const single = usePaste();
 
     await single.load("nope");
