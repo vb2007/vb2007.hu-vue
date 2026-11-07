@@ -5,10 +5,13 @@ import { usePagedList, type ListSort } from "@/composables/usePagedList";
 import { useSignedLinkRefresh } from "@/composables/useSignedLinkRefresh";
 import { apiRequest, type ApiResult } from "@/scripts/api/client";
 import type { ParamsOf } from "@/scripts/api/endpoint";
+import type { AdminUpload, AdminUploadsResponse } from "@/types/api/admin";
 import type {
   UpdateUploadBody,
+  Upload,
   UploadListQuery,
   UploadOwner,
+  UploadsResponse,
   UploadSortBy,
   UploadVisibility
 } from "@/types/api/uploads";
@@ -18,19 +21,24 @@ export const UPLOADS_PER_PAGE = 10;
 export type UploadAction = "rename" | "visibility" | "delete";
 
 /**
- * Where a list of uploads loads from: the logged-in user's own, or one user's for the admin
- * (vb2007/vb2007.hu-api#122). Both answer with an `UploadsResponse`.
+ * Where a list of uploads loads from: the logged-in user's own (`own`), one user's for the admin
+ * (`user`, vb2007/vb2007.hu-api#122), or every user's for the admin, each with its owner (`site`,
+ * vb2007/vb2007.hu-api#280).
  */
 export type UploadListing =
-  | { endpoint: typeof Endpoints.Uploads.list }
+  | { kind: "own" }
   | {
-      endpoint: typeof Endpoints.Admin.userUploads;
+      kind: "user";
       params: ParamsOf<typeof Endpoints.Admin.userUploads>;
       /** The owner's name before the first answer names them, e.g. from the link that led here. */
       ownerHint?: string;
-    };
+    }
+  | { kind: "site" };
 
-const OWN_UPLOADS: UploadListing = { endpoint: Endpoints.Uploads.list };
+/** A row of any listing: the site-wide one's also say whose they are. */
+export type ListedUpload = Upload & Partial<Pick<AdminUpload, "owner">>;
+
+const OWN_UPLOADS: UploadListing = { kind: "own" };
 
 const DEFAULT_SORT: ListSort<UploadSortBy> = { by: "uploadedOn", order: "desc" };
 
@@ -49,7 +57,7 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
   const owner = ref<UploadOwner | null>(null);
   /** The owner's name as best known: from the listing once it answers, else from its hint. */
   const ownerName = computed(() =>
-    "params" in listing ? (owner.value?.username ?? listing.ownerHint) : undefined
+    listing.kind === "user" ? (owner.value?.username ?? listing.ownerHint) : undefined
   );
   const visibilityFilter = ref<UploadVisibility | "">("");
   /** The row an edit is running on, and which edit. */
@@ -58,21 +66,31 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
   /** The last failed edit, shown on its row. */
   const rowError = ref({ id: "", message: "" });
 
-  const fetchListing = (listQuery: UploadListQuery, signal: AbortSignal) => {
-    if (!("params" in listing)) {
-      return apiRequest(listing.endpoint, {
-        query: listQuery,
-        failure: Messages.Uploads.listFailed,
-        signal
-      });
+  const fetchListing = (
+    query: UploadListQuery,
+    signal: AbortSignal
+  ): Promise<ApiResult<UploadsResponse | AdminUploadsResponse>> => {
+    switch (listing.kind) {
+      case "own":
+        return apiRequest(Endpoints.Uploads.list, {
+          query,
+          failure: Messages.Uploads.listFailed,
+          signal
+        });
+      case "user":
+        return apiRequest(Endpoints.Admin.userUploads, {
+          params: listing.params,
+          query,
+          failure: Messages.Admin.userUploadsFailed(ownerName.value),
+          signal
+        });
+      case "site":
+        return apiRequest(Endpoints.Admin.uploads, {
+          query,
+          failure: Messages.Admin.uploadsFailed,
+          signal
+        });
     }
-    const failure = Messages.Admin.userUploadsFailed(ownerName.value);
-    return apiRequest(listing.endpoint, {
-      params: listing.params,
-      query: listQuery,
-      failure,
-      signal
-    });
   };
 
   const {
@@ -93,8 +111,8 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
     sort: DEFAULT_SORT,
     filters: () => ({ visibility: visibilityFilter.value || undefined }),
     fetch: fetchListing,
-    items: (data) => data.uploads,
-    onLoad: (data) => (owner.value = data.user ?? null)
+    items: (data): ListedUpload[] => data.uploads,
+    onLoad: (data) => (owner.value = ("user" in data && data.user) || null)
   });
 
   const setVisibilityFilter = (visibility: UploadVisibility | "") => {
@@ -144,11 +162,14 @@ export const useUploads = (limit = UPLOADS_PER_PAGE, listing: UploadListing = OW
       action,
       (failure) => apiRequest(Endpoints.Uploads.update, { params: { id }, body: changes, failure }),
       async ({ upload }) => {
-        // A filtered list may no longer include it, so ask again; otherwise swap it in place.
+        // A filtered list may no longer include it, so ask again; otherwise swap it in place,
+        // keeping the owner the site-wide listing gave it, which the edit's answer leaves out.
         if (visibilityFilter.value && upload.visibility !== visibilityFilter.value) {
           await load();
         } else {
-          uploads.value = uploads.value.map((item) => (item.id === id ? upload : item));
+          uploads.value = uploads.value.map((item) =>
+            item.id === id ? { ...item, ...upload } : item
+          );
         }
       }
     );

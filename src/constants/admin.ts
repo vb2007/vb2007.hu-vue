@@ -4,7 +4,8 @@ import type { Stop } from "./stops";
 export const AdminPaths = {
   overview: "/admin",
   users: "/admin/users",
-  pastes: "/admin/pastes"
+  pastes: "/admin/pastes",
+  uploads: "/admin/uploads"
 } as const;
 
 /**
@@ -17,7 +18,8 @@ export const AdminRoutes = {
   /** One account's page (`/admin/users/:id`), opened from its row; not a section of its own. */
   user: "admin-user",
   userUploads: "admin-user-uploads",
-  pastes: "admin-pastes"
+  pastes: "admin-pastes",
+  uploads: "admin-uploads"
 } as const;
 
 /**
@@ -40,5 +42,12 @@ export const ADMIN_SECTIONS: Stop[] = [
     to: AdminPaths.pastes,
     status: "open",
     blurb: "Every paste on the site, whoever made it, to open or delete."
+  },
+  {
+    id: "uploads",
+    label: "Uploads",
+    to: AdminPaths.uploads,
+    status: "open",
+    blurb: "Every file on the site and whose it is, to rename, make private or delete."
   }
 ];

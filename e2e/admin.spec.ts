@@ -13,7 +13,8 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
     "/admin",
     "/admin/users",
     `/admin/users/${"b".repeat(24)}`,
-    "/admin/pastes"
+    "/admin/pastes",
+    "/admin/uploads"
   ]) {
     await page.goto(path);
     await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
@@ -578,4 +579,99 @@ test("deleting the last paste on a page steps back a page", async ({ page, api }
   await expect(previews).toHaveCount(20);
   await expect(previews.first()).toHaveText("paste number 21");
   await expect(page.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
+});
+
+test("the superuser lists every upload with its owner and moderates them", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { count: 1 });
+  api.hasUser("milo", { count: 1 });
+  api.hasUpload("flyer.pdf", { visibility: "public", owner: "anna" });
+  api.hasUpload("notes.txt", { owner: "milo" });
+  api.hasUpload("mine.txt", { owner: "vb2007" });
+  // Its account is gone, so the API names no owner.
+  api.hasUpload("left.zip", { owner: "gone" });
+
+  await page.goto("/admin");
+  await page.getByRole("link", { name: /^Uploads/ }).click();
+
+  await expect(page).toHaveURL(/\/admin\/uploads$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Uploads" })).toBeVisible();
+  await expect(page.locator(".bar__admin")).toHaveAttribute("aria-current", "true");
+  await expect(page.getByText("4 uploads")).toBeVisible();
+  // Newest first, each row led by whose it is.
+  const meta = page.locator(".row__meta");
+  await expect(meta).toHaveText([/^Deleted account\s· /, /^vb2007\s· /, /^milo\s· /, /^anna\s· /]);
+
+  // Who can open a private file stays true for the admin, on someone else's and on their own.
+  await page.getByRole("button", { name: "notes.txt" }).click();
+  await expect(
+    page.getByText("milo, you, and anyone with the link (until it expires)")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "notes.txt" }).click();
+  await page.getByRole("button", { name: "mine.txt" }).click();
+  await expect(page.getByText("You, and anyone with the link (until it expires)")).toBeVisible();
+  await page.getByRole("button", { name: "mine.txt" }).click();
+
+  // The search matches the owner's name too.
+  const search = page.getByLabel("Search by name or owner");
+  await search.fill("MIL");
+  await expect(page.getByText("1 upload found")).toBeVisible();
+  await expect(page.locator(".row__name")).toHaveText(["notes.txt"]);
+  await search.fill("nobody");
+  await expect(
+    page.getByText("No uploads match. Try another name or owner, or show all of them.")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Show all uploads" }).click();
+  await expect(page.getByText("4 uploads")).toBeVisible();
+
+  // An edit keeps the row's owner, which its answer leaves out.
+  await page.getByRole("button", { name: "flyer.pdf" }).click();
+  await page.getByRole("button", { name: "Make private" }).click();
+  await expect(
+    page.getByText("anna, you, and anyone with the link (until it expires)")
+  ).toBeVisible();
+  expect(api.uploads[0].visibility).toBe("private");
+  await expect(meta.last()).toHaveText(/^anna\s· /);
+  await page.getByRole("button", { name: "flyer.pdf" }).click();
+
+  await page.getByRole("button", { name: "left.zip" }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page.getByText("3 uploads")).toBeVisible();
+  expect(api.uploads.map((upload) => upload.originalFileName)).not.toContain("left.zip");
+
+  // The owner is a click from their account.
+  await page.getByRole("link", { name: "anna's account" }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${anna.id}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "Uploads" })).toBeVisible();
+  await page.getByRole("link", { name: "All sections" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+});
+
+test("the site-wide list renews its private links once they run out", async ({ page, api }) => {
+  await page.clock.install();
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna", { count: 1 });
+  api.hasUpload("report.pdf", { owner: "anna" });
+  await page.goto("/admin/uploads");
+
+  await page.getByRole("button", { name: "report.pdf" }).click();
+  const open = page.getByRole("link", { name: /^Open/ });
+  await expect(open).toHaveAttribute("href", /\?expires=\d+&sig=/);
+  const first = await open.getAttribute("href");
+
+  // The machine slept: the clock moved on, but no timer fired.
+  const reload = page.waitForRequest((request) => request.url().includes("/admin/uploads?"));
+  api.clockRunsFor(90 * 60_000);
+  await page.clock.setSystemTime(Date.now() + 90 * 60_000);
+  await page.evaluate('window.dispatchEvent(new Event("focus"))');
+  await reload;
+  await expect(open).not.toHaveAttribute("href", first!);
+  await expect(open).toHaveAttribute("href", /\?expires=\d+&sig=/);
+  await expect(page.getByRole("link", { name: "anna's account" })).toBeVisible();
 });

@@ -73,14 +73,14 @@ describe("AdminPasteList", () => {
     // Blank space has no code to show, so it reads as a note.
     expect(rows[0].find(".row__preview--blank").exists()).toBe(false);
     expect(rows[1].find(".row__preview--blank").attributes("href")).toBe("/pastebin/b");
-    expect(rows[0].find(".row__owner").text()).toBe("user-a");
-    expect(rows[0].find(".row__owner").attributes("href")).toBe("/admin/users/u-a");
+    expect(rows[0].find(".meta-link").text()).toBe("user-a");
+    expect(rows[0].find(".meta-link").attributes("href")).toBe("/admin/users/u-a");
     expect(rows[0].find(".row__language").text()).toBe("TypeScript");
     expect(rows[0].find("time").attributes("datetime")).toBe("2026-10-10T12:00:00.000Z");
     expect(rows[0].find("button").text()).toBe("Delete user-a's paste");
 
     // No owner any more, no language: plain text.
-    expect(rows[1].find(".row__owner").exists()).toBe(false);
+    expect(rows[1].find(".meta-link").exists()).toBe(false);
     expect(rows[1].find(".row__gone").text()).toBe("Deleted account");
     expect(rows[1].find(".row__language").text()).toBe("Plain text");
     expect(rows[1].find("button").text()).toBe("Delete the paste of a deleted account");

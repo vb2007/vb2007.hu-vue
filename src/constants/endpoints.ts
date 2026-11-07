@@ -3,6 +3,7 @@ import { defineEndpoint, type NoBody } from "@/scripts/api/endpoint";
 import type {
   AdminPasteListQuery,
   AdminPastesResponse,
+  AdminUploadsResponse,
   AdminUserListQuery,
   AdminUserResponse,
   AdminUsersResponse,
@@ -344,6 +345,15 @@ export class Endpoints {
     static readonly pastes = defineEndpoint<undefined, AdminPastesResponse, AdminPasteListQuery>()({
       method: HttpMethod.Get,
       path: "/admin/pastes",
+      credentials: true
+    });
+    /**
+     * Every user's uploads, each with its owner. Edits go through `Uploads.update` and
+     * `Uploads.remove`, which let the superuser past the owner check.
+     */
+    static readonly uploads = defineEndpoint<undefined, AdminUploadsResponse, UploadListQuery>()({
+      method: HttpMethod.Get,
+      path: "/admin/uploads",
       credentials: true
     });
   };

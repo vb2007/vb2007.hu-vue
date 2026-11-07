@@ -294,5 +294,6 @@ export class Messages {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
     }
     static readonly pastesFailed: string = "Failed to load the pastes";
+    static readonly uploadsFailed: string = "Failed to load the uploads";
   };
 }

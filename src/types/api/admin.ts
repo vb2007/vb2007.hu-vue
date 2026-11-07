@@ -1,6 +1,6 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
 import type { PasteSortBy } from "@/types/api/pastebin";
-import type { UploadOwner } from "@/types/api/uploads";
+import type { Upload, UploadOwner, UploadSortBy } from "@/types/api/uploads";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -114,4 +114,16 @@ export type AdminPasteListQuery = ListQuery<PasteSortBy> & {
 export interface AdminPastesResponse {
   pastes: AdminPaste[];
   pagination: Pagination<PasteSortBy>;
+}
+
+/** An upload in the admin's site-wide list, with whose it is (vb2007/vb2007.hu-api#280). */
+export interface AdminUpload extends Upload {
+  /** `null` once the owner's account no longer exists. */
+  owner: UploadOwner | null;
+}
+
+/** `GET /admin/uploads`: every user's uploads, private ones included. Takes `UploadListQuery`. */
+export interface AdminUploadsResponse {
+  uploads: AdminUpload[];
+  pagination: Pagination<UploadSortBy>;
 }

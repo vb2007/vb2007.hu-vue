@@ -49,7 +49,8 @@ describe("Endpoints", () => {
     [Endpoints.Admin.setUploadQuota, "PATCH", "/admin/users/:id/upload-quota", true],
     [Endpoints.Admin.setSuspension, "PATCH", "/admin/users/:id/suspension", true],
     [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true],
-    [Endpoints.Admin.pastes, "GET", "/admin/pastes", true]
+    [Endpoints.Admin.pastes, "GET", "/admin/pastes", true],
+    [Endpoints.Admin.uploads, "GET", "/admin/uploads", true]
   ])("declares %o", (endpoint, method, path, credentials) => {
     expect(endpoint).toMatchObject({ method, path, credentials });
   });

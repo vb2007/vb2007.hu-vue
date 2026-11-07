@@ -15,6 +15,7 @@ import AdminUsersView from "@/views/AdminUsersView.vue";
 import AdminPastesView from "@/views/AdminPastesView.vue";
 import AccountView from "@/views/AccountView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
+import AdminUploadsView from "@/views/AdminUploadsView.vue";
 import AdminUserView from "@/views/AdminUserView.vue";
 import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
@@ -37,7 +38,6 @@ import UploadList from "@/components/features/uploads/UploadList.vue";
 import UsageMeter from "@/components/features/uploads/UsageMeter.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
-import { Endpoints } from "@/constants/endpoints";
 import { Messages } from "@/constants/messages";
 import { ADMIN_SECTIONS } from "@/constants/admin";
 import { TOOLS_LINE } from "@/constants/stops";
@@ -270,6 +270,24 @@ describe("views", () => {
     }
   });
 
+  it("AdminAreaView shows the superuser every upload, the list as the page heading", async () => {
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValue(jsonResponse(200, { uploads: [], pagination: null }));
+    asSuperuser();
+    const { wrapper } = await mountWithRouter(AdminAreaView, {}, "/admin/uploads");
+    await flushPromises();
+
+    expect(wrapper.findComponent(AdminUploadsView).exists()).toBe(true);
+    expect(wrapper.findComponent(PageSection).props("width")).toBe("medium");
+    expect(wrapper.findComponent(UploadList).props()).toMatchObject({
+      listing: { kind: "site" },
+      as: "h1"
+    });
+    expect(wrapper.find("h1").text()).toBe("Uploads");
+    expect(wrapper.find('a[href="/admin"]').text()).toBe("All sections");
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/api\.test\/admin\/uploads\?/);
+  });
+
   it("AdminAreaView changes admin pages with the route fade", async () => {
     mockFetch().mockResolvedValue(jsonResponse(200, { users: [], pagination: null }));
     asSuperuser();
@@ -338,7 +356,7 @@ describe("views", () => {
     expect(wrapper.find('a[href="/admin/users"]').text()).toBe("All users");
     expect(wrapper.findComponent(UploadList).props()).toMatchObject({
       listing: {
-        endpoint: Endpoints.Admin.userUploads,
+        kind: "user",
         params: { id: "u 9" },
         ownerHint: undefined
       },
