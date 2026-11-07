@@ -174,3 +174,21 @@ test("a session that ended elsewhere logs the page out when a paste's language i
   await expect(page.getByRole("link", { name: "e2e@example.com" })).toHaveCount(0);
   await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
 });
+
+test("saving a paste deleted after the session ended elsewhere logs the page out", async ({
+  page,
+  api
+}) => {
+  const own = api.hasPaste("just some words", "e2e", "plaintext");
+  api.loggedInAs();
+  await page.goto(`/pastebin/${own._id}`);
+  await expect(page.getByLabel("Language")).toBeVisible();
+
+  // Logging in elsewhere ends this session, and the paste is deleted there: the API checks the session first.
+  api.loggedOut();
+  api.pastes.splice(0);
+  await page.getByLabel("Language").selectOption("markdown");
+
+  await expect(page.getByRole("alert")).toHaveText("You must be logged in to perform this action.");
+  await expect(page.getByLabel("Language")).toHaveCount(0);
+});
