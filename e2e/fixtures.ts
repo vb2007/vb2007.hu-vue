@@ -782,6 +782,8 @@ export class MockApi {
     switch (endpoint) {
       case "GET /admin/users":
         return this.listUsers(query);
+      case "GET /admin/pastes":
+        return this.listAdminPastes(query);
       case "GET /uploads":
         return this.listUploads(query, this.user?.username);
       case "GET /uploads/usage":
@@ -1449,10 +1451,11 @@ export class MockApi {
     if (!this.user) {
       return { status: 403, body: { error: "You must be logged in to perform this action." } };
     }
+    // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
+    if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
+      return { status: 403, body: { error: "You do not have permission to perform this action." } };
+    }
     if (method === "PATCH") {
-      if (paste.addedBy !== this.user.username && !this.user.isSuperuser) {
-        return { status: 403, body: { error: "You are not authorized." } };
-      }
       if (!/^[a-z0-9+#-]{1,32}$/.test(language ?? "")) {
         return { status: 400, body: { error: "That isn't a valid language." } };
       }
@@ -1747,6 +1750,73 @@ export class MockApi {
       body: {
         message: "User logged out successfully.",
         user: { id: target.id, username: target.username }
+      }
+    };
+  }
+
+  /**
+   * Every paste for the admin, from the same store (vb2007/vb2007.hu-api#277): the owner is `null`
+   * when no account has the paste's username, and `q` matches part of the owner's name or of the
+   * language. Like the API, it checks the query in the docs' order before anything else.
+   */
+  private listAdminPastes(query: URLSearchParams): MockResponse {
+    const refusal = this.refuseNonSuperuser();
+    if (refusal) return refusal;
+    const isIntegerInRange = (value: string, min: number, max: number) =>
+      /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+    const validators: [string, (value: string) => boolean][] = [
+      ["limit", (value) => isIntegerInRange(value, 1, 50)],
+      ["page", (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)],
+      ["sortBy", (value) => value === "addedOn"],
+      ["sortOrder", (value) => value === "asc" || value === "desc"],
+      ["q", (value) => value.length <= 100]
+    ];
+    // A repeated parameter reaches the API as an array, which no check accepts.
+    const invalid = validators.find(
+      ([param, isValid]) =>
+        query.has(param) && (query.getAll(param).length > 1 || !isValid(query.get(param)!))
+    );
+    if (invalid) return { status: 400, body: { error: `Invalid value for ${invalid[0]}.` } };
+
+    const ownerOf = (name: string) => {
+      const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
+      const listed = this.users.find((user) => sameName(user.username));
+      if (listed) return { id: listed.id, username: listed.username };
+      const account = this.accounts.find((item) => sameName(item.username));
+      return account ? { id: account._id, username: account.username } : null;
+    };
+    const limit = Number(query.get("limit") ?? 20);
+    const page = Number(query.get("page") ?? 1);
+    const sortOrder = query.get("sortOrder") ?? "desc";
+    const q = query.get("q")?.toLowerCase();
+    const rows = this.pastes.map((paste) => ({
+      id: paste._id,
+      language: paste.language ?? null,
+      // The first 100 code points.
+      preview: [...paste.content].slice(0, 100).join(""),
+      addedOn: paste.addedOn,
+      owner: ownerOf(paste.addedBy)
+    }));
+    const matching = rows.filter(
+      (row) =>
+        !q ||
+        row.owner?.username.toLowerCase().includes(q) ||
+        row.language?.toLowerCase().includes(q)
+    );
+    // The store is oldest first.
+    const sorted = sortOrder === "asc" ? matching : [...matching].reverse();
+    return {
+      status: 200,
+      body: {
+        pastes: sorted.slice((page - 1) * limit, page * limit),
+        pagination: {
+          limit,
+          page,
+          total: matching.length,
+          pages: Math.ceil(matching.length / limit),
+          sortBy: "addedOn",
+          sortOrder
+        }
       }
     };
   }

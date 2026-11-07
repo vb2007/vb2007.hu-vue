@@ -8,6 +8,8 @@ export class Limits {
   static readonly Paste = class {
     static readonly minLength: number = 2;
     static readonly maxLength: number = 10000;
+    /** How many characters (code points) of a paste `GET /admin/pastes` sends as its preview. */
+    static readonly previewLength: number = 100;
   };
 
   /** Counted after trimming. */

@@ -1,4 +1,6 @@
 import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common";
+import type { PasteSortBy } from "@/types/api/pastebin";
+import type { UploadOwner } from "@/types/api/uploads";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -78,6 +80,7 @@ export interface RenameUserResponse extends MessageResponse {
 export interface LogoutUserResponse extends MessageResponse {
   user: { id: string; username: string };
 }
+
 /** `PATCH /admin/users/:id/suspension` (vb2007/vb2007.hu-api#273) */
 export interface SetSuspensionBody {
   /** `true` suspends the user and ends their session; `false` lifts the suspension. */
@@ -87,4 +90,28 @@ export interface SetSuspensionBody {
 /** `PATCH /admin/users/:id/suspension` */
 export interface SuspensionResponse extends MessageResponse {
   user: AdminUser;
+}
+
+/** A paste as `GET /admin/pastes` lists it (vb2007/vb2007.hu-api#277). */
+export interface AdminPaste {
+  id: string;
+  /** A PASTE_LANGUAGES id, or `null` for a paste without one (plain text). */
+  language: string | null;
+  /** The paste's first 100 characters (code points); the rest stays on `GET /paste/:id`. */
+  preview: string;
+  addedOn: string;
+  /** `null` once the owner's account no longer exists. */
+  owner: UploadOwner | null;
+}
+
+/** `GET /admin/pastes` */
+export type AdminPasteListQuery = ListQuery<PasteSortBy> & {
+  /** Matches part of the owner's username or of the language id, whatever its case. */
+  q?: string;
+};
+
+/** `GET /admin/pastes` */
+export interface AdminPastesResponse {
+  pastes: AdminPaste[];
+  pagination: Pagination<PasteSortBy>;
 }

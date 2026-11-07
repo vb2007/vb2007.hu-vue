@@ -9,7 +9,12 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
   await expect(page.getByText("Log in with the admin account to open this page.")).toBeVisible();
 
   api.loggedInAs();
-  for (const path of ["/admin", "/admin/users", `/admin/users/${"b".repeat(24)}`]) {
+  for (const path of [
+    "/admin",
+    "/admin/users",
+    `/admin/users/${"b".repeat(24)}`,
+    "/admin/pastes"
+  ]) {
     await page.goto(path);
     await expect(page.getByText("This page is only for the site's admin.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
@@ -494,4 +499,83 @@ test("the superuser's own account can't be deleted, and logging it out ends this
   expect(userChecks).toHaveLength(1);
   await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toHaveCount(0);
   expect(api.loggedOutUsers).toEqual([own.id]);
+});
+
+test("the superuser finds pastes, opens them and deletes one", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const annas = api.hasPaste("const answer = 42;\nconsole.log(answer);", "anna", "typescript");
+  api.hasPaste("print('hi')", "vb2007", "python");
+  // No account has this name any more, and it was made before pastes had a language.
+  api.hasPaste("left behind", "ghost");
+
+  await page.goto("/admin");
+  await page.getByRole("link", { name: /^Pastes/ }).click();
+
+  await expect(page).toHaveURL(/\/admin\/pastes$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Pastes" })).toBeVisible();
+  await expect(page.locator(".bar__admin")).toHaveAttribute("aria-current", "true");
+  await expect(page.getByText("3 pastes")).toBeVisible();
+  // Newest first, each by its opening line.
+  const previews = page.locator(".row__preview");
+  await expect(previews).toHaveText(["left behind", "print('hi')", "const answer = 42;"]);
+  await expect(page.locator(".row").filter({ hasText: "left behind" })).toContainText(
+    "Deleted account · Plain text ·"
+  );
+  await expect(page.locator(".row").filter({ hasText: "answer" })).toContainText(
+    "anna · TypeScript ·"
+  );
+
+  await page.getByLabel("Sort").selectOption({ label: "Oldest first" });
+  await expect(previews).toHaveText(["const answer = 42;", "print('hi')", "left behind"]);
+
+  // The search matches part of the language or of the owner's name.
+  const search = page.getByLabel("Search by owner or language");
+  await search.fill("PYTH");
+  await expect(page.getByText("1 paste found")).toBeVisible();
+  await expect(previews).toHaveText(["print('hi')"]);
+  await search.fill("ann");
+  await expect(previews).toHaveText(["const answer = 42;"]);
+  await search.fill("cobol");
+  await expect(page.getByText("No owner or language matches that search.")).toBeVisible();
+  await page.getByRole("button", { name: "Show every paste" }).click();
+  await expect(page.getByText("3 pastes")).toBeVisible();
+
+  // The first click arms the key, the second deletes.
+  await page.getByRole("button", { name: "Delete the paste of a deleted account" }).click();
+  await page.getByRole("button", { name: "Confirm delete the paste of a deleted account" }).click();
+  await expect(page.getByText("2 pastes")).toBeVisible();
+  await expect(previews).toHaveText(["const answer = 42;", "print('hi')"]);
+  expect(api.pastes.map((paste) => paste.content)).not.toContain("left behind");
+
+  // The owner's name leads to their account, the opening line to the paste.
+  await page.getByRole("link", { name: "anna", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${anna.id}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await page.goBack();
+  await page.getByRole("link", { name: "const answer = 42;" }).click();
+  await expect(page).toHaveURL(new RegExp(`/pastebin/${annas._id}$`));
+  await expect(page.getByText("console.log(answer);")).toBeVisible();
+});
+
+test("deleting the last paste on a page steps back a page", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna");
+  for (let i = 1; i <= 21; i++) api.hasPaste(`paste number ${i}`, "anna", "plaintext");
+
+  await page.goto("/admin/pastes");
+  await expect(page.getByText("21 pastes")).toBeVisible();
+  await expect(page.getByText("Page 1 of 2")).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Page 2 of 2")).toBeVisible();
+  const previews = page.locator(".row__preview");
+  await expect(previews).toHaveText(["paste number 1"]);
+
+  await page.getByRole("button", { name: "Delete anna's paste" }).click();
+  await page.getByRole("button", { name: "Confirm delete anna's paste" }).click();
+
+  await expect(page.getByText("20 pastes")).toBeVisible();
+  await expect(previews).toHaveCount(20);
+  await expect(previews.first()).toHaveText("paste number 21");
+  await expect(page.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
 });
