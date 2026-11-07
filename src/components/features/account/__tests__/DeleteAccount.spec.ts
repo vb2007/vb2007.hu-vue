@@ -8,6 +8,8 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { statusTextId } from "@/components/ui/statusMessage";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -200,7 +202,7 @@ describe("DeleteAccount", () => {
     const alert = wrapper.find('[role="alert"]');
     expect(alert.text()).toBe("The provided password is incorrect.");
     expect(alert.attributes("id")).toBeTruthy();
-    expect(wrapper.find("input").attributes("aria-describedby")).toBe(alert.attributes("id"));
+    expect(descriptionOf(wrapper.find("input"))).toBe("The provided password is incorrect.");
     expect(isLoggedIn.value).toBe(true);
     expect(router.currentRoute.value.fullPath).toBe("/account");
     wrapper.unmount();
@@ -243,8 +245,10 @@ describe("DeleteAccount", () => {
     await flushPromises();
 
     const hintId = wrapper.find(".field__hint").attributes("id");
-    const alertId = wrapper.find('[role="alert"]').attributes("id");
-    expect(wrapper.find("input").attributes("aria-describedby")).toBe(`${alertId} ${hintId}`);
+    const alertId = wrapper.find('[role="alert"]').attributes("id")!;
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(
+      `${statusTextId(alertId)} ${hintId}`
+    );
     wrapper.unmount();
   });
 
@@ -270,18 +274,16 @@ describe("DeleteAccount", () => {
 
     await wrapper.find("form").trigger("submit");
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(deleteKey(wrapper).attributes("aria-describedby")).toBe(
-      wrapper.find('[role="alert"]').attributes("id")
-    );
+    // Described by the shown text only, so its counting name is the one wait it states.
+    expect(descriptionOf(deleteKey(wrapper))).toBe(error);
 
     // Cancel forgets the refusal; opened again, the held key still says why.
     await wrapper.find("form").trigger("keydown", { key: "Escape" });
     await flushPromises();
     await open(wrapper);
     expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
-    expect(wrapper.find("input").attributes("aria-describedby")).toContain(
-      wrapper.find('[role="alert"]').attributes("id")
-    );
+    // The field is described by the message as shown: the wait in words is the alert's alone.
+    expect(descriptionOf(wrapper.find("input"))).toBe(error);
     await wrapper.find("input").setValue("another try");
 
     vi.advanceTimersByTime(900_000);
@@ -357,11 +359,10 @@ describe("DeleteAccount", () => {
     expect(confirm.text()).toBe("Confirm with GitHub");
     expect(confirm.classes()).toContain("btn--primary");
     expect(document.activeElement).toBe(confirm.element);
-    expect(confirm.attributes("aria-describedby")).toBe(info.attributes("id"));
-    expect(confirm.attributes("aria-describedby")).toBeTruthy();
+    expect(descriptionOf(confirm)).toBe(REAUTH);
     const hintId = wrapper.find(".field__hint").attributes("id");
     expect(wrapper.find("input").attributes("aria-describedby")).toBe(
-      `${info.attributes("id")} ${hintId}`
+      `${statusTextId(info.attributes("id")!)} ${hintId}`
     );
     expect(wrapper.findAll("button").map((button) => button.text())).toEqual(["Cancel"]);
     expect(isLoggedIn.value).toBe(true);
@@ -508,9 +509,11 @@ describe("DeleteAccount", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
-    const alertId = wrapper.find('[role="alert"]').attributes("id");
+    const alertId = wrapper.find('[role="alert"]').attributes("id")!;
     const hintId = wrapper.find(".field__hint").attributes("id");
-    expect(wrapper.find("input").attributes("aria-describedby")).toBe(`${alertId} ${hintId}`);
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(
+      `${statusTextId(alertId)} ${hintId}`
+    );
     wrapper.unmount();
   });
 

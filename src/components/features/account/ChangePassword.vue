@@ -16,6 +16,7 @@ import { useFormValidation } from "@/composables/useFormValidation";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const passwordHint = Messages.Auth.lengthHint(Limits.Password.minLength, Limits.Password.maxLength);
 
@@ -141,7 +142,7 @@ const save = async () => {
         :loading="isChanging"
         :disabled="isHeld"
         :aria-label="isHeld ? hold.name.value : undefined"
-        :aria-describedby="isHeld ? errorId : undefined"
+        :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
         :blocked="!isValid"
       >
         {{ isChanging ? "Saving" : isHeld ? hold.label.value : "Save password" }}

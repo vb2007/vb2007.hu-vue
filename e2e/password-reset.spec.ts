@@ -280,10 +280,12 @@ test("a reset past the daily cap of wrong codes holds Reset password for hours",
   );
   const key = page.getByRole("button", { name: /^Try again in/ });
   await expect(key).toHaveText(/^Try again in 23 hr \d+ min$/);
-  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the message
-  // it points at says the wait in words.
+  // "23 hours" wouldn't contain the visible "23 hr", so the label names the key, and the alert says
+  // the wait in words. The key is described by the message as shown, so it states one wait.
   await expect(key).toHaveAccessibleName(/^Try again in 23 hr \d+ min$/);
-  await expect(key).toHaveAccessibleDescription(/Try again in 23 hours 45 minutes\.$/);
+  await expect(key).toHaveAccessibleDescription(
+    "Too many failed attempts: try again later. A new code won't help: no code is accepted for this address until the wait ends."
+  );
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("Code")).toBeFocused();
   await expect(page).toHaveURL("/reset-password");
@@ -305,6 +307,7 @@ test("asking for a code over the mail limit holds Send code for its wait", async
   );
   const key = page.locator("form").getByRole("button");
   await expect(key).toHaveText(/^Try again in \d+ min$/);
+  await expect(key).toHaveAccessibleDescription("Too many e-mails requested: try again later.");
   await expect(key).toBeDisabled();
   await expect(page.getByLabel("E-mail")).toBeFocused();
   expect(api.passwordResets).toEqual([]);
@@ -460,10 +463,11 @@ test.describe("the mailed link", () => {
     await page.getByLabel("New password").fill("a new password");
     await page.getByRole("button", { name: "Reset password" }).click();
 
-    // The wait in words at the end is for screen readers, as on every held key.
+    // The wait in words at the end is for screen readers, as on every held key; the key is
+    // described by the message as shown, so its counting name is the one wait it states.
     const limited =
-      "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent. Try again in 15 minutes.";
-    await expect(page.getByRole("alert")).toHaveText(limited);
+      "Too many failed attempts: try again later. The link wasn't used up: it works until 30 minutes after it was sent.";
+    await expect(page.getByRole("alert")).toHaveText(`${limited} Try again in 15 minutes.`);
     const key = page.locator("form").getByRole("button");
     await expect(key).toHaveText("Try again in 15 min");
     await expect(key).toBeDisabled();

@@ -15,6 +15,7 @@ import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const LINK_HINT = "Confirms it's you. GitHub opens next, to approve the link.";
 const UNLINK_HINT = "Confirms it's you. Afterwards you log in with your password only.";
@@ -168,7 +169,7 @@ const submit = async () => {
       type="password"
       autocomplete="current-password"
       :hint="githubLinked ? UNLINK_HINT : LINK_HINT"
-      :describedby="confirmError ? errorId : undefined"
+      :describedby="confirmError ? statusTextId(errorId) : undefined"
       :error="errors.password"
       required
       @blur="leave('password')"
@@ -183,7 +184,7 @@ const submit = async () => {
         :error="githubLinked && isValid && !isHeld"
         :disabled="isHeld"
         :aria-label="isHeld ? hold.name.value : undefined"
-        :aria-describedby="isHeld ? errorId : undefined"
+        :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
         :blocked="!isValid"
         :loading="isBusy"
       >
@@ -211,7 +212,7 @@ const submit = async () => {
     :loading="isLeaving"
     :disabled="!hasPassword && isHeld"
     :aria-label="!hasPassword && isHeld ? hold.name.value : undefined"
-    :aria-describedby="!hasPassword && isHeld ? keyErrorId : undefined"
+    :aria-describedby="!hasPassword && isHeld ? statusTextId(keyErrorId) : undefined"
     @click="start"
   >
     <template v-if="githubLinked">Unlink GitHub</template>
