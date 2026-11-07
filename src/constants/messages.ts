@@ -36,6 +36,12 @@ export class Messages {
       return `This URL is ${length.toLocaleString()} characters; the limit is ${max.toLocaleString()}.`;
     }
     static readonly shortenFailed: string = "Failed to shorten URL";
+    /**
+     * Under the slip when the API answers a repeat with the user's existing link (a 200, not a
+     * 201). The site's own words rather than the API's, since it has to say no new link was made.
+     */
+    static readonly alreadyShortened: string =
+      "You've already shortened this URL, so no new link was made.";
     /** Only logged: the page shows the API's error, or falls back to the API's own redirect. */
     static readonly lookupFailed: string = "Failed to resolve short link";
     static readonly listFailed: string = "Failed to load your short links";

@@ -66,6 +66,16 @@ describe("TicketSlip", () => {
     expect(wrapper.findAll("button")[1].text()).toBe("Paste another");
   });
 
+  it("shows a note under the link only when given one", async () => {
+    const wrapper = mount(TicketSlip, { props: { value } });
+    expect(wrapper.find(".slip__note").exists()).toBe(false);
+
+    await wrapper.setProps({ note: "It's your link from before." });
+
+    expect(wrapper.find(".slip__note").text()).toBe("It's your link from before.");
+    expect(wrapper.find("a + .slip__note").exists()).toBe(true);
+  });
+
   it("can show the link differently from what it copies", async () => {
     const wrapper = mount(TicketSlip, { props: { value, display: "api.test/r/abc123" } });
 

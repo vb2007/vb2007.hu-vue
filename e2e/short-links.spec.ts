@@ -119,7 +119,7 @@ test("a server error on the lookup shows the API's message and can be retried", 
 test.describe("your links on /shorten", () => {
   /** The "Your links" board. */
   const yourLinks = (page: Page) =>
-    page.locator("section").filter({ has: page.getByRole("heading", { name: "Your links" }) });
+    page.locator(".board").filter({ has: page.getByRole("heading", { name: "Your links" }) });
   /** The codes the board lists, top to bottom. */
   const codes = (page: Page) => yourLinks(page).getByRole("listitem").getByRole("link");
   /** One row of the board, by its code. */

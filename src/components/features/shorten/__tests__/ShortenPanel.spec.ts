@@ -38,7 +38,7 @@ describe("ShortenPanel", () => {
     await wrapper.find("form").trigger("submit");
     expect(wrapper.find('button[type="submit"]').text()).toBe("Shortening");
 
-    respond(jsonResponse(200, { data: { shortenedUrl: "abc123" } }));
+    respond(jsonResponse(201, { data: { shortenedUrl: "abc123" } }));
     await flushPromises();
 
     expect(wrapper.find('button[type="submit"]').text()).toBe("Shorten");
@@ -52,6 +52,66 @@ describe("ShortenPanel", () => {
     await flushPromises();
 
     expect(wrapper.findComponent(TicketSlip).exists()).toBe(false);
+  });
+
+  it("says when the link is the user's existing one, until they move on", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          message: "You've already shortened this URL.",
+          data: { shortenedUrl: "old123" }
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse(201, { data: { shortenedUrl: "new456" } }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: { shortenedUrl: "old123" } }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: { shortenedUrl: "old123" } }));
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+    const note = "You've already shortened this URL, so no new link was made.";
+    const status = () => wrapper.find('.board__body > [role="status"]');
+    const shortenUrl = async (url: string) => {
+      await wrapper.find("input").setValue(url);
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+    };
+    // In place before any answer, so the note is read out when it comes.
+    expect(status().text()).toBe("");
+
+    await shortenUrl("https://example.com/again");
+
+    expect(wrapper.emitted("created")).toHaveLength(1);
+    expect(wrapper.findComponent(TicketSlip).props()).toMatchObject({
+      value: `${window.location.origin}/r/old123`,
+      note
+    });
+    expect(status().text()).toBe(note);
+
+    // Typing the next URL leaves the last link up, without its note.
+    await wrapper.find("input").setValue("https://example.com/other");
+    expect(wrapper.findComponent(TicketSlip).props("note")).toBeUndefined();
+    expect(status().text()).toBe("");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.findComponent(TicketSlip).props()).toMatchObject({
+      value: `${window.location.origin}/r/new456`,
+      note: undefined
+    });
+
+    // Twice in a row: the same link again still empties the field without calling it invalid.
+    await shortenUrl("https://example.com/again");
+    await shortenUrl("https://example.com/again");
+    expect(wrapper.emitted("created")).toHaveLength(4);
+    expect(wrapper.findComponent(TicketSlip).props("note")).toBe(note);
+    expect(status().text()).toBe(note);
+    expect(wrapper.find("input").element.value).toBe("");
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+
+    wrapper.findComponent(TicketSlip).vm.$emit("again");
+    await flushPromises();
+    expect(wrapper.findComponent(TicketSlip).exists()).toBe(false);
+    expect(status().text()).toBe("");
   });
 
   it("shows validation errors on the input", async () => {
