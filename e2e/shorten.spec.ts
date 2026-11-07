@@ -117,8 +117,7 @@ test("a URL with a space is refused before it's sent", async ({ page, api }) => 
   await url.fill("https://example.com/a b");
   await url.press("Enter");
   await expect(url).toHaveAccessibleDescription(hasSpace);
-  await shorten.click();
-  await expect(url).toHaveAccessibleDescription(hasSpace);
+  await expect(shorten).toHaveAttribute("aria-disabled", "true");
   await expect(url).toHaveValue("https://example.com/a b");
   expect(sent).toEqual([]);
 
@@ -141,7 +140,10 @@ test("a URL the API refuses shows its reason", async ({ page, api }) => {
       ? route.fallback()
       : route.fulfill({
           status: 400,
-          headers: { "Access-Control-Allow-Origin": "*" },
+          headers: {
+            "Access-Control-Allow-Origin": new URL(page.url()).origin,
+            "Access-Control-Allow-Credentials": "true"
+          },
           json: { error: "The URI/URL you've provided isn't valid." }
         })
   );
