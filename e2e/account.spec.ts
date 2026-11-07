@@ -149,6 +149,7 @@ test("a held address keeps its own lockout after another address is refused", as
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await expect(key).toBeDisabled();
   await expect(alert).toHaveText(`${LOCKED_OUT} Try again in 15 minutes.`);
+  await expect(key).toHaveAccessibleDescription(LOCKED_OUT);
 
   // Once the wait is over, the other address's refusal doesn't come over this one's key.
   await page.clock.fastForward(845_000);

@@ -391,6 +391,8 @@ describe("LoginForm", () => {
       expect(key().attributes("disabled")).toBeDefined();
       expect(alert().text()).toBe(`${LIMITED} Try again in 15 minutes.`);
       expect(alert().find(".visually-hidden").text()).toBe("Try again in 15 minutes.");
+      // The held key is described by its own lockout, not the other address's refusal.
+      expect(descriptionOf(key())).toBe(LIMITED);
 
       // The other address's refusal is still the last word about it, and only about it.
       await email.setValue("other@example.com");
@@ -427,6 +429,7 @@ describe("LoginForm", () => {
       await email.setValue("me@example.com");
       expect(key().text()).toBe("Try again in 15 min");
       expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(descriptionOf(key())).toBe(LIMITED);
     });
 
     it("starts no countdown for an answer that lands after the form is gone", async () => {
@@ -466,6 +469,7 @@ describe("LoginForm", () => {
 
       expect(key().attributes("disabled")).toBeDefined();
       expect(wrapper.find('[role="alert"]').text()).toBe(`${LIMITED} Try again in 15 minutes.`);
+      expect(descriptionOf(key())).toBe(LIMITED);
     });
 
     it("drops a lockout with its hold once the form is left, so a new visit shows neither", async () => {
