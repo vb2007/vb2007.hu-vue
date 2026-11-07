@@ -253,6 +253,24 @@ test("a GitHub link visit from a session replaced elsewhere asks to log in again
   );
 });
 
+test("confirming with GitHub on an API without GitHub says it isn't available", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { githubLinked: true, password: false });
+  api.githubIsNotConfigured();
+  await page.goto("/account");
+  const deletion = page.getByRole("region", { name: "Delete account" });
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+  await deletion.getByLabel("Username").fill("me");
+  await deletion.getByRole("button", { name: "Delete account" }).click();
+
+  await deletion.getByRole("link", { name: "Confirm with GitHub" }).click();
+
+  await expect(page).toHaveURL("/account");
+  await expect(page.getByRole("alert")).toHaveText("GitHub login isn't available right now.");
+});
+
 test("a GitHub link that wasn't started here is turned away", async ({ page, api }) => {
   api.loggedInAs("me@example.com", "me");
   await page.goto("/account");

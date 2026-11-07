@@ -34,7 +34,7 @@ import { test as base, expect, type Route } from "@playwright/test";
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
  * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
- * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`. `DELETE /auth/github/link` takes `api.password` too.
+ * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
@@ -252,6 +252,7 @@ const parseMultipart = (body: Buffer, contentType: string) => {
   const filePart = parts.find((part) => part.includes('name="file"')) ?? "";
   const [headers, ...content] = filePart.split("\r\n\r\n");
   return {
+    hasFile: filePart !== "",
     visibility: field("visibility")?.replace(/\r\n$/, ""),
     fileName: headers.match(/filename="([^"]*)"/)?.[1] ?? "",
     mimeType: headers.match(/Content-Type: (\S+)/i)?.[1] ?? "",
@@ -944,6 +945,10 @@ export class MockApi {
             status: 302,
             location: `${this.appOrigin}/account?oauthError=passwordRequired`
           };
+        }
+        // Checked after the session and the password, like the API's `githubLink`.
+        if (this.githubUnconfigured) {
+          return { status: 302, location: `${this.appOrigin}/account?oauthError=notConfigured` };
         }
         return this.linkGithub();
       case "POST /auth/github/link":
@@ -1643,6 +1648,8 @@ export class MockApi {
     }
     if (!body?.length) return { status: 400, body: { error: "Unexpected end of form" } };
     const part = parseMultipart(body, contentType);
+    // `verifyUploadType` and `checkUploadQuota` pass a body without a file on to `uploadFile`, which refuses it.
+    if (!part.hasFile) return { status: 400, body: { error: "No file was provided." } };
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
