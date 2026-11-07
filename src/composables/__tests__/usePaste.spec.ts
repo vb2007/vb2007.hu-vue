@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { mountComposable } from "@/__tests__/helpers/host";
 import { usePaste } from "@/composables/usePaste";
 
 const paste = {
@@ -27,11 +28,75 @@ describe("usePaste", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/paste/p1", {
       method: "GET",
-      credentials: "include"
+      credentials: "include",
+      signal: expect.any(AbortSignal)
     });
     expect(single.paste.value).toEqual(paste);
     expect(single.errorMessage.value).toBe("");
     expect(single.isLoading.value).toBe(false);
+  });
+
+  it("shows each paste in turn when the answers come in order", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { paste }))
+      .mockResolvedValueOnce(jsonResponse(200, { paste: { ...paste, _id: "p2" } }));
+    const single = usePaste();
+
+    await single.load("p1");
+    expect(single.paste.value?._id).toBe("p1");
+    await single.load("p2");
+
+    expect(single.paste.value?._id).toBe("p2");
+    expect(single.isLoading.value).toBe(false);
+  });
+
+  it("ignores the previous paste's answer when it arrives after the next one's", async () => {
+    const first = deferResponse(fetchMock, { ignoreAbort: true });
+    const second = deferResponse(fetchMock);
+    const single = usePaste();
+
+    const loadingFirst = single.load("p1");
+    const loadingSecond = single.load("p2");
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+
+    second.respond(jsonResponse(200, { paste: { ...paste, _id: "p2" } }));
+    await loadingSecond;
+    first.respond(jsonResponse(200, { paste }));
+    await loadingFirst;
+
+    expect(single.paste.value?._id).toBe("p2");
+    expect(single.isLoading.value).toBe(false);
+  });
+
+  it("leaves an aborted load's paste to the next one, without an error", async () => {
+    deferResponse(fetchMock);
+    const second = deferResponse(fetchMock);
+    const single = usePaste();
+
+    const loadingFirst = single.load("p1");
+    const loadingSecond = single.load("p2");
+    await loadingFirst;
+    expect(single.errorMessage.value).toBe("");
+    expect(single.isLoading.value).toBe(true);
+
+    second.respond(jsonResponse(200, { paste: { ...paste, _id: "p2" } }));
+    await loadingSecond;
+    expect(single.paste.value?._id).toBe("p2");
+    expect(single.isLoading.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("aborts the load in flight when it goes away", async () => {
+    deferResponse(fetchMock);
+    const { api, wrapper } = mountComposable(() => usePaste());
+
+    const pending = api.load("p1");
+    wrapper.unmount();
+    await pending;
+
+    expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);
+    expect(api.errorMessage.value).toBe("");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("explains a malformed ID", async () => {

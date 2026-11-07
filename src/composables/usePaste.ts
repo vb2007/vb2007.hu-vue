@@ -2,26 +2,35 @@ import { ref } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
+import { useLatestRequest } from "@/composables/useLatestRequest";
 import { apiRequest } from "@/scripts/api/client";
 import type { Paste } from "@/types/api/pastebin";
 
-/** Loads a single paste. Public: anyone with the link can read it; only its owner can change its language. */
+/**
+ * Loads a single paste. Public: anyone with the link can read it; only its owner can change its
+ * language. Loading another one aborts a load still in flight, as leaving the page does.
+ */
 export const usePaste = () => {
   const paste = ref<Paste | null>(null);
   const isLoading = ref(false);
   const errorMessage = ref("");
   const isSaving = ref(false);
   const saveError = ref("");
+  const latest = useLatestRequest();
 
   const load = async (id: string) => {
+    const signal = latest.next();
     isLoading.value = true;
     errorMessage.value = "";
     paste.value = null;
 
     const result = await apiRequest(Endpoints.Pastebin.get, {
       params: { id },
-      failure: Messages.Pastebin.loadFailed
+      failure: Messages.Pastebin.loadFailed,
+      signal
     });
+    // Another paste's load replaced this one, or the page is gone.
+    if (signal.aborted) return;
 
     if (result.ok) {
       paste.value = result.data.paste;

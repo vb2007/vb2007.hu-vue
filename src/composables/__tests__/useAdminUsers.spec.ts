@@ -179,6 +179,45 @@ describe("useAdminUsers", () => {
     expect(api.savingId.value).toBe("");
   });
 
+  it("keeps a saved quota when a list load that was on its way lands after the save", async () => {
+    fetchMock.mockResolvedValueOnce(listing([anAdminUser("a"), anAdminUser("b")]));
+    const { api } = mountComposable(() => useAdminUsers());
+    await api.load();
+
+    const sorted = deferResponse(fetchMock);
+    const updated = anAdminUser("b", { uploads: { quotaBytes: 5, hasCustomQuota: true } });
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: updated }));
+    const sorting = api.setSort("username", "asc");
+    expect(await api.setQuota("b", 5)).toBe(true);
+    expect(api.users.value).toEqual([anAdminUser("a"), updated]);
+
+    // The list asked before the save, so it still has the old quota.
+    sorted.respond(listing([anAdminUser("b"), anAdminUser("a")]));
+    await sorting;
+
+    expect(api.users.value).toEqual([updated, anAdminUser("a")]);
+    expect(api.isLoading.value).toBe(false);
+  });
+
+  it("swaps a saved quota into a list load that landed before the save", async () => {
+    fetchMock.mockResolvedValueOnce(listing([anAdminUser("a"), anAdminUser("b")]));
+    const { api } = mountComposable(() => useAdminUsers());
+    await api.load();
+
+    const sorted = deferResponse(fetchMock);
+    const saved = deferResponse(fetchMock);
+    const sorting = api.setSort("username", "asc");
+    const saving = api.setQuota("b", 5);
+
+    sorted.respond(listing([anAdminUser("b"), anAdminUser("a")]));
+    await sorting;
+    const updated = anAdminUser("b", { uploads: { quotaBytes: 5, hasCustomQuota: true } });
+    saved.respond(jsonResponse(200, { user: updated }));
+    expect(await saving).toBe(true);
+
+    expect(api.users.value).toEqual([updated, anAdminUser("a")]);
+  });
+
   it("resets a quota to the default with null", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { user: anAdminUser("a") }));
     const { api } = mountComposable(() => useAdminUsers());
