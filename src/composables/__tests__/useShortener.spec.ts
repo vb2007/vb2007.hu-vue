@@ -147,9 +147,10 @@ describe("useShortener", () => {
     shortener.originalUrl.value = "https://example.com/again";
     await shortener.shorten();
 
-    // Marked again once typing has cleared it, so only the answer can clear it now.
     shortener.originalUrl.value = "https://example.com/other";
     await nextTick();
+    // Defensive: typing has cleared the mark already, so the panel can't get here; marked again by
+    // hand so only the answer can clear it.
     shortener.alreadyShortened.value = true;
     await shortener.shorten();
 
@@ -167,6 +168,7 @@ describe("useShortener", () => {
 
     shortener.originalUrl.value = "https://example.com/other";
     await nextTick();
+    // Defensive, as above: the panel can't fail a try with the mark still set.
     shortener.alreadyShortened.value = true;
     await shortener.shorten();
 

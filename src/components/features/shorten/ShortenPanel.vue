@@ -14,7 +14,10 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 import TicketSlip from "@/components/ui/TicketSlip.vue";
 
 withDefaults(defineProps<{ as?: "h1" | "h2" }>(), { as: "h2" });
-/** A link came back, new or the user's own for the same URL, e.g. for a list to refresh. */
+/**
+ * A new link was made (a 201), e.g. for a list to refresh. Not for the user's existing link to the
+ * same URL, which the list has already, so a search typed there stays.
+ */
 const emit = defineEmits<{ created: [] }>();
 
 const {
@@ -52,7 +55,7 @@ const submit = async () => {
   // The shortened URL is gone from the field; that's not a problem to show. Also when the answer
   // is the same link again, so the code didn't change.
   resetChecks();
-  emit("created");
+  if (!alreadyShortened.value) emit("created");
 };
 </script>
 

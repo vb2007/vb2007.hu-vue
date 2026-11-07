@@ -80,7 +80,8 @@ describe("ShortenPanel", () => {
 
     await shortenUrl("https://example.com/again");
 
-    expect(wrapper.emitted("created")).toHaveLength(1);
+    // No new link, so a list beside it has nothing to refresh (and keeps its search).
+    expect(wrapper.emitted("created")).toBeUndefined();
     expect(wrapper.findComponent(TicketSlip).props()).toMatchObject({
       value: `${window.location.origin}/r/old123`,
       note
@@ -94,6 +95,7 @@ describe("ShortenPanel", () => {
 
     await wrapper.find("form").trigger("submit");
     await flushPromises();
+    expect(wrapper.emitted("created")).toHaveLength(1);
     expect(wrapper.findComponent(TicketSlip).props()).toMatchObject({
       value: `${window.location.origin}/r/new456`,
       note: undefined
@@ -102,7 +104,7 @@ describe("ShortenPanel", () => {
     // Twice in a row: the same link again still empties the field without calling it invalid.
     await shortenUrl("https://example.com/again");
     await shortenUrl("https://example.com/again");
-    expect(wrapper.emitted("created")).toHaveLength(4);
+    expect(wrapper.emitted("created")).toHaveLength(1);
     expect(wrapper.findComponent(TicketSlip).props("note")).toBe(note);
     expect(status().text()).toBe(note);
     expect(wrapper.find("input").element.value).toBe("");

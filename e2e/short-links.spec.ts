@@ -149,6 +149,17 @@ test.describe("your links on /shorten", () => {
     // A search the new link doesn't match goes, so the link shows.
     await board.getByLabel("Search by code or target").fill("old");
     await expect(board.getByText("1 link found")).toBeVisible();
+
+    // A URL shortened before makes no new link, so the search stays.
+    await page.getByLabel("URL").fill(TARGET);
+    await page.getByRole("button", { name: "Shorten", exact: true }).click();
+    await expect(
+      page.locator(".slip").getByText("You've already shortened this URL", { exact: false })
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /\/r\/old111$/ })).toBeVisible();
+    await expect(board.getByLabel("Search by code or target")).toHaveValue("old");
+    await expect(board.getByText("1 link found")).toBeVisible();
+
     await page.getByLabel("URL").fill("https://example.com/fresh");
     await page.getByRole("button", { name: "Shorten", exact: true }).click();
 
