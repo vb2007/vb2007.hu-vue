@@ -15,7 +15,7 @@ const destinations = TOOLS_LINE.stops.filter((stop) => stop.id !== "home");
     </PageSection>
     <PageSection aria-labelledby="tools-title">
       <h2 id="tools-title" class="section-title">Tools</h2>
-      <p class="section-lead">Open tools work today. Planned ones are on their way.</p>
+      <p class="section-lead">Pick a tool to get started.</p>
       <ToolDirectory :stops="destinations" />
     </PageSection>
   </div>

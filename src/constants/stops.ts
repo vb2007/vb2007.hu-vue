@@ -48,13 +48,6 @@ const TOOL_STOPS = [
     to: "/upload",
     status: "open",
     blurb: "Upload and share files."
-  },
-  {
-    id: "contact",
-    label: "Contact",
-    to: "/contact",
-    status: "planned",
-    blurb: "Get in touch."
   }
 ] as const satisfies readonly Stop[];
 

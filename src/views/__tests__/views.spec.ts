@@ -52,6 +52,11 @@ import { aMailBudget, someStats } from "@/__tests__/helpers/admin";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
+// The real line has no planned stop today, so one is added to check the not-found pages leave it out.
+vi.mock("@/constants/stops", async (importOriginal) =>
+  (await import("@/__tests__/helpers/stops")).withPlannedStop(await importOriginal())
+);
+
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
   restoreSession: vi.fn(() => Promise.resolve())
@@ -513,7 +518,7 @@ describe("views", () => {
     const home = wrapper.findAll("a").find((link) => link.text() === "Back to home");
     expect(home?.attributes("href")).toBe("/");
     expect(wrapper.find("#not-found-tools-title").text()).toBe("Tools");
-    // Home has its own key and Contact is still planned, so neither is offered.
+    // Home has its own key and a planned stop leads nowhere yet, so neither is offered.
     const stops = wrapper.findComponent(ToolDirectory).props("stops");
     expect(stops.map((stop) => stop.id)).toEqual(["shorten", "paste", "upload"]);
     expect(wrapper.find(".sign--planned").exists()).toBe(false);

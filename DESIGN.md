@@ -392,7 +392,7 @@ The board ends with a "Delete account" heading (same style as "Linked accounts")
 Tinted 2px-bordered strip with icon: success (Confirm Wash, forest text), error (Fault Red wash and text), info (sunk enamel, soft ink). Arrives with a short 280ms drop-in.
 
 ### Footer
-Deep green band with a route line arriving from the left and ending in a terminus ring on the right edge, name in condensed uppercase, links in on-deep colour that brighten to bright route green on hover. The links are two groups, the open tools from `src/constants/stops.ts` and then the account links (Log in and Register, or Account), one right-aligned row on wide screens; when narrow they wrap between the groups, never inside one.
+Deep green band with a route line arriving from the left and ending in a terminus ring on the right edge, name in condensed uppercase, links in on-deep colour that brighten to bright route green on hover. Under the name, a contact line in an `<address>` (Barlow 0.875rem, sentence case): "E-mail" and "Matrix" labels at 80% opacity, each followed by its address as an underlined link, `balazs@vb2007.hu` (mailto) and `@vb2007:vb2007.hu` (matrix.to, in a new tab, said to screen readers). The addresses show in full, since mailto needs a mail app and a Matrix ID can be pasted into any client; they live in `src/constants/site.ts`. The two sit on one row; below 26rem they stack, the addresses lined up after their labels, and an address never breaks. The links are two groups, the open tools from `src/constants/stops.ts` and then the account links (Log in and Register, or Account), one right-aligned row on wide screens; when narrow they wrap between the groups, never inside one.
 
 ## Do's and Don'ts
 
