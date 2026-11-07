@@ -129,8 +129,8 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
-    /** The hint under every new-password field. */
-    static passwordHint(min: number, max: number): string {
+    /** The hint under every new-password field, and the admin's new username field. */
+    static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
     }
     static passwordTooShort(min: number, max: number): string {
@@ -266,6 +266,19 @@ export class Messages {
     static readonly quotaFailed: string = "Failed to change the quota";
     static readonly invalidQuota: string = "Enter a size of 0 or more.";
     static readonly quotaTooLarge: string = "That's more than the API can store.";
+    static readonly renameFailed: string = "Failed to rename the account";
+    static renamed(name: string): string {
+      return `Renamed to ${name}.`;
+    }
+    static readonly logoutFailed: string = "Failed to log the account out";
+    static loggedOut(name: string): string {
+      return `${name} is logged out everywhere. They can log in again.`;
+    }
+    static readonly deleteFailed: string = "Failed to delete the account";
+    /** On the Users list, once the account's page deleted it. */
+    static userDeleted(name: string): string {
+      return `${name}'s account is deleted, with its pastes, short links and uploads.`;
+    }
     /** `name` is the account's username, when it's known. */
     static userUploadsFailed(name?: string): string {
       return name ? `Failed to load ${name}'s uploads` : "Failed to load this user's uploads";
