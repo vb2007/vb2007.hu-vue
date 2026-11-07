@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isNavigationFailure, NavigationFailureType, type RouteRecordRaw } from "vue-router";
+import {
+  isNavigationFailure,
+  NavigationFailureType,
+  type RouteMeta,
+  type RouteRecordRaw
+} from "vue-router";
 import router, { routes } from "@/router";
 import { ADMIN_SECTIONS, AdminPaths } from "@/constants/admin";
 
@@ -11,6 +16,36 @@ const flatten = (records: RouteRecordRaw[], base = ""): [string, RouteRecordRaw]
     const path = route.path.startsWith("/") ? route.path : `${base}/${route.path}`;
     return [[path, route] as [string, RouteRecordRaw], ...flatten(route.children ?? [], path)];
   });
+
+const noindexTags = () => document.head.querySelectorAll('meta[name="robots"]');
+
+/**
+ * Starts a navigation to a page whose chunk is still loading, lets a faster one to `fastPath`
+ * overtake it, then lets the chunk arrive, so the slow one ends cancelled after the fast one.
+ */
+async function overtakeSlowPage(meta: RouteMeta, fastPath: string): Promise<void> {
+  let loadChunk!: (chunk: { default: object }) => void;
+  let chunkRequested!: () => void;
+  const requested = new Promise<void>((resolve) => (chunkRequested = resolve));
+  const chunk = new Promise<{ default: object }>((resolve) => (loadChunk = resolve));
+  const removeRoute = router.addRoute({
+    path: "/slow",
+    meta,
+    component: () => {
+      chunkRequested();
+      return chunk;
+    }
+  });
+
+  const stale = router.push("/slow");
+  await requested;
+  await router.push(fastPath);
+  loadChunk({ default: {} });
+  const failure = await stale;
+  removeRoute();
+
+  expect(isNavigationFailure(failure, NavigationFailureType.cancelled)).toBe(true);
+}
 
 describe("router", () => {
   it.each([
@@ -161,38 +196,43 @@ describe("router", () => {
 
   it("keeps the title of the page shown when a slow navigation is overtaken", async () => {
     await router.push("/");
-    // A page whose chunk is still loading when the visitor clicks on to another one.
-    let loadChunk!: (chunk: { default: object }) => void;
-    let chunkRequested!: () => void;
-    const requested = new Promise<void>((resolve) => (chunkRequested = resolve));
-    const chunk = new Promise<{ default: object }>((resolve) => (loadChunk = resolve));
-    const removeRoute = router.addRoute({
-      path: "/slow",
-      meta: { title: "Slow" },
-      component: () => {
-        chunkRequested();
-        return chunk;
-      }
-    });
 
-    const stale = router.push("/slow");
-    await requested;
-    await router.push("/register");
-    loadChunk({ default: {} });
-    const failure = await stale;
-    removeRoute();
+    await overtakeSlowPage({ title: "Slow" }, "/register");
 
-    expect(isNavigationFailure(failure, NavigationFailureType.cancelled)).toBe(true);
     expect(router.currentRoute.value.path).toBe("/register");
     expect(document.title).toBe("Register · vb2007.hu");
+  });
+
+  it("leaves the robots tag alone when a navigation is aborted", async () => {
+    await router.push("/no/such/page");
+    const removeGuard = router.beforeEach(() => false);
+
+    await router.push("/");
+    expect(noindexTags()).toHaveLength(1);
+
+    removeGuard();
+    await router.push("/");
+    const abortAgain = router.beforeEach(() => false);
+    await router.push("/no/such/page");
+    abortAgain();
+
+    expect(noindexTags()).toHaveLength(0);
+  });
+
+  it("doesn't mark the page shown noindex when a slow noindex page is overtaken", async () => {
+    await router.push("/shorten");
+
+    await overtakeSlowPage({ title: "Slow", noindex: true }, "/");
+
+    expect(router.currentRoute.value.path).toBe("/");
+    expect(noindexTags()).toHaveLength(0);
+    expect(document.title).toBe("vb2007.hu");
   });
 
   it.each([
     ["the not-found page", "/no/such/page"],
     ["the API's unknown-route page", "/apierror?url=%2Ffoo"]
   ])("keeps %s out of search results until the visitor moves on", async (_page, path) => {
-    const noindexTags = () => document.head.querySelectorAll('meta[name="robots"]');
-
     await router.push(path);
     expect(noindexTags()).toHaveLength(1);
     expect(noindexTags()[0].getAttribute("content")).toBe("noindex");
