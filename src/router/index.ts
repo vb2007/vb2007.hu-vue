@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
-import { ADMIN_SECTIONS, AdminPaths, AdminRoutes } from "@/constants/admin";
+import { ADMIN_SECTIONS, AdminPaths, AdminRoutes, type AdminSectionId } from "@/constants/admin";
 import { pageTitle } from "@/constants/site";
-import { TOOLS_LINE } from "@/constants/stops";
+import { TOOLS_LINE, type ToolId } from "@/constants/stops";
 import { setNoindex } from "@/scripts/utility/robotsMeta";
 import HomeView from "../views/HomeView.vue";
 
@@ -23,8 +23,9 @@ declare module "vue-router" {
 
 // A tool's or an admin section's page is titled with the label its stop already has, so the tab, the
 // navbar and the overview read the same.
-const toolLabel = (id: string) => TOOLS_LINE.stops.find((stop) => stop.id === id)!.label;
-const sectionLabel = (id: string) => ADMIN_SECTIONS.find((section) => section.id === id)!.label;
+const toolLabel = (id: ToolId) => TOOLS_LINE.stops.find((stop) => stop.id === id)!.label;
+const sectionLabel = (id: AdminSectionId) =>
+  ADMIN_SECTIONS.find((section) => section.id === id)!.label;
 
 export const routes: RouteRecordRaw[] = [
   {

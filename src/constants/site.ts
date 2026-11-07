@@ -1,4 +1,4 @@
-/** The site's name, as the browser tab and history show it. */
+/** The site's name: the navbar's and footer's brand, and the end of every tab and history title. */
 export const SITE_NAME = "vb2007.hu";
 
 /** Between a page's own title and the site's name in the tab ("Paste · vb2007.hu"). */
