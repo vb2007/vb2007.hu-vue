@@ -10,6 +10,7 @@ export type HttpMethodName = (typeof HttpMethod)[Exclude<keyof typeof HttpMethod
 
 /** The status codes the site reacts to. */
 export class HttpStatus {
+  static readonly Ok = 200;
   static readonly Accepted = 202;
   static readonly BadRequest = 400;
   static readonly Forbidden = 403;
