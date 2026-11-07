@@ -197,9 +197,12 @@ const isWaitShownFor = () =>
   normalizeEmail(sentTo.value || email.value) === normalizeEmail(lastSentTo.value);
 
 // The mail limit's message only holds until its countdown ends, like the key's wait; an error
-// about another address, or another error, stays.
+// about another address, or another error, stays. The API's message says its code went out in the
+// last minute, which stops being true as the countdown ends: then it just says a code went out.
 watch(resend.active, (waiting) => {
-  if (!waiting && failure.value === resend.note.value && isWaitShownFor()) failure.value = "";
+  if (waiting) return;
+  if (failure.value === resend.note.value && isWaitShownFor()) failure.value = "";
+  if (sentMessage.value) sentMessage.value = Messages.Auth.resetCodeSent;
 });
 
 /** Whether `address` still has to wait for another code, also counting from before a reload. */
@@ -237,11 +240,7 @@ const askForCode = async (address: string, onCodeStep: boolean) => {
         sendHold.start(answer.retryAfter);
         return null;
       }
-      if (answer.retryAfter) {
-        waitBeforeResend(address, answer.retryAfter, answer.error);
-        // The code on show went out over a minute ago: the limit's message says why none followed.
-        sentMessage.value = "";
-      }
+      if (answer.retryAfter) waitBeforeResend(address, answer.retryAfter, answer.error);
       flagError();
       return null;
     }
@@ -261,12 +260,15 @@ const handleSend = async () => {
   }
 
   // A code went to this address moments ago and the API wouldn't send another yet. A wait for
-  // the mail limit says so instead, without the API's message: the last code may be older than a
-  // minute. Either way it goes back to the code step without a request, so the mail limit's hold
-  // doesn't stand in the way.
+  // the mail limit says so instead: the last code is over a minute old, so it's only said to have
+  // gone out, and only when the page saw the API answer (after a reload it didn't). Either way it
+  // goes back to the code step without a request, so the mail limit's hold doesn't stand in the way.
   if (isWaitingFor(email.value)) {
     const limit = resend.note.value;
-    await showCodeStep(limit ? "" : lastMessage.value || Messages.Auth.resetCodeRecent, limit);
+    const message = limit
+      ? lastMessage.value && Messages.Auth.resetCodeSent
+      : lastMessage.value || Messages.Auth.resetCodeRecent;
+    await showCodeStep(message, limit);
     return;
   }
   if (isSendHeld.value) return;

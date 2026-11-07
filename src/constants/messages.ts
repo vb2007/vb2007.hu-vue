@@ -124,6 +124,12 @@ export class Messages {
      */
     static readonly resetCodeRecent: string =
       "If an account uses this address, a password reset code was sent to it in the last minute: use the latest one.";
+    /**
+     * The API's `passwordResetSent` once its minute is over (the resend countdown ended), when it
+     * would no longer be true: a code went out, and a later one may have followed.
+     */
+    static readonly resetCodeSent: string =
+      "If an account uses this address, a password reset code was sent to it: use the latest one.";
     /** A reset link whose token can't be one the API mailed. */
     static readonly resetLinkMalformed: string =
       "This reset link isn't complete or was changed: request a new one.";
