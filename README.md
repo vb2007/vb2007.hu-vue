@@ -156,6 +156,7 @@ To roll back, re-run the workflow on an older commit's run, or on the host run `
     | `host.ts` | `mountComposable()` runs a composable inside a tiny component |
     | `uploads.ts` | `anUpload()`, `someUsage()`, `aFile()` |
     | `admin.ts` | `someStats()`, `aMailBudget()`, `anAdminUser()`, `anAdminUserDetails()` |
+    | `stops.ts` | `PLANNED_STOP`, and `withPlannedStop(actual)` for `vi.mock("@/constants/stops", …)`, which adds it to the real line (which has no planned stop) |
 
   - Queue a response for every request the code under test makes (`mockFetch().mockResolvedValueOnce(jsonResponse(...))`): an unqueued one fails as an unhandled rejection.
 - **E2E tests** live in `e2e/` and run against the production build in desktop and mobile Chromium.
