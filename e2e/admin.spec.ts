@@ -1,4 +1,4 @@
-import { expect, MOCK_PASSWORD, test } from "./fixtures";
+import { expect, getFromApi, MOCK_PASSWORD, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
@@ -267,6 +267,96 @@ test("the admin's view of a user's uploads names them while loading and on failu
   await page.goto(`/admin/users/${api.users[0].id}/uploads`);
   await expect(page.getByText(/^Failed to load this user's uploads: /)).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Uploads" })).toBeVisible();
+});
+
+test("the user and upload lists refuse the queries the API refuses", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { count: 1 });
+  api.hasUpload("flyer.pdf", { owner: "anna" });
+  await page.goto("/admin/users");
+  await expect(page.getByRole("button", { name: "anna" })).toBeVisible();
+
+  const refused = (param: string) => ({
+    status: 400,
+    body: { error: `Invalid value for ${param}.` }
+  });
+  const tooLong = "a".repeat(101);
+  // Each list checks limit, page, sortBy, sortOrder, (visibility,) then q: the first bad one is named.
+  const everyList: [query: string, param: string][] = [
+    ["limit=0", "limit"],
+    ["limit=51", "limit"],
+    ["limit=", "limit"],
+    ["limit=1.5", "limit"],
+    ["page=0", "page"],
+    ["page=one", "page"],
+    ["sortBy=nope", "sortBy"],
+    ["sortBy=", "sortBy"],
+    ["sortOrder=up", "sortOrder"],
+    [`q=${tooLong}`, "q"],
+    // A repeated parameter reaches the API as an array.
+    ["limit=10&limit=20", "limit"],
+    ["q=a&q=b", "q"],
+    [`q=${tooLong}&sortBy=nope&page=0`, "page"],
+    ["sortOrder=up&limit=51", "limit"]
+  ];
+  const uploadLists: [query: string, param: string][] = [
+    ...everyList,
+    ["sortBy=username", "sortBy"],
+    ["visibility=everyone", "visibility"],
+    ["visibility=", "visibility"],
+    ["visibility=public&visibility=private", "visibility"],
+    [`q=${tooLong}&visibility=all`, "visibility"],
+    ["visibility=all&sortOrder=up", "sortOrder"]
+  ];
+  const lists: [path: string, checks: [string, string][]][] = [
+    ["/admin/users", [...everyList, ["sortBy=uploadedOn", "sortBy"]]],
+    [`/admin/users/${anna.id}/uploads`, uploadLists],
+    ["/admin/uploads", uploadLists]
+  ];
+  for (const [path, checks] of lists) {
+    for (const [query, param] of checks) {
+      expect(await getFromApi(page, api, `${path}?${query}`), `${path}?${query}`).toEqual(
+        refused(param)
+      );
+    }
+  }
+
+  // Every rule's edge passes, and so does an empty search.
+  const users = await getFromApi(
+    page,
+    api,
+    `/admin/users?limit=50&page=1&sortBy=createdAt&sortOrder=asc&q=`
+  );
+  expect(users.status).toBe(200);
+  for (const path of [`/admin/users/${anna.id}/uploads`, "/admin/uploads"]) {
+    const uploads = await getFromApi(
+      page,
+      api,
+      `${path}?limit=1&page=1&sortBy=fileSize&sortOrder=asc&visibility=private&q=`
+    );
+    expect(uploads.status, path).toBe(200);
+  }
+
+  // A user's uploads check the ID's format first, then the query, and only then whether the user exists.
+  expect(await getFromApi(page, api, "/admin/users/nope/uploads?limit=51")).toEqual({
+    status: 400,
+    body: { error: "Invalid ID format: must be a 24 character HEX string." }
+  });
+  expect(await getFromApi(page, api, `/admin/users/${"c".repeat(24)}/uploads?limit=51`)).toEqual(
+    refused("limit")
+  );
+  expect(
+    (await getFromApi(page, api, `/admin/users/${"c".repeat(24)}/uploads?limit=50`)).status
+  ).toBe(404);
+
+  // The superuser check comes before any of it.
+  api.loggedInAs();
+  for (const path of ["/admin/users", `/admin/users/${anna.id}/uploads`, "/admin/uploads"]) {
+    expect(await getFromApi(page, api, `${path}?limit=51`), path).toEqual({
+      status: 403,
+      body: { error: "You do not have permission to perform this action." }
+    });
+  }
 });
 
 test("the superuser opens a user's page from the list", async ({ page, api }) => {

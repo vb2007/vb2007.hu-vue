@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import { expect, getFromApi, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 /** A station board, found by its title. */
 const board = (page: Page, title: string) =>
@@ -263,6 +263,51 @@ test("the list searches, filters, sorts and pages through uploads", async ({ pag
   await expect(list.getByText("No uploads match.")).toBeVisible();
   await list.getByRole("button", { name: "Show all uploads" }).click();
   await expect(list.getByText("12 uploads")).toBeVisible();
+});
+
+test("the list refuses the queries the API refuses, after the login check", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  api.hasUpload("photo.png");
+  await page.goto("/upload");
+  await expect(board(page, "Your uploads").getByText("1 upload", { exact: true })).toBeVisible();
+
+  const tooLong = "a".repeat(101);
+  // Checked in the API's order: limit, page, sortBy, sortOrder, visibility, then q.
+  for (const [query, param] of [
+    ["limit=0", "limit"],
+    ["limit=51", "limit"],
+    ["limit=", "limit"],
+    ["page=0", "page"],
+    ["sortBy=nope", "sortBy"],
+    ["sortBy=usedBytes", "sortBy"],
+    ["sortOrder=up", "sortOrder"],
+    ["visibility=everyone", "visibility"],
+    ["visibility=", "visibility"],
+    [`q=${tooLong}`, "q"],
+    // A repeated parameter reaches the API as an array.
+    ["sortBy=fileSize&sortBy=fileSize", "sortBy"],
+    [`q=${tooLong}&visibility=all&page=0`, "page"]
+  ]) {
+    expect(await getFromApi(page, api, `/uploads?${query}`), query).toEqual({
+      status: 400,
+      body: { error: `Invalid value for ${param}.` }
+    });
+  }
+  const valid = await getFromApi(
+    page,
+    api,
+    "/uploads?limit=50&page=1&sortBy=originalFileName&sortOrder=asc&visibility=public&q="
+  );
+  expect(valid.status).toBe(200);
+
+  api.loggedOut();
+  expect(await getFromApi(page, api, "/uploads?limit=51")).toEqual({
+    status: 403,
+    body: { error: "You must be logged in to perform this action." }
+  });
 });
 
 test("the storage meter splits use by type and warns when nearly full", async ({ page, api }) => {
