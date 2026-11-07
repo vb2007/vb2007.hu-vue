@@ -71,14 +71,13 @@ export class Messages {
     static readonly sessionNotKept: string =
       "Login succeeded, but your browser didn't keep the session. Please check that cookies are enabled.";
     /**
-     * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204), with the wait in whole
-     * minutes; 0 or less means the API sent no usable `retryAfter`. GitHub login isn't locked out,
-     * but only gets into an account it's linked to.
+     * The API's 429 after too many failed logins (vb2007/vb2007.hu-api#204). Like the other held
+     * forms' messages it names no wait: the held Log in key counts it down, and the hold reads it out
+     * (`tryAgainSpoken`); without a usable `retryAfter` nothing is held, and "later" is all it knows.
+     * GitHub login isn't locked out, but only gets into an account it's linked to.
      */
-    static loginLockedOut(minutes: number): string {
-      const wait = minutes <= 0 ? "later" : minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
-      return `Too many failed attempts. Try again ${wait}, or log in with GitHub below if it's linked to your account.`;
-    }
+    static readonly loginLockedOut: string =
+      "Too many failed attempts. Try again later, or log in with GitHub below if it's linked to your account.";
     /**
      * The API's 403 to a request without a working session (its `Responses.notLoggedIn`): none was
      * sent, or it ended. Other 403s (a wrong password, not the owner) have their own texts, so only
