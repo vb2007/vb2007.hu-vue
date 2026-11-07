@@ -339,7 +339,6 @@ describe("register", () => {
     [400, "Disposable (temporary) e-mail addresses can't be used: use a permanent one.", "email"],
     [400, "This e-mail address's domain can't receive e-mail: check it for typos.", "email"],
     [400, "The password's too short: it must be between 8 and 128 characters.", "password"],
-    [409, "An account with this E-mail address already exists.", "email"],
     [409, "This username is already taken.", "username"],
     // This names e-mails, but isn't the address's fault.
     [503, "The e-mail couldn't be sent: please try again later.", undefined]

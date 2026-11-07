@@ -291,7 +291,11 @@ describe("RegisterForm", () => {
       "Disposable (temporary) e-mail addresses can't be used: use a permanent one.",
       FIELDS.email
     ],
-    ["email", "An account with this E-mail address already exists.", FIELDS.email],
+    [
+      "email",
+      "This e-mail address's domain can't receive e-mail: check it for typos.",
+      FIELDS.email
+    ],
     ["username", "This username is already taken.", FIELDS.username]
   ] as const)(
     "shows the API's refusal under the %s field and focuses it",
