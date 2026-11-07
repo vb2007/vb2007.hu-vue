@@ -74,3 +74,42 @@ test("the mobile menu opens and closes", async ({ page, isMobile }) => {
   await page.keyboard.press("Escape");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
+
+test("a logged-out visit logs no errors", async ({ page }) => {
+  // The one error that belongs here is the browser's own line for the expected `GET /user` 403
+  // ("Failed to load resource: the server responded with a status of 403 (Forbidden)"), which the
+  // page can't silence. Only that line, for that path and status, is set aside, and each visit
+  // must log it exactly once (a second logged-out lookup fails too). Anything else, such as
+  // `apiRequest`'s own "Failed to load the user", fails the test.
+  const userForbidden = "Failed to load resource: the server responded with a status of 403";
+  let lookupLines = 0;
+  let errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const { url } = message.location();
+    const expected =
+      url !== "" && new URL(url).pathname === "/user" && message.text().startsWith(userForbidden);
+    if (expected) lookupLines++;
+    else errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  // Each page's gate shows once the session check is done, so its answer has been handled by then.
+  for (const [path, gate] of [
+    ["/", "only logged-in users can shorten links"],
+    ["/pastebin", "Only logged-in users can create pastes"],
+    ["/upload", "Only logged-in users can upload files"],
+    ["/shorten", "only logged-in users can shorten links"]
+  ]) {
+    lookupLines = 0;
+    errors = [];
+    const lookup = page.waitForResponse((response) => new URL(response.url()).pathname === "/user");
+    await page.goto(path);
+
+    expect((await lookup).status()).toBe(403);
+    await expect(page.getByText(gate)).toBeVisible();
+    // Let any later request (e.g. a second lookup) finish before counting.
+    await page.waitForLoadState("networkidle");
+    expect({ path, lookupLines, errors }).toEqual({ path, lookupLines: 1, errors: [] });
+  }
+});
