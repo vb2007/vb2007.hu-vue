@@ -33,17 +33,32 @@ test("shortening a URL again gives back the user's own link", async ({ page, api
     await page.getByRole("button", { name: "Shorten", exact: true }).click();
   };
 
+  const note = "You've already shortened this URL, so no new link was made.";
+  const shown = page.locator(".slip").getByText(note, { exact: true });
+  const spoken = page.getByRole("status").filter({ hasText: note });
+
   await shorten(target);
   await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+  await expect(shown).toBeHidden();
 
   await page.getByRole("button", { name: "Shorten another" }).click();
   api.shortenReturns("def456");
   await shorten(target);
   await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+  await expect(shown).toBeVisible();
+  await expect(spoken).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Shorten another" }).click();
+  // Again straight away: the same link, and the emptied field isn't called invalid.
+  await shorten(target);
+  await expect(shown).toBeVisible();
+  await expect(page.getByLabel("URL")).toHaveValue("");
+  await expect(page.getByLabel("URL")).not.toHaveAttribute("aria-invalid", "true");
+
+  // The next URL, typed without "Shorten another", gets a new link and no note.
   await shorten("https://example.com/other");
   await expect(page.getByRole("link", { name: /\/r\/def456$/ })).toBeVisible();
+  await expect(shown).toBeHidden();
+  await expect(spoken).toHaveCount(0);
 });
 
 test("an already logged-in user goes straight to the form", async ({ page, api }) => {

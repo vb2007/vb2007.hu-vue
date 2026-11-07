@@ -335,7 +335,7 @@ The home page's list of destinations, one enamel board with a row per stop from 
 **The Own Details Rule.** A destination's description and way in live in its own row. Never show details in a shared panel driven by hover: pointing at one thing must not change another.
 
 ### Ticket Slip
-Result of a shortened link or a new paste: Meadow Field fill, 2px dashed ink border, perforation notches, mono link (shown without the protocol for pastes, copied in full), actions row below. It "prints" in with a 720ms clip-path reveal.
+Result of a shortened link or a new paste: Meadow Field fill, 2px dashed ink border, perforation notches, mono link (shown without the protocol for pastes, copied in full), actions row below. It "prints" in with a 720ms clip-path reveal. When the API answers a shortened URL with the user's existing link (a 200, not a 201), a soft-ink line like the caption sits under the link: "You've already shortened this URL, so no new link was made." It's read out from a status line kept on the board, so it's heard even as the slip prints. It goes once the next URL is typed into the field (the slip stays, without it), with a new link, with a failed try, and with "Shorten another".
 
 ### Code Sheet (paste content)
 A paste's text on Sunk Enamel inside a 2px ink edge, 0.5rem radius, at most 70vh tall with its own scroll. Code face at 0.95rem / 1.6, highlighted in the syntax colours. Multi-line pastes get a line-number gutter (Soft Ink, right-aligned, sticky on horizontal scroll, hairline rule) and stop wrapping; single lines wrap. The gutter is `aria-hidden`, so copying and screen readers get the text alone.

@@ -1,5 +1,6 @@
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { validateShortUrl } from "@/scripts/shorten/shortUrl";
@@ -12,9 +13,16 @@ export const useShortener = () => {
   const shortenedCode = ref("");
   const isLoading = ref(false);
   const errorMessage = ref("");
+  /** The link shown is one the user made before for the same URL (a 200), not a new one. */
+  const alreadyShortened = ref(false);
 
   /** Short links live on this site (/r/:code), which is shorter than going through the API host. */
   const shortenedLink = () => (shortenedCode.value ? shortLink(shortenedCode.value) : "");
+
+  // Typing the next URL moves on from the last answer. Not when a link clears the field.
+  watch(originalUrl, (url) => {
+    if (url) alreadyShortened.value = false;
+  });
 
   /** Whether the API gave back a link: a new one, or the user's own for the same URL. */
   const shorten = async () => {
@@ -32,6 +40,7 @@ export const useShortener = () => {
       failure: Messages.ShortUrl.shortenFailed
     });
 
+    alreadyShortened.value = result.ok && result.status === HttpStatus.Ok;
     if (result.ok) {
       shortenedCode.value = result.data.data.shortenedUrl;
       originalUrl.value = "";
@@ -45,7 +54,17 @@ export const useShortener = () => {
   const reset = () => {
     shortenedCode.value = "";
     errorMessage.value = "";
+    alreadyShortened.value = false;
   };
 
-  return { originalUrl, shortenedCode, shortenedLink, isLoading, errorMessage, shorten, reset };
+  return {
+    originalUrl,
+    shortenedCode,
+    shortenedLink,
+    isLoading,
+    errorMessage,
+    alreadyShortened,
+    shorten,
+    reset
+  };
 };
