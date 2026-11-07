@@ -196,6 +196,12 @@ const SHORT_URL_LIST_CHECKS: ListParamCheck[] = [
   ...PASTE_LIST_CHECKS,
   ["q", (value) => isListQuery(value) && !value.includes("\0")]
 ];
+/** `findInvalidPendingRegistrationListParam`'s checks, in its order: no sorting, so `sortBy` and `sortOrder` pass unread. */
+const PENDING_REGISTRATION_LIST_CHECKS: ListParamCheck[] = [
+  LIMIT_CHECK,
+  PAGE_CHECK,
+  ["q", isListQuery]
+];
 /** `findInvalidUserListParam`'s checks, in its order. */
 const USER_LIST_CHECKS: ListParamCheck[] = [
   LIMIT_CHECK,
@@ -2136,9 +2142,12 @@ export class MockApi {
     return { status: 200, body: { message: "User deleted successfully." } };
   }
 
+  /** Checks the query after the superuser, like the API, whose bad query answers 400. */
   private listPendingRegistrations(query: URLSearchParams) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
+    const invalid = refuseListQuery(query, PENDING_REGISTRATION_LIST_CHECKS);
+    if (invalid) return invalid;
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const q = query.get("q")?.toLowerCase();

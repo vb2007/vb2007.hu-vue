@@ -359,6 +359,56 @@ test("the user and upload lists refuse the queries the API refuses", async ({ pa
   }
 });
 
+test("the pending registrations list refuses the queries the API refuses", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasPendingRegistration("anna@example.com");
+  await page.goto("/admin/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  const path = "/admin/pending-registrations";
+  const tooLong = "a".repeat(101);
+  // Checked in the API's order: limit, page, then q.
+  for (const [query, param] of [
+    ["limit=0", "limit"],
+    ["limit=51", "limit"],
+    ["limit=", "limit"],
+    ["page=0", "page"],
+    ["page=", "page"],
+    [`q=${tooLong}`, "q"],
+    // A repeated parameter reaches the API as an array.
+    ["page=1&page=2", "page"],
+    ["q=a&q=b", "q"],
+    [`q=${tooLong}&page=0&limit=51`, "limit"]
+  ]) {
+    expect(await getFromApi(page, api, `${path}?${query}`), query).toEqual({
+      status: 400,
+      body: { error: `Invalid value for ${param}.` }
+    });
+  }
+  // The list has no sorting, so the API reads no sortBy or sortOrder at all.
+  const valid = await getFromApi(
+    page,
+    api,
+    `${path}?limit=50&page=1&q=&sortBy=nope&sortOrder=up&sortBy=again`
+  );
+  expect(valid.status).toBe(200);
+
+  // The login and superuser checks come first.
+  api.loggedInAs();
+  expect(await getFromApi(page, api, `${path}?limit=51`)).toEqual({
+    status: 403,
+    body: { error: "You do not have permission to perform this action." }
+  });
+  api.loggedOut();
+  expect(await getFromApi(page, api, `${path}?limit=51`)).toEqual({
+    status: 403,
+    body: { error: "You must be logged in to perform this action." }
+  });
+});
+
 test("the superuser opens a user's page from the list", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.hasUser("milo", { usedBytes: 0.5 * GB, count: 4 });
