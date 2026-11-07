@@ -102,16 +102,56 @@ test("the URL is checked once it's left", async ({ page, api }) => {
   await expect(url).not.toHaveAttribute("aria-invalid", "true");
 });
 
+test("a URL with a space is refused before it's sent", async ({ page, api }) => {
+  api.loggedInAs();
+  api.shortenReturns("abc123");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/shortenUrl") sent.push(request.url());
+  });
+  await page.goto("/shorten");
+  const url = page.getByLabel("URL");
+  const shorten = page.getByRole("button", { name: "Shorten", exact: true });
+  const hasSpace = "A URL can't contain spaces. Remove them, or write each one as %20.";
+
+  await url.fill("https://example.com/a b");
+  await url.press("Enter");
+  await expect(url).toHaveAccessibleDescription(hasSpace);
+  await shorten.click();
+  await expect(url).toHaveAccessibleDescription(hasSpace);
+  await expect(url).toHaveValue("https://example.com/a b");
+  expect(sent).toEqual([]);
+
+  // A space at the end is as easy to paste as it is to miss.
+  await url.fill("https://example.com/a ");
+  await expect(url).toHaveAccessibleDescription(hasSpace);
+
+  await url.fill("https://example.com/a%20b");
+  await expect(url).not.toHaveAttribute("aria-invalid", "true");
+  await shorten.click();
+  await expect(page.getByRole("link", { name: /\/r\/abc123$/ })).toBeVisible();
+  expect(sent).toHaveLength(1);
+});
+
 test("a URL the API refuses shows its reason", async ({ page, api }) => {
   api.loggedInAs();
+  // A refusal the form doesn't check for, such as a rule the API adds later.
+  await page.route("**/shortenUrl", (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fallback()
+      : route.fulfill({
+          status: 400,
+          headers: { "Access-Control-Allow-Origin": "*" },
+          json: { error: "The URI/URL you've provided isn't valid." }
+        })
+  );
   await page.goto("/shorten");
   const url = page.getByLabel("URL");
 
-  // The form lets whitespace through; the API doesn't.
-  await url.fill("https://example.com/a b");
+  await url.fill("https://example.com/a");
   await page.getByRole("button", { name: "Shorten", exact: true }).click();
 
   await expect(url).toHaveAccessibleDescription("The URI/URL you've provided isn't valid.");
-  await expect(url).toHaveValue("https://example.com/a b");
+  await expect(url).toHaveValue("https://example.com/a");
   expect(api.shortLinks.size).toBe(0);
 });

@@ -74,7 +74,7 @@ describe("ShortenPanel", () => {
     );
     const { wrapper } = await mountWithRouter(ShortenPanel);
 
-    await wrapper.find("input").setValue("https://example.com/a b");
+    await wrapper.find("input").setValue("https://example.com/a");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
@@ -121,6 +121,32 @@ describe("ShortenPanel", () => {
     await input.setValue(url(2000));
     expect(wrapper.find(".field__error").exists()).toBe(false);
     expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("refuses a URL with a space without sending it", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue("https://example.com/a b");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").text()).toBe(
+      "A URL can't contain spaces. Remove them, or write each one as %20."
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names a space before the length in a long pasted URL, like the API", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(ShortenPanel);
+
+    await wrapper.find("input").setValue(`https://example.com/a b${"c".repeat(2000)}`);
+
+    expect(wrapper.find(".field__error").text()).toBe(
+      "A URL can't contain spaces. Remove them, or write each one as %20."
+    );
   });
 
   it("names the format first for a long URL without a scheme", async () => {
