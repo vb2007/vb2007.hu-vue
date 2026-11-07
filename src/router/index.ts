@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router"
 import { ADMIN_SECTIONS, AdminPaths, AdminRoutes, type AdminSectionId } from "@/constants/admin";
 import { pageTitle } from "@/constants/site";
 import { TOOLS_LINE, type ToolId } from "@/constants/stops";
+import { setNoindex } from "@/scripts/utility/robotsMeta";
 import HomeView from "../views/HomeView.vue";
 
 declare module "vue-router" {
@@ -12,6 +13,11 @@ declare module "vue-router" {
      * admin page sets its own.
      */
     title?: string;
+    /**
+     * Keeps the page out of search results with a robots `noindex` meta, for the not-found pages
+     * (the SPA answers every path with `200`). Leaving the page drops the tag again.
+     */
+    noindex?: boolean;
   }
 }
 
@@ -155,14 +161,14 @@ export const routes: RouteRecordRaw[] = [
   {
     path: "/apierror",
     name: "api-error",
-    meta: { title: "API route not found" },
+    meta: { title: "API route not found", noindex: true },
     component: () => import("../views/ApiErrorView.vue")
   },
   // Any path no route above matches gets the not-found board (a catch-all ranks below them all).
   {
     path: "/:pathMatch(.*)*",
     name: "not-found",
-    meta: { title: "Page not found" },
+    meta: { title: "Page not found", noindex: true },
     component: () => import("../views/NotFoundView.vue")
   }
 ];
@@ -172,12 +178,14 @@ const router = createRouter({
   routes
 });
 
-// Each page's tab and history entry carry its own title (`meta.title`).
-// A navigation that failed (cancelled by a newer one, aborted or duplicated) leaves the tab alone, so
-// a slow page overtaken by a faster one can't put its own title over the page shown.
+// Each page's tab and history entry carry its own title (`meta.title`), and only the pages marked
+// `meta.noindex` carry the robots tag. A navigation that failed (cancelled by a newer one, aborted or
+// duplicated) leaves both alone, so a slow page overtaken by a faster one can't put its own title or
+// tag over the page shown.
 router.afterEach((to, _from, failure) => {
   if (failure) return;
   document.title = pageTitle(to.meta.title);
+  setNoindex(to.meta.noindex === true);
 });
 
 export default router;
