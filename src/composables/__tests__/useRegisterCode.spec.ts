@@ -500,6 +500,53 @@ describe("useRegisterCode", () => {
       expect(console.error).toHaveBeenCalledWith("Failed to send a new code: ", 503);
     });
 
+    it.each([
+      ["a 200", () => jsonResponse(200, {})],
+      [
+        "a rate limiter's 429",
+        () =>
+          jsonResponse(429, {
+            error: "Too many e-mails requested: try again later.",
+            retryAfter: 3412
+          })
+      ],
+      [
+        "the budget's 503",
+        () => jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
+      ]
+    ])("drops %s that lands after the step was left", async (_, response) => {
+      let answer!: (response: Response) => void;
+      fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      const step = openStep();
+      vi.advanceTimersByTime(30_000);
+      const kept = sessionStorage.getItem(COOLDOWN_STORAGE_KEY);
+
+      const pending = step.resend();
+      step.leave();
+      answer(response());
+
+      expect(await pending).toBe("left");
+      // The wait kept for the address is untouched, and nothing is shown or held for "".
+      expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBe(kept);
+      expect(step.cooldown.remaining.value).toBe(30);
+      expect(step.notice.value).toBe("sent");
+      expect(step.codeError.value).toBe("");
+      expect(step.isResending.value).toBe(false);
+    });
+
+    it("says the code is from earlier once the minute of a recent one is over", async () => {
+      const { api } = mountComposable(useRegisterCode);
+      api.open("me@example.com", "recent", 40);
+
+      vi.advanceTimersByTime(39_000);
+      await nextTick();
+      expect(api.notice.value).toBe("recent");
+
+      vi.advanceTimersByTime(1_000);
+      await nextTick();
+      expect(api.notice.value).toBe("earlier");
+    });
+
     it("starts the minute again after every resend the API takes, also for a reload", async () => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse(200, {}))

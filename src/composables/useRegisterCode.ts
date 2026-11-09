@@ -40,8 +40,9 @@ export type RegisterCodeResult =
  * What a resend did: the API took it (it mails a waiting registration a new code, unless one went
  * out in the last minute or the mail fails, which keeps the code from before), or it didn't (the
  * day's registration mail used up, a rate limit, the server or the network), so nothing changed.
+ * "left" when the step was left before the answer came: then the answer was ignored.
  */
-export type ResendOutcome = "sent" | "failed";
+export type ResendOutcome = "sent" | "failed" | "left";
 
 /** A refusal about one of the register form's fields, to show under it. */
 export interface FormProblem {
@@ -60,7 +61,10 @@ export type CodeNotice =
   | "resent"
   /** The user already has one, e.g. after a reload; nothing was sent. */
   | "earlier"
-  /** Registering again within the minute: the code from then still works. */
+  /**
+   * Registering again within the minute: the code from then still works. Once the minute is over
+   * it turns into "earlier".
+   */
   | "recent"
   /** Back from fixing the form: nothing was sent, and the code typed before is kept. */
   | "kept"
@@ -131,8 +135,13 @@ export const useRegisterCode = () => {
   };
 
   watch(cooldown.active, (active) => {
-    if (!active && errorEndsWithCooldown) {
+    if (active) return;
+    if (errorEndsWithCooldown) {
       showError("");
+    }
+    // "Less than a minute ago" stops being true with the minute: then it's a code mailed earlier.
+    if (notice.value === "recent") {
+      notice.value = "earlier";
     }
   });
 
@@ -228,14 +237,19 @@ export const useRegisterCode = () => {
   const resend = async (): Promise<ResendOutcome> => {
     isResending.value = true;
     showError("");
+    const address = email.value;
 
     const result = await apiRequest(Endpoints.Auth.registerResend, {
-      body: { email: email.value },
+      body: { email: address },
       failure: Messages.EmailCode.resendFailed
     });
 
     let outcome: ResendOutcome = "failed";
-    if (result.ok) {
+    if (email.value !== address) {
+      // The step was left (or opened for another address) meanwhile: the answer is about a step
+      // that's gone, so it changes nothing here, least of all the wait kept for another address.
+      outcome = "left";
+    } else if (result.ok) {
       // The same 200 whatever happened, so the minute starts after every one, as after registering.
       notice.value = "resent";
       outcome = "sent";

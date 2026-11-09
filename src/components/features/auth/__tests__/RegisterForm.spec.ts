@@ -423,6 +423,13 @@ describe("RegisterForm", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend in 40 sec");
+
+    // "Less than a minute ago" stops being true once the countdown ends.
+    vi.advanceTimersByTime(40_000);
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Enter the code that was mailed to me@example.com. It works for 15 minutes after sending, and registers you as vb with the password you entered."
+    );
   });
 
   it("opens the code step for a code that already arrived, sending nothing", async () => {
@@ -921,7 +928,7 @@ describe("RegisterForm", () => {
 
       // The notice still says "resent" from before, but this resend replaced nothing.
       expect(wrapper.find('[role="status"]').text()).toContain(
-        "Only the latest one to arrive works"
+        "only the latest code to reach it works"
       );
       expect(wrapper.find("input").element.value).toBe("654321");
       expect(wrapper.find('[role="alert"]').exists()).toBe(true);
@@ -944,6 +951,27 @@ describe("RegisterForm", () => {
       answer(jsonResponse(200, {}));
       await flushPromises();
       expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+    });
+
+    it("holds Change address while a new code is being sent", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      let answer!: (response: Response) => void;
+      fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      const back = () =>
+        wrapper.findAll("button").find((button) => button.text() === "Change address")!;
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      // The answer starts the minute for this address: the step stays until it's in.
+      expect(back().attributes("disabled")).toBeDefined();
+      answer(jsonResponse(200, {}));
+      await flushPromises();
+      expect(back().attributes("disabled")).toBeUndefined();
+      expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
     });
 
     it("holds Resend and Change address while a code is being confirmed", async () => {
@@ -1113,7 +1141,7 @@ describe("RegisterForm", () => {
         expect.objectContaining({ body: JSON.stringify({ email: "me@example.com" }) })
       );
       expect(wrapper.find('[role="status"]').text()).toBe(
-        "If a registration is waiting for me@example.com, a code went to it. Only the latest one to arrive works: enter it to register as vb."
+        "If a registration is waiting for me@example.com, only the latest code to reach it works: enter it to register as vb."
       );
       expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
       // The key it was on is disabled now; the code is what comes next.
@@ -1129,13 +1157,19 @@ describe("RegisterForm", () => {
       await wrapper.find("input").setValue("123456");
       vi.advanceTimersByTime(60_000);
       await flushPromises();
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "Nothing yet? Check your spam folder, or send a new code below."
+      );
 
       await resendButton(wrapper).trigger("click");
       await flushPromises();
 
       expect(wrapper.find('[role="status"]').text()).toBe(
-        "Your earlier code for me@example.com still works for up to 15 minutes after it was sent: enter it to register as vb."
+        "Nothing new was sent to me@example.com. If a code reached it in the last 15 minutes, the latest one still works: enter it to register as vb."
       );
+      // Another resend would get the same 503 until the budget starts over, so the hint stops
+      // offering one; the key itself stays usable, since the API names no wait.
+      expect(wrapper.find(".field__hint").text()).toBe("Nothing yet? Check your spam folder.");
       expect(wrapper.find('[role="alert"]').text()).toBe(
         "The e-mail couldn't be sent: please try again later."
       );

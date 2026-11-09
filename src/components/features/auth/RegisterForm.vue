@@ -179,11 +179,11 @@ const notices = (name: string): Record<CodeNotice, [string, string, string]> => 
     ],
     // The API answers a resend the same whether or not a registration is waiting for the address,
     // and whether it mailed a new code, sent nothing inside the minute or kept the code from before
-    // after a failed mail: in every case the latest code to arrive is the one that works.
+    // after a failed mail: in every case the latest code to reach it is the one that works.
     resent: [
       "If a registration is waiting for",
       ",",
-      `a code went to it. Only the latest one to arrive works: enter it to register as ${name}.`
+      `only the latest code to reach it works: enter it to register as ${name}.`
     ],
     earlier: [
       "Enter the code that was mailed to",
@@ -200,16 +200,26 @@ const notices = (name: string): Record<CodeNotice, [string, string, string]> => 
       "",
       `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
     ],
-    // The error above the key says the e-mail couldn't be sent; this says what still works.
+    // The API turns the resend away before it looks at the address, so whether a code waits, and
+    // whether it's still fresh, is unknown here.
     unsent: [
-      "Your earlier code for",
-      "",
-      `still works for up to ${minutes} minutes after it was sent: enter it to register as ${name}.`
+      "Nothing new was sent to",
+      ".",
+      `If a code reached it in the last ${minutes} minutes, the latest one still works: enter it to register as ${name}.`
     ]
   };
 };
 
 const noticeText = computed(() => notices(username.value.trim())[notice.value]);
+/**
+ * Under the code field. After the budget's 503 every resend gets the same answer until it starts
+ * over, so the hint doesn't offer one then; the key stays usable, since the API names no wait.
+ */
+const codeHint = computed(() =>
+  notice.value === "unsent"
+    ? "Nothing yet? Check your spam folder."
+    : "Nothing yet? Check your spam folder, or send a new code below."
+);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
@@ -375,6 +385,7 @@ const handleCode = async () => {
 
 const sendAgain = async () => {
   // Decided by this resend's own outcome: the notice can still be an earlier resend's.
+  // (Change address waits for the answer, so the step is still the one asked about.)
   if ((await resend()) === "sent") {
     // The page holds the key for a minute after each code it saw go out, so the API most likely
     // mailed a new one, which replaced the code typed before: confirming that would spend a try.
@@ -467,7 +478,7 @@ watch(isLoggedIn, (newVal) => {
         label="Confirmation code"
         inputmode="numeric"
         autocomplete="one-time-code"
-        hint="Nothing yet? Check your spam folder, or send a new code below."
+        :hint="codeHint"
         :describedby="noticeId"
         :error="codeErrors.code || codeFieldError"
         mono
@@ -510,7 +521,12 @@ watch(isLoggedIn, (newVal) => {
                 : "Resend code"
           }}
         </BaseButton>
-        <BaseButton variant="ghost" size="sm" :disabled="isVerifying" @click="changeAddress">
+        <BaseButton
+          variant="ghost"
+          size="sm"
+          :disabled="isVerifying || isResending"
+          @click="changeAddress"
+        >
           Change address
         </BaseButton>
       </div>
