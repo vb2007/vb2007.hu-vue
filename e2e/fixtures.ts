@@ -750,7 +750,7 @@ export class MockApi {
 
   /** Whether the API counts a mail to `address` against the day's budget: not for the reserved top-level domains. */
   private countsMail(address: string) {
-    return !RESERVED_TLDS.includes(normalizeEmail(address).split(".").pop()!);
+    return !RESERVED_TLDS.includes(normalizeEmail(address).split("@").pop()!.split(".").pop()!);
   }
 
   /**
@@ -1352,15 +1352,19 @@ export class MockApi {
     if (this.countsMail(address)) this.mailSentToday++;
     const pending = this.pendingRegistrations.get(normalizeEmail(address));
     // A code that couldn't be mailed is only logged: the answer stays 200, the code sent before still works, and the
-    // reservation stays counted.
-    if (pending && !this.resendTooSoon(pending.sentAt) && !this.mailFailsNow()) {
+    // reservation stays counted. A reserved domain's mail is only logged, before anything could fail it.
+    if (
+      pending &&
+      !this.resendTooSoon(pending.sentAt) &&
+      (!this.countsMail(address) || !this.mailFailsNow())
+    ) {
       Object.assign(pending, this.newCode(15));
     }
     return {
       status: 200,
       body: {
         message:
-          "If a registration is waiting for this address, a new confirmation code was sent to it."
+          "If a registration is waiting for this address, a confirmation code was sent to it in the last minute or just now: use the latest one."
       }
     };
   }

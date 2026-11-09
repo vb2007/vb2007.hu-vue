@@ -686,7 +686,7 @@ const RESENT = {
   status: 200,
   body: {
     message:
-      "If a registration is waiting for this address, a new confirmation code was sent to it."
+      "If a registration is waiting for this address, a confirmation code was sent to it in the last minute or just now: use the latest one."
   }
 };
 const resend = (page: Page, api: MockApi, body: unknown = { email: REGISTRATION.email }) =>
@@ -743,6 +743,25 @@ test("every resend uses up a mail of the day, whatever the address or the answer
   });
   expect(other).toEqual(MAIL_FAILED);
   expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("mail to a reserved top-level domain is neither counted nor failed", async ({ page, api }) => {
+  await page.goto("/register");
+  api.sentMailToday(199);
+
+  // The domain is what follows the @: `localhost` has no dot of its own.
+  expect(await resend(page, api, { email: "nobody@localhost" })).toEqual(RESENT);
+  const reserved = { ...REGISTRATION, email: "new@mail.test" };
+  expect((await callApi(page, api, "POST", "/auth/register", reserved)).status).toBe(202);
+  api.clockRunsFor(60_000);
+  api.failsNextMail();
+  // The API only logs this mail, so nothing fails it and the failure waits for the next real one.
+  expect(await resend(page, api, { email: reserved.email })).toEqual(RESENT);
+
+  // Nothing above counted: this is the 200th mail, and the one that meets the failure.
+  const other = { ...REGISTRATION, email: "other@example.com" };
+  expect(await callApi(page, api, "POST", "/auth/register", other)).toEqual(MAIL_FAILED);
+  expect((await callApi(page, api, "POST", "/auth/register", other)).status).toBe(202);
 });
 
 test("a registration code counts against the day's mails", async ({ page, api }) => {
