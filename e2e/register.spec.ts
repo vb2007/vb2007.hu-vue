@@ -681,3 +681,118 @@ test("a sign-up code still goes out one mail short of the registration share", a
 
   expect(registered.status).toBe(202);
 });
+
+const RESENT = {
+  status: 200,
+  body: {
+    message:
+      "If a registration is waiting for this address, a confirmation code was sent to it in the last minute or just now: use the latest one."
+  }
+};
+const resend = (page: Page, api: MockApi, body: unknown = { email: REGISTRATION.email }) =>
+  callApi(page, api, "POST", "/auth/register/resend", body);
+
+test("a resend inside the minute answers 200 like any other and sends nothing", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  expect((await callApi(page, api, "POST", "/auth/register", REGISTRATION)).status).toBe(202);
+  api.clockRunsFor(30_000);
+
+  // The API answers before it looks, so this is also the answer of an address nobody waits on.
+  expect(await resend(page, api)).toEqual(RESENT);
+  expect(await resend(page, api, { email: "nobody@example.com" })).toEqual(RESENT);
+  api.clockRunsFor(30_000);
+
+  // No new code started a minute of its own: the registration's runs out 60 seconds after it was made.
+  const again = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+  expect(again.status).toBe(202);
+});
+
+test("a resend without an address answers 400 before anything else", async ({ page, api }) => {
+  await registerAndWait(page, api);
+  api.sentMailToday(250);
+  const missing = { status: 400, body: { error: "You must provide an E-mail address." } };
+
+  expect(await resend(page, api, {})).toEqual(missing);
+  expect(await resend(page, api, { email: "" })).toEqual(missing);
+  expect(await resend(page, api, { email: 42 })).toEqual(missing);
+  // With an address, the used-up budget answers.
+  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("every resend uses up a mail of the day, whatever the address or the answer", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.sentMailToday(197);
+
+  // A waiting registration, an address nobody waits on, and a code that can't be mailed: one each.
+  expect(await resend(page, api)).toEqual(RESENT);
+  expect(await resend(page, api, { email: "nobody@example.com" })).toEqual(RESENT);
+  api.clockRunsFor(60_000);
+  api.failsNextMail();
+  expect(await resend(page, api)).toEqual(RESENT);
+
+  // 200 of the registration share's 200 are used up.
+  const other = await callApi(page, api, "POST", "/auth/register", {
+    ...REGISTRATION,
+    email: "other@example.com"
+  });
+  expect(other).toEqual(MAIL_FAILED);
+  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("mail to a reserved top-level domain is neither counted nor failed", async ({ page, api }) => {
+  await page.goto("/register");
+  api.sentMailToday(199);
+
+  // The domain is what follows the @: `localhost` has no dot of its own.
+  expect(await resend(page, api, { email: "nobody@localhost" })).toEqual(RESENT);
+  const reserved = { ...REGISTRATION, email: "new@mail.test" };
+  expect((await callApi(page, api, "POST", "/auth/register", reserved)).status).toBe(202);
+  api.clockRunsFor(60_000);
+  api.failsNextMail();
+  // The API only logs this mail, so nothing fails it and the failure waits for the next real one.
+  expect(await resend(page, api, { email: reserved.email })).toEqual(RESENT);
+
+  // Nothing above counted: this is the 200th mail, and the one that meets the failure.
+  const other = { ...REGISTRATION, email: "other@example.com" };
+  expect(await callApi(page, api, "POST", "/auth/register", other)).toEqual(MAIL_FAILED);
+  expect((await callApi(page, api, "POST", "/auth/register", other)).status).toBe(202);
+});
+
+test("a registration code counts against the day's mails", async ({ page, api }) => {
+  await page.goto("/register");
+  api.sentMailToday(198);
+
+  for (const email of ["a@example.com", "b@example.com"]) {
+    const sent = await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, email });
+    expect(sent.status).toBe(202);
+  }
+
+  expect(await callApi(page, api, "POST", "/auth/register", REGISTRATION)).toEqual(MAIL_FAILED);
+});
+
+test("a registration code that couldn't be mailed gives its mail of the day back", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  api.sentMailToday(199);
+  api.failsNextMail();
+
+  expect(await callApi(page, api, "POST", "/auth/register", REGISTRATION)).toEqual(MAIL_FAILED);
+
+  // Kept, the failed one would have been the 200th and this code refused.
+  const again = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+  expect(again.status).toBe(202);
+  // This one counts: the registration share is used up now.
+  const other = await callApi(page, api, "POST", "/auth/register", {
+    ...REGISTRATION,
+    email: "other@example.com"
+  });
+  expect(other).toEqual(MAIL_FAILED);
+});

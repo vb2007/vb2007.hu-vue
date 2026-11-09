@@ -755,3 +755,54 @@ test("a reset code asked for another account's address survives this account's n
   });
   expect(reset).toEqual(RESET);
 });
+
+// The day's mails (vb2007/vb2007.hu-api's budget): reset codes stop at 225 of 250, still answering 200.
+
+test("from 225 mails of the day, a reset code is not mailed and the answer doesn't show it", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.sentMailToday(224);
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  // That one was the 225th.
+  api.clockRunsFor(60_000);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  // The earlier code was kept.
+  expect(await confirmCode(page, api)).toEqual(RESET);
+  api.sentMailToday(225);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("a reset code that couldn't be mailed gives its mail of the day back", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.sentMailToday(224);
+  api.failsNextMail();
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  // Kept, the failed one would have been the 225th and this code refused.
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(RESET);
+});
+
+test("the notice after a reset counts against the day's mails", async ({ page, api }) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.sentMailToday(223);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  // The notice to the account's address is the 225th mail.
+  expect(await confirmCode(page, api)).toEqual(RESET);
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
