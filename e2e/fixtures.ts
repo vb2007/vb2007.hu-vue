@@ -24,8 +24,12 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
  * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
  * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
- * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` answers
- * the next code `PATCH /user/email` mails with the API's 503, which keeps the change that waited before, if any.
+ * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` fails the next code mail that is
+ * actually sent, like a mail server that's down (vb2007/vb2007.hu-api#294): `PATCH /user/email` and `POST /auth/register` answer
+ * the API's 503 and keep the change or registration that waited before (a new one isn't kept); `POST /auth/register/resend` and
+ * `POST /auth/password-reset` answer 200 as ever and keep the code sent before. A request that sends no mail (a cooldown's 429, an
+ * address nobody waits on) leaves it for the next one. `api.sentMailToday(n)` with `n` at or over the registration share (200 of
+ * 250) makes registering fail the same way, and a resend answer the 503 the API gives before it touches the code.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
  * `api.capsCodeChecks()` refuses every code check (register verify, password reset confirm, e-mail confirm), even the right code,
@@ -49,7 +53,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
  * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
  * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
- * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links.
+ * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
+ * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an address of a `hasUser(...)` account gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
@@ -276,6 +281,9 @@ const OBJECT_ID = /^[0-9a-f]{24}$/i;
 export const PASSWORD_RESET_SENT =
   "If an account uses this address, a password reset code was sent to it in the last minute or just now: use the latest one.";
 
+/** The API's `Responses.EmailCodes.mailFailed`: a code that couldn't be mailed. */
+export const MAIL_FAILED_ERROR = "The e-mail couldn't be sent: please try again later.";
+
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
 
@@ -320,6 +328,8 @@ const domainError = (email: string) => {
 type MockCode = { sentAt: number; expiresAt: number; attempts: number };
 const CODE_TRIES = 5;
 const CODE_COOLDOWN_MS = 60_000;
+const MAIL_FAILED: MockResponse = { status: 503, body: { error: MAIL_FAILED_ERROR } };
+
 const invalidCode = (): MockResponse => ({
   status: 400,
   body: { error: "The code is wrong, expired or already used: check it or request a new one." }
@@ -685,6 +695,11 @@ export class MockApi {
     return token;
   }
 
+  /** Voids the reset code waiting for `email`, which the API unsets (`passwordReset`) wherever it voids the links. */
+  private voidResetCode(email: string) {
+    this.resetCodes.delete(normalizeEmail(email));
+  }
+
   /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
   private voidResetLinks(matches: (link: { userId: string; email: string }) => boolean) {
     for (const [token, link] of this.resetLinks) {
@@ -692,9 +707,24 @@ export class MockApi {
     }
   }
 
-  /** Answers the next code `PATCH /user/email` mails with the API's 503, like a mail server that's down. */
+  /**
+   * Fails the next code mail that is actually sent (see the top of this file), like a mail server that's down. The API restores
+   * what the code replaced, so the code or waiting change or registration from before still works.
+   */
   failsNextMail() {
     this.mailFails = true;
+  }
+
+  /** Whether the code about to be mailed fails; uses `failsNextMail()` up. */
+  private mailFailsNow() {
+    const fails = this.mailFails;
+    this.mailFails = false;
+    return fails;
+  }
+
+  /** Whether the API's registration share of the day's mails is used up (see `sentMailToday`), which refuses sign-up codes. */
+  private registrationMailRefused() {
+    return this.mailSentToday >= MAIL_REGISTRATION_STOPS_AT;
   }
 
   /** Moves the mock's clock on, e.g. along with `page.clock.runFor(ms)`, which only moves the page's. */
@@ -1115,7 +1145,8 @@ export class MockApi {
         // Like the API, only an account's address gets a code, at most one a minute.
         const email = normalizeEmail(body.email);
         if (this.hasAccount(email) && !this.resendTooSoon(this.resetCodes.get(email)?.sentAt)) {
-          this.resetCodes.set(email, this.newCode(30));
+          // A code that couldn't be mailed is not kept: the answer stays 200 and the code sent before still works.
+          if (!this.mailFailsNow()) this.resetCodes.set(email, this.newCode(30));
         }
         return {
           status: 200,
@@ -1250,6 +1281,8 @@ export class MockApi {
     if (refusal) return { status: 400, body: { error: refusal } };
     const tooSoon = this.resendTooSoon(this.pendingRegistrations.get(email)?.sentAt);
     if (tooSoon) return tooSoon;
+    // A code that couldn't be mailed leaves the registration that waited before (if any) as it was.
+    if (this.registrationMailRefused() || this.mailFailsNow()) return MAIL_FAILED;
     this.pendingRegistrations.set(email, this.newCode(15));
     return {
       status: 202,
@@ -1261,11 +1294,14 @@ export class MockApi {
 
   /** A waiting registration gets a new code, at most one a minute; the answer doesn't say whether one waits. */
   private resendRegistrationCode(address?: string) {
+    // The API reserves the registration share of its mails before it looks at the address, so any address gets this 503.
+    if (this.registrationMailRefused()) return MAIL_FAILED;
     const pending = this.pendingRegistrations.get(normalizeEmail(address ?? ""));
     if (pending) {
       const tooSoon = this.resendTooSoon(pending.sentAt);
       if (tooSoon) return tooSoon;
-      Object.assign(pending, this.newCode(15));
+      // A code that couldn't be mailed is only logged: the answer stays 200 and the code sent before still works.
+      if (!this.mailFailsNow()) Object.assign(pending, this.newCode(15));
     }
     return {
       status: 200,
@@ -1338,13 +1374,9 @@ export class MockApi {
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
-    if (this.mailFails) {
+    if (this.mailFailsNow()) {
       // Like the API, the change that waited before (if any) stays, so a new code may go at once.
-      this.mailFails = false;
-      return {
-        status: 503,
-        body: { error: "The e-mail couldn't be sent: please try again later." }
-      };
+      return MAIL_FAILED;
     }
     this.emailChange = { email: normalized, ...this.newCode(15) };
     return {
@@ -1462,6 +1494,7 @@ export class MockApi {
       };
     }
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
+    this.voidResetCode(this.user.email);
     this.user.email = email;
     this.user.emailVerified = true;
     return { status: 200, body: { message: "E-mail address updated successfully." } };
@@ -1500,6 +1533,7 @@ export class MockApi {
     }
     this.password = newPassword;
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
+    this.voidResetCode(this.user.email);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
@@ -1532,6 +1566,7 @@ export class MockApi {
     this.password = password;
     this.githubConfirmed = false;
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
+    this.voidResetCode(this.user.email);
     return { status: 200, body: { message: "Password set successfully." }, newSession: true };
   }
 
@@ -1649,9 +1684,10 @@ export class MockApi {
         body: { error: "The reset link is wrong, expired or already used: request a new one." }
       };
     }
-    const { userId } = this.resetLinks.get(token)!;
-    // Using one link voids the account's others, like any new password.
+    const { userId, email } = this.resetLinks.get(token)!;
+    // Using one link voids the account's others and the code waiting for its address, like any new password.
     this.voidResetLinks((link) => link.userId === userId);
+    this.voidResetCode(email);
     this.password = newPassword;
     if (this.user?._id === userId) {
       this.user = null;
@@ -2518,6 +2554,32 @@ export async function getFromApi(page: Page, api: MockApi, path: string) {
     const response = await fetch(url, { credentials: "include" });
     return { status: response.status, body: (await response.json()) as unknown };
   }, `${api.apiOrigin}${path}`);
+}
+
+/**
+ * A request of any method sent from the page itself (see `getFromApi`), for calls the site's own forms can't make, such as a
+ * code confirmed after the account changed under it. Answers the status and the JSON body.
+ */
+export async function callApi(
+  page: Page,
+  api: MockApi,
+  method: "POST" | "PATCH",
+  path: string,
+  body: unknown
+) {
+  expect(api.apiOrigin, "the API's origin, known once the page has called it").not.toBe("");
+  return page.evaluate(
+    async ([url, verb, json]) => {
+      const response = await fetch(url, {
+        method: verb,
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(json)
+      });
+      return { status: response.status, body: (await response.json()) as unknown };
+    },
+    [`${api.apiOrigin}${path}`, method, body] as const
+  );
 }
 
 export { expect };

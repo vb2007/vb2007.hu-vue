@@ -1,5 +1,12 @@
 import type { Page } from "@playwright/test";
-import { expect, REGISTRATION_CODE, test, type MockApi } from "./fixtures";
+import {
+  callApi,
+  expect,
+  MAIL_FAILED_ERROR,
+  type MockApi,
+  REGISTRATION_CODE,
+  test
+} from "./fixtures";
 
 // Registering mails a code first (vb2007/vb2007.hu-api#28); the mock "mails" REGISTRATION_CODE.
 // Confirming it creates the account with the form's username and password (vb2007/vb2007.hu-api#295).
@@ -542,4 +549,135 @@ test("a taken username is said while it's typed", async ({ page, api }) => {
 
   await username.fill("anna2");
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
+});
+
+// The double's mail failures, checked through the page's own calls: the form can't wait out the API's
+// minute between a registration and its failed re-registration, but the double's clock can.
+
+const REGISTRATION = { email: "new@example.com", username: "newbie", password: "correct horse" };
+const WRONG_CODE = {
+  status: 400,
+  body: { error: "The code is wrong, expired or already used: check it or request a new one." }
+};
+const MAIL_FAILED = { status: 503, body: { error: MAIL_FAILED_ERROR } };
+const REGISTERED = {
+  status: 201,
+  body: { message: "User newbie registered successfully." }
+};
+
+/** Opens the page, so the double knows the API's origin, then registers `REGISTRATION` and moves the double's clock past the minute. */
+const registerAndWait = async (page: Page, api: MockApi) => {
+  await page.goto("/register");
+  const registered = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+  expect(registered.status).toBe(202);
+  api.clockRunsFor(60_000);
+};
+
+const verify = (page: Page, api: MockApi) =>
+  callApi(page, api, "POST", "/auth/register/verify", { ...REGISTRATION, code: REGISTRATION_CODE });
+
+test("a registration whose code couldn't be mailed says so and leaves nothing behind", async ({
+  page,
+  api
+}) => {
+  api.failsNextMail();
+  await fillForm(page);
+
+  await expect(page.getByRole("alert")).toHaveText(MAIL_FAILED_ERROR);
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  // Nothing waits, so no cooldown holds back another try.
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+});
+
+test("a registration whose code couldn't be mailed keeps the one that waited", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.failsNextMail();
+
+  const failed = await callApi(page, api, "POST", "/auth/register", {
+    ...REGISTRATION,
+    username: "another"
+  });
+
+  expect(failed).toEqual(MAIL_FAILED);
+  expect(await verify(page, api)).toEqual(REGISTERED);
+});
+
+test("a resend whose code couldn't be mailed answers 200 and keeps the code sent before", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.failsNextMail();
+
+  const failed = await callApi(page, api, "POST", "/auth/register/resend", {
+    email: REGISTRATION.email
+  });
+  // The code before is the one from a minute ago, so a resend goes at once instead of meeting a cooldown.
+  const again = await callApi(page, api, "POST", "/auth/register/resend", {
+    email: REGISTRATION.email
+  });
+
+  expect(failed.status).toBe(200);
+  expect(again).toEqual(failed);
+  expect(await verify(page, api)).toEqual(REGISTERED);
+});
+
+test("a resend for an address nobody waits on sends no mail, so a failure is left for the next one", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.failsNextMail();
+
+  const nobody = await callApi(page, api, "POST", "/auth/register/resend", {
+    email: "nobody@example.com"
+  });
+  const registration = await callApi(page, api, "POST", "/auth/register", {
+    ...REGISTRATION,
+    email: "other@example.com"
+  });
+
+  expect(nobody.status).toBe(200);
+  expect(registration).toEqual(MAIL_FAILED);
+});
+
+test("once the day's registration mails are used up, a resend answers 503 before it looks at the address", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.sentMailToday(200);
+
+  const waiting = await callApi(page, api, "POST", "/auth/register/resend", {
+    email: REGISTRATION.email
+  });
+  const unknown = await callApi(page, api, "POST", "/auth/register/resend", {
+    email: "nobody@example.com"
+  });
+  const registering = await callApi(page, api, "POST", "/auth/register", {
+    ...REGISTRATION,
+    email: "other@example.com"
+  });
+
+  expect([waiting, unknown, registering]).toEqual([MAIL_FAILED, MAIL_FAILED, MAIL_FAILED]);
+  // The code sent before is untouched.
+  expect(await verify(page, api)).toEqual(REGISTERED);
+});
+
+test("a sign-up code still goes out one mail short of the registration share", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  api.sentMailToday(199);
+
+  const registered = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+
+  expect(registered.status).toBe(202);
 });
