@@ -93,7 +93,7 @@ export const useCountdown = (storageKey?: string) => {
 };
 
 /**
- * The seconds to wait after a 429, sent as `retryAfter` in the body by the resend cooldown and the
+ * The seconds to wait after a 429, sent as `retryAfter` in the body by the code cooldown and the
  * rate limiters alike (vb2007/vb2007.hu-api#242), next to the same Retry-After header. Only the body
  * is read here, and `fallback` stands in for a body without it.
  */
