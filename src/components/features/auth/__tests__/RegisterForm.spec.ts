@@ -920,7 +920,9 @@ describe("RegisterForm", () => {
       await flushPromises();
 
       // The notice still says "resent" from before, but this resend replaced nothing.
-      expect(wrapper.find('[role="status"]').text()).toContain("Only the latest one to arrive works");
+      expect(wrapper.find('[role="status"]').text()).toContain(
+        "Only the latest one to arrive works"
+      );
       expect(wrapper.find("input").element.value).toBe("654321");
       expect(wrapper.find('[role="alert"]').exists()).toBe(true);
     });
