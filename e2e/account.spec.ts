@@ -1,5 +1,7 @@
 import {
+  callApi,
   expect,
+  MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   MOCK_EMAIL_CODE,
   MOCK_PASSWORD,
@@ -937,6 +939,71 @@ test("a code whose mail failed keeps the change that waited, and another goes at
 
   await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
+});
+
+// The day's mails are used up at 250: unlike sign-up (200) and reset codes (225), a change's code goes until then.
+test("a change's code goes until the day's 250 mails are used up, then is refused", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("old@example.com", { sentSecondsAgo: 120 });
+  api.sentMailToday(249);
+  await page.goto("/account");
+  const change = (email: string) =>
+    callApi(page, api, "PATCH", "/user/email", { email, password: MOCK_PASSWORD });
+
+  expect((await change("new@example.com")).status).toBe(202);
+  api.clockRunsFor(60_000);
+  expect(await change("newer@example.com")).toEqual({
+    status: 503,
+    body: { error: MAIL_FAILED_ERROR }
+  });
+
+  // The change that waited before stays, so the code for it still works.
+  const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+  expect(confirmed.status).toBe(200);
+});
+
+test("a change's code that couldn't be mailed gives its mail of the day back", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.sentMailToday(249);
+  api.failsNextMail();
+  await page.goto("/account");
+  const change = () =>
+    callApi(page, api, "PATCH", "/user/email", {
+      email: "new@example.com",
+      password: MOCK_PASSWORD
+    });
+
+  expect((await change()).status).toBe(503);
+
+  // Kept, the failed one would have been the 250th and this code refused.
+  expect((await change()).status).toBe(202);
+});
+
+test("the notice after a change counts against the day's mails", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  api.sentMailToday(248);
+  await page.goto("/account");
+
+  // The notice to the old address is the 249th mail.
+  const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+  expect(confirmed.status).toBe(200);
+
+  const change = (email: string) =>
+    callApi(page, api, "PATCH", "/user/email", { email, password: MOCK_PASSWORD });
+  expect((await change("newer@example.com")).status).toBe(202);
+  api.clockRunsFor(60_000);
+  expect((await change("newest@example.com")).status).toBe(503);
 });
 
 test("accounts that can't change their e-mail say why", async ({ page, api }) => {
