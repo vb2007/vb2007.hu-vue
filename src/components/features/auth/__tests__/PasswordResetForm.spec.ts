@@ -111,6 +111,40 @@ describe("PasswordResetForm", () => {
     expect(wrapper.find('a[href="/login"]').text()).toBe("Log in");
   });
 
+  describe("opened with an address", () => {
+    afterEach(() => {
+      window.history.replaceState(null, "");
+    });
+
+    it("fills it in, and sends the code to it", async () => {
+      window.history.replaceState({ prefillEmail: " me@example.com " }, "");
+      vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+      const { wrapper } = await mountWithRouter(PasswordResetForm);
+
+      expect((emailInput(wrapper).element as HTMLInputElement).value).toBe("me@example.com");
+      // Untouched, so nothing is flagged on it.
+      await emailInput(wrapper).trigger("blur");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(requestPasswordReset).toHaveBeenCalledWith("me@example.com");
+    });
+
+    it.each([
+      ["no state", null],
+      ["a state of something else", { uploadsOwner: "anna" }],
+      ["a number", { prefillEmail: 7 }],
+      ["an empty address", { prefillEmail: " " }]
+    ])("starts empty for %s", async (_, state) => {
+      window.history.replaceState(state, "");
+      const { wrapper } = await mountWithRouter(PasswordResetForm);
+
+      expect((emailInput(wrapper).element as HTMLInputElement).value).toBe("");
+    });
+  });
+
   it("sends the code, showing progress meanwhile", async () => {
     const { answer, settle } = pendingAnswer();
     vi.mocked(requestPasswordReset).mockReturnValueOnce(answer);

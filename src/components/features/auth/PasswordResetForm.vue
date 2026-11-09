@@ -6,6 +6,7 @@ import { Messages } from "@/constants/messages";
 import { useCountdown } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
+import { emailFromHistory } from "@/scripts/authentication/emailPrefill";
 import {
   confirmPasswordReset,
   confirmPasswordResetLink,
@@ -57,7 +58,8 @@ const linkUsername = computed(() =>
   isLoggedIn.value && resetLinkUserId(linkToken.value) === userId.value ? userEmail.value : ""
 );
 
-const email = ref("");
+// Opened from Register or Log in with the address filled in (see emailPrefill).
+const email = ref(emailFromHistory());
 const code = ref("");
 const newPassword = ref("");
 /** The address on the code step; set, it moves the board there. */

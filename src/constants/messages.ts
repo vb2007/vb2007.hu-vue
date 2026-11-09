@@ -119,10 +119,16 @@ export class Messages {
     /**
      * The code step's 409 for an address that has an account: the waiting registration is gone.
      * GitHub login only reaches an account that uses GitHub; resetting the password works for
-     * every account, and gives one made with GitHub a password.
+     * every account, and gives one made with GitHub a password. The register form shows it with
+     * "Log in" and "reset the password" as links, so it comes in pieces around them;
+     * `accountExists` is the whole text, as read out and as the form tells it apart.
      */
-    static readonly accountExists: string =
-      "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.";
+    static readonly accountExistsStart: string = "An account already uses this address.";
+    static readonly accountExistsLogIn: string = "Log in";
+    static readonly accountExistsMiddle: string =
+      "instead (with GitHub if that's how you signed up), or";
+    static readonly accountExistsReset: string = "reset the password";
+    static readonly accountExists: string = `${this.accountExistsStart} ${this.accountExistsLogIn} ${this.accountExistsMiddle} ${this.accountExistsReset}.`;
     static readonly resetCodeFailed: string = "Failed to send the code";
     static readonly passwordResetFailed: string = "Failed to reset the password";
     /**
