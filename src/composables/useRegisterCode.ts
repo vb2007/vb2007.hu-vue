@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
 import {
@@ -37,11 +37,11 @@ export type RegisterCodeResult =
   | "failed";
 
 /**
- * What a resend did to the code: the API accepted it (a waiting registration's code was replaced
- * and the new one mailed), the old one was replaced but the new one couldn't be mailed, or nothing
- * changed (a refusal, the server or the network) and it still works.
+ * What a resend did: the API took it (it mails a waiting registration a new code, unless one went
+ * out in the last minute or the mail fails, which keeps the code from before), or it didn't (the
+ * day's registration mail used up, a rate limit, the server or the network), so nothing changed.
  */
-export type ResendOutcome = "sent" | "lost" | "failed";
+export type ResendOutcome = "sent" | "failed";
 
 /** A refusal about one of the register form's fields, to show under it. */
 export interface FormProblem {
@@ -53,7 +53,10 @@ export interface FormProblem {
 export type CodeNotice =
   /** The register form just had it mailed. */
   | "sent"
-  /** A resend the API accepted: it mailed a new code only if a registration was waiting. */
+  /**
+   * A resend the API took: whether or not a registration waits, and whether a new code went out or
+   * the one before stands, only the latest code to arrive works.
+   */
   | "resent"
   /** The user already has one, e.g. after a reload; nothing was sent. */
   | "earlier"
@@ -61,8 +64,11 @@ export type CodeNotice =
   | "recent"
   /** Back from fixing the form: nothing was sent, and the code typed before is kept. */
   | "kept"
-  /** A resend replaced the code but couldn't mail the new one. */
-  | "lost";
+  /**
+   * A resend the API turned away with its 503 (the day's registration mail is used up): it made no
+   * new code, so the one sent before still works.
+   */
+  | "unsent";
 
 /**
  * The register form's second step (vb2007/vb2007.hu-api#28): the code mailed after
@@ -216,8 +222,8 @@ export const useRegisterCode = () => {
   };
 
   /**
-   * Asks for a new code, which replaces the old one if a registration is waiting. Returns what
-   * became of the old code.
+   * Asks for a new code, which replaces the old one if a registration is waiting and its last code
+   * is over a minute old. Returns whether the API took the resend.
    */
   const resend = async (): Promise<ResendOutcome> => {
     isResending.value = true;
@@ -230,23 +236,21 @@ export const useRegisterCode = () => {
 
     let outcome: ResendOutcome = "failed";
     if (result.ok) {
+      // The same 200 whatever happened, so the minute starts after every one, as after registering.
       notice.value = "resent";
       outcome = "sent";
       holdResend(RESEND_COOLDOWN_SECONDS);
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // The cooldown's own message names its seconds, which would freeze next to the countdown;
-      // a rate limiter's (e.g. too many e-mails) only says to try later, which the key times.
-      const message =
-        codeCooldownOf(result) === undefined ? result.error : Messages.EmailCode.cooldown;
-      // The cooldown or a rate limiter: either way the key counts down the API's retryAfter.
-      holdResend(retryAfterFrom(result.body), message);
-      showError(message, true);
+      // A rate limiter (e.g. too many e-mails) only says to try later, which the key times.
+      holdResend(retryAfterFrom(result.body), result.error);
+      showError(result.error, true);
     } else {
       showError(result.error);
       if (result.status === HttpStatus.ServiceUnavailable) {
-        // The API replaced the code before the e-mail failed, so the old one is gone too.
-        notice.value = "lost";
-        outcome = "lost";
+        // The day's registration mail is used up: the API made no new code, so the one before
+        // still works. Its 503 names no wait, and the budget also starts over when the API
+        // restarts, so the key isn't held.
+        notice.value = "unsent";
       }
     }
     isResending.value = false;

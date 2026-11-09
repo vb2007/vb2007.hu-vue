@@ -177,11 +177,13 @@ const notices = (name: string): Record<CodeNotice, [string, string, string]> => 
       ".",
       `Enter it to register as ${name}; it works for ${minutes} minutes.`
     ],
-    // The API answers a resend the same whether or not a registration is waiting for the address.
+    // The API answers a resend the same whether or not a registration is waiting for the address,
+    // and whether it mailed a new code, sent nothing inside the minute or kept the code from before
+    // after a failed mail: in every case the latest code to arrive is the one that works.
     resent: [
       "If a registration is waiting for",
       ",",
-      "a new code is on its way, and the one before no longer works."
+      `a code went to it. Only the latest one to arrive works: enter it to register as ${name}.`
     ],
     earlier: [
       "Enter the code that was mailed to",
@@ -198,10 +200,11 @@ const notices = (name: string): Record<CodeNotice, [string, string, string]> => 
       "",
       `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
     ],
-    lost: [
-      "A new code couldn't be mailed to",
-      ",",
-      "and the one before no longer works. Send a new one below."
+    // The error above the key says the e-mail couldn't be sent; this says what still works.
+    unsent: [
+      "Your earlier code for",
+      "",
+      `still works for up to ${minutes} minutes after it was sent: enter it to register as ${name}.`
     ]
   };
 };
@@ -372,12 +375,14 @@ const handleCode = async () => {
 
 const sendAgain = async () => {
   // Decided by this resend's own outcome: the notice can still be an earlier resend's.
-  if ((await resend()) !== "failed") {
-    // A new code replaced the one typed before, even when it couldn't be mailed: confirming the
-    // old one would only spend a try.
+  if ((await resend()) === "sent") {
+    // The page holds the key for a minute after each code it saw go out, so the API most likely
+    // mailed a new one, which replaced the code typed before: confirming that would spend a try.
     codeKeptFor.value = code.value = "";
     resetCode();
   }
+  // Otherwise (the day's mail used up, a rate limit, the server or the network) no code changed,
+  // so the typed one stays, and so does a kept code's "Continue".
   // The key is disabled now, which drops focus; the code is what comes next anyway.
   await focusStep();
 };

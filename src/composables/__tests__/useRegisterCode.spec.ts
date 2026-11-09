@@ -104,16 +104,6 @@ describe("useRegisterCode", () => {
   it.each([
     ["a resend, without a note", 200, {}, 60, {}],
     [
-      "the cooldown's 429, with its own message",
-      429,
-      {
-        error: "A code was sent just now: wait 42 seconds before requesting another one.",
-        retryAfter: 42
-      },
-      42,
-      { note: Messages.EmailCode.cooldown }
-    ],
-    [
       "a rate limiter's 429, with its message",
       429,
       { error: "Too many e-mails requested: try again later.", retryAfter: 3412 },
@@ -423,7 +413,7 @@ describe("useRegisterCode", () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(200, {
           message:
-            "If a registration is waiting for this address, a new confirmation code was sent to it."
+            "If a registration is waiting for this address, a confirmation code was sent to it in the last minute or just now: use the latest one."
         })
       );
       const step = openStep();
@@ -443,29 +433,6 @@ describe("useRegisterCode", () => {
       expect(step.codeError.value).toBe("");
       expect(step.cooldown.remaining.value).toBe(60);
       expect(step.isResending.value).toBe(false);
-    });
-
-    it("waits as long as the cooldown's 429 says, without a frozen number", async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, {
-          error: "A code was sent just now: wait 42 seconds before requesting another one.",
-          retryAfter: 42
-        })
-      );
-      const step = openStep();
-      step.cooldown.stop();
-
-      expect(await step.resend()).toBe("failed");
-
-      expect(step.codeError.value).toBe(
-        "A code was sent just now. You can send another once the countdown ends."
-      );
-      expect(step.cooldown.remaining.value).toBe(42);
-      expect(step.notice.value).toBe("sent");
-
-      vi.advanceTimersByTime(42_000);
-      await nextTick();
-      expect(step.codeError.value).toBe("");
     });
 
     it("shows a rate limiter's 429 as the API says it, and waits its retryAfter", async () => {
@@ -514,19 +481,45 @@ describe("useRegisterCode", () => {
       expect(step.codeFieldError.value).toBe(invalidCode);
     });
 
-    it("says the old code is gone too when the new one couldn't be mailed", async () => {
+    it("keeps the code from before when the day's registration mail is used up", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
       );
       const step = openStep();
-      step.cooldown.stop();
+      vi.advanceTimersByTime(60_000);
 
-      expect(await step.resend()).toBe("lost");
+      expect(await step.resend()).toBe("failed");
 
       expect(step.codeError.value).toBe("The e-mail couldn't be sent: please try again later.");
-      expect(step.notice.value).toBe("lost");
+      expect(step.notice.value).toBe("unsent");
+      // The 503 names no wait and nothing went out, so the key isn't held, nor after a reload.
       expect(step.resendWaiting.value).toBe(false);
+      const { api: reloaded } = mountComposable(useRegisterCode);
+      reloaded.open("me@example.com", "earlier");
+      expect(reloaded.resendWaiting.value).toBe(false);
       expect(console.error).toHaveBeenCalledWith("Failed to send a new code: ", 503);
+    });
+
+    it("starts the minute again after every resend the API takes, also for a reload", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, {}))
+        .mockResolvedValueOnce(jsonResponse(200, {}));
+      const step = openStep();
+      vi.advanceTimersByTime(60_000);
+
+      for (const resendCount of [1, 2]) {
+        expect(step.resendWaiting.value).toBe(false);
+        expect(await step.resend()).toBe("sent");
+        expect(step.cooldown.remaining.value).toBe(60);
+
+        vi.advanceTimersByTime(10_000);
+        const { api: reloaded } = mountComposable(useRegisterCode);
+        reloaded.open("me@example.com", "earlier");
+        expect(reloaded.resendWaiting.value).toBe(true);
+        expect(reloaded.cooldown.remaining.value).toBe(50);
+        vi.advanceTimersByTime(50_000);
+        expect(fetchMock).toHaveBeenCalledTimes(resendCount);
+      }
     });
 
     it.each([
