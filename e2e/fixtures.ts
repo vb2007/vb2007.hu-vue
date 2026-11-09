@@ -65,6 +65,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
  * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
  * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
+ * `GET /auth/username-available`, registering, confirming the code and `PATCH /admin/users/:id` answer 400 first for a name the API's rule refuses (`usernameRefusal`).
  * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
@@ -348,6 +349,37 @@ const domainError = (email: string) => {
   }
   if (isOn(UNDELIVERABLE_DOMAINS)) {
     return "This e-mail address's domain can't receive e-mail: check it for typos.";
+  }
+};
+
+/** What the API asks of a required body field: a string, not an empty one. */
+const isFilledString = (value: unknown): value is string => typeof value === "string" && !!value;
+
+const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
+
+/**
+ * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
+ * the trimmed name: over 16 UTF-16 units, then invisible, control or collation-ignored characters
+ * and whitespace other than spaces (U+FE0E/U+FE0F pass after an emoji), then fewer than 2
+ * characters other than combining marks.
+ */
+const usernameRefusal = (username: string): MockResponse | undefined => {
+  const refuse = (error: string) => ({ status: 400, body: { error } });
+  const name = username.trim();
+  if (name.length > 16) {
+    return refuse("The username's too long: it must be between 2 and 16 characters.");
+  }
+  const checked = name.replace(/(?<=\p{Emoji})[\ufe0e\ufe0f]/gu, "");
+  if (
+    /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u.test(checked) ||
+    [...checked].some((character) => USERNAME_COLLATOR.compare(character, "") === 0)
+  ) {
+    return refuse(
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces."
+    );
+  }
+  if ([...name.replace(/\p{M}/gu, "")].length < 2) {
+    return refuse("The username's too short: it must be between 2 and 16 characters.");
   }
 };
 
@@ -1231,6 +1263,8 @@ export class MockApi {
       case "GET /auth/username-available": {
         this.usernameChecks++;
         if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
+        const refused = usernameRefusal(query.get("username") ?? "");
+        if (refused) return refused;
         const taken = this.isUsernameTaken(query.get("username") ?? "");
         return { status: 200, body: { available: !taken } };
       }
@@ -1387,6 +1421,20 @@ export class MockApi {
    * has an account gets the same answers, so registering doesn't reveal it.
    */
   private register(body: { email?: string; username?: string; password?: string } | null) {
+    // Like the API, three non-empty strings first: JSON can send anything.
+    const username = body?.username;
+    if (
+      !isFilledString(body?.email) ||
+      !isFilledString(username) ||
+      !isFilledString(body?.password)
+    ) {
+      return {
+        status: 400,
+        body: { error: "You must provide a username, E-mail address, and a password." }
+      };
+    }
+    const refused = usernameRefusal(username);
+    if (refused) return refused;
     if (this.isUsernameTaken(body?.username)) {
       return { status: 409, body: { error: "This username is already taken." } };
     }
@@ -1530,7 +1578,13 @@ export class MockApi {
     body: { email?: string; code?: string; username?: string; password?: string } | null
   ): MockResponse {
     const { code, username, password } = body ?? {};
-    if (!body?.email || !code || !username || !password) {
+    // Like the API, four non-empty strings: JSON can send anything.
+    if (
+      !isFilledString(body?.email) ||
+      !isFilledString(code) ||
+      !isFilledString(username) ||
+      !isFilledString(password)
+    ) {
       return {
         status: 400,
         body: {
@@ -1539,14 +1593,8 @@ export class MockApi {
         }
       };
     }
-    const nameLength = username.trim().length;
-    if (nameLength < 2 || nameLength > 16) {
-      const which = nameLength < 2 ? "short" : "long";
-      return {
-        status: 400,
-        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
-      };
-    }
+    const refused = usernameRefusal(username);
+    if (refused) return refused;
     if (password.length < 8 || password.length > 128) {
       const which = password.length < 8 ? "short" : "long";
       return {
@@ -2205,14 +2253,9 @@ export class MockApi {
     if (typeof username !== "string" || !username) {
       return { status: 400, body: { error: "You must provide a username." } };
     }
+    const refused = usernameRefusal(username);
+    if (refused) return refused;
     const name = username.trim();
-    if (name.length < 2 || name.length > 16) {
-      const which = name.length < 2 ? "short" : "long";
-      return {
-        status: 400,
-        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
-      };
-    }
     const account = this.accountOf(target);
     const taken = [...this.users, ...this.accounts].some(
       (other) =>

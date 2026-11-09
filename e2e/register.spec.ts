@@ -582,6 +582,79 @@ test("the name of an account nobody is logged in to is taken too", async ({ page
   await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
 });
 
+const USERNAME_INVALID =
+  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+
+test("a username with an invisible character or a tab is refused while it's typed, without asking the API", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const registerKey = page.getByRole("button", { name: "Register", exact: true });
+
+  for (const name of ["anna\u200bb", "anna\tb"]) {
+    await username.fill(name);
+    await page.clock.runFor(500);
+    await expect(username).toHaveAccessibleDescription(USERNAME_INVALID);
+    await expect(registerKey).toHaveAttribute("aria-disabled", "true");
+  }
+  expect(api.usernameChecks).toBe(0);
+
+  // Spaces, and whitespace at the ends, which is trimmed, are fine.
+  await username.fill("\tanna b ");
+  await page.clock.runFor(500);
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+  await expect.poll(() => api.usernameChecks).toBe(1);
+});
+
+test("the double refuses a username with an invisible character like the API", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  const refused = { status: 400, body: { error: USERNAME_INVALID } };
+  const name = "anna\u200b";
+
+  const available = await page.evaluate(
+    async (url) => (await fetch(url)).status,
+    `${api.apiOrigin}/auth/username-available?username=${encodeURIComponent(name)}`
+  );
+  expect(available).toBe(400);
+  expect(
+    await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: name })
+  ).toEqual(refused);
+  expect(
+    await callApi(page, api, "POST", "/auth/register/verify", {
+      ...REGISTRATION,
+      username: name,
+      code: REGISTRATION_CODE
+    })
+  ).toEqual(refused);
+
+  // A username that isn't a string is a missing one, like the API's.
+  expect(
+    await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: 42 })
+  ).toEqual({
+    status: 400,
+    body: { error: "You must provide a username, E-mail address, and a password." }
+  });
+  expect(
+    await callApi(page, api, "POST", "/auth/register/verify", {
+      ...REGISTRATION,
+      username: 42,
+      code: REGISTRATION_CODE
+    })
+  ).toEqual({
+    status: 400,
+    body: {
+      error: "You must provide an E-mail address, the confirmation code, a username and a password."
+    }
+  });
+});
+
 // The double's mail failures, checked through the page's own calls: the form can't wait out the API's
 // minute between a registration and its failed re-registration, but the double's clock can.
 

@@ -12,7 +12,10 @@ export class Limits {
     static readonly previewLength: number = 100;
   };
 
-  /** Counted after trimming. */
+  /**
+   * Counted after trimming: the maximum in UTF-16 units (JS `.length`), the minimum in characters
+   * (code points) other than combining marks (`\p{M}`), like the API's `usernameFormatError`.
+   */
   static readonly Username = class {
     static readonly minLength: number = 2;
     static readonly maxLength: number = 16;
