@@ -722,6 +722,51 @@ for (const [status, address, error] of [
   });
 }
 
+test("the superuser's address can't be changed, without being arranged as the superuser", async ({
+  page,
+  api
+}) => {
+  // The API knows the superuser by SUPERUSER_EMAIL alone.
+  api.loggedInAs(MOCK_SUPERUSER_EMAIL, "admin");
+  await page.goto("/account");
+
+  const change = await callApi(page, api, "PATCH", "/user/email", {
+    email: "new@example.com",
+    password: MOCK_PASSWORD
+  });
+  expect(change).toEqual({
+    status: 403,
+    body: {
+      error:
+        "The superuser's e-mail address can't be changed here: change SUPERUSER_EMAIL in .env instead."
+    }
+  });
+});
+
+test("the confirm reserves the one superuser address, wherever it's arranged", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  // The superuser's address is vb2007's, so the default one is an ordinary address nobody uses.
+  api.hasUser("vb2007", { superuser: true });
+  await page.goto("/account");
+  const change = (email: string) =>
+    callApi(page, api, "PATCH", "/user/email", { email, password: MOCK_PASSWORD });
+  const confirm = () =>
+    callApi(page, api, "POST", "/user/email/confirm", { code: MOCK_EMAIL_CODE });
+
+  expect((await change("vb2007@example.com")).status).toBe(202);
+  expect.soft(await confirm()).toEqual({
+    status: 403,
+    body: { error: "This e-mail address is reserved for the superuser." }
+  });
+
+  api.clockRunsFor(60_000);
+  expect((await change(MOCK_SUPERUSER_EMAIL)).status).toBe(202);
+  expect((await confirm()).status).toBe(200);
+});
+
 test("the address of an account nobody is logged in to is refused at confirm too", async ({
   page,
   api
