@@ -14,3 +14,9 @@ export class RegisterStatus {
   /** Failed without the API's message: offline, or an error without one. */
   static readonly Error = "error";
 }
+
+/** The auth pages' paths, for links between them (the router's own routes spell them out). */
+export class AuthPaths {
+  static readonly Login = "/login";
+  static readonly ResetPassword = "/reset-password";
+}

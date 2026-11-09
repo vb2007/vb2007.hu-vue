@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises } from "@vue/test-utils";
+import { flushPromises, type VueWrapper } from "@vue/test-utils";
+import { RouterLink } from "vue-router";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
+import { AuthPaths } from "@/constants/auth";
 import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
@@ -66,7 +68,8 @@ describe("LoginForm", () => {
     const key = wrapper.find('button[type="submit"]');
     expect(key.attributes("aria-disabled")).toBe("true");
 
-    await email.setValue("me");
+    await email.setValue("x");
+    await email.setValue("");
     await email.trigger("blur");
     await password.setValue("x");
     await password.setValue("");
@@ -77,11 +80,24 @@ describe("LoginForm", () => {
       "Enter your password."
     ]);
 
-    // An address from before today's rules still gets in.
-    await email.setValue("old@localhost");
+    // The API takes any address, and some of its stored ones aren't ones it would register today.
+    await email.setValue("a@b@example.com");
     await password.setValue("secret");
     expect(wrapper.find(".field__error").exists()).toBe(false);
     expect(key.attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("sends any address and leaves what it makes of it to the API", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    await email.setValue("a@b@example.com");
+    await password.setValue("secret");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(login).toHaveBeenCalledWith("a@b@example.com", "secret");
   });
 
   it("shows what's missing instead of logging in, and flashes the key", async () => {
@@ -539,6 +555,74 @@ describe("LoginForm", () => {
 
       expect(wrapper.find('[role="alert"]').text()).toBe(REFUSED);
       expect(document.activeElement).toBe(password.element);
+    });
+  });
+
+  describe("opened with an address", () => {
+    afterEach(() => {
+      window.history.replaceState(null, "");
+    });
+
+    it("fills it in without flagging it, and puts the cursor in the password", async () => {
+      window.history.replaceState({ prefillEmail: " me@example.com " }, "");
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      const [email, password] = wrapper.findAll("input");
+
+      expect((email.element as HTMLInputElement).value).toBe("me@example.com");
+      expect(document.activeElement).toBe(password.element);
+      await email.trigger("blur");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
+      expect(wrapper.find('button[type="submit"]').attributes("aria-disabled")).toBe("true");
+
+      await password.setValue("secret");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(login).toHaveBeenCalledWith("me@example.com", "secret");
+    });
+
+    it.each([
+      ["no state", null],
+      ["a state of something else", { uploadsOwner: "anna" }],
+      ["a number", { prefillEmail: 7 }],
+      ["an empty address", { prefillEmail: " " }]
+    ])("starts empty, with the cursor left alone, for %s", async (_, state) => {
+      window.history.replaceState(state, "");
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+
+      expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("");
+      expect(document.activeElement).not.toBe(wrapper.find("input[type=password]").element);
+    });
+  });
+
+  describe("Forgot password?", () => {
+    const forgot = (wrapper: VueWrapper) =>
+      wrapper.findAllComponents(RouterLink).find((link) => link.classes("forgot"))!;
+
+    it("opens Reset password, carrying the typed address as it is", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm);
+
+      await wrapper.find("input").setValue(" ann@exampl ");
+
+      expect(forgot(wrapper).props("to")).toEqual({
+        path: AuthPaths.ResetPassword,
+        state: { prefillEmail: "ann@exampl" }
+      });
+      await wrapper.find("input").setValue("anna@example.com");
+      expect(forgot(wrapper).props("to")).toEqual({
+        path: AuthPaths.ResetPassword,
+        state: { prefillEmail: "anna@example.com" }
+      });
+    });
+
+    it("carries nothing while the field is empty", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm);
+
+      expect(forgot(wrapper).props("to")).toEqual({
+        path: AuthPaths.ResetPassword,
+        state: undefined
+      });
+      expect(forgot(wrapper).attributes("href")).toBe("/reset-password");
     });
   });
 

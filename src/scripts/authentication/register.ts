@@ -74,11 +74,11 @@ export const emailError = (email: string) => {
 };
 
 /**
- * Only the shape of an address (something@something), for logging in and resetting a password: an
- * account made before today's address rules still gets in.
+ * Only an empty address, for logging in and resetting a password: the API takes any other (it
+ * stored some with two @ before it checked the format), so what it makes of it is its answer.
  */
-export const emailShapeError = (email: string) =>
-  /^[^\s@]+@[^\s@]+$/.test(email.trim()) ? "" : Messages.Auth.invalidEmail;
+export const emailMissingError = (email: string) =>
+  email.trim() ? "" : Messages.Auth.invalidEmail;
 
 export const usernameError = (username: string) => usernameLengthError(username) ?? "";
 

@@ -111,6 +111,40 @@ describe("PasswordResetForm", () => {
     expect(wrapper.find('a[href="/login"]').text()).toBe("Log in");
   });
 
+  describe("opened with an address", () => {
+    afterEach(() => {
+      window.history.replaceState(null, "");
+    });
+
+    it("fills it in, and sends the code to it", async () => {
+      window.history.replaceState({ prefillEmail: " me@example.com " }, "");
+      vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+      const { wrapper } = await mountWithRouter(PasswordResetForm);
+
+      expect((emailInput(wrapper).element as HTMLInputElement).value).toBe("me@example.com");
+      // Untouched, so nothing is flagged on it.
+      await emailInput(wrapper).trigger("blur");
+      expect(wrapper.find(".field__error").exists()).toBe(false);
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(requestPasswordReset).toHaveBeenCalledWith("me@example.com");
+    });
+
+    it.each([
+      ["no state", null],
+      ["a state of something else", { uploadsOwner: "anna" }],
+      ["a number", { prefillEmail: 7 }],
+      ["an empty address", { prefillEmail: " " }]
+    ])("starts empty for %s", async (_, state) => {
+      window.history.replaceState(state, "");
+      const { wrapper } = await mountWithRouter(PasswordResetForm);
+
+      expect((emailInput(wrapper).element as HTMLInputElement).value).toBe("");
+    });
+  });
+
   it("sends the code, showing progress meanwhile", async () => {
     const { answer, settle } = pendingAnswer();
     vi.mocked(requestPasswordReset).mockReturnValueOnce(answer);
@@ -127,6 +161,18 @@ describe("PasswordResetForm", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
+  });
+
+  it("sends any address and leaves what it makes of it to the API", async () => {
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+    const { wrapper } = await mountWithRouter(PasswordResetForm);
+    await emailInput(wrapper).setValue("a@b@example.com");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(requestPasswordReset).toHaveBeenCalledWith("a@b@example.com");
   });
 
   it("moves to the code step, naming the address and focusing the code, described by the message", async () => {
@@ -564,11 +610,11 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).text()).toBe("Send again");
   });
 
-  it("asks for a valid address before entering a code", async () => {
+  it("asks for an address before entering a code", async () => {
     const { wrapper } = await mountWithRouter(PasswordResetForm);
 
     await enterCodeButton(wrapper).trigger("click");
-    await emailInput(wrapper).setValue("not an address");
+    await emailInput(wrapper).setValue("   ");
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
 
@@ -592,7 +638,8 @@ describe("PasswordResetForm", () => {
 
   it("checks each field once it's left", async () => {
     const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
-    await emailInput(wrapper).setValue("me");
+    await emailInput(wrapper).setValue("x");
+    await emailInput(wrapper).setValue("");
     await emailInput(wrapper).trigger("blur");
     expect(wrapper.find(".field__error").text()).toBe("Enter a valid e-mail address.");
     wrapper.unmount();

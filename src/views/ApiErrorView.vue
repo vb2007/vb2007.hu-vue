@@ -35,7 +35,9 @@ const address = computed(() => {
   <NotFoundPage title="API route not found">
     <p v-if="address">
       The API has no route at
-      <code class="path"><span class="host">{{ host }}</span>{{ address }}</code
+      <code class="path"
+        ><span class="host">{{ host }}</span
+        >{{ address }}</code
       >. The link may be old or mistyped.
     </p>
     <p v-else>The API has no route at the address you opened. The link may be old or mistyped.</p>

@@ -45,6 +45,28 @@ describe("BaseInput", () => {
     expect(input.classes()).toContain("field__input--mono");
   });
 
+  it("lets the error slot replace the error text, under the same id", () => {
+    const wrapper = mount(BaseInput, {
+      props: { label: "E-mail", error: "Taken. Log in." },
+      slots: { error: 'Taken. <a href="/login">Log in</a>.' }
+    });
+    const error = wrapper.find(".field__error");
+
+    expect(error.text()).toBe("Taken. Log in.");
+    expect(error.find("a").attributes("href")).toBe("/login");
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe(error.attributes("id"));
+  });
+
+  it("shows no error, slot or not, while the field has none", () => {
+    const wrapper = mount(BaseInput, {
+      props: { label: "E-mail" },
+      slots: { error: "Taken." }
+    });
+
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Taken.");
+  });
+
   it("describes the input with its hint and error", () => {
     const wrapper = mount(BaseInput, {
       props: { label: "URL", hint: "Include https://", error: "Invalid URL" }

@@ -1,9 +1,9 @@
 name: PR Tests
 
 # Runs on every PR into main or dev, and on demand from the Actions tab
-# (workflow_dispatch: pick any branch under "Run workflow"). Six stages feed a
+# (workflow_dispatch: pick any branch under "Run workflow"). Seven stages feed a
 # shared JUnit -> HTML/ODS report pipeline, aggregated and published by two
-# further jobs. typecheck, lint, build and unit-tests have no interdependency
+# further jobs. typecheck, lint, format, build and unit-tests have no interdependency
 # between them, so they run in parallel across the self-hosted runners. Every
 # job runs only on the runners labelled `pr-worker`, never on the production
 # host (`prod`, which only releases). Those runners share one 4-core host with
@@ -170,7 +170,75 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Stage 3: production build (`vite build`). The resulting dist/ is handed to
+  # Stage 3: format (`prettier --check` without --write - CI reports, it never rewrites).
+  # eslint-config-prettier only switches clashing lint rules off, so lint can't see drift
+  # ---------------------------------------------------------------------------
+  format:
+    name: Format
+    runs-on: [self-hosted, Linux, X64, pr-worker]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Format
+        id: format
+        run: |
+          SECONDS=0
+          set +e
+          npm run format:check > "$RUNNER_TEMP/format.log" 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+          set -e
+          cat "$RUNNER_TEMP/format.log"
+
+      # Same hand-written single-case report as the typecheck stage above.
+      - name: Write JUnit report
+        if: always()
+        run: |
+          mkdir -p reports
+          status="${{ steps.format.outputs.exit_code }}"
+          duration="${{ steps.format.outputs.duration }}"
+          failure=""
+          failures=0
+          if [ "$status" != "0" ]; then
+            failures=1
+            failure="<failure message=\"prettier exited with code ${status:-skipped}\">See the Format step log</failure>"
+          fi
+          cat > reports/junit-format-${{ github.run_number }}.xml <<XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <testsuites name="format" tests="1" failures="${failures}" time="${duration:-0}">
+            <testsuite name="format" tests="1" failures="${failures}" time="${duration:-0}">
+              <testcase classname="format" name="prettier --check" time="${duration:-0}">${failure}</testcase>
+            </testsuite>
+          </testsuites>
+          XML
+          cat reports/junit-format-${{ github.run_number }}.xml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: reports/junit-format-${{ github.run_number }}.xml
+          archive: false
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail job if format failed
+        if: always()
+        run: |
+          if [ "${{ steps.format.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Format failed - see the step log above"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 4: production build (`vite build`). The resulting dist/ is handed to
   # the e2e stage, so e2e exercises the same bundle that was just verified.
   # ---------------------------------------------------------------------------
   build:
@@ -253,7 +321,7 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Stage 4: unit/component tests (Vitest + jsdom, no server involved) and the
+  # Stage 5: unit/component tests (Vitest + jsdom, no server involved) and the
   # 100% coverage gate from vitest.config.ts. Coverage is reported as its own
   # "coverage" stage via coverage-junit.mjs.
   # ---------------------------------------------------------------------------
@@ -329,7 +397,7 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Stage 5: e2e (Playwright, real Chromium) against the build stage's dist/,
+  # Stage 6: e2e (Playwright, real Chromium) against the build stage's dist/,
   # served by `vite preview`. The API is fully mocked in the browser via route
   # interception (e2e/fixtures.ts) - no live server is ever contacted.
   # ---------------------------------------------------------------------------
@@ -429,7 +497,7 @@ jobs:
   # ---------------------------------------------------------------------------
   reports:
     name: Aggregate reports
-    needs: [typecheck, lint, build, unit-tests, e2e]
+    needs: [typecheck, lint, format, build, unit-tests, e2e]
     if: always()
     runs-on: [self-hosted, Linux, X64, pr-worker]
     steps:

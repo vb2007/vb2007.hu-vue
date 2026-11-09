@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
+import { RouterLink } from "vue-router";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
+import { AuthPaths } from "@/constants/auth";
+import { Messages } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
   checkUsername,
@@ -717,7 +720,7 @@ describe("RegisterForm", () => {
         409,
         "An account with this E-mail address already exists.",
         FIELDS.email,
-        "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page.",
+        "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password.",
         "Register"
       ],
       [
@@ -984,6 +987,75 @@ describe("RegisterForm", () => {
       expect(wrapper.find('[role="status"]').text()).toContain("Enter the code that was mailed to");
       expect(wrapper.find("input").element.value).toBe("");
       expect(register).toHaveBeenCalledTimes(1);
+    });
+
+    describe("when the address has an account", () => {
+      const accountExists = async (email = "me@example.com") => {
+        fetchMock.mockResolvedValueOnce(
+          jsonResponse(409, { error: "An account with this E-mail address already exists." })
+        );
+        vi.mocked(register).mockResolvedValueOnce({ sent: true });
+        const wrapper = await mountForm();
+        await fill(wrapper, { email });
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+        await confirm(wrapper);
+        return wrapper;
+      };
+      const linksIn = (wrapper: Wrapper) =>
+        wrapper.findAllComponents(RouterLink).filter((link) => link.element.closest(".field"));
+
+      it("links the message to Log in and Reset password, carrying the typed address", async () => {
+        const wrapper = await accountExists(" me@example.com ");
+
+        const links = linksIn(wrapper);
+        expect(links.map((link) => link.text())).toEqual([
+          Messages.Auth.accountExistsLogIn,
+          Messages.Auth.accountExistsReset
+        ]);
+        expect(links.map((link) => link.props("to"))).toEqual([
+          { path: AuthPaths.Login, state: { prefillEmail: "me@example.com" } },
+          { path: AuthPaths.ResetPassword, state: { prefillEmail: "me@example.com" } }
+        ]);
+        // One sentence for the screen reader too, with the links' words in it.
+        expect(errorUnder(wrapper, FIELDS.email)?.replace(/\s+/g, " ").trim()).toBe(
+          Messages.Auth.accountExists
+        );
+        expect(descriptionOf(wrapper.find(FIELDS.email))).toBe(Messages.Auth.accountExists);
+      });
+
+      it("takes the links away with the message once the address is edited", async () => {
+        const wrapper = await accountExists();
+
+        await wrapper.find(FIELDS.email).setValue("other@example.com");
+
+        expect(linksIn(wrapper)).toHaveLength(0);
+        expect(errorUnder(wrapper, FIELDS.email)).toBeUndefined();
+      });
+
+      it("keeps the links while another field is edited", async () => {
+        const wrapper = await accountExists();
+
+        await wrapper.find(FIELDS.username).setValue("vb2");
+
+        expect(linksIn(wrapper)).toHaveLength(2);
+      });
+
+      it("adds no links to any other error", async () => {
+        fetchMock.mockResolvedValueOnce(
+          jsonResponse(409, { error: "This username is already taken." })
+        );
+        const wrapper = await atCodeStep();
+        await confirm(wrapper);
+
+        expect(errorUnder(wrapper, FIELDS.username)).toBe(Messages.Auth.usernameTakenMeanwhile(15));
+        expect(linksIn(wrapper)).toHaveLength(0);
+
+        await wrapper.find(FIELDS.email).setValue("me");
+        await wrapper.find(FIELDS.email).trigger("blur");
+        expect(errorUnder(wrapper, FIELDS.email)).toBeTruthy();
+        expect(linksIn(wrapper)).toHaveLength(0);
+      });
     });
 
     it("keeps a conflict that names no field on the step", async () => {

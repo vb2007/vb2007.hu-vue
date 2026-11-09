@@ -328,8 +328,7 @@ describe("useRegisterCode", () => {
         "account-exists",
         {
           field: "email",
-          message:
-            "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
+          message: Messages.Auth.accountExists
         }
       ],
       [
