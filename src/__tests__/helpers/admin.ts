@@ -24,6 +24,7 @@ export const aMailBudget = (overrides: Partial<MailBudgetResponse> = {}): MailBu
   dailyLimit: 250,
   warningAt: 200,
   registrationStopsAt: 200,
+  passwordResetStopsAt: 225,
   resetsAt: "2026-11-07T00:00:00.000Z",
   ...overrides
 });

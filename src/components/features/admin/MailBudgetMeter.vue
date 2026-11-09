@@ -11,11 +11,23 @@ const props = defineProps<{ budget: MailBudgetResponse }>();
 /** What each stop means, as the API's mail helper does it. */
 const STOP_LABELS: Record<MailStopKind, string> = {
   registration: "Sign-up codes stop",
+  passwordReset: "Password reset codes stop",
   warning: "The API logs a warning",
   limit: "All mail stops"
 };
 
 const line = computed(() => mailLine(props.budget));
+/** Mails until the next kind of code stops, on the scale's left until both have. */
+const untilNext = computed(() => {
+  const { untilRegistrationStops, untilPasswordResetStops } = line.value;
+  if (untilRegistrationStops !== null) {
+    return `${untilRegistrationStops.toLocaleString()} until sign-up codes stop`;
+  }
+  if (untilPasswordResetStops !== null) {
+    return `${untilPasswordResetStops.toLocaleString()} until password reset codes stop`;
+  }
+  return "";
+});
 const sent = computed(() => props.budget.sentToday.toLocaleString());
 const limit = computed(() => props.budget.dailyLimit.toLocaleString());
 const resetsAt = computed(() => formatTime(props.budget.resetsAt));
@@ -55,11 +67,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
       <span class="mail__end mail__end--to" aria-hidden="true" />
     </div>
     <p class="mail__scale">
-      <span>{{
-        line.untilRegistrationStops === null
-          ? ""
-          : `${line.untilRegistrationStops.toLocaleString()} until sign-up codes stop`
-      }}</span>
+      <span>{{ untilNext }}</span>
       <span>{{ line.left.toLocaleString() }} left</span>
     </p>
 
@@ -82,8 +90,11 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
     <StatusMessage v-if="line.isFull" tone="error">
       {{ Messages.Admin.mailLimitReached(resetsAt) }}
     </StatusMessage>
+    <StatusMessage v-else-if="line.passwordResetStopped" tone="info">
+      {{ Messages.Admin.passwordResetMailStopped(budget.dailyLimit) }}
+    </StatusMessage>
     <StatusMessage v-else-if="line.registrationStopped" tone="info">
-      {{ Messages.Admin.registrationMailStopped(budget.dailyLimit) }}
+      {{ Messages.Admin.registrationMailStopped(budget.passwordResetStopsAt, budget.dailyLimit) }}
     </StatusMessage>
 
     <p class="mail__note">
@@ -238,6 +249,11 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
   font-weight: 600;
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+/* On a narrow rail the stop's side wraps, never "38 left". */
+.mail__scale span:last-child {
+  flex: none;
 }
 
 /* The stops in words: the line's text equivalent, in the order they come along it. */

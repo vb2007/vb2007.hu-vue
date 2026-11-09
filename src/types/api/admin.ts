@@ -237,6 +237,11 @@ export interface MailBudgetResponse {
   warningAt: number;
   /** From it, registration codes and their resends are refused; mail to existing accounts goes on. */
   registrationStopsAt: number;
+  /**
+   * From it, password reset codes are refused too (vb2007/vb2007.hu-api#322); e-mail change codes
+   * and the notices go on. It's the limit less a tenth, after `registrationStopsAt`.
+   */
+  passwordResetStopsAt: number;
   /** The next UTC midnight, when `sentToday` starts again from 0. */
   resetsAt: string;
 }
