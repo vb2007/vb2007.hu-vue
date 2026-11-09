@@ -66,7 +66,8 @@ describe("LoginForm", () => {
     const key = wrapper.find('button[type="submit"]');
     expect(key.attributes("aria-disabled")).toBe("true");
 
-    await email.setValue("me");
+    await email.setValue("x");
+    await email.setValue("");
     await email.trigger("blur");
     await password.setValue("x");
     await password.setValue("");
@@ -77,11 +78,24 @@ describe("LoginForm", () => {
       "Enter your password."
     ]);
 
-    // An address from before today's rules still gets in.
-    await email.setValue("old@localhost");
+    // The API takes any address, and some of its stored ones aren't ones it would register today.
+    await email.setValue("a@b@example.com");
     await password.setValue("secret");
     expect(wrapper.find(".field__error").exists()).toBe(false);
     expect(key.attributes("aria-disabled")).toBeUndefined();
+  });
+
+  it("sends any address and leaves what it makes of it to the API", async () => {
+    const { wrapper } = await mountWithRouter(LoginForm);
+    const [email, password] = wrapper.findAll("input");
+    await email.setValue("a@b@example.com");
+    await password.setValue("secret");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(login).toHaveBeenCalledWith("a@b@example.com", "secret");
   });
 
   it("shows what's missing instead of logging in, and flashes the key", async () => {

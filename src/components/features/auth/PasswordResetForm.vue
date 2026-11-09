@@ -18,7 +18,7 @@ import {
 import {
   confirmationCodeEarlyError,
   confirmationCodeError,
-  emailShapeError,
+  emailMissingError,
   normalizeEmail,
   passwordEarlyError,
   passwordError
@@ -110,7 +110,7 @@ const emailFailure = computed(() => sendHold.shown());
 const codeFailure = computed(() => resetHold.shown(resetHeldId.value));
 
 const emailChecks = useFormValidation({
-  email: { value: email, check: () => emailShapeError(email.value) }
+  email: { value: email, check: () => emailMissingError(email.value) }
 });
 const resetChecks = useFormValidation({
   code: {

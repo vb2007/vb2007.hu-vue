@@ -129,6 +129,18 @@ describe("PasswordResetForm", () => {
     expect(wrapper.find('[role="status"]').text()).toBe(SENT);
   });
 
+  it("sends any address and leaves what it makes of it to the API", async () => {
+    vi.mocked(requestPasswordReset).mockResolvedValueOnce({ message: SENT });
+    const { wrapper } = await mountWithRouter(PasswordResetForm);
+    await emailInput(wrapper).setValue("a@b@example.com");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".field__error").exists()).toBe(false);
+    expect(requestPasswordReset).toHaveBeenCalledWith("a@b@example.com");
+  });
+
   it("moves to the code step, naming the address and focusing the code, described by the message", async () => {
     const { wrapper } = await mountOnCodeStep();
 
@@ -564,11 +576,11 @@ describe("PasswordResetForm", () => {
     expect(resendButton(wrapper).text()).toBe("Send again");
   });
 
-  it("asks for a valid address before entering a code", async () => {
+  it("asks for an address before entering a code", async () => {
     const { wrapper } = await mountWithRouter(PasswordResetForm);
 
     await enterCodeButton(wrapper).trigger("click");
-    await emailInput(wrapper).setValue("not an address");
+    await emailInput(wrapper).setValue("   ");
     await enterCodeButton(wrapper).trigger("click");
     await flushPromises();
 
@@ -592,7 +604,8 @@ describe("PasswordResetForm", () => {
 
   it("checks each field once it's left", async () => {
     const { wrapper } = await mountWithRouter(PasswordResetForm, { attachTo: document.body });
-    await emailInput(wrapper).setValue("me");
+    await emailInput(wrapper).setValue("x");
+    await emailInput(wrapper).setValue("");
     await emailInput(wrapper).trigger("blur");
     expect(wrapper.find(".field__error").text()).toBe("Enter a valid e-mail address.");
     wrapper.unmount();
