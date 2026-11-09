@@ -65,6 +65,29 @@ test("Forgot password? opens Reset password with the typed address filled in", a
   await expect(page.getByLabel("E-mail")).toHaveValue("");
 });
 
+test("an address the API once stored, with two @, logs in and gets a code like any other", async ({
+  page,
+  api
+}) => {
+  // The site's register form refuses it, but an account made through the API directly can have it.
+  const address = "a@b@example.com";
+  api.hasUser("a@b");
+  await page.goto("/login");
+
+  await page.getByLabel("E-mail").fill(address);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill(address);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("status")).toHaveText(SENT);
+  await expect(page.getByRole("main").getByText(address, { exact: true })).toBeVisible();
+  expect(api.passwordResets).toEqual([address]);
+});
+
 test("the code can be sent again once the countdown ends, and the address changed", async ({
   page,
   api

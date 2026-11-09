@@ -720,7 +720,7 @@ describe("RegisterForm", () => {
         409,
         "An account with this E-mail address already exists.",
         FIELDS.email,
-        Messages.Auth.accountExists,
+        "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password.",
         "Register"
       ],
       [

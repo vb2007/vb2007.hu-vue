@@ -6,7 +6,11 @@ import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { emailFromHistory, emailPrefillState } from "@/scripts/authentication/emailPrefill";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
-import { emailShapeError, normalizeEmail, requiredError } from "@/scripts/authentication/register";
+import {
+  emailMissingError,
+  normalizeEmail,
+  requiredError
+} from "@/scripts/authentication/register";
 import {
   forgetLogin,
   login,
@@ -33,7 +37,7 @@ const isLoading = ref(false);
 const isButtonError = ref(false);
 const form = useTemplateRef("form");
 const { errors, isValid, leave, validate, reset } = useFormValidation({
-  email: { value: email, check: () => emailShapeError(email.value) },
+  email: { value: email, check: () => emailMissingError(email.value) },
   password: {
     value: password,
     check: () => requiredError(password.value, Messages.Auth.passwordMissing)

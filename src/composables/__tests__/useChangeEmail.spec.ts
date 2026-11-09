@@ -178,11 +178,13 @@ describe("useChangeEmail", () => {
       expect(email.isChanging.value).toBe(false);
     });
 
-    it("shows what the API has after a failed mail, which it stored anyway", async () => {
+    it("shows what the API has after a failed mail, which restores the change that waited before", async () => {
       const error = "The e-mail couldn't be sent: please try again later.";
       fetchMock
         .mockResolvedValueOnce(jsonResponse(503, { error }))
-        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
+        .mockResolvedValueOnce(
+          jsonResponse(200, { ...waitingUser, pendingEmail: "earlier@example.com" })
+        );
       const email = useEmail();
 
       expect(await email.change("new@example.com", "secret-password")).toBe(false);
@@ -192,7 +194,7 @@ describe("useChangeEmail", () => {
         credentials: "include"
       });
       expect(email.changeError.value).toBe(error);
-      expect(pendingEmail.value).toBe("new@example.com");
+      expect(pendingEmail.value).toBe("earlier@example.com");
       expect(email.cooldown.active.value).toBe(false);
     });
 

@@ -102,7 +102,8 @@ export const useChangeEmail = () => {
       if (isCooldown) await fetchUserDetails();
     } else {
       changeError.value = result.error;
-      // The API keeps the new change even when its mail fails, so show what it has now.
+      // When its mail fails, the API restores the change that waited before, if any
+      // (`restoreEmailChange`, vb2007/vb2007.hu-api#294), so show what it has now.
       if (result.status === HttpStatus.ServiceUnavailable) await fetchUserDetails();
     }
     isChanging.value = false;

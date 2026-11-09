@@ -50,6 +50,15 @@ npm run lint         # fixes what it can
 npm run lint:check   # report only, as CI runs it
 ```
 
+### Format with [Prettier](https://prettier.io/)
+
+```sh
+npm run format         # rewrites src/ and e2e/
+npm run format:check   # report only, as CI runs it
+```
+
+ESLint doesn't check formatting (`eslint-config-prettier` only turns clashing rules off), so `format:check` is its own CI stage.
+
 ## Calling the API
 
 The site talks to [vb2007.hu-api](https://github.com/vb2007/vb2007.hu-api) at `VITE_API_BASE_URL`. Every call goes through the same pieces:
@@ -187,6 +196,7 @@ The `pr-worker` runners share one 4-core host (an Optiplex, which also runs the 
 |---|---|
 | Typecheck | `vue-tsc --build` |
 | Lint | `eslint .` |
+| Format | `prettier --check src e2e` |
 | Build | `vite build`; its `dist/` is reused by E2E |
 | Unit tests | Vitest, plus the 100% coverage gate (reported as its own `coverage` stage) |
 | E2E tests | Playwright against the built app, with the API mocked |
