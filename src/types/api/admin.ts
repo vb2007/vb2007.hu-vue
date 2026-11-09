@@ -235,11 +235,14 @@ export interface MailBudgetResponse {
   dailyLimit: number;
   /** From it, the API logs a warning, once a day. */
   warningAt: number;
-  /** From it, registration codes and their resends are refused; mail to existing accounts goes on. */
+  /**
+   * From it, registration codes and their resends are refused; password reset codes go on until
+   * `passwordResetStopsAt`, other mail to existing accounts up to the limit.
+   */
   registrationStopsAt: number;
   /**
    * From it, password reset codes are refused too (vb2007/vb2007.hu-api#322); e-mail change codes
-   * and the notices go on. It's the limit less a tenth, after `registrationStopsAt`.
+   * and the notices go on. It's the limit less a tenth, at or after `registrationStopsAt`.
    */
   passwordResetStopsAt: number;
   /** The next UTC midnight, when `sentToday` starts again from 0. */

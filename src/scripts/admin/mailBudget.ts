@@ -19,7 +19,7 @@ export interface MailLine {
   share: number;
   /** Nothing more goes out today. */
   isFull: boolean;
-  /** Sign-up codes are refused, while other mail still goes out. */
+  /** Sign-up codes are refused, while mail to existing accounts still goes out. */
   registrationStopped: boolean;
   /** Password reset codes are refused too, while e-mail change codes and notices still go out. */
   passwordResetStopped: boolean;
