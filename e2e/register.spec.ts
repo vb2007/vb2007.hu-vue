@@ -82,42 +82,48 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await resend.click();
 
   await expect(page.getByRole("status")).toHaveText(
-    "If a registration is waiting for new@example.com, a new code is on its way, and the one before no longer works."
+    "If a registration is waiting for new@example.com, only the latest code to reach it works: enter it to register as newbie."
   );
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
+  await expect(resend).toBeDisabled();
+
+  // The minute after a resend survives a reload too.
+  await page.reload();
+  await fillFields(page);
+  await page.getByRole("button", { name: "Enter it" }).click();
   await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 });
 
-/** Answers `path` with the API's 429 carrying `json`, e.g. the code cooldown's. */
-const refuse = (page: Page, path: string, json: { error: string; retryAfter: number }) =>
-  page.route(`**${path}`, (route) =>
-    route.request().method() === "OPTIONS"
-      ? route.fallback()
-      : route.fulfill({ status: 429, headers: { "Access-Control-Allow-Origin": "*" }, json })
-  );
-
-test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
-  await refuse(page, "/auth/register/resend", {
-    error: "A code was sent just now: wait 42 seconds before requesting another one.",
-    retryAfter: 42
-  });
+test("a resend once the day's registration mail is used up keeps the code sent before", async ({
+  page,
+  api
+}) => {
   await page.clock.install();
   await fillForm(page);
-  // The minute only starts once the code step is up.
-  await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
+  const code = page.getByLabel("Confirmation code");
+  await code.fill(REGISTRATION_CODE);
   await page.clock.runFor(60_000);
+  api.clockRunsFor(60_000);
+  // The first code went out; now the registration share of the day's mails is used up.
+  api.sentMailToday(200);
 
-  await page.getByRole("button", { name: "Resend code" }).click();
+  const resend = page.getByRole("button", { name: /^Resend/ });
+  await resend.click();
 
-  await expect(page.getByRole("alert")).toHaveText(
-    "A code was sent just now. You can send another once the countdown ends."
+  await expect(page.getByRole("alert")).toHaveText(MAIL_FAILED_ERROR);
+  await expect(page.getByRole("status")).toHaveText(
+    "Nothing new was sent to new@example.com. If a code reached it in the last 15 minutes, the latest one still works: enter it to register as newbie."
   );
-  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText(/^Resend in [1-4]\d sec$/);
-  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  // Nothing replaced the typed code, and the 503 names no wait, so nothing is held.
+  await expect(code).toHaveValue(REGISTRATION_CODE);
+  await expect(code).toBeFocused();
+  await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
+  await expect(resend).toHaveText("Resend code");
+  await expect(resend).toBeEnabled();
 
-  await page.clock.runFor(42_000);
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  await page.getByRole("button", { name: "Confirm code" }).click();
+  await expect(page.getByText("Registration successful!")).toBeVisible();
 });
 
 test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({
@@ -264,6 +270,7 @@ test("a code that already arrived can be entered after a reload", async ({ page 
 test("registering the same address again within the minute keeps the code sent", async ({
   page
 }) => {
+  await page.clock.install();
   await fillForm(page);
   await page.getByRole("button", { name: "Change address" }).click();
 
@@ -273,6 +280,12 @@ test("registering the same address again within the minute keeps the code sent",
     "Less than a minute ago, a code went to new@example.com. It still works"
   );
   await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
+  // Once the minute is over, it no longer says "less than a minute ago".
+  await page.clock.runFor(60_000);
+  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  await expect(page.getByRole("status")).toContainText(
+    "Enter the code that was mailed to new@example.com."
+  );
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 

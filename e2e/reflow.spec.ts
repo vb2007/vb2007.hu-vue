@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { browserFontSize } from "./browser";
 import { expect, test } from "./fixtures";
 
 // WCAG 1.4.10 Reflow: at 320 CSS px (1280 px at 400% zoom), and with a large browser font size,
@@ -54,13 +55,6 @@ const cutOff = (page: Page) =>
     }
     return found;
   });
-
-/** Sets the browser's default font size, which also scales `rem` media queries, unlike a style. */
-const browserFontSize = async (page: Page, px: number) => {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Page.enable");
-  await cdp.send("Page.setFontSizes", { fontSizes: { standard: px } });
-};
 
 const expectReflow = async (page: Page) => {
   // Measure in the site's fonts, not a fallback that's about to be swapped out.

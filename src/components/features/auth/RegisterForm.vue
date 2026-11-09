@@ -177,11 +177,13 @@ const notices = (name: string): Record<CodeNotice, [string, string, string]> => 
       ".",
       `Enter it to register as ${name}; it works for ${minutes} minutes.`
     ],
-    // The API answers a resend the same whether or not a registration is waiting for the address.
+    // The API answers a resend the same whether or not a registration is waiting for the address,
+    // and whether it mailed a new code, sent nothing inside the minute or kept the code from before
+    // after a failed mail: in every case the latest code to reach it is the one that works.
     resent: [
       "If a registration is waiting for",
       ",",
-      "a new code is on its way, and the one before no longer works."
+      `only the latest code to reach it works: enter it to register as ${name}.`
     ],
     earlier: [
       "Enter the code that was mailed to",
@@ -198,15 +200,26 @@ const notices = (name: string): Record<CodeNotice, [string, string, string]> => 
       "",
       `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
     ],
-    lost: [
-      "A new code couldn't be mailed to",
-      ",",
-      "and the one before no longer works. Send a new one below."
+    // The API turns the resend away before it looks at the address, so whether a code waits, and
+    // whether it's still fresh, is unknown here.
+    unsent: [
+      "Nothing new was sent to",
+      ".",
+      `If a code reached it in the last ${minutes} minutes, the latest one still works: enter it to register as ${name}.`
     ]
   };
 };
 
 const noticeText = computed(() => notices(username.value.trim())[notice.value]);
+/**
+ * Under the code field. After the budget's 503 every resend gets the same answer until it starts
+ * over, so the hint doesn't offer one then; the key stays usable, since the API names no wait.
+ */
+const codeHint = computed(() =>
+  notice.value === "unsent"
+    ? "Nothing yet? Check your spam folder."
+    : "Nothing yet? Check your spam folder, or send a new code below."
+);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
@@ -372,12 +385,18 @@ const handleCode = async () => {
 
 const sendAgain = async () => {
   // Decided by this resend's own outcome: the notice can still be an earlier resend's.
-  if ((await resend()) !== "failed") {
-    // A new code replaced the one typed before, even when it couldn't be mailed: confirming the
-    // old one would only spend a try.
+  const outcome = await resend();
+  // Change address and Confirm code wait for the answer; should the step have ended meanwhile
+  // anyway, the answer was dropped, and focus stays where it went.
+  if (outcome === "left") return;
+  if (outcome === "sent") {
+    // The page holds the key for a minute after each code it saw go out, so the API most likely
+    // mailed a new one, which replaced the code typed before: confirming that would spend a try.
     codeKeptFor.value = code.value = "";
     resetCode();
   }
+  // Otherwise (the day's mail used up, a rate limit, the server or the network) no code changed,
+  // so the typed one stays, and so does a kept code's "Continue".
   // The key is disabled now, which drops focus; the code is what comes next anyway.
   await focusStep();
 };
@@ -463,7 +482,7 @@ watch(isLoggedIn, (newVal) => {
         label="Confirmation code"
         inputmode="numeric"
         autocomplete="one-time-code"
-        hint="Nothing yet? Check your spam folder, or send a new code below."
+        :hint="codeHint"
         :describedby="noticeId"
         :error="codeErrors.code || codeFieldError"
         mono
@@ -506,7 +525,12 @@ watch(isLoggedIn, (newVal) => {
                 : "Resend code"
           }}
         </BaseButton>
-        <BaseButton variant="ghost" size="sm" :disabled="isVerifying" @click="changeAddress">
+        <BaseButton
+          variant="ghost"
+          size="sm"
+          :disabled="isVerifying || isResending"
+          @click="changeAddress"
+        >
           Change address
         </BaseButton>
       </div>

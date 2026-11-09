@@ -31,6 +31,19 @@ Object.defineProperty(window, "matchMedia", {
   })
 });
 
+// Nor ResizeObserver: this one never reports, so measured layouts stay unmeasured unless a spec
+// stubs its own.
+class NoResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(window, "ResizeObserver", {
+  writable: true,
+  configurable: true,
+  value: NoResizeObserver
+});
+
 Object.defineProperty(navigator, "clipboard", {
   writable: true,
   configurable: true,

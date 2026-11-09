@@ -376,9 +376,16 @@ export class Messages {
     static mailLimitReached(resetsAt: string): string {
       return `Today's mail limit is used up: no mail goes out until midnight UTC (${resetsAt} your time) or the API's next restart.`;
     }
+    /**
+     * `passwordResetStopsAt` is the count from which password reset codes stop too, `dailyLimit`
+     * the number of mails a day, past which nothing is sent.
+     */
+    static registrationMailStopped(passwordResetStopsAt: number, dailyLimit: number): string {
+      return `Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out until today's count reaches ${passwordResetStopsAt.toLocaleString()}, other mail to existing accounts until it reaches ${dailyLimit.toLocaleString()}.`;
+    }
     /** `dailyLimit` is the number of mails a day, past which nothing is sent. */
-    static registrationMailStopped(dailyLimit: number): string {
-      return `Sign-up codes have stopped until midnight UTC or the API's next restart. Mail to existing accounts still goes out, up to ${dailyLimit.toLocaleString()}.`;
+    static passwordResetMailStopped(dailyLimit: number): string {
+      return `Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out until today's count reaches ${dailyLimit.toLocaleString()}.`;
     }
   };
 }
