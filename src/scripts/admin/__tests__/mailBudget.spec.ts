@@ -101,7 +101,7 @@ describe("mailLine", () => {
     ]);
     expect(mailLine(budget).stops.map((stop) => stop.at)).toEqual([32, 33, 36, 41]);
     // Between its two stops the here ring is on top of the shared ring, so it's left out.
-    expect(mailLine({ ...budget, sentToday: 32 }, 300).marks).toEqual([
+    expect(mailLine({ ...budget, sentToday: 32 }, 18.75).marks).toEqual([
       { share: 36 / 41, reached: false }
     ]);
     expect(mailLine({ ...budget, sentToday: 41 }).marks).toEqual([
@@ -114,16 +114,18 @@ describe("mailLine", () => {
     const shares = (sentToday: number, railWidth: number | null) =>
       mailLine(aMailBudget({ sentToday }), railWidth).marks.map((mark) => mark.share);
 
-    // On a 373px rail, 8 % of the line is 30px: at 212 (0.848 along) both rings have room, 18px
-    // and 19px from the here ring, while at 215 the one at 225 is 15px from it.
-    expect(shares(212, 373)).toEqual([0.8, 0.9]);
-    expect(shares(215, 373)).toEqual([0.8]);
-    expect(shares(240, 373)).toEqual([0.8, 0.9]);
-    // At 248 the here ring stops 12px short of the terminus: 25px past the ring at 225 on 373px,
-    // only 8px on 200px.
-    expect(shares(248, 373)).toEqual([0.8, 0.9]);
-    expect(shares(248, 200)).toEqual([0.8]);
-    // Unmeasured (or not drawn), the ring at 225 stays out of the way on any rail from 200px up.
+    // A ring's centre keeps 1.125rem from the here ring's: half of each ring plus 0.125rem clear.
+    // On a 23.3125rem rail (373px at 16px), 210 (0.84 along) is 1.4rem short of the ring at 225
+    // but 0.93rem past the one at 200; 215 is the other way round.
+    const desktop = 23.3125;
+    expect(shares(210, desktop)).toEqual([0.9]);
+    expect(shares(215, desktop)).toEqual([0.8]);
+    expect(shares(240, desktop)).toEqual([0.8, 0.9]);
+    // At 248 the here ring stops 0.75rem short of the terminus: 1.58rem past the ring at 225 on
+    // the desktop's rail, only 0.5rem on a 12.5rem one (200px).
+    expect(shares(248, desktop)).toEqual([0.8, 0.9]);
+    expect(shares(248, 12.5)).toEqual([0.8]);
+    // Unmeasured (or not drawn), the ring at 225 stays out of the way on any rail from 12.5rem up.
     expect(shares(212, null)).toEqual([]);
     expect(shares(240, 0)).toEqual([0.8]);
   });

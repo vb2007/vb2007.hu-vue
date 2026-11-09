@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
-import { defineComponent, h, nextTick, ref, type Ref } from "vue";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h, ref, type Ref } from "vue";
 import { mount } from "@vue/test-utils";
-import { useElementWidth } from "@/composables/useElementWidth";
+import { useRemWidth } from "@/composables/useRemWidth";
 
 const observe = vi.fn();
 const disconnect = vi.fn();
@@ -26,7 +26,7 @@ const mountMeasured = (measured = true) => {
     defineComponent({
       setup() {
         const target = ref<HTMLElement | null>(null);
-        measuring.width = useElementWidth(target);
+        measuring.width = useRemWidth(target);
         return () => (measured ? h("div", { ref: target }) : null);
       }
     })
@@ -34,19 +34,26 @@ const mountMeasured = (measured = true) => {
   return { wrapper, width: measuring.width! };
 };
 
-describe("useElementWidth", () => {
-  it("follows the element's width from its first measurement, and stops watching on unmount", async () => {
+describe("useRemWidth", () => {
+  afterEach(() => {
+    document.documentElement.style.fontSize = "";
+    observe.mockClear();
+    disconnect.mockClear();
+  });
+
+  it("follows the element's width in rem from its first measurement, and stops watching on unmount", () => {
     stubResizeObserver();
     const { wrapper, width } = mountMeasured();
 
     expect(width.value).toBeNull();
     expect(observe).toHaveBeenCalledWith(wrapper.element);
 
-    report(278);
-    await nextTick();
-    expect(width.value).toBe(278);
-    report(373);
-    expect(width.value).toBe(373);
+    // jsdom has no font size of its own, so the browser's default 16px stands in.
+    report(200);
+    expect(width.value).toBe(12.5);
+    document.documentElement.style.fontSize = "20px";
+    report(250);
+    expect(width.value).toBe(12.5);
 
     wrapper.unmount();
     expect(disconnect).toHaveBeenCalled();
@@ -54,10 +61,11 @@ describe("useElementWidth", () => {
 
   it("watches nothing while there's no element", () => {
     stubResizeObserver();
-    observe.mockClear();
-    const { width } = mountMeasured(false);
+    const { wrapper, width } = mountMeasured(false);
 
     expect(observe).not.toHaveBeenCalled();
     expect(width.value).toBeNull();
+    wrapper.unmount();
+    expect(disconnect).not.toHaveBeenCalled();
   });
 });

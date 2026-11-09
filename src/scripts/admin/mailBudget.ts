@@ -35,16 +35,21 @@ export interface MailLine {
   marks: { share: number; reached: boolean }[];
 }
 
-/** The narrowest rail the line is drawn on, in px: a 320px screen's (the Pixel 7's is 291px). */
-const NARROWEST_RAIL = 200;
-/** How far short of the terminus `.mail__here` stops (0.75rem), so a nearly full line doesn't swallow it. */
-const HERE_INSET = 12;
-/** The least run `.mail__line--some` draws once anything is sent (0.25rem). */
-const LEAST_RUN = 4;
-/** The px between the here ring's centre and a stop ring's: half of the 18px ring plus half of the 14px one. */
-const HERE_CLEARANCE = 16;
-/** The px between two stop rings' centres: a 14px ring's width. */
-const MARK_CLEARANCE = 14;
+// Sizes on the rail, in rem like the CSS draws them, so they hold at any font size.
+/** The narrowest rail before it's measured: a 320px screen's 200px at the default 16px font. */
+const NARROWEST_RAIL = 12.5;
+/** How far short of the terminus `.mail__here` stops, so a nearly full line doesn't swallow it. */
+const HERE_INSET = 0.75;
+/** The least run `.mail__line--some` draws once anything is sent. */
+const LEAST_RUN = 0.25;
+/** `.mail__here`'s and `.mail__mark`'s widths. */
+const HERE_RING = 1.125;
+const STOP_RING = 0.875;
+/** The clear rail kept between two rings, so they never just touch (2px at 16px). */
+const RING_MARGIN = 0.125;
+/** Between the here ring's centre and a stop ring's, and between two stop rings' centres. */
+const HERE_CLEARANCE = (HERE_RING + STOP_RING) / 2 + RING_MARGIN;
+const MARK_CLEARANCE = STOP_RING + RING_MARGIN;
 
 /** Stops on the same count are listed in this order. */
 const ORDER: MailStopKind[] = ["registration", "passwordReset", "warning", "limit"];
@@ -58,9 +63,8 @@ const distance = (mark: number, from: number, to: number): number =>
 
 /**
  * Lays today's mail out as a line from 0 to the daily limit, with its stops. `railWidth` is the
- * rail's width in px as drawn, which decides which stop rings have room beside the here ring.
- * Before it's measured (`null` or 0), rings get the room they'd need on any rail from the
- * narrowest up.
+ * rail's width in rem as drawn, which decides which stop rings have room beside the here ring.
+ * Before it's measured (`null` or 0), rings get the room they'd need on any rail from 12.5rem up.
  */
 export const mailLine = (budget: MailBudgetResponse, railWidth: number | null = null): MailLine => {
   const { sentToday, dailyLimit, warningAt, registrationStopsAt, passwordResetStopsAt } = budget;

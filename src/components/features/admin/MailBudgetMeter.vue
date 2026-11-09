@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, useTemplateRef } from "vue";
-import { useElementWidth } from "@/composables/useElementWidth";
+import { useRemWidth } from "@/composables/useRemWidth";
 import { Messages } from "@/constants/messages";
 import { mailLine, type MailStopKind } from "@/scripts/admin/mailBudget";
 import { formatTime } from "@/scripts/utility/dateUtil";
@@ -17,7 +17,8 @@ const STOP_LABELS: Record<MailStopKind, string> = {
   limit: "All mail stops"
 };
 
-const railWidth = useElementWidth(useTemplateRef("rail"));
+// In rem, like the ring sizes mailLine spaces them by (they're the CSS's below).
+const railWidth = useRemWidth(useTemplateRef("rail"));
 const line = computed(() => mailLine(props.budget, railWidth.value));
 /** Mails until the next kind of code stops, on the scale's left until both have. */
 const untilNext = computed(() => {
@@ -199,6 +200,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
   transform: translate(-50%, -50%);
 }
 
+/* Ring sizes, the inset and the least run are mirrored in mailBudget.ts, which spaces the rings. */
 .mail__mark {
   left: calc(var(--mark) * 100%);
   width: 0.875rem;
@@ -211,7 +213,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
 }
 
 .mail__here {
-  /* Short of the terminus, so a nearly full line doesn't swallow it (HERE_INSET in mailBudget.ts). */
+  /* Short of the terminus, so a nearly full line doesn't swallow it. */
   left: min(var(--at), calc(100% - 0.75rem));
   width: 1.125rem;
   height: 1.125rem;
