@@ -721,6 +721,33 @@ for (const [status, address, error] of [
   });
 }
 
+test("the address of an account nobody is logged in to is refused at confirm too", async ({
+  page,
+  api
+}) => {
+  // MOCK_EMAIL's account, which only the login knows.
+  api.loggedInAs("other@example.com", "other");
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByText(`Waiting for confirmation: ${MOCK_EMAIL}`)).toBeVisible();
+
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  const confirmed = page.waitForResponse((response) =>
+    response.url().includes("/user/email/confirm")
+  );
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  expect((await confirmed).status()).toBe(409);
+  await expect(page.getByRole("alert")).toHaveText(
+    `${MOCK_EMAIL} wasn't confirmed. An account with this E-mail address already exists.`
+  );
+  await expect(page.getByRole("definition")).toHaveText(["other", "other@example.com"]);
+});
+
 test("a code that expired with the page open takes the waiting change away", async ({
   page,
   api

@@ -274,6 +274,34 @@ test("resetting the password logs out a user who was logged in", async ({
   await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
 });
 
+test("an account that logged in and out again still gets a code", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  // MOCK_EMAIL's account, which only the login knows.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByRole("link", { name: MOCK_EMAIL })).toHaveCount(0);
+
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page).toHaveURL("/login");
+  await expect(page.getByRole("main").getByRole("status")).toHaveText(
+    "Password reset successfully: log in with the new password."
+  );
+});
+
 test("resetting another account's password keeps the user logged in and says so", async ({
   page,
   api

@@ -16,7 +16,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
  * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
- * A `hasUser(...)` address and `MOCK_SUPERUSER_EMAIL` get the same 202 and code: only the confirm refuses them, with 409
+ * Another account's address (any the login knows, see below) and `MOCK_SUPERUSER_EMAIL` get the same 202 and code: only the confirm refuses them, with 409
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
  * 15 minutes ago has expired.
@@ -58,11 +58,13 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
  * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
- * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
+ * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
+ * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
+ * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are always taken.
  * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
- * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an address of a `hasUser(...)` account gets the same 202, and a taken name a 409.
+ * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
  * Each address waits for its own code. Registering again within a minute of the last code gets the API's 429, but a resend
@@ -806,11 +808,17 @@ export class MockApi {
     }
   }
 
-  /** Whether an account uses the address: the logged-in user's or a `hasUser(...)` one. */
+  /**
+   * Every account the mock holds, like the API's users: the logged-in one, those `POST /auth/login` knows
+   * (whether or not anyone is logged in to them) and the admin list's.
+   */
+  private storedAccounts(): { email: string; username: string }[] {
+    return [...(this.user ? [this.user] : []), ...this.accounts, ...this.users];
+  }
+
+  /** Whether an account uses the (normalized) address, like the API's `getUserByEmail`. */
   private hasAccount(email: string) {
-    return [this.user?.email, ...this.users.map((user) => user.email)].some(
-      (address) => address !== undefined && normalizeEmail(address) === email
-    );
+    return this.storedAccounts().some((account) => normalizeEmail(account.email) === email);
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -1163,10 +1171,7 @@ export class MockApi {
       case "GET /auth/username-available": {
         this.usernameChecks++;
         if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
-        const name = (query.get("username") ?? "").toLowerCase();
-        const taken = [...this.users.map((user) => user.username), this.user?.username].some(
-          (username) => username?.toLowerCase() === name
-        );
+        const taken = this.isUsernameTaken(query.get("username") ?? "");
         return { status: 200, body: { available: !taken } };
       }
       case "POST /auth/register":
@@ -1444,12 +1449,13 @@ export class MockApi {
     };
   }
 
-  /** Whether an account has `username`, whatever its case, like `GET /auth/username-available`. */
+  /**
+   * Whether an account has `username`, trimmed and whatever its case, like the API's `isUsernameTaken`
+   * (its collation ignores case). The logged-in user's own name counts too.
+   */
   private isUsernameTaken(username?: string) {
     const name = username?.trim().toLowerCase();
-    return [...this.users.map((user) => user.username), this.user?.username].some(
-      (taken) => taken?.toLowerCase() === name
-    );
+    return this.storedAccounts().some((account) => account.username.toLowerCase() === name);
   }
 
   /**
@@ -1544,7 +1550,7 @@ export class MockApi {
     if (email === MOCK_SUPERUSER_EMAIL) {
       return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
     }
-    if (this.users.some((user) => user.email === email)) {
+    if (this.hasAccount(email)) {
       return {
         status: 409,
         body: { error: "An account with this E-mail address already exists." }

@@ -3,6 +3,7 @@ import {
   callApi,
   expect,
   MAIL_FAILED_ERROR,
+  MOCK_EMAIL,
   type MockApi,
   REGISTRATION_CODE,
   test
@@ -411,6 +412,22 @@ test("an address that already has an account is only refused at the code", async
   await expect(field.getByRole("link", { name: "reset the password" })).toBeVisible();
 });
 
+test("an address only the login knows is refused at the code too", async ({ page }) => {
+  // MOCK_EMAIL's account: nobody is logged in to it and the admin list doesn't hold it.
+  await fillForm(page, MOCK_EMAIL);
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  const verified = page.waitForResponse((response) =>
+    response.url().includes("/auth/register/verify")
+  );
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  expect((await verified).status()).toBe(409);
+  await expect(page.getByLabel("E-mail")).toHaveAccessibleDescription(
+    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password."
+  );
+  await expect(page.getByText("Registration successful!")).toHaveCount(0);
+});
+
 /** Registers with an address that has an account, and lands back on the form with the message. */
 const refusedAsExisting = async (page: Page, api: MockApi) => {
   api.hasUser("anna");
@@ -549,6 +566,20 @@ test("a taken username is said while it's typed", async ({ page, api }) => {
 
   await username.fill("anna2");
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
+});
+
+test("the name of an account nobody is logged in to is taken too", async ({ page }) => {
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const checked = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
+
+  // MOCK_EMAIL's account, which only the login knows.
+  await username.fill("e2e");
+
+  expect(await (await checked).json()).toEqual({ available: false });
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
 });
 
 // The double's mail failures, checked through the page's own calls: the form can't wait out the API's
