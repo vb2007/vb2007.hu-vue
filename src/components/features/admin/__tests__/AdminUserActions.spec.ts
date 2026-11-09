@@ -103,6 +103,18 @@ describe("AdminRenameUser", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("refuses invisible characters and whitespace other than spaces as they're typed", async () => {
+    const { wrapper } = await mountRename();
+    await open(wrapper);
+
+    await field(wrapper).setValue("an\tna");
+    expect(wrapper.find(".field__error").text()).toBe(Messages.Auth.usernameInvalidCharacters);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("saves the trimmed name, applies the answer and says so", async () => {
     const { wrapper, updated } = await mountRename();
     await open(wrapper);

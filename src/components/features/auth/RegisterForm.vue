@@ -410,8 +410,9 @@ watch(code, (value) => {
 });
 
 /*
- * The username is checked with the API once typing pauses and its length is right. Each edit
- * aborts the check before it, so an answer about an older name never lands; leaving does too.
+ * The username is checked with the API once typing pauses and it passes `usernameError` (its
+ * length and characters). Each edit aborts the check before it, so an answer about an older name
+ * never lands; leaving does too.
  */
 let usernameTimer: ReturnType<typeof setTimeout> | undefined;
 const usernameCheck = useLatestRequest();

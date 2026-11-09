@@ -301,6 +301,19 @@ describe("RegisterForm", () => {
     vi.useRealTimers();
   });
 
+  it("says a username has invalid characters as it's typed, and doesn't ask the API about it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const wrapper = await mountForm();
+    await fill(wrapper, { username: "anna\u200bb" });
+
+    vi.advanceTimersByTime(400);
+    await flushPromises();
+    expect(checkUsername).not.toHaveBeenCalled();
+    expect(errorUnder(wrapper, FIELDS.username)).toBe(Messages.Auth.usernameInvalidCharacters);
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBe("true");
+    vi.useRealTimers();
+  });
+
   it("stops waiting to check the username when it's gone", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const wrapper = await mountForm();
