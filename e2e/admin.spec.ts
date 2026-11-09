@@ -1,5 +1,5 @@
 import { browserFontSize } from "./browser";
-import { callApi, expect, getFromApi, MOCK_PASSWORD, test } from "./fixtures";
+import { callApi, expect, getFromApi, MOCK_PASSWORD, MOCK_SUPERUSER_EMAIL, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
@@ -1271,6 +1271,111 @@ test("a row at the admin's address answers as the superuser's", async ({ page, a
     username: "vb2007"
   });
   expect(renamed.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+});
+
+test("the superuser's address is the superuser, without being arranged as one", async ({
+  page,
+  api
+}) => {
+  // The API knows the superuser by SUPERUSER_EMAIL alone, for the session and for every check.
+  api.loggedInAs(MOCK_SUPERUSER_EMAIL, "admin");
+  const paste = api.hasPaste("anna's words", "anna", "plaintext");
+  api.hasShortLink("annas", "https://example.com/", "anna");
+  await page.goto("/");
+
+  const user = await getFromApi(page, api, "/user");
+  expect.soft(user.body).toMatchObject({ email: MOCK_SUPERUSER_EMAIL, isSuperuser: true });
+  expect.soft((await getFromApi(page, api, "/admin/users")).status).toBe(200);
+  const changed = await callApi(page, api, "PATCH", `/paste/${paste._id}`, {
+    language: "markdown"
+  });
+  expect.soft(changed.status).toBe(200);
+  expect.soft((await callApi(page, api, "DELETE", "/shortenUrl/annas", {})).status).toBe(200);
+
+  await page.goto("/admin");
+  await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
+});
+
+test("there is one superuser address: arranging the admin's leaves the default an ordinary one", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // The default superuser's address, which the admin's arranged account now stands in for.
+  const other = api.hasUser("admin");
+  expect(other.email).toBe(MOCK_SUPERUSER_EMAIL);
+  await page.goto("/admin/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  const listed = await getFromApi(page, api, "/admin/users");
+  const rows = (listed.body as { users: { id: string; isSuperuser: boolean }[] }).users;
+  expect.soft(rows.find((row) => row.id === other.id)?.isSuperuser).toBe(false);
+  const suspension = await callApi(page, api, "PATCH", `/admin/users/${other.id}/suspension`, {
+    suspended: true
+  });
+  expect(suspension.status).toBe(200);
+});
+
+test("a listed account's address is stored normalized", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("Anna");
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Anna" })).toBeVisible();
+
+  const shown = await getFromApi(page, api, `/admin/users/${anna.id}`);
+  expect.soft(shown.body).toMatchObject({ user: { email: "anna@example.com" } });
+  const fact = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("E-mail", { exact: true }) })
+    .locator("dd");
+  await expect(fact).toHaveText(/^anna@example\.com/);
+});
+
+test("an account's upload usage is the uploads it owns, unless arranged", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const own = api.hasUser("vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  // An arranged usage stands in for both numbers, whatever the account owns.
+  const milo = api.hasUser("milo", { count: 7 });
+  api.hasUpload("notes.txt", { fileSize: 2048 });
+  // Filed under another case of the name, it's still hers.
+  api.hasUpload("flyer.pdf", { fileSize: 3000, owner: "VB2007" });
+  api.hasUpload("theirs.pdf", { fileSize: 10_000, owner: "anna" });
+  api.hasUpload("milos.zip", { fileSize: 99_999, owner: "milo" });
+  await page.goto(`/admin/users/${own.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+
+  // The API's `calculateUploadUsage` derives both from the same uploads, for the page and the list.
+  const shown = await getFromApi(page, api, `/admin/users/${own.id}`);
+  expect.soft(shown.body).toMatchObject({
+    user: { uploads: { count: 2, usedBytes: 5048 }, counts: { uploads: 2 } }
+  });
+  const listed = await getFromApi(page, api, "/admin/users?sortBy=usedBytes&sortOrder=desc");
+  const rows = (
+    listed.body as { users: { id: string; uploads: { count: number; usedBytes: number } }[] }
+  ).users;
+  expect.soft(rows.map((row) => [row.id, row.uploads.count, row.uploads.usedBytes])).toEqual([
+    [anna.id, 1, 10_000],
+    [own.id, 2, 5048],
+    [milo.id, 7, 0]
+  ]);
+  const owns = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("Owns", { exact: true }) })
+    .locator("dd");
+  await expect(owns).toHaveText("0 pastes · 0 short links · 2 uploads");
+});
+
+test("arranging a second superuser address fails the test at once", ({ api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // The same address again is the same superuser.
+  api.hasUser("vb2007", { superuser: true });
+  expect(() => api.hasUser("anna", { superuser: true })).toThrow(
+    "The superuser is already arranged as vb2007@example.com"
+  );
+  expect(() => api.loggedInAs("anna@example.com", "anna", { superuser: true })).toThrow(
+    "The superuser is already arranged as vb2007@example.com"
+  );
 });
 
 test("a deleted account's confirmed address isn't carried to the next account there", async ({
