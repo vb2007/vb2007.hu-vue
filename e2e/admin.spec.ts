@@ -1018,6 +1018,19 @@ test("the site-wide list renews its private links once they run out", async ({ p
   await expect(page.getByRole("link", { name: "anna's account" })).toBeVisible();
 });
 
+test("the site-wide list finds an upload's owner whatever the case of the name it's filed under", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("Anna", { count: 1 });
+  api.hasUpload("report.pdf", { owner: "anna" });
+  await page.goto("/admin/uploads");
+
+  await page.getByRole("button", { name: "report.pdf" }).click();
+  await expect(page.getByRole("link", { name: "Anna's account" })).toBeVisible();
+});
+
 test("the superuser finds and removes a pending registration", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.hasPendingRegistration("old@example.com", { expiresInMinutes: -30 });

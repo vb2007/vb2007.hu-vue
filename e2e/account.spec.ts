@@ -40,9 +40,9 @@ test("a failed GitHub login is explained once, then dropped from the URL", async
 });
 
 test("a refused login shows the API's one message and stays logged out", async ({ page, api }) => {
-  // A GitHub-only account has no password to log in with.
-  api.loggedInAs("octo@example.com", "octo", { password: false, githubLinked: true });
-  api.loggedOut();
+  // A GitHub-only account has no password to log in with. A second account next to MOCK_EMAIL's,
+  // which `loggedInAs` would replace (both are MOCK_USER_ID).
+  api.hasUser("octo", { password: false, githubLogin: "octo" });
   await page.goto("/login");
   const main = page.getByRole("main");
   const logIn = main.getByRole("button", { name: "Log in", exact: true });
@@ -725,8 +725,14 @@ test("the address of an account nobody is logged in to is refused at confirm too
   page,
   api
 }) => {
-  // MOCK_EMAIL's account, which only the login knows.
-  api.loggedInAs("other@example.com", "other");
+  // MOCK_EMAIL's account, which only the login knows. Logging in to another one leaves it there, where
+  // `loggedInAs` would replace it (both are MOCK_USER_ID).
+  api.hasUser("other");
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("other@example.com");
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
   await page.goto("/account");
 
   await page.getByRole("button", { name: "Change e-mail" }).click();
@@ -1332,6 +1338,34 @@ test("an account is deleted with its password and the visitor lands home logged 
   await expect(page.getByRole("main").getByRole("alert")).toHaveText(
     "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
   );
+});
+
+test("a deleted account's name and address are free again", async ({ page, api }) => {
+  // The default account: e2e@example.com, "e2e", with MOCK_EMAIL's id, so it's that account moved.
+  api.loggedInAs();
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const checked = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
+  await username.fill("e2e");
+  expect(await (await checked).json()).toEqual({ available: true });
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+
+  // Neither the address it had nor the one it was moved from logs in any more.
+  for (const address of ["e2e@example.com", MOCK_EMAIL]) {
+    const login = await callApi(page, api, "POST", "/auth/login", {
+      email: address,
+      password: MOCK_PASSWORD
+    });
+    expect(login.status).toBe(403);
+  }
 });
 
 test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({

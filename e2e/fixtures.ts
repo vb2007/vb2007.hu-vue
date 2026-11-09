@@ -47,6 +47,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
+ * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
+ * replaces `MOCK_EMAIL`'s account (arrange `hasUser(...)` for a second one). `DELETE /user` takes the account out of the login and the admin list.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
@@ -70,7 +72,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Each address waits for its own code. Registering again within a minute of the last code gets the API's 429, but a resend
  * (`POST /auth/register/resend`) answers 200 whatever the address, even without a code or inside the minute, and then sends
  * nothing (the API answers before it looks); without an address it answers 400 first.
- * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
+ * A password reset only mails `api.passwordResetCode` to an account's address, any the login knows, and not to a suspended `hasUser(...)` one.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
  * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
@@ -461,6 +463,8 @@ export class MockApi {
   /** In-memory paste store, oldest first. */
   readonly pastes: MockPaste[] = [];
   private nextPasteId = 1;
+  /** How many accounts `POST /auth/register/verify` created, for their ids. */
+  private registeredCount = 0;
   /** In-memory upload store, oldest first. */
   readonly uploads: MockUpload[] = [];
   /** Upload id -> the username it belongs to. */
@@ -557,13 +561,22 @@ export class MockApi {
     this.knowsAccount(this.user);
   }
 
-  /** Lets `POST /auth/login` find `user`, replacing an account with the same address. */
+  /**
+   * Lets `POST /auth/login` find `user`, replacing the account with the same id or address: the API stores one
+   * account per id, so `loggedInAs` with another address moves `MOCK_EMAIL`'s account (the same `MOCK_USER_ID`) to it.
+   */
   private knowsAccount(user: MockUser) {
-    const index = this.accounts.findIndex(
-      (account) => normalizeEmail(account.email) === normalizeEmail(user.email)
-    );
-    if (index === -1) this.accounts.push(user);
-    else this.accounts[index] = user;
+    this.forgetsAccount(user);
+    this.accounts.push(user);
+  }
+
+  /** Takes the account with `user`'s id or address out of `accounts`. */
+  private forgetsAccount(user: MockUser) {
+    const same = (account: MockUser) =>
+      account._id === user._id || normalizeEmail(account.email) === normalizeEmail(user.email);
+    for (let index = this.accounts.length - 1; index >= 0; index--) {
+      if (same(this.accounts[index])) this.accounts.splice(index, 1);
+    }
   }
 
   /**
@@ -614,9 +627,13 @@ export class MockApi {
     };
     this.users.push(user);
     if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
-    // A password reset can reach this account, so logging in reaches it too; an arranged one stays.
+    // A password reset can reach this account, so logging in reaches it too; an arranged one (same address or id) stays.
     const email = normalizeEmail(user.email);
-    if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
+    if (
+      !this.accounts.some(
+        (account) => normalizeEmail(account.email) === email || account._id === user.id
+      )
+    ) {
       this.accounts.push({
         _id: user.id,
         email: user.email,
@@ -699,7 +716,11 @@ export class MockApi {
       cooldownLeftOnSend
     }: { sentSecondsAgo?: number; cooldownLeftOnSend?: number } = {}
   ) {
-    this.emailChange = { email, ...this.newCode(15, this.now() - sentSecondsAgo * 1000) };
+    // Normalized, like the address `PATCH /user/email` stores.
+    this.emailChange = {
+      email: normalizeEmail(email),
+      ...this.newCode(15, this.now() - sentSecondsAgo * 1000)
+    };
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
@@ -812,8 +833,12 @@ export class MockApi {
    * Every account the mock holds, like the API's users: the logged-in one, those `POST /auth/login` knows
    * (whether or not anyone is logged in to them) and the admin list's.
    */
-  private storedAccounts(): { email: string; username: string }[] {
-    return [...(this.user ? [this.user] : []), ...this.accounts, ...this.users];
+  private storedAccounts(): { id: string; email: string; username: string }[] {
+    return [...(this.user ? [this.user] : []), ...this.users, ...this.accounts].map((account) => ({
+      id: "id" in account ? account.id : account._id,
+      email: account.email,
+      username: account.username
+    }));
   }
 
   /** Whether an account uses the (normalized) address, like the API's `getUserByEmail`. */
@@ -1192,9 +1217,13 @@ export class MockApi {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
         this.passwordResets.push(body.email);
-        // Like the API, only an account's address gets a code, at most one a minute.
+        // Like the API, only an account's address gets a code, at most one a minute, and not a suspended account's.
         const email = normalizeEmail(body.email);
-        if (this.hasAccount(email) && !this.resendTooSoon(this.resetCodes.get(email)?.sentAt)) {
+        if (
+          this.hasAccount(email) &&
+          !this.isSuspended(email) &&
+          !this.resendTooSoon(this.resetCodes.get(email)?.sentAt)
+        ) {
           // A code that couldn't be mailed, or that the day's budget refused, is not kept: the answer stays 200 and the code sent before still works.
           if (this.sendsMail("passwordReset", email)) this.resetCodes.set(email, this.newCode(30));
         }
@@ -1509,7 +1538,8 @@ export class MockApi {
       return { status: 409, body: { error: "This username is already taken." } };
     }
     this.user = {
-      _id: MOCK_USER_ID,
+      // A new account gets a new id, so registering leaves `MOCK_EMAIL`'s account (`MOCK_USER_ID`) alone.
+      _id: `${++this.registeredCount}`.padStart(24, "d"),
       email,
       username: username.trim(),
       isSuperuser: false,
@@ -1675,8 +1705,15 @@ export class MockApi {
         };
       }
     }
-    const index = this.accounts.indexOf(this.user);
-    if (index !== -1) this.accounts.splice(index, 1);
+    // The API deletes the account by its id: neither the login nor the admin list knows it any more.
+    const deleted = this.user;
+    this.forgetsAccount(deleted);
+    for (let index = this.users.length - 1; index >= 0; index--) {
+      const row = this.users[index];
+      if (row.id === deleted._id || normalizeEmail(row.email) === normalizeEmail(deleted.email)) {
+        this.users.splice(index, 1);
+      }
+    }
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
@@ -2008,12 +2045,14 @@ export class MockApi {
     return this.refuseNonSuperuser() ?? this.listUploads(query, null);
   }
 
-  /** Whose an upload is, as the site-wide listing names them: `null` once no account has the name. */
+  /**
+   * Whose an upload is, as the site-wide listing names them: any stored account with the name, whatever its case,
+   * like the API's lookup of the owner's id (it's kept by name here); `null` once no account has it.
+   */
   private ownerOf(uploadId: string) {
-    const name = this.uploadOwners.get(uploadId)!;
-    if (this.user?.username === name) return { id: this.user!._id, username: name };
-    const user = this.users.find((item) => item.username === name);
-    return user ? { id: user.id, username: user.username } : null;
+    const name = this.uploadOwners.get(uploadId)!.toLowerCase();
+    const owner = this.storedAccounts().find((account) => account.username.toLowerCase() === name);
+    return owner ? { id: owner.id, username: owner.username } : null;
   }
 
   /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. A bad query answers 400 like the API's. */

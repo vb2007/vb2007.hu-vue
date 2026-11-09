@@ -688,6 +688,19 @@ test("a reset code for an address without an account sends no mail, so a failure
   expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
 });
 
+test("a suspended account gets no reset code, and the answer doesn't show it", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me", { suspendedAt: "2026-10-01T12:00:00.000Z" });
+  await page.goto("/reset-password");
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  expect(api.passwordResets).toEqual([ME]);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
 test("changing the password while logged in voids a reset code asked for before", async ({
   page,
   api
