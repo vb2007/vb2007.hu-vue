@@ -341,6 +341,9 @@ const domainError = (email: string) => {
   }
 };
 
+/** What the API asks of a required body field: a string, not an empty one. */
+const isFilledString = (value: unknown): value is string => typeof value === "string" && !!value;
+
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 
 /**
@@ -1349,7 +1352,19 @@ export class MockApi {
    * has an account gets the same answers, so registering doesn't reveal it.
    */
   private register(body: { email?: string; username?: string; password?: string } | null) {
-    const refused = body?.username && usernameRefusal(body.username);
+    // Like the API, three non-empty strings first: JSON can send anything.
+    const username = body?.username;
+    if (
+      !isFilledString(body?.email) ||
+      !isFilledString(username) ||
+      !isFilledString(body?.password)
+    ) {
+      return {
+        status: 400,
+        body: { error: "You must provide a username, E-mail address, and a password." }
+      };
+    }
+    const refused = usernameRefusal(username);
     if (refused) return refused;
     if (this.isUsernameTaken(body?.username)) {
       return { status: 409, body: { error: "This username is already taken." } };
@@ -1493,7 +1508,13 @@ export class MockApi {
     body: { email?: string; code?: string; username?: string; password?: string } | null
   ): MockResponse {
     const { code, username, password } = body ?? {};
-    if (!body?.email || !code || !username || !password) {
+    // Like the API, four non-empty strings: JSON can send anything.
+    if (
+      !isFilledString(body?.email) ||
+      !isFilledString(code) ||
+      !isFilledString(username) ||
+      !isFilledString(password)
+    ) {
       return {
         status: 400,
         body: {

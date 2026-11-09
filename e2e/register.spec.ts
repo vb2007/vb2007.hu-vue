@@ -602,6 +602,26 @@ test("the double refuses a username with an invisible character like the API", a
       code: REGISTRATION_CODE
     })
   ).toEqual(refused);
+
+  // A username that isn't a string is a missing one, like the API's.
+  expect(
+    await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: 42 })
+  ).toEqual({
+    status: 400,
+    body: { error: "You must provide a username, E-mail address, and a password." }
+  });
+  expect(
+    await callApi(page, api, "POST", "/auth/register/verify", {
+      ...REGISTRATION,
+      username: 42,
+      code: REGISTRATION_CODE
+    })
+  ).toEqual({
+    status: 400,
+    body: {
+      error: "You must provide an E-mail address, the confirmation code, a username and a password."
+    }
+  });
 });
 
 // The double's mail failures, checked through the page's own calls: the form can't wait out the API's

@@ -183,10 +183,10 @@ let usernameChecksPausedUntil = 0;
  * A failure, a 429 or an API without the endpoint yet is "unknown", never a problem to show. So is
  * a 400 for a name the API's rule refuses, which isn't logged: the form only asks about names that
  * pass `usernameError`, so it comes only from a rule that changed or a browser that judges a
- * character differently, and registering names the problem then. An
- * aborted check (newer typing replaced it) is "unknown" too, and isn't logged. The 429 (30 checks
- * a minute per IP) is expected and isn't logged either: no check is sent until its `retryAfter`
- * has passed, and those are "unknown" too.
+ * character differently, and registering names the problem then. An aborted check (newer typing
+ * replaced it) is "unknown" too, and isn't logged. The 429 (30 checks a minute per IP) is expected
+ * and isn't logged either: no check is sent until its `retryAfter` has passed, and those are
+ * "unknown" too.
  */
 export const checkUsername = async (
   username: string,
