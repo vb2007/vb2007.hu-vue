@@ -119,4 +119,10 @@ const describedBy = computed(() => {
   font-weight: 600;
   color: var(--c-danger);
 }
+
+/* The global ring sits 3px out, which swallows the spaces and letters beside an inline link. */
+.field__error :deep(a:focus-visible) {
+  outline-width: 2px;
+  outline-offset: 1px;
+}
 </style>
