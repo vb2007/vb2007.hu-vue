@@ -69,8 +69,9 @@ export type CodeNotice =
   /** Back from fixing the form: nothing was sent, and the code typed before is kept. */
   | "kept"
   /**
-   * A resend the API turned away with its 503 (the day's registration mail is used up): it made no
-   * new code, so the one sent before still works.
+   * A resend the API turned away with its 503 (the day's registration mail is used up), before it
+   * looked at the address: it made no new code, so a code that reached the address in the last
+   * minutes it works for, if any did, still works.
    */
   | "unsent";
 

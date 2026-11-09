@@ -385,8 +385,11 @@ const handleCode = async () => {
 
 const sendAgain = async () => {
   // Decided by this resend's own outcome: the notice can still be an earlier resend's.
-  // (Change address waits for the answer, so the step is still the one asked about.)
-  if ((await resend()) === "sent") {
+  const outcome = await resend();
+  // Change address and Confirm code wait for the answer; should the step have ended meanwhile
+  // anyway, the answer was dropped, and focus stays where it went.
+  if (outcome === "left") return;
+  if (outcome === "sent") {
     // The page holds the key for a minute after each code it saw go out, so the API most likely
     // mailed a new one, which replaced the code typed before: confirming that would spend a try.
     codeKeptFor.value = code.value = "";

@@ -987,6 +987,33 @@ describe("RegisterForm", () => {
       expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
     });
 
+    it("leaves focus alone for a resend's answer that lands after the step ended", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      let answer!: (response: Response) => void;
+      fetchMock
+        .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+        .mockResolvedValueOnce(jsonResponse(201, {}));
+      vi.mocked(fetchUserDetails).mockImplementationOnce(async () => {
+        isLoggedIn.value = true;
+        return true;
+      });
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      await resendButton(wrapper).trigger("click");
+      // Confirm code waits for the resend, but a submit that gets through anyway ends the step.
+      await confirm(wrapper);
+      expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
+
+      answer(jsonResponse(200, {}));
+      await flushPromises();
+
+      expect(wrapper.text()).toContain("Registration successful!");
+      expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
+      expect(sessionStorage.getItem("register-cooldown")).not.toContain('"id":""');
+    });
+
     it("holds Resend and Change address while a code is being confirmed", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
       let answer!: (response: Response) => void;
