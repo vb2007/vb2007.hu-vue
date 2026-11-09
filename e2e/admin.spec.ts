@@ -1,5 +1,5 @@
 import { browserFontSize } from "./browser";
-import { expect, getFromApi, MOCK_PASSWORD, test } from "./fixtures";
+import { callApi, expect, getFromApi, MOCK_PASSWORD, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
@@ -747,6 +747,15 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
   await expect(
     page.getByText("The username's too long: it must be between 2 and 16 characters.")
   ).toBeVisible();
+  // So are invisible characters and whitespace other than spaces, which the API refuses too.
+  const invalid =
+    "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+  await field.fill("an\tna");
+  await expect(page.getByText(invalid)).toBeVisible();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(
+    await callApi(page, api, "PATCH", `/admin/users/${anna.id}`, { username: "an\u200bna" })
+  ).toEqual({ status: 400, body: { error: invalid } });
 
   // Another account's name, in another case, is taken: the API says so under the field.
   await field.fill("MILO");
