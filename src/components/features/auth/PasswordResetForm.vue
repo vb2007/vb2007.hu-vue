@@ -33,10 +33,7 @@ import { statusTextId } from "@/components/ui/statusMessage";
 
 const codeHint = `The ${Limits.Code.digits}-digit code from the e-mail. It works for ${Limits.Code.passwordResetValidMinutes} minutes.`;
 const linkIntro = `Choose a new password for your account. The link from the e-mail works once, for ${Limits.Code.passwordResetValidMinutes} minutes after it was sent.`;
-const passwordHint = Messages.Auth.lengthHint(
-  Limits.Password.minLength,
-  Limits.Password.maxLength
-);
+const passwordHint = Messages.Auth.lengthHint(Limits.Password.minLength, Limits.Password.maxLength);
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = Limits.Code.cooldownSeconds;
@@ -369,18 +366,22 @@ const handleReset = () =>
 
 const handleLinkReset = async () => {
   let passwordRefusal = "";
-  await submitReset(linkChecks, async () => {
-    linkAnswer.value = "";
-    const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
-    if (answer.linkRefused) {
-      linkAnswer.value = "refused";
-    } else if (answer.retryAfter !== undefined) {
-      linkAnswer.value = "limited";
-    } else if (answer.passwordRefused) {
-      passwordRefusal = answer.error!;
-    }
-    return answer;
-  }, linkHold);
+  await submitReset(
+    linkChecks,
+    async () => {
+      linkAnswer.value = "";
+      const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
+      if (answer.linkRefused) {
+        linkAnswer.value = "refused";
+      } else if (answer.retryAfter !== undefined) {
+        linkAnswer.value = "limited";
+      } else if (answer.passwordRefused) {
+        passwordRefusal = answer.error!;
+      }
+      return answer;
+    },
+    linkHold
+  );
 
   // The link still works: the refusal belongs to the field, which gets the cursor for another one.
   if (passwordRefusal) {
