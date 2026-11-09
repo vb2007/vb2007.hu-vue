@@ -69,20 +69,31 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(mail.getByRole("listitem")).toHaveText([
     "200 Sign-up codes stop",
     "200 The API logs a warning",
+    "225 Password reset codes stop",
     "250 All mail stops"
   ]);
+  await expect(mail.getByText("188 until sign-up codes stop")).toBeVisible();
   await expect(mail.getByText(/since midnight UTC or its last restart/)).toBeVisible();
 
   // The sections still follow, under their own heading.
   await expect(page.getByRole("heading", { level: 2, name: "Sections" })).toBeVisible();
   await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
 
-  // Past the sign-up stop, then at the limit.
+  // Past the sign-up stop, past the password reset stop, then at the limit.
   api.sentMailToday(205);
   await page.reload();
   await expect(mail.getByText("205 of 250 sent")).toBeVisible();
+  await expect(mail.getByText("20 until password reset codes stop")).toBeVisible();
   await expect(mail.getByRole("status")).toHaveText(
-    /^Sign-up codes have stopped until midnight UTC or the API's next restart\. /
+    "Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out up to 225, other mail to existing accounts up to 250."
+  );
+
+  api.sentMailToday(230);
+  await page.reload();
+  await expect(mail.getByText("230 of 250 sent")).toBeVisible();
+  await expect(mail.getByRole("listitem").nth(2)).toHaveText("225 Password reset codes stop Reached");
+  await expect(mail.getByRole("status")).toHaveText(
+    "Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out, up to 250."
   );
 
   api.sentMailToday(250);
