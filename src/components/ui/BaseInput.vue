@@ -51,7 +51,10 @@ const describedBy = computed(() => {
       @blur="$emit('blur')"
     />
     <p v-if="hint" :id="`${id}-hint`" class="field__hint">{{ hint }}</p>
-    <p v-if="error" :id="`${id}-error`" class="field__error">{{ error }}</p>
+    <!-- The slot is for an error with markup, e.g. a link; `error` still decides whether it shows. -->
+    <p v-if="error" :id="`${id}-error`" class="field__error">
+      <slot name="error">{{ error }}</slot>
+    </p>
   </div>
 </template>
 
@@ -115,5 +118,11 @@ const describedBy = computed(() => {
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--c-danger);
+}
+
+/* The global ring sits 3px out, which swallows the spaces and letters beside an inline link. */
+.field__error :deep(a:focus-visible) {
+  outline-width: 2px;
+  outline-offset: 1px;
 }
 </style>

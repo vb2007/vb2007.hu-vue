@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch, computed, useId, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
-import { LoginStatus } from "@/constants/auth";
+import { AuthPaths, LoginStatus } from "@/constants/auth";
 import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
+import { emailFromHistory, emailPrefillState } from "@/scripts/authentication/emailPrefill";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
-import { emailShapeError, normalizeEmail, requiredError } from "@/scripts/authentication/register";
+import {
+  emailMissingError,
+  normalizeEmail,
+  requiredError
+} from "@/scripts/authentication/register";
 import {
   forgetLogin,
   login,
@@ -23,18 +28,26 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { statusTextId } from "@/components/ui/statusMessage";
 
-const email = ref("");
+// Opened from Register with an address that has an account: it is filled in, and the cursor goes
+// to the password. Read before the validation starts watching the field, so it isn't "edited".
+const email = ref(emailFromHistory());
+const wasPrefilled = !!email.value;
 const password = ref("");
 const isLoading = ref(false);
 const isButtonError = ref(false);
 const form = useTemplateRef("form");
 const { errors, isValid, leave, validate, reset } = useFormValidation({
-  email: { value: email, check: () => emailShapeError(email.value) },
+  email: { value: email, check: () => emailMissingError(email.value) },
   password: {
     value: password,
     check: () => requiredError(password.value, Messages.Auth.passwordMissing)
   }
 });
+/** "Forgot password?" carries what is typed, so Reset password doesn't ask for it again. */
+const forgotTo = computed(() => ({
+  path: AuthPaths.ResetPassword,
+  state: emailPrefillState(email.value)
+}));
 const oauthError = useOauthError();
 // Shown once: a reset sends the user here with the API's message. It's about the session at the
 // time of the reset, so logging in here drops it.
@@ -106,6 +119,8 @@ const failure = computed(() => {
 
 onMounted(() => {
   restoreSession();
+  // Not after the session check: by then the user may have started typing elsewhere.
+  if (wasPrefilled) form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
 });
 
 watch(isLoggedIn, (loggedIn) => {
@@ -145,7 +160,7 @@ watch(isLoggedIn, (loggedIn) => {
             required
             @blur="leave('password')"
           />
-          <RouterLink class="forgot" to="/reset-password">Forgot password?</RouterLink>
+          <RouterLink class="forgot" :to="forgotTo">Forgot password?</RouterLink>
         </div>
         <StatusMessage
           v-if="failure"

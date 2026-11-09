@@ -1,4 +1,14 @@
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, PASSWORD_RESET_SENT as SENT, test } from "./fixtures";
+import type { Page } from "@playwright/test";
+import {
+  callApi,
+  expect,
+  MOCK_EMAIL,
+  MOCK_EMAIL_CODE,
+  MOCK_PASSWORD,
+  type MockApi,
+  PASSWORD_RESET_SENT as SENT,
+  test
+} from "./fixtures";
 
 /**
  * The site's own text once the API's minute is over (`Messages.Auth.resetCodeSent`): a code went
@@ -47,6 +57,45 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByRole("main")).toContainText("Login successful!");
   await expect(page.getByRole("main")).not.toContainText("Password reset successfully");
+});
+
+test("Forgot password? opens Reset password with the typed address filled in", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(" me@example.com ");
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+
+  await expect(page).toHaveURL("/reset-password");
+  await expect(page.getByLabel("E-mail")).toHaveValue("me@example.com");
+  await expect(page.getByLabel("E-mail")).not.toHaveAttribute("aria-invalid", "true");
+
+  // Nothing typed, nothing carried over.
+  await page.goto("/login");
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+  await expect(page).toHaveURL("/reset-password");
+  await expect(page.getByLabel("E-mail")).toHaveValue("");
+});
+
+test("an address the API once stored, with two @, logs in and gets a code like any other", async ({
+  page,
+  api
+}) => {
+  // The site's register form refuses it, but an account made through the API directly can have it.
+  const address = "a@b@example.com";
+  api.hasUser("a@b");
+  await page.goto("/login");
+
+  await page.getByLabel("E-mail").fill(address);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill(address);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("status")).toHaveText(SENT);
+  await expect(page.getByRole("main").getByText(address, { exact: true })).toBeVisible();
+  expect(api.passwordResets).toEqual([address]);
 });
 
 test("the code can be sent again once the countdown ends, and the address changed", async ({
@@ -536,4 +585,224 @@ test.describe("the mailed link", () => {
       "You're still logged in as anna@example.com."
     );
   });
+});
+
+// The double's mail failure and voided codes, checked through the page's own calls: the form can't
+// reach a code after the account changed under it, or wait out the API's minute between two codes.
+
+const ME = "me@example.com";
+const CODE_SENT = { status: 200, body: { message: SENT } };
+const WRONG_CODE = {
+  status: 400,
+  body: { error: "The code is wrong, expired or already used: check it or request a new one." }
+};
+const RESET = {
+  status: 200,
+  body: { message: "Password reset successfully: log in with the new password." }
+};
+
+const askForCode = (page: Page, api: MockApi) =>
+  callApi(page, api, "POST", "/auth/password-reset", { email: ME });
+
+const confirmCode = (page: Page, api: MockApi) =>
+  callApi(page, api, "POST", "/auth/password-reset/confirm", {
+    email: ME,
+    code: api.passwordResetCode,
+    newPassword: "a new password"
+  });
+
+test("a reset code that couldn't be mailed still answers 200 and keeps the code sent before", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  api.clockRunsFor(60_000);
+  api.failsNextMail();
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  expect(api.passwordResets).toEqual([ME, ME]);
+  expect(await confirmCode(page, api)).toEqual(RESET);
+});
+
+test("a reset code that couldn't be mailed is not kept, and the answer doesn't show it", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.failsNextMail();
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+  // The failure was used up by that request, so the next code is mailed.
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(RESET);
+});
+
+test("a reset code for an address without an account sends no mail, so a failure is left for the next one", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.failsNextMail();
+
+  const nobody = await callApi(page, api, "POST", "/auth/password-reset", {
+    email: "nobody@example.com"
+  });
+  expect(nobody).toEqual(CODE_SENT);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("changing the password while logged in voids a reset code asked for before", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(ME, "me");
+  await page.goto("/account");
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  const changed = await callApi(page, api, "PATCH", "/user/password", {
+    currentPassword: MOCK_PASSWORD,
+    newPassword: "another password"
+  });
+
+  expect(changed.status).toBe(200);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("switching to a new e-mail address voids a reset code asked for the old one", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(ME, "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  const switched = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+
+  expect(switched.status).toBe(200);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("setting a password voids a reset code asked for before", async ({ page, api }) => {
+  api.loggedInAs(ME, "me", { githubLinked: true, password: false });
+  await page.goto("/account");
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  // Confirming with GitHub is what lets the password be set.
+  await page.getByLabel("New password").fill("correct horse battery");
+  await page.getByLabel("Confirm password").fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await expect(page).toHaveURL("/account");
+  await page.getByLabel("New password").fill("correct horse battery");
+  await page.getByLabel("Confirm password").fill("correct horse battery");
+  await page.getByRole("button", { name: "Set password" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Your password is set. You can log in with it from now on."
+  );
+
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("resetting the password with a link voids a reset code asked for before", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  const token = api.mailsResetLink("0123456789abcdef01234567", ME);
+  await page.goto("/reset-password");
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  const reset = await callApi(page, api, "POST", "/auth/password-reset/confirm-link", {
+    token,
+    newPassword: "a new password"
+  });
+
+  expect(reset).toEqual(RESET);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("a reset code asked for another account's address survives this account's new password", async ({
+  page,
+  api
+}) => {
+  api.hasUser("anna");
+  api.loggedInAs(ME, "me");
+  await page.goto("/account");
+  const anna = { email: "anna@example.com" };
+  const asked = await callApi(page, api, "POST", "/auth/password-reset", anna);
+  expect(asked).toEqual(CODE_SENT);
+
+  await callApi(page, api, "PATCH", "/user/password", {
+    currentPassword: MOCK_PASSWORD,
+    newPassword: "another password"
+  });
+
+  const reset = await callApi(page, api, "POST", "/auth/password-reset/confirm", {
+    ...anna,
+    code: api.passwordResetCode,
+    newPassword: "a new password"
+  });
+  expect(reset).toEqual(RESET);
+});
+
+// The day's mails (vb2007/vb2007.hu-api's budget): reset codes stop at 225 of 250, still answering 200.
+
+test("from 225 mails of the day, a reset code is not mailed and the answer doesn't show it", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.sentMailToday(224);
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  // That one was the 225th.
+  api.clockRunsFor(60_000);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  // The earlier code was kept.
+  expect(await confirmCode(page, api)).toEqual(RESET);
+  api.sentMailToday(225);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("a reset code that couldn't be mailed gives its mail of the day back", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.sentMailToday(224);
+  api.failsNextMail();
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  // Kept, the failed one would have been the 225th and this code refused.
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(RESET);
+});
+
+test("the notice after a reset counts against the day's mails", async ({ page, api }) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  api.sentMailToday(223);
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  // The notice to the account's address is the 225th mail.
+  expect(await confirmCode(page, api)).toEqual(RESET);
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
 });
