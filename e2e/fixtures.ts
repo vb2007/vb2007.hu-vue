@@ -293,7 +293,10 @@ export const MOCK_EMAIL = "me@example.com";
 export const MOCK_USER_ID = "e2e0e2e0e2e0e2e0e2e0e2e0";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
-/** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
+/**
+ * The API's `SUPERUSER_EMAIL` until an account is arranged with `superuser: true`, whose address then takes its place
+ * (there's only ever one). `POST /user/email/confirm` keeps it from other accounts.
+ */
 export const MOCK_SUPERUSER_EMAIL = "admin@example.com";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 /**
