@@ -8,12 +8,7 @@ import type { ApiErrorBody } from "@/types/api/common";
 import type { ShortUrlLookupResponse } from "@/types/api/shortener";
 
 export type ShortLinkState =
-  | "resolving"
-  | "redirecting"
-  | "previewing"
-  | "not-found"
-  | "unsafe"
-  | "error";
+  "resolving" | "redirecting" | "previewing" | "not-found" | "unsafe" | "error";
 
 /** Who shared a short link and when; the lookup leaves these out on older APIs. */
 export type ShortLinkDetails = {
