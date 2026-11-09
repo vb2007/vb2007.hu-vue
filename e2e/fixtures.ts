@@ -10,7 +10,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `GET /admin/uploads` lists every owner's, each with its owner
- * (the logged-in user or a `hasUser(...)` account by that name, else `null`, as for a deleted account), its `q` matching the owner's name too; `api.loggedInAs(..., { superuser: true })` opens the admin page;
+ * (the `hasUser(...)` account by that name, whatever its case, else a login's, else `null`, as for a deleted account), its `q` matching the owner's name too; `api.loggedInAs(..., { superuser: true })` opens the admin page;
  * its overview counts `GET /admin/stats` from the mock's own admin list, pastes, short links and uploads (`api.statsFail()` makes it a bare 502),
  * and `GET /admin/mail-budget` reports `api.sentMailToday(n)` mails (0 by default) of the API's default 250; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
@@ -49,12 +49,15 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
  * replaces `MOCK_EMAIL`'s account (arrange `hasUser(...)` for a second one). A `hasUser(...)` row at an address the login already knows takes
- * that account over with its own id and name, in either order (the logged-in account aside, which stays as arranged), so `hasUser("me")` makes
- * `MOCK_EMAIL`'s account "me", which a later `loggedInAs` leaves alone. `DELETE /user` takes the account out of the login and the admin list.
+ * that account over with its own id and name, and with `password: false`, `githubLogin`, `emailVerified` and `superuser` when given, in either
+ * order (the logged-in account aside, which stays as arranged), so `hasUser("me")` makes `MOCK_EMAIL`'s account "me", which a later `loggedInAs`
+ * leaves alone. `DELETE /user` takes the account out of the login and the admin list, with its pastes, short links and uploads, like the admin's delete.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
+ * Suspending it through the admin route, or lifting a suspension, voids its waiting reset code, reset links and e-mail change, like the API's `setUserSuspension`.
+ * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
  * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API, and `api.replacesSession()` stands
  * in for a login elsewhere, which keeps the account logged in on a cookie the browser doesn't have. A request that carries an older one
  * gets the logged-out 403 on every route the API guards with `isAuthenticated`; the public ones (`PUBLIC_ROUTES`) answer it as a guest's.
@@ -66,7 +69,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
  * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
  * `GET /auth/username-available`, registering, confirming the code and `PATCH /admin/users/:id` answer 400 first for a name the API's rule refuses (`usernameRefusal`).
- * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
+ * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s login's when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
@@ -317,8 +320,8 @@ export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 /**
- * Whether two usernames name the same account, whatever their case, like the API's collation. Uploads are kept by
- * their owner's name here (the API keys them by id), so this is how an upload finds its account.
+ * Whether two usernames name the same account, whatever their case, like the API's collation. Pastes, short links and
+ * uploads are kept by their owner's name here (the API keys them by id), so this is how they find their account.
  */
 const sameUsername = (one: string, other: string) => one.toLowerCase() === other.toLowerCase();
 
@@ -673,7 +676,8 @@ export class MockApi {
   /**
    * Lets `POST /auth/login` find the `hasUser(...)` row `user`, as one account with one id and one name, whatever was
    * arranged first. The logged-in account stays as `loggedInAs` arranged it. A login already at the address takes the
-   * row's id and name (e.g. `MOCK_EMAIL`'s, which then leaves `MOCK_USER_ID`), and another login with the row's id goes.
+   * row's id and name (e.g. `MOCK_EMAIL`'s, which then leaves `MOCK_USER_ID`), and how the row logs in where it was
+   * arranged (no password, GitHub, a confirmed address, the superuser's); another login with the row's id goes.
    */
   private knowsListedAccount(
     user: MockAdminUser,
@@ -692,14 +696,20 @@ export class MockApi {
       if (account._id === user.id && account !== atAddress) this.accounts.splice(index, 1);
     }
     if (atAddress) {
+      // One account: what the row was arranged with is on the login too. Defaults leave what the login had.
       atAddress._id = user.id;
       atAddress.username = user.username;
+      if (!password) atAddress.hasPassword = false;
+      if (emailVerified) atAddress.emailVerified = true;
+      // The API derives the superuser from the address, which the row and the login share.
+      if (user.isSuperuser) atAddress.isSuperuser = true;
+      if (githubLogin) Object.assign(atAddress, { githubId: `gh-${user.username}`, githubLogin });
     } else {
       this.accounts.push({
         _id: user.id,
         email: user.email,
         username: user.username,
-        isSuperuser: false,
+        isSuperuser: user.isSuperuser,
         hasPassword: password,
         emailVerified,
         ...(githubLogin && { githubId: `gh-${user.username}`, githubLogin })
@@ -787,14 +797,16 @@ export class MockApi {
   /**
    * "Mails" a reset link for the account `userId` at `email` and returns its token, which
    * `POST /auth/password-reset/confirm-link` takes once, like the API (vb2007/vb2007.hu-api#256).
-   * Without `userId`, it's the id of the account at `email` (the logged-in one's by default), else `MOCK_USER_ID`.
+   * Without `userId`, it's the id of the account at `email` (the logged-in one's by default), else `MOCK_USER_ID`: the
+   * login's id first, which its session carries, then the admin list's.
    */
   mailsResetLink(userId?: string, email = this.user?.email ?? MOCK_EMAIL) {
+    const atAddress = (account: { email: string }) =>
+      normalizeEmail(account.email) === normalizeEmail(email);
     const id =
       userId ??
-      this.storedAccounts().find(
-        (account) => normalizeEmail(account.email) === normalizeEmail(email)
-      )?.id ??
+      [...(this.user ? [this.user] : []), ...this.accounts].find(atAddress)?._id ??
+      this.storedAccounts().find(atAddress)?.id ??
       MOCK_USER_ID;
     const token = `${id}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
     this.resetLinks.set(token, { userId: id, email });
@@ -1788,9 +1800,11 @@ export class MockApi {
         };
       }
     }
-    // The API deletes the account by its id: neither the login nor the admin list knows it any more.
+    // The API deletes the account by its id: neither the login nor the admin list knows it any more, and what it
+    // owned goes too (`removeUserContent`).
     const deleted = this.user;
     this.forgetsAccount(deleted);
+    this.removesContentOf(deleted.username);
     for (let index = this.users.length - 1; index >= 0; index--) {
       const row = this.users[index];
       if (row.id === deleted._id || normalizeEmail(row.email) === normalizeEmail(deleted.email)) {
@@ -1905,7 +1919,7 @@ export class MockApi {
       };
     }
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
-    if (paste.addedBy !== this.user!.username && !this.user!.isSuperuser) {
+    if (!sameUsername(paste.addedBy, this.user!.username) && !this.user!.isSuperuser) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
     if (method === "PATCH") {
@@ -2041,7 +2055,7 @@ export class MockApi {
     const account = this.accounts.find(
       (item) => normalizeEmail(item.email) === normalizeEmail(user.email)
     );
-    const owns = (addedBy: string) => addedBy === user.username;
+    const owns = (addedBy: string) => sameUsername(addedBy, user.username);
     return {
       status: 200,
       body: {
@@ -2129,13 +2143,22 @@ export class MockApi {
   }
 
   /**
-   * Whose an upload is, as the site-wide listing names them: any stored account with the name, whatever its case,
-   * like the API's lookup of the owner's id (it's kept by name here); `null` once no account has it.
+   * Whose a paste, short link or upload filed under `name` is, as the admin's lists name them: the account with the
+   * name, whatever its case, like the API's lookup of the owner's id (it's kept by name here). The admin list's row
+   * comes first, as `/admin/users/:id` finds it, then a login's; `null` once no account has it.
    */
+  private ownerNamed(name: string) {
+    const listed = this.users.find((user) => sameUsername(user.username, name));
+    if (listed) return { id: listed.id, username: listed.username };
+    const account = [...(this.user ? [this.user] : []), ...this.accounts].find((item) =>
+      sameUsername(item.username, name)
+    );
+    return account ? { id: account._id, username: account.username } : null;
+  }
+
+  /** Whose an upload is (see `ownerNamed`). */
   private ownerOf(uploadId: string) {
-    const name = this.uploadOwners.get(uploadId)!;
-    const owner = this.storedAccounts().find((account) => sameUsername(account.username, name));
-    return owner ? { id: owner.id, username: owner.username } : null;
+    return this.ownerNamed(this.uploadOwners.get(uploadId)!);
   }
 
   /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. A bad query answers 400 like the API's. */
@@ -2264,8 +2287,12 @@ export class MockApi {
     if (taken) return { status: 409, body: { error: "This username is already taken." } };
 
     const previous = target.username;
-    for (const paste of this.pastes) if (paste.addedBy === previous) paste.addedBy = name;
-    for (const link of this.shortLinks.values()) if (link.addedBy === previous) link.addedBy = name;
+    for (const paste of this.pastes) {
+      if (sameUsername(paste.addedBy, previous)) paste.addedBy = name;
+    }
+    for (const link of this.shortLinks.values()) {
+      if (sameUsername(link.addedBy, previous)) link.addedBy = name;
+    }
     for (const [upload, owner] of this.uploadOwners) {
       if (sameUsername(owner, previous)) this.uploadOwners.set(upload, name);
     }
@@ -2306,13 +2333,6 @@ export class MockApi {
     const invalid = refuseListQuery(query, ADMIN_PASTE_LIST_CHECKS);
     if (invalid) return invalid;
 
-    const ownerOf = (name: string) => {
-      const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
-      const listed = this.users.find((user) => sameName(user.username));
-      if (listed) return { id: listed.id, username: listed.username };
-      const account = this.accounts.find((item) => sameName(item.username));
-      return account ? { id: account._id, username: account.username } : null;
-    };
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
@@ -2323,7 +2343,7 @@ export class MockApi {
       // The first 100 code points.
       preview: [...paste.content].slice(0, 100).join(""),
       addedOn: paste.addedOn,
-      owner: ownerOf(paste.addedBy)
+      owner: this.ownerNamed(paste.addedBy)
     }));
     const matching = rows.filter(
       (row) =>
@@ -2359,20 +2379,24 @@ export class MockApi {
     if (target.isSuperuser) {
       return { status: 409, body: { error: "The superuser's own account can't be deleted." } };
     }
-    const name = target.username;
     this.users.splice(this.users.indexOf(target), 1);
     const account = this.accountOf(target);
     if (account) this.accounts.splice(this.accounts.indexOf(account), 1);
-    const kept = this.pastes.filter((paste) => paste.addedBy !== name);
+    this.removesContentOf(target.username);
+    return { status: 200, body: { message: "User deleted successfully." } };
+  }
+
+  /** Takes away what the account `name` owns, whatever the name's case, like the API's `removeUserContent`. */
+  private removesContentOf(name: string) {
+    const kept = this.pastes.filter((paste) => !sameUsername(paste.addedBy, name));
     this.pastes.splice(0, this.pastes.length, ...kept);
     for (const [code, link] of this.shortLinks) {
-      if (link.addedBy === name) this.shortLinks.delete(code);
+      if (sameUsername(link.addedBy, name)) this.shortLinks.delete(code);
     }
     const keptUploads = this.uploads.filter(
       (upload) => !sameUsername(this.uploadOwners.get(upload.id)!, name)
     );
     this.uploads.splice(0, this.uploads.length, ...keptUploads);
-    return { status: 200, body: { message: "User deleted successfully." } };
   }
 
   /** Checks the query after the superuser, like the API, whose bad query answers 400. */
@@ -2483,8 +2507,25 @@ export class MockApi {
   }
 
   /**
+   * Voids the reset code, reset links and e-mail change waiting for the admin list's account `user`, as the API's
+   * `setUserSuspension` unsets `passwordReset`, `passwordResetLinks` and `emailChange`. Its session and `githubLink`
+   * go too there, but here they're only this browser's, whose superuser the API never suspends.
+   */
+  private voidsWaitingFor(user: MockAdminUser) {
+    const email = normalizeEmail(user.email);
+    // The login may carry another id than the row (see `knowsListedAccount`).
+    const loginId = this.accountOf(user)?._id;
+    this.voidResetCode(email);
+    this.voidResetLinks(
+      (link) =>
+        link.userId === user.id || link.userId === loginId || normalizeEmail(link.email) === email
+    );
+    this.userPendingEmails.delete(user.id);
+  }
+
+  /**
    * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
-   * the first `suspendedAt`, and the superuser's row answers 409.
+   * the first `suspendedAt`, and the superuser's row answers 409. Suspending, or lifting a suspension that's there, voids what's waiting (`voidsWaitingFor`).
    */
   private setSuspension(id: string, suspended: unknown): MockResponse {
     const refusal = this.refuseNonSuperuser();
@@ -2498,6 +2539,8 @@ export class MockApi {
     if (user.isSuperuser) {
       return { status: 409, body: { error: "The superuser's account can't be suspended." } };
     }
+    // The API's `setUserSuspension` unsets what's waiting on suspending, and on lifting a suspension that was there.
+    if (suspended || user.suspendedAt) this.voidsWaitingFor(user);
     user.suspendedAt = suspended ? (user.suspendedAt ?? new Date(this.now()).toISOString()) : null;
     return {
       status: 200,
@@ -2538,7 +2581,7 @@ export class MockApi {
     };
     const username = this.user.username;
     const existing = [...this.shortLinks].find(
-      ([, link]) => link.target === url && link.addedBy === username
+      ([, link]) => link.target === url && sameUsername(link.addedBy, username)
     );
     if (existing) return answer(200, "You've already shortened this URL.", existing[0]);
 
@@ -2565,7 +2608,7 @@ export class MockApi {
     const q = query.get("q")?.toLowerCase() ?? "";
     const username = this.user.username;
     const owned = [...this.shortLinks]
-      .filter(([, link]) => link.addedBy === username)
+      .filter(([, link]) => sameUsername(link.addedBy, username))
       .filter(
         ([code, link]) => code.toLowerCase().includes(q) || link.target.toLowerCase().includes(q)
       )
@@ -2602,13 +2645,6 @@ export class MockApi {
     const invalid = refuseListQuery(query, SHORT_URL_LIST_CHECKS);
     if (invalid) return invalid;
 
-    const ownerOf = (name: string) => {
-      const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
-      const listed = this.users.find((user) => sameName(user.username));
-      if (listed) return { id: listed.id, username: listed.username };
-      const account = this.accounts.find((item) => sameName(item.username));
-      return account ? { id: account._id, username: account.username } : null;
-    };
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
@@ -2617,7 +2653,7 @@ export class MockApi {
       shortenedUrl: code,
       originalUrl: link.target,
       addedOn: link.addedOn,
-      owner: ownerOf(link.addedBy)
+      owner: this.ownerNamed(link.addedBy)
     }));
     const matching = rows.filter(
       (row) =>
@@ -2658,7 +2694,7 @@ export class MockApi {
     }
     const link = this.shortLinks.get(code);
     if (!link) return { status: 404, body: { error: "The shortened URL cannot be found." } };
-    if (link.addedBy !== this.user.username && !this.user.isSuperuser) {
+    if (!sameUsername(link.addedBy, this.user.username) && !this.user.isSuperuser) {
       return {
         status: 403,
         body: { error: "You can only delete URLs created with your account." }
@@ -2676,22 +2712,20 @@ export class MockApi {
     const invalid = refuseListQuery(query, PASTE_LIST_CHECKS);
     if (invalid) return invalid;
 
-    // Usernames match whatever their case, like the API's collation.
-    const sameName = (name?: string) => name?.toLowerCase() === username.toLowerCase();
     const known = [
       this.user.username,
       ...this.accounts.map((account) => account.username),
       ...this.users.map((user) => user.username),
       ...this.pastes.map((paste) => paste.addedBy)
     ];
-    if (!known.some(sameName)) {
+    if (!known.some((name) => sameUsername(name, username))) {
       return { status: 404, body: { error: "There is no such user with that username." } };
     }
 
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => sameName(paste.addedBy));
+    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, username));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,
@@ -2750,7 +2784,7 @@ export async function getFromApi(page: Page, api: MockApi, path: string) {
 export async function callApi(
   page: Page,
   api: MockApi,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "DELETE",
   path: string,
   body: unknown
 ) {

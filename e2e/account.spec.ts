@@ -1387,6 +1387,68 @@ test("a deleted account's name and address are free again", async ({ page, api }
   }
 });
 
+test("a deleted account takes its pastes, short links and uploads along, and only its own", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPaste("mine", "me");
+  api.hasShortLink("mine12", "https://example.com/mine", "me");
+  api.hasUpload("mine.pdf");
+  const theirs = api.hasPaste("theirs", "milo");
+  api.hasShortLink("milo12", "https://example.com/theirs", "milo");
+  api.hasUpload("theirs.pdf", { owner: "milo" });
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/");
+
+  expect(api.pastes).toEqual([theirs]);
+  expect([...api.shortLinks.keys()]).toEqual(["milo12"]);
+  expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["theirs.pdf"]);
+});
+
+test("an account arranged at a login's address keeps how it logs in", async ({ page, api }) => {
+  // MOCK_EMAIL's login, which the row takes over, then a second account to look at it from.
+  const me = api.hasUser("me", { password: false, githubLogin: "me-gh", emailVerified: true });
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+
+  await page.goto(`/admin/users/${me.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "me" })).toBeVisible();
+  const fact = (label: string) =>
+    page
+      .locator(".fact")
+      .filter({ has: page.locator("dt").getByText(label, { exact: true }) })
+      .locator("dd");
+  await expect(fact("E-mail")).toHaveText(/me@example\.com\s+Confirmed/);
+  await expect(fact("Password")).toHaveText("None: logs in with GitHub only");
+  await expect(fact("GitHub")).toHaveText("@me-gh");
+
+  // A GitHub-only account has no password to log in with.
+  const login = await callApi(page, api, "POST", "/auth/login", {
+    email: MOCK_EMAIL,
+    password: MOCK_PASSWORD
+  });
+  expect(login.status).toBe(403);
+});
+
+test("a superuser row at a login's address makes that login the admin's", async ({ page, api }) => {
+  // MOCK_EMAIL's login: the address is the superuser's.
+  api.hasUser("me", { superuser: true });
+
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+
+  await page.goto("/admin");
+  await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
+  await expect(page.getByText("Log in with the admin account to open this page.")).toHaveCount(0);
+});
+
 test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({
   page,
   api
