@@ -29,8 +29,8 @@ test("registering asks for the mailed code, then logs the new account in", async
   await fillForm(page);
 
   await expect(page.getByRole("heading", { level: 1, name: "Register" })).toBeVisible();
-  await expect(page.getByRole("status")).toContainText(
-    "A 6-digit code is on its way to new@example.com."
+  await expect(page.getByRole("status")).toHaveText(
+    "A 6-digit code is on its way to new@example.com. Enter it to register as newbie; it works for 15 minutes."
   );
   const code = page.getByLabel("Confirmation code");
   await expect(code).toBeFocused();
@@ -276,8 +276,8 @@ test("registering the same address again within the minute keeps the code sent",
 
   await page.getByRole("button", { name: "Register", exact: true }).click();
 
-  await expect(page.getByRole("status")).toContainText(
-    "Less than a minute ago, a code went to new@example.com. It still works"
+  await expect(page.getByRole("status")).toHaveText(
+    "Less than a minute ago, a code went to new@example.com. It still works: enter it to register as newbie."
   );
   await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
   // Once the minute is over, it no longer says "less than a minute ago".
