@@ -60,7 +60,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
  * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
  * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
- * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are always taken.
+ * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
  * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
