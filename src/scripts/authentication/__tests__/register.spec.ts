@@ -5,7 +5,7 @@ import {
   confirmationCodeEarlyError,
   confirmationCodeError,
   emailError,
-  emailShapeError,
+  emailMissingError,
   passwordEarlyError,
   passwordError,
   passwordLengthError,
@@ -140,19 +140,20 @@ describe("emailError", () => {
   });
 });
 
-describe("emailShapeError", () => {
+describe("emailMissingError", () => {
   it.each([
     ["me@example.com", ""],
     [" a@b ", ""],
-    // Registered before the API took only plain addresses: it still logs in.
+    // Whatever the API once stored still logs in, and it answers for the rest.
+    ["a@b@example.com", ""],
+    ["me", ""],
+    ["m e@example.com", ""],
     ['"x"@example.com', ""],
     [`${"a".repeat(65)}@example.com`, ""],
     ["", INVALID_EMAIL],
-    ["me", INVALID_EMAIL],
-    ["me@", INVALID_EMAIL],
-    ["m e@example.com", INVALID_EMAIL]
-  ])("checks %j", (email, expected) => {
-    expect(emailShapeError(email)).toBe(expected);
+    ["   ", INVALID_EMAIL]
+  ])("only asks for %j to be there", (email, expected) => {
+    expect(emailMissingError(email)).toBe(expected);
   });
 });
 
