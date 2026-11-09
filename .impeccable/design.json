@@ -1,158 +1,543 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-23T00:00:00Z",
+  "generatedAt": "2026-11-09T01:03:34Z",
   "title": "Design System: vb2007.hu",
   "extensions": {
     "colorMeta": {
-      "field": {"role": "neutral", "displayName": "Meadow Field", "canonical": "oklch(0.915 0.075 138)", "dark": "oklch(0.225 0.042 152)"},
-      "field-deep": {"role": "neutral", "displayName": "Deep Meadow", "canonical": "oklch(0.855 0.105 140)", "dark": "oklch(0.285 0.05 152)"},
-      "panel": {"role": "neutral", "displayName": "Enamel White", "canonical": "oklch(0.988 0.012 130)", "dark": "oklch(0.285 0.04 152)"},
-      "panel-sunk": {"role": "neutral", "displayName": "Sunk Enamel", "canonical": "oklch(0.955 0.03 134)", "dark": "oklch(0.245 0.04 152)"},
-      "ink": {"role": "neutral", "displayName": "Board Ink", "canonical": "oklch(0.24 0.045 152)", "dark": "oklch(0.95 0.035 138)"},
-      "ink-soft": {"role": "neutral", "displayName": "Soft Ink", "canonical": "oklch(0.38 0.05 152)", "dark": "oklch(0.8 0.045 140)"},
-      "hairline": {"role": "neutral", "displayName": "Hairline", "canonical": "oklch(0.24 0.045 152 / 0.2)", "dark": "oklch(0.95 0.035 138 / 0.18)"},
-      "line": {"role": "primary", "displayName": "Route Green", "canonical": "oklch(0.6 0.16 148)", "dark": "oklch(0.78 0.17 145)"},
-      "action": {"role": "primary", "displayName": "Signal Forest", "canonical": "oklch(0.45 0.115 152)", "dark": "oklch(0.84 0.16 142)"},
-      "action-deep": {"role": "primary", "displayName": "Deep Forest", "canonical": "oklch(0.33 0.09 152)", "dark": "oklch(0.62 0.14 145)"},
-      "on-action": {"role": "neutral", "displayName": "Enamel On Action", "canonical": "oklch(0.99 0.01 130)", "dark": "oklch(0.2 0.04 152)"},
-      "deep": {"role": "neutral", "displayName": "Terminal Band", "canonical": "oklch(0.24 0.045 152)", "dark": "oklch(0.36 0.06 152)"},
-      "works-amber": {"role": "secondary", "displayName": "Works Amber", "canonical": "oklch(0.84 0.15 88)", "dark": "oklch(0.82 0.14 88)"},
-      "danger": {"role": "tertiary", "displayName": "Fault Red", "canonical": "oklch(0.5 0.18 27)", "dark": "oklch(0.8 0.13 27)"},
-      "syn-string": {"role": "tertiary", "displayName": "String Clay", "canonical": "oklch(0.48 0.13 38)", "dark": "oklch(0.8 0.1 45)"},
-      "syn-number": {"role": "tertiary", "displayName": "Number Blue", "canonical": "oklch(0.47 0.13 255)", "dark": "oklch(0.8 0.1 245)"},
-      "syn-title": {"role": "tertiary", "displayName": "Title Plum", "canonical": "oklch(0.46 0.15 330)", "dark": "oklch(0.8 0.11 335)"},
-      "syn-type": {"role": "tertiary", "displayName": "Type Teal", "canonical": "oklch(0.47 0.09 205)", "dark": "oklch(0.8 0.08 200)"},
-      "syn-attr": {"role": "tertiary", "displayName": "Attribute Ochre", "canonical": "oklch(0.49 0.1 75)", "dark": "oklch(0.83 0.1 80)"}
+      "field": {
+        "role": "neutral",
+        "displayName": "Meadow Field",
+        "canonical": "oklch(0.915 0.075 138)",
+        "dark": "oklch(0.225 0.042 152)"
+      },
+      "field-deep": {
+        "role": "neutral",
+        "displayName": "Deep Meadow",
+        "canonical": "oklch(0.855 0.105 140)",
+        "dark": "oklch(0.285 0.05 152)"
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Enamel White",
+        "canonical": "oklch(0.988 0.012 130)",
+        "dark": "oklch(0.285 0.04 152)"
+      },
+      "panel-sunk": {
+        "role": "neutral",
+        "displayName": "Sunk Enamel",
+        "canonical": "oklch(0.955 0.03 134)",
+        "dark": "oklch(0.245 0.04 152)"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Board Ink",
+        "canonical": "oklch(0.24 0.045 152)",
+        "dark": "oklch(0.95 0.035 138)"
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "oklch(0.38 0.05 152)",
+        "dark": "oklch(0.8 0.045 140)"
+      },
+      "edge": {
+        "role": "neutral",
+        "displayName": "Ink Edge",
+        "canonical": "oklch(0.24 0.045 152)",
+        "dark": "oklch(0.72 0.07 145)"
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.24 0.045 152 / 0.2)",
+        "dark": "oklch(0.95 0.035 138 / 0.18)"
+      },
+      "line": {
+        "role": "primary",
+        "displayName": "Route Green",
+        "canonical": "oklch(0.6 0.16 148)",
+        "dark": "oklch(0.78 0.17 145)"
+      },
+      "action": {
+        "role": "primary",
+        "displayName": "Signal Forest",
+        "canonical": "oklch(0.45 0.115 152)",
+        "dark": "oklch(0.84 0.16 142)"
+      },
+      "action-deep": {
+        "role": "primary",
+        "displayName": "Deep Forest",
+        "canonical": "oklch(0.33 0.09 152)",
+        "dark": "oklch(0.62 0.14 145)"
+      },
+      "on-action": {
+        "role": "neutral",
+        "displayName": "Enamel On Action",
+        "canonical": "oklch(0.99 0.01 130)",
+        "dark": "oklch(0.2 0.04 152)"
+      },
+      "deep": {
+        "role": "neutral",
+        "displayName": "Terminal Band",
+        "canonical": "oklch(0.24 0.045 152)",
+        "dark": "oklch(0.36 0.06 152)"
+      },
+      "on-deep": {
+        "role": "neutral",
+        "displayName": "Enamel On Band",
+        "canonical": "oklch(0.97 0.02 135)",
+        "dark": "oklch(0.97 0.02 135)"
+      },
+      "works-amber": {
+        "role": "secondary",
+        "displayName": "Works Amber",
+        "canonical": "oklch(0.84 0.15 88)",
+        "dark": "oklch(0.82 0.14 88)"
+      },
+      "on-works": {
+        "role": "secondary",
+        "displayName": "Works Ink",
+        "canonical": "oklch(0.25 0.05 88)",
+        "dark": "oklch(0.25 0.05 88)"
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Fault Red",
+        "canonical": "oklch(0.5 0.18 27)",
+        "dark": "oklch(0.8 0.13 27)"
+      },
+      "danger-wash": {
+        "role": "tertiary",
+        "displayName": "Fault Wash",
+        "canonical": "oklch(0.95 0.035 27)",
+        "dark": "oklch(0.32 0.07 27)"
+      },
+      "ok-wash": {
+        "role": "tertiary",
+        "displayName": "Confirm Wash",
+        "canonical": "oklch(0.94 0.06 140)",
+        "dark": "oklch(0.33 0.07 150)"
+      },
+      "syn-string": {
+        "role": "tertiary",
+        "displayName": "String Clay",
+        "canonical": "oklch(0.48 0.13 38)",
+        "dark": "oklch(0.8 0.1 45)"
+      },
+      "syn-number": {
+        "role": "tertiary",
+        "displayName": "Number Blue",
+        "canonical": "oklch(0.47 0.13 255)",
+        "dark": "oklch(0.8 0.1 245)"
+      },
+      "syn-title": {
+        "role": "tertiary",
+        "displayName": "Title Plum",
+        "canonical": "oklch(0.46 0.15 330)",
+        "dark": "oklch(0.8 0.11 335)"
+      },
+      "syn-type": {
+        "role": "tertiary",
+        "displayName": "Type Teal",
+        "canonical": "oklch(0.47 0.09 205)",
+        "dark": "oklch(0.8 0.08 200)"
+      },
+      "syn-attr": {
+        "role": "tertiary",
+        "displayName": "Attribute Ochre",
+        "canonical": "oklch(0.49 0.1 75)",
+        "dark": "oklch(0.83 0.1 80)"
+      }
     },
     "typographyMeta": {
-      "display": {"displayName": "Display", "purpose": "Home hero title only."},
-      "headline": {"displayName": "Headline", "purpose": "h1 on inner pages, uppercase."},
-      "title": {"displayName": "Title", "purpose": "h2, board titles."},
-      "body": {"displayName": "Body", "purpose": "Running text, 62ch max."},
-      "label": {"displayName": "Label", "purpose": "Buttons and route labels."},
-      "code": {"displayName": "Code", "purpose": "Short links and mono inputs."}
+      "display": { "displayName": "Display", "purpose": "The home hero title only." },
+      "headline": { "displayName": "Headline", "purpose": "h1 on inner pages, uppercase." },
+      "title": {
+        "displayName": "Title",
+        "purpose": "h2, board titles and the footer name, uppercase. h3 is 1.25rem, not uppercase."
+      },
+      "body": { "displayName": "Body", "purpose": "Running text, capped at 62ch." },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, route labels and segment keys, uppercase."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Short links, upload links and mono inputs; the literal strings a user will copy."
+      }
     },
     "shadows": [
-      {"name": "enamel-panel", "value": "0 0.4rem 0 var(--c-field-deep), 0 1.25rem 2rem -1.25rem oklch(0.3 0.06 152 / 0.5)", "purpose": "Station boards: enamel thickness plus soft cast."},
-      {"name": "key-underside", "value": "0 0.25rem 0 var(--btn-depth)", "purpose": "Button hard offset; +2px on hover, 0 on press."},
-      {"name": "line-bar", "value": "0 0.3rem 0 var(--c-line)", "purpose": "Route line under the navbar."},
-      {"name": "focus-halo", "value": "0 0 0 4px color-mix(in oklch, var(--c-line) 45%, transparent)", "purpose": "Focused input."}
+      {
+        "name": "enamel-panel",
+        "value": "inset 0 2px 0 light-dark(oklch(1 0 0 / 0.75), oklch(1 0 0 / 0.08)), 0 0.4rem 0 var(--c-field-deep), 0 1.25rem 2rem -1.25rem light-dark(oklch(0.3 0.06 152 / 0.5), oklch(0.05 0.02 152 / 0.7))",
+        "purpose": "Station boards and the tools directory: faint top highlight, enamel thickness, soft cast."
+      },
+      {
+        "name": "key-underside",
+        "value": "0 0.25rem 0 var(--btn-depth)",
+        "purpose": "Button hard offset (0.1875rem small); +2px on hover, 0 on press."
+      },
+      {
+        "name": "line-bar",
+        "value": "0 0.3rem 0 var(--c-line)",
+        "purpose": "Route line under the navbar and the open drawer."
+      },
+      {
+        "name": "focus-halo",
+        "value": "0 0 0 4px color-mix(in oklch, var(--c-line) 45%, transparent)",
+        "purpose": "Focused input or select, and the drop target on drag-over."
+      }
     ],
     "motion": [
-      {"name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "All state and arrival motion."},
-      {"name": "dur-quick", "value": "140ms", "purpose": "Hover and press."},
-      {"name": "dur-base", "value": "280ms", "purpose": "Theme, drawer, message arrival."},
-      {"name": "dur-slow", "value": "640ms", "purpose": "Hero tool arrival, storage gauge travel."}
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All state and arrival motion."
+      },
+      {
+        "name": "dur-press",
+        "value": "60ms",
+        "purpose": "Button and arrow-key press (a literal in the components, not a custom property)."
+      },
+      { "name": "dur-quick", "value": "140ms", "purpose": "Hover and lift." },
+      {
+        "name": "dur-base",
+        "value": "280ms",
+        "purpose": "Theme, drawer, page change, status message arrival, upload run."
+      },
+      {
+        "name": "dur-slow",
+        "value": "640ms",
+        "purpose": "Directory rows drawing in (staggered 70ms), gauge run and here ring arriving."
+      },
+      {
+        "name": "print",
+        "value": "720ms",
+        "purpose": "Ticket slip printing in by clip-path (a literal, not a custom property)."
+      },
+      {
+        "name": "shake",
+        "value": "360ms",
+        "purpose": "A key in the error state, and a blocked form's submit key (a literal, not a custom property)."
+      },
+      {
+        "name": "here-pulse",
+        "value": "2.4s",
+        "purpose": "The current stop's outer ring, looping (a literal, not a custom property)."
+      }
     ],
     "breakpoints": [
-      {"name": "board-pad", "value": "40rem"},
-      {"name": "route-map", "value": "52rem"},
-      {"name": "hero-two-col", "value": "62rem"},
-      {"name": "navbar-drawer", "value": "75rem (max-width)"},
-      {"name": "board-row", "value": "36rem (container)", "purpose": "Upload rows and their details go one line inside the uploads board."}
+      {
+        "name": "board-pad",
+        "value": "40rem",
+        "purpose": "Board body and prose padding go from 1.5rem to 2rem."
+      },
+      {
+        "name": "list-controls",
+        "value": "36rem",
+        "purpose": "A list's search, filter and Sort sit side by side."
+      },
+      {
+        "name": "tools-row",
+        "value": "46rem",
+        "purpose": "Directory rows go from name over description to one line."
+      },
+      {
+        "name": "workspace-two-col",
+        "value": "62rem",
+        "purpose": "Home hero, Shorten, Pastebin, Upload and Admin System go to two columns."
+      },
+      {
+        "name": "navbar-drawer",
+        "value": "75rem (max-width)",
+        "purpose": "The strip turns vertical in a drawer."
+      },
+      {
+        "name": "row-actions",
+        "value": "30rem (container)",
+        "purpose": "Row actions move beside the row's lines."
+      },
+      {
+        "name": "board-row",
+        "value": "36rem (container)",
+        "purpose": "An upload row and its details go one line inside the uploads board."
+      },
+      {
+        "name": "account-wide",
+        "value": "40rem (container)",
+        "purpose": "Admin account rows and the account page lay out wide."
+      },
+      {
+        "name": "site-two-col",
+        "value": "44rem (container)",
+        "purpose": "Site Board: mail left, totals right."
+      },
+      {
+        "name": "footer-address",
+        "value": "54rem (container, width <)",
+        "purpose": "Below it the footer's contact address hides and the label is the link."
+      },
+      {
+        "name": "segment-tight",
+        "value": "16rem (container, max-width)",
+        "purpose": "Segment keys give up side padding on a phone."
+      }
     ]
   },
   "components": [
     {
-      "name": "Primary Button", "kind": "button", "refersTo": "button-primary",
-      "description": "Pressable forest key with hard underside.",
-      "html": "<button class=\"ds-btn\">Shorten</button>",
-      "css": ".ds-btn{min-height:2.875rem;padding:0 1.5rem;border:2px solid transparent;border-radius:0.5rem;background:var(--c-action);color:var(--c-on-action);font-family:var(--font-board);font-size:1.25rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.25rem 0 var(--c-action-deep);transition:transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out)}.ds-btn:hover{transform:translateY(-2px);box-shadow:0 calc(0.25rem + 2px) 0 var(--c-action-deep)}.ds-btn:active{transform:translateY(0.25rem);box-shadow:0 0 0 var(--c-action-deep)}.ds-btn:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Pressable forest key with a hard underside; blocked (sunk, no lift) until a form's fields pass.",
+      "html": "<button class=\"ds-btn\">Shorten</button> <button class=\"ds-btn\" aria-disabled=\"true\">Shorten</button>",
+      "css": ".ds-btn{min-height:2.875rem;padding:0.5rem 1.5rem;border:2px solid transparent;border-radius:0.5rem;font-family:var(--font-board);font-size:1.25rem;font-weight:700;line-height:1.15;letter-spacing:0.04em;text-transform:uppercase;text-align:center;cursor:pointer;transition:transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out),background-color 140ms ease;background:var(--c-action);color:var(--c-on-action);box-shadow:0 0.25rem 0 var(--c-action-deep)}.ds-btn:hover{transform:translateY(-2px);box-shadow:0 calc(0.25rem + 2px) 0 var(--c-action-deep)}.ds-btn:active{transform:translateY(0.25rem);box-shadow:0 0 0 var(--c-action-deep);transition-duration:60ms}.ds-btn:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}.ds-btn[aria-disabled=true]{background:var(--c-panel-sunk);color:var(--c-ink-soft);border-color:var(--c-hairline);box-shadow:0 0.25rem 0 var(--c-hairline);cursor:not-allowed;transform:none}"
     },
     {
-      "name": "Secondary Button", "kind": "button", "refersTo": "button-secondary",
-      "description": "Enamel key with ink edge.",
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Enamel key with an ink edge and ink underside.",
       "html": "<button class=\"ds-btn-2\">Log in</button>",
-      "css": ".ds-btn-2{min-height:2.875rem;padding:0 1.5rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink);font-family:var(--font-board);font-size:1.25rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.25rem 0 var(--c-edge);transition:transform 140ms var(--ease-out)}.ds-btn-2:hover{transform:translateY(-2px)}.ds-btn-2:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
+      "css": ".ds-btn-2{min-height:2.875rem;padding:0.5rem 1.5rem;border:2px solid transparent;border-radius:0.5rem;font-family:var(--font-board);font-size:1.25rem;font-weight:700;line-height:1.15;letter-spacing:0.04em;text-transform:uppercase;text-align:center;cursor:pointer;transition:transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out),background-color 140ms ease;border-color:var(--c-edge);background:var(--c-panel);color:var(--c-ink);box-shadow:0 0.25rem 0 var(--c-edge)}.ds-btn-2:hover{transform:translateY(-2px);box-shadow:0 calc(0.25rem + 2px) 0 var(--c-edge)}.ds-btn-2:active{transform:translateY(0.25rem);box-shadow:0 0 0 var(--c-edge);transition-duration:60ms}.ds-btn-2:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
     },
     {
-      "name": "Text Input", "kind": "input", "refersTo": "input",
-      "description": "Sunk enamel field with ink edge and line halo on focus.",
-      "html": "<label class=\"ds-field\">Long link<input class=\"ds-input\" placeholder=\"https://\"></label>",
-      "css": ".ds-field{display:grid;gap:0.5rem;font-weight:600;font-size:0.875rem}.ds-input{min-height:2.875rem;padding:0 1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink)}.ds-input:hover{background:var(--c-panel)}.ds-input:focus{outline:none;background:var(--c-panel);border-color:var(--c-action);box-shadow:0 0 0 4px color-mix(in oklch,var(--c-line) 45%,transparent)}"
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quiet key with no underside and no lift; Deep Meadow wash on hover. Back links and Cancel.",
+      "html": "<button class=\"ds-btn-3\">All sections</button>",
+      "css": ".ds-btn-3{min-height:2.875rem;padding:0.5rem 1.5rem;border:2px solid transparent;border-radius:0.5rem;font-family:var(--font-board);font-size:1.25rem;font-weight:700;line-height:1.15;letter-spacing:0.04em;text-transform:uppercase;text-align:center;cursor:pointer;transition:transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out),background-color 140ms ease;background:transparent;color:var(--c-ink);box-shadow:none}.ds-btn-3:hover{background:var(--c-field-deep)}.ds-btn-3:active{transform:translateY(1px);transition-duration:60ms}.ds-btn-3:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
     },
     {
-      "name": "Station Board", "kind": "card", "refersTo": "station-board",
-      "description": "Enamel panel with forest header and amber kerb hatch.",
-      "html": "<section class=\"ds-board\"><header class=\"ds-head\"><h2>Shorten</h2></header><div class=\"ds-body\">Board content</div></section>",
-      "css": ".ds-board{overflow:hidden;border:2px solid var(--c-edge);border-radius:1.25rem;background:var(--c-panel);color:var(--c-ink);box-shadow:0 0.4rem 0 var(--c-field-deep),0 1.25rem 2rem -1.25rem oklch(0.3 0.06 152/0.5)}.ds-head{position:relative;padding:0.75rem 1.5rem calc(0.75rem + 0.4rem);background:var(--c-action);color:var(--c-on-action)}.ds-head h2{margin:0;font-family:var(--font-board);font-size:1.75rem;line-height:1.1;text-transform:uppercase}.ds-head::after{content:'';position:absolute;left:0;right:0;bottom:0;height:0.4rem;background:repeating-linear-gradient(-45deg,var(--c-works) 0 7px,var(--c-on-works) 7px 14px)}.ds-body{padding:1.5rem}"
+      "name": "Two-click Delete",
+      "kind": "button",
+      "description": "A small ghost Delete arms on the first click into a solid Fault Red Confirm delete (shakes in); the second deletes. Disarms after 4 seconds.",
+      "html": "<button class=\"ds-del\">Delete</button> <button class=\"ds-del ds-del--armed\">Confirm delete</button>",
+      "css": ".ds-del{min-height:2.25rem;padding:0.25rem 1rem;border:2px solid transparent;border-radius:0.5rem;background:transparent;color:var(--c-ink);font-family:var(--font-board);font-size:1.0625rem;font-weight:700;line-height:1.2;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;transition:background-color 140ms ease,transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out)}.ds-del:hover{background:var(--c-field-deep)}.ds-del:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}.ds-del--armed,.ds-del--armed:hover{background:var(--c-danger);color:var(--c-panel);box-shadow:0 0.1875rem 0 color-mix(in oklch,var(--c-danger),black 35%);animation:ds-shake 360ms var(--ease-out)}@keyframes ds-shake{20%{transform:translateX(-5px)}45%{transform:translateX(4px)}70%{transform:translateX(-2px)}}"
     },
     {
-      "name": "Route Strip", "kind": "nav", "refersTo": "navbar",
-      "description": "Stops joined by a line; solid when open, dashed when planned.",
-      "html": "<ul class=\"ds-strip\"><li><a class=\"ds-stop\" href=\"#\"><span class=\"ds-dot ds-here\"></span>Home</a></li><li><a class=\"ds-stop\" href=\"#\"><span class=\"ds-dot\"></span>Shorten</a></li><li class=\"ds-planned\"><span class=\"ds-stop\"><span class=\"ds-dot\"></span>Paste</span></li></ul>",
-      "css": ".ds-strip{display:flex;align-items:center;list-style:none;margin:0;padding:0}.ds-strip li{display:flex;align-items:center}.ds-strip li+li::before{content:'';width:1.5rem;margin-inline:0.5rem;border-top:5px solid var(--c-line);border-radius:3px}.ds-strip li.ds-planned::before{border-top:4px dashed var(--c-ink-soft)}.ds-stop{display:inline-flex;align-items:center;gap:0.5rem;padding:0.5rem 0.25rem;border-radius:0.5rem;color:var(--c-ink);font-family:var(--font-board);font-size:1.125rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none}a.ds-stop:hover{background:var(--c-field-deep)}.ds-planned .ds-stop{color:var(--c-ink-soft)}.ds-dot{width:1.125rem;height:1.125rem;border:4px solid var(--c-line);border-radius:50%;background:var(--c-panel)}.ds-planned .ds-dot{border:3px dashed var(--c-ink-soft)}.ds-here{background:var(--c-action);border-color:var(--c-action);transform:scale(1.2)}"
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Sunk enamel field with an ink edge; enamel fill and a line halo on focus. A mono variant carries URLs and codes.",
+      "html": "<label class=\"ds-field\">Long link<input class=\"ds-input\" placeholder=\"https://\"><span class=\"ds-hint\">Up to 2000 characters.</span></label>",
+      "css": ".ds-field{display:grid;gap:0.5rem;font-weight:600;font-size:0.875rem;letter-spacing:0.02em}.ds-input{min-height:2.875rem;padding:0 1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink);font:inherit;font-family:var(--font-code);font-size:0.95rem;font-weight:400;transition:border-color 140ms ease,box-shadow 280ms var(--ease-out),background-color 140ms ease}.ds-input::placeholder{color:var(--c-ink-soft);opacity:0.75}.ds-input:hover{background:var(--c-panel)}.ds-input:focus{outline:none;background:var(--c-panel);border-color:var(--c-action);box-shadow:0 0 0 4px color-mix(in oklch,var(--c-line) 45%,transparent)}.ds-hint{font-size:0.875rem;font-weight:400;color:var(--c-ink-soft)}"
     },
     {
-      "name": "Ticket Slip", "kind": "custom", "refersTo": "ticket-slip",
-      "description": "Perforated result ticket for a shortened link.",
-      "html": "<div class=\"ds-slip\"><span>Your short link</span><a href=\"#\">vb2007.hu/abc123</a></div>",
-      "css": ".ds-slip{position:relative;display:grid;gap:0.75rem;padding:1.5rem;border:2px dashed var(--c-edge);border-radius:0.875rem;background:var(--c-field)}.ds-slip span{font-size:0.875rem;font-weight:600;color:var(--c-ink-soft)}.ds-slip a{font-family:var(--font-code);font-weight:500;color:var(--c-ink);text-decoration-color:var(--c-line)}.ds-slip::before{content:'';position:absolute;left:-2px;top:50%;width:0.75rem;height:1.5rem;transform:translateY(-50%);background:var(--c-panel);border:2px solid var(--c-edge);border-left:0;border-radius:0 0.75rem 0.75rem 0}"
+      "name": "Field Error With Links",
+      "kind": "input",
+      "description": "An invalid field: Fault Red border and a bold red message. Where there is an obvious next step, the message carries ordinary inline text links (Register's account-exists error: Log in, reset the password); the focus ring tightens so it stays clear of the words beside it.",
+      "html": "<label class=\"ds-field\">E-mail<input class=\"ds-input\" value=\"anna@example.com\" aria-invalid=\"true\"><span class=\"ds-error\">An account already uses this address. <a href=\"#\">Log in</a> instead (with GitHub if that's how you signed up), or <a href=\"#\">reset the password</a>.</span></label>",
+      "css": ".ds-field{display:grid;gap:0.5rem;font-weight:600;font-size:0.875rem;letter-spacing:0.02em}.ds-input{min-height:2.875rem;padding:0 1rem;border:2px solid var(--c-danger);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink);font:inherit;font-weight:400}.ds-input:focus{outline:none;background:var(--c-panel);box-shadow:0 0 0 4px color-mix(in oklch,var(--c-line) 45%,transparent)}.ds-error{font-size:0.875rem;font-weight:600;color:var(--c-danger)}.ds-error a{color:var(--c-action);text-decoration:underline;text-decoration-thickness:0.09em;text-underline-offset:0.18em}.ds-error a:hover{text-decoration-thickness:0.16em}.ds-error a:focus-visible{outline:2px solid var(--c-line);outline-offset:1px}"
     },
     {
-      "name": "Status Message", "kind": "custom", "refersTo": "status",
-      "description": "Tinted bordered feedback strip.",
-      "html": "<div class=\"ds-status\">Link created.</div>",
-      "css": ".ds-status{padding:0.75rem 1rem;border:2px solid currentColor;border-radius:0.5rem;background:var(--c-ok-wash);color:var(--c-action);font-weight:500}"
+      "name": "Select",
+      "kind": "input",
+      "refersTo": "select",
+      "description": "A sunk field like the text input with the native arrow replaced by a chevron; a list's Sort is one of these.",
+      "html": "<label class=\"ds-field\">Sort<span class=\"ds-control\"><select class=\"ds-select\"><option>Newest first</option><option>Oldest first</option></select><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></span></label>",
+      "css": ".ds-field{display:grid;gap:0.5rem;font-weight:600;font-size:0.875rem;letter-spacing:0.02em}.ds-control{position:relative;display:grid;align-items:center}.ds-control svg{position:absolute;right:0.75rem;pointer-events:none;color:var(--c-ink)}.ds-select{min-height:2.875rem;padding:0 2.5rem 0 1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink);font:inherit;font-weight:400;appearance:none;cursor:pointer;transition:border-color 140ms ease,box-shadow 280ms var(--ease-out),background-color 140ms ease}.ds-select:hover{background:var(--c-panel)}.ds-select:focus{outline:none;background:var(--c-panel);border-color:var(--c-action);box-shadow:0 0 0 4px color-mix(in oklch,var(--c-line) 45%,transparent)}"
     },
     {
-      "name": "Segmented Control", "kind": "custom", "refersTo": "segment-key",
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segment-key",
       "description": "Joined keys for a one-of-few choice; the chosen key is Signal Forest.",
-      "html": "<div class=\"ds-seg\"><label><input type=\"radio\" name=\"ds-v\" checked><span>Private</span></label><label><input type=\"radio\" name=\"ds-v\"><span>Public</span></label></div>",
-      "css": ".ds-seg{display:flex;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);box-shadow:0 0.1875rem 0 var(--c-edge)}.ds-seg label{position:relative;display:flex;flex:1 1 auto}.ds-seg label+label{border-left:2px solid var(--c-edge)}.ds-seg input{position:absolute;opacity:0;width:1px;height:1px}.ds-seg span{display:inline-flex;flex:1;align-items:center;justify-content:center;min-height:2.625rem;padding:0 0.75rem;font-family:var(--font-board);font-size:1.125rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--c-ink-soft);cursor:pointer;transition:background-color 140ms ease,color 140ms ease}.ds-seg label:hover span{background:var(--c-panel);color:var(--c-ink)}.ds-seg input:checked+span{background:var(--c-action);color:var(--c-on-action)}.ds-seg input:focus-visible+span{outline:3px solid var(--c-line);outline-offset:3px}"
+      "html": "<fieldset class=\"ds-seg\"><legend>New uploads are</legend><div class=\"ds-seg__row\"><label><input type=\"radio\" name=\"ds-v\" checked><span>Private</span></label><label><input type=\"radio\" name=\"ds-v\"><span>Public</span></label></div></fieldset>",
+      "css": ".ds-seg{display:grid;gap:0.5rem;min-width:0;margin:0;padding:0;border:0}.ds-seg legend{padding:0;margin-bottom:0.5rem;font-size:0.875rem;font-weight:600;letter-spacing:0.02em}.ds-seg__row{display:flex;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);box-shadow:0 0.1875rem 0 var(--c-edge)}.ds-seg label{position:relative;display:flex;flex:1 1 auto}.ds-seg label+label{border-left:2px solid var(--c-edge)}.ds-seg input{position:absolute;opacity:0;width:1px;height:1px}.ds-seg span{display:inline-flex;flex:1;align-items:center;justify-content:center;min-height:2.625rem;padding:0 0.75rem;font-family:var(--font-board);font-size:1.125rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;color:var(--c-ink-soft);cursor:pointer;transition:background-color 140ms ease,color 140ms ease}.ds-seg label:first-child span{border-radius:calc(0.5rem - 2px) 0 0 calc(0.5rem - 2px)}.ds-seg label:last-child span{border-radius:0 calc(0.5rem - 2px) calc(0.5rem - 2px) 0}.ds-seg label:hover span{background:var(--c-panel);color:var(--c-ink)}.ds-seg input:checked+span{background:var(--c-action);color:var(--c-on-action)}.ds-seg input:focus-visible+span{outline:3px solid var(--c-line);outline-offset:3px;position:relative;z-index:1}"
     },
     {
-      "name": "Route Track", "kind": "custom",
-      "description": "Upload progress as a stretch of line: rings, hairline rail, route-green run slid in by transform, Signal Forest head while moving.",
+      "name": "List Pager",
+      "kind": "nav",
+      "description": "Under a paged list, only once it has more than one page: small secondary Previous and Next at either end, the page count between them in Soft Ink with tabular numbers.",
+      "html": "<nav class=\"ds-pager\" aria-label=\"Pages\"><button class=\"ds-pk\" disabled>Previous</button><span class=\"ds-pager__label\">Page 1 of 5</span><button class=\"ds-pk\">Next</button></nav>",
+      "css": ".ds-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.75rem}.ds-pager__label{color:var(--c-ink-soft);font-weight:600;font-variant-numeric:tabular-nums}.ds-pk{min-height:2.25rem;padding:0.25rem 1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink);font-family:var(--font-board);font-size:1.0625rem;font-weight:700;line-height:1.2;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.1875rem 0 var(--c-edge);transition:transform 140ms var(--ease-out),box-shadow 140ms var(--ease-out)}.ds-pk:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 calc(0.1875rem + 2px) 0 var(--c-edge)}.ds-pk:active:not(:disabled){transform:translateY(0.1875rem);box-shadow:none;transition-duration:60ms}.ds-pk:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}.ds-pk:disabled{background:var(--c-panel-sunk);color:var(--c-ink-soft);border-color:var(--c-hairline);box-shadow:0 0.1875rem 0 var(--c-hairline);cursor:not-allowed}"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "badge-public",
+      "description": "The 2px pill used for visibility (Private / Public), account tags (Admin, Suspended, Custom quota), Confirmed and Expired: ok on Confirm Wash in Signal Forest, danger on the Fault wash in Fault Red, muted on sunk enamel in Soft Ink.",
+      "html": "<span class=\"ds-pill ds-pill--muted\">Private</span> <span class=\"ds-pill ds-pill--ok\">Public</span> <span class=\"ds-pill ds-pill--danger\">Suspended</span>",
+      "css": ".ds-pill{display:inline-flex;align-items:center;gap:0.25rem;padding:0.125rem 0.5rem;border:2px solid currentColor;border-radius:999px;font-family:var(--font-board);font-size:0.9375rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;vertical-align:middle}.ds-pill--ok{background:var(--c-ok-wash);color:var(--c-action)}.ds-pill--danger{background:var(--c-danger-wash);color:var(--c-danger)}.ds-pill--muted{background:var(--c-panel-sunk);color:var(--c-ink-soft)}"
+    },
+    {
+      "name": "Status Message",
+      "kind": "custom",
+      "refersTo": "status",
+      "description": "Tinted 2px-bordered strip with an icon: success (Confirm Wash, forest), error (Fault wash, red), info (sunk enamel, soft ink). Drops in over 280ms.",
+      "html": "<div class=\"ds-status ds-status--success\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg><span>Link created.</span></div><div class=\"ds-status ds-status--error\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 8v4M12 16h.01\"/></svg><span>Too many failed attempts. Try again later.</span></div><div class=\"ds-status ds-status--info\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 16v-4M12 8h.01\"/></svg><span>A 6-digit code is on its way.</span></div>",
+      "css": ".ds-status{display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.75rem;padding:0.75rem 1rem;border:2px solid currentColor;border-radius:0.5rem;font-weight:500;animation:ds-arrive 280ms var(--ease-out)}.ds-status svg{flex:none;margin-top:0.15rem}.ds-status span{color:var(--c-ink)}.ds-status--success{background:var(--c-ok-wash);color:var(--c-action)}.ds-status--error{background:var(--c-danger-wash);color:var(--c-danger)}.ds-status--info{background:var(--c-panel-sunk);color:var(--c-ink-soft)}@keyframes ds-arrive{from{opacity:0;transform:translateY(-6px)}}"
+    },
+    {
+      "name": "Station Board",
+      "kind": "card",
+      "refersTo": "station-board",
+      "description": "Enamel panel with a forest header and an amber kerb hatch, enamel-thickness shadow and a faint top highlight. Hosts every tool and form.",
+      "html": "<section class=\"ds-board\"><header class=\"ds-head\"><h2>Shorten</h2></header><div class=\"ds-body\">Board content</div></section>",
+      "css": ".ds-board{overflow:hidden;border:2px solid var(--c-edge);border-radius:1.25rem;background:var(--c-panel);color:var(--c-ink);box-shadow:inset 0 2px 0 light-dark(oklch(1 0 0/0.75),oklch(1 0 0/0.08)),0 0.4rem 0 var(--c-field-deep),0 1.25rem 2rem -1.25rem light-dark(oklch(0.3 0.06 152/0.5),oklch(0.05 0.02 152/0.7))}.ds-head{position:relative;padding:0.75rem 1.5rem calc(0.75rem + 0.4rem);background:linear-gradient(to bottom,oklch(1 0 0/0.16),transparent 60%),var(--c-action);color:var(--c-on-action)}.ds-head h2{margin:0;font-family:var(--font-board);font-size:1.75rem;line-height:1.1;letter-spacing:0.005em;text-transform:uppercase}.ds-head::after{content:'';position:absolute;left:0;right:0;bottom:0;height:0.4rem;background:repeating-linear-gradient(-45deg,var(--c-works) 0 7px,var(--c-on-works) 7px 14px)}.ds-body{padding:1.5rem}"
+    },
+    {
+      "name": "Route Strip",
+      "kind": "nav",
+      "refersTo": "navbar",
+      "description": "Stops joined by a line; solid when open, dashed when planned, a pulsing ring on the current page. No planned stop ships today (all four tools are open); the dashed form is kept for the next tool.",
+      "html": "<ul class=\"ds-strip\"><li><a class=\"ds-stop\" href=\"#\"><span class=\"ds-dot ds-here\"></span>Home</a></li><li><a class=\"ds-stop\" href=\"#\"><span class=\"ds-dot\"></span>Shorten</a></li><li class=\"ds-planned\"><span class=\"ds-stop\"><span class=\"ds-dot\"></span>A planned tool</span></li></ul>",
+      "css": ".ds-strip{display:flex;align-items:center;list-style:none;margin:0;padding:0}.ds-strip li{display:flex;align-items:center}.ds-strip li+li::before{content:'';flex:none;width:1.5rem;margin-inline:0.5rem;border-top:5px solid var(--c-line);border-radius:3px}.ds-strip li.ds-planned::before{border-top:4px dashed var(--c-ink-soft)}.ds-stop{display:inline-flex;align-items:center;gap:0.5rem;padding:0.5rem 0.25rem;border-radius:0.5rem;color:var(--c-ink);font-family:var(--font-board);font-size:1.125rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none;transition:background-color 140ms ease}a.ds-stop:hover{background:var(--c-field-deep)}a.ds-stop:hover .ds-dot{transform:scale(1.25)}a.ds-stop:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}.ds-planned .ds-stop{color:var(--c-ink-soft);cursor:default}.ds-dot{position:relative;flex:none;width:1.125rem;height:1.125rem;border:4px solid var(--c-line);border-radius:50%;background:var(--c-panel);transition:transform 280ms var(--ease-out)}.ds-planned .ds-dot{border:3px dashed var(--c-ink-soft)}.ds-here{background:var(--c-action);border-color:var(--c-action);transform:scale(1.2)}.ds-here::after{content:'';position:absolute;inset:-0.5rem;border:2px solid var(--c-line);border-radius:50%;animation:ds-here 2.4s var(--ease-out) infinite}a.ds-stop[aria-current]{font-weight:700}@keyframes ds-here{from{transform:scale(0.55);opacity:0.9}to{transform:scale(1.15);opacity:0}}"
+    },
+    {
+      "name": "Tools Directory Row",
+      "kind": "custom",
+      "description": "One enamel board with a row per destination: marker, condensed name, description, and a Signal Forest arrow key (open), or a soft-ink name and an amber-hatched Planned chip (planned). Hover washes an open row and slides the arrow. The admin overview reuses it for its sections.",
+      "html": "<ul class=\"ds-dir\"><li><a class=\"ds-sign ds-sign--open\" href=\"#\"><span class=\"ds-mk\"></span><span class=\"ds-sign__name\">Shorten</span><span class=\"ds-sign__blurb\">Turn a long link into a short one.</span><span class=\"ds-way\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg></span></a></li><li><div class=\"ds-sign ds-sign--planned\"><span class=\"ds-mk ds-mk--planned\"></span><span class=\"ds-sign__name\">A planned tool</span><span class=\"ds-sign__blurb\">Not built yet.</span><span class=\"ds-chip\">Planned</span></div></li></ul>",
+      "css": ".ds-dir{display:grid;grid-template-columns:minmax(0,1fr);margin:0;padding:0;list-style:none;overflow:hidden;border:2px solid var(--c-edge);border-radius:1.25rem;background:var(--c-panel);box-shadow:inset 0 2px 0 light-dark(oklch(1 0 0/0.75),oklch(1 0 0/0.08)),0 0.4rem 0 var(--c-field-deep),0 1.25rem 2rem -1.25rem light-dark(oklch(0.3 0.06 152/0.5),oklch(0.05 0.02 152/0.7))}.ds-dir li+li{border-top:2px solid var(--c-hairline)}.ds-sign{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:\"mk name way\" \". blurb way\";align-items:center;gap:0.25rem 1rem;padding:1rem 1.5rem;color:var(--c-ink);text-decoration:none}.ds-mk{grid-area:mk;width:1.125rem;height:1.125rem;border:4px solid var(--c-line);border-radius:50%;background:var(--c-panel);transition:transform 280ms var(--ease-out),background-color 140ms ease}.ds-mk--planned{border:3px dashed var(--c-ink-soft)}.ds-sign__name{grid-area:name;font-family:var(--font-board);font-size:1.75rem;font-weight:700;line-height:1;letter-spacing:0.02em;text-transform:uppercase}.ds-sign__blurb{grid-area:blurb;color:var(--c-ink-soft)}.ds-way,.ds-chip{grid-area:way;justify-self:end}.ds-way{display:grid;place-items:center;width:3rem;height:3rem;border-radius:0.5rem;background:var(--c-action);color:var(--c-on-action);box-shadow:0 0.25rem 0 var(--c-action-deep);transition:transform 280ms var(--ease-out),box-shadow 280ms var(--ease-out)}.ds-sign--open{transition:background-color 140ms ease}.ds-sign--open:hover{background:var(--c-panel-sunk)}.ds-sign--open:hover .ds-mk{transform:scale(1.25);background:var(--c-action)}.ds-sign--open:hover .ds-way{transform:translateX(0.375rem)}.ds-sign--open:active .ds-way{transform:translate(0.375rem,0.25rem);box-shadow:0 0 0 var(--c-action-deep);transition-duration:60ms}.ds-sign--open:focus-visible{outline:3px solid var(--c-line);outline-offset:-5px;border-radius:1.25rem}.ds-sign--planned .ds-sign__name{color:var(--c-ink-soft)}.ds-chip{padding:0.15rem 0.5rem 0.15rem 1.1rem;border-radius:999px;background:repeating-linear-gradient(-45deg,var(--c-on-works) 0 2px,transparent 2px 5px) left/0.6rem 100% no-repeat,var(--c-works);color:var(--c-on-works);font-size:0.75rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap}"
+    },
+    {
+      "name": "Ticket Slip",
+      "kind": "custom",
+      "refersTo": "ticket-slip",
+      "description": "Perforated result ticket for a shortened link, a paste or a finished upload; prints in over 720ms. The queue's compact variant is a single row with a Copy link key.",
+      "html": "<div class=\"ds-slip\"><span class=\"ds-slip__cap\">Your short link</span><a href=\"#\">vb2007.hu/abc123</a></div>",
+      "css": ".ds-slip{--notch:0.75rem;position:relative;display:grid;gap:0.75rem;padding:1.5rem;border:2px dashed var(--c-edge);border-radius:0.875rem;background:var(--c-field);animation:ds-print 720ms var(--ease-out) both}.ds-slip__cap{font-size:0.875rem;font-weight:600;color:var(--c-ink-soft)}.ds-slip a{font-family:var(--font-code);font-weight:500;color:var(--c-ink);overflow-wrap:anywhere;text-decoration-color:var(--c-line)}.ds-slip::before,.ds-slip::after{content:'';position:absolute;top:50%;width:var(--notch);height:calc(var(--notch)*2);background:var(--c-panel);border:2px solid var(--c-edge)}.ds-slip::before{left:-2px;transform:translateY(-50%);border-left:0;border-radius:0 var(--notch) var(--notch) 0}.ds-slip::after{right:-2px;transform:translateY(-50%);border-right:0;border-radius:var(--notch) 0 0 var(--notch)}@keyframes ds-print{from{clip-path:inset(0 0 100% 0);transform:translateY(-1.25rem)}to{clip-path:inset(-1rem);transform:none}}"
+    },
+    {
+      "name": "Drop Target",
+      "kind": "custom",
+      "refersTo": "drop-target",
+      "description": "Sunk-enamel upload panel holding a route-green stop ring; only on drag-over (never on hover) does it lift to enamel with the line halo while the ring fills Signal Forest; shown at rest and over.",
+      "html": "<div class=\"ds-drop\"><span class=\"ds-drop__stop\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 15.5V4M7 9l5-5 5 5M4 15v4.5h16V15\"/></svg></span><p class=\"ds-drop__title\">Drop files here</p><button class=\"ds-drop__key\">Choose files</button></div><div class=\"ds-drop ds-drop--over\" style=\"margin-top:0.75rem\"><span class=\"ds-drop__stop\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 15.5V4M7 9l5-5 5 5M4 15v4.5h16V15\"/></svg></span><p class=\"ds-drop__title\">Let go to upload</p></div>",
+      "css": ".ds-drop{display:grid;justify-items:center;gap:0.75rem;padding:2rem 1.5rem;border:2px solid var(--c-edge);border-radius:0.875rem;background:var(--c-panel-sunk);text-align:center;transition:background-color 140ms ease,border-color 140ms ease,box-shadow 280ms var(--ease-out)}.ds-drop--over{border-color:var(--c-action);background:var(--c-panel);box-shadow:0 0 0 4px color-mix(in oklch,var(--c-line) 45%,transparent)}.ds-drop__stop{display:grid;place-items:center;width:3.5rem;height:3.5rem;border:5px solid var(--c-line);border-radius:50%;background:var(--c-panel);color:var(--c-action);transition:transform 280ms var(--ease-out),background-color 140ms ease,color 140ms ease}.ds-drop--over .ds-drop__stop{transform:scale(1.12) translateY(-0.25rem);background:var(--c-action);border-color:var(--c-action);color:var(--c-on-action)}.ds-drop__title{margin:0;font-family:var(--font-board);font-size:1.75rem;font-weight:700;line-height:1.1;text-transform:uppercase}.ds-drop__key{min-height:2.875rem;padding:0.5rem 1.5rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink);font-family:var(--font-board);font-size:1.25rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.25rem 0 var(--c-edge)}.ds-drop__key:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}"
+    },
+    {
+      "name": "Route Track",
+      "kind": "custom",
+      "description": "Upload progress as a stretch of line: rings, hairline rail, route-green run slid in by transform, Signal Forest head while moving. Done fills the rings, failed turns run and arrival Fault Red, cancelled Soft Ink.",
       "html": "<div class=\"ds-track\" style=\"--progress:0.6\"><span class=\"ds-stop\"></span><span class=\"ds-rail\"><span class=\"ds-run\"><span class=\"ds-head\"></span></span></span><span class=\"ds-stop\"></span></div>",
-      "css": ".ds-track{display:flex;align-items:center;width:100%}.ds-stop{flex:none;width:0.875rem;height:0.875rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel)}.ds-rail{position:relative;flex:1;height:4px;margin:0 -1px;background:var(--c-hairline);clip-path:inset(-1rem -0.5rem -1rem 0)}.ds-run{position:absolute;inset:0;background:var(--c-line);transform:translateX(calc((var(--progress) - 1) * 100%));transition:transform 280ms cubic-bezier(0.16,1,0.3,1)}.ds-head{position:absolute;top:50%;right:0;width:0.75rem;height:0.75rem;border-radius:50%;background:var(--c-action);transform:translate(50%,-50%)}"
+      "css": ".ds-track{display:flex;align-items:center;width:100%}.ds-stop{flex:none;width:0.875rem;height:0.875rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel)}.ds-rail{position:relative;flex:1;height:4px;margin:0 -1px;background:var(--c-hairline);clip-path:inset(-1rem -0.5rem -1rem 0)}.ds-run{position:absolute;inset:0;background:var(--c-line);transform:translateX(calc((var(--progress) - 1) * 100%));transition:transform 280ms var(--ease-out)}.ds-head{position:absolute;top:50%;right:0;width:0.75rem;height:0.75rem;border-radius:50%;background:var(--c-action);transform:translate(50%,-50%)}"
     },
     {
-      "name": "Storage Gauge", "kind": "custom",
-      "description": "Quota as a line: filled departure ring, run true to scale, here ring, terminus ring that turns danger when full.",
+      "name": "Storage Gauge",
+      "kind": "custom",
+      "description": "Quota as a line: filled departure ring, run true to scale, here ring, terminus ring that turns Fault Red when full. The admin's Mail today meter is the same line with a ring at each stop the API counts to.",
       "html": "<div class=\"ds-gauge\" style=\"--at:35%\"><span class=\"ds-g-from\"></span><span class=\"ds-g-rail\"><span class=\"ds-g-run\"></span><span class=\"ds-g-here\"></span></span><span class=\"ds-g-to\"></span></div>",
-      "css": ".ds-gauge{display:flex;align-items:center}.ds-g-from,.ds-g-to{flex:none;border-radius:50%;border:3px solid var(--c-line);background:var(--c-panel)}.ds-g-from{width:1rem;height:1rem;border-color:var(--c-action);background:var(--c-action)}.ds-g-to{width:1.375rem;height:1.375rem;border-width:4px}.ds-g-rail{position:relative;flex:1;height:5px;margin:0 -1px;background:var(--c-hairline)}.ds-g-run{position:absolute;inset:0 auto 0 0;width:var(--at);background:var(--c-line)}.ds-g-here{position:absolute;top:50%;left:var(--at);width:1.125rem;height:1.125rem;border:4px solid var(--c-action);border-radius:50%;background:var(--c-panel);transform:translate(-50%,-50%)}"
+      "css": ".ds-gauge{display:flex;align-items:center}.ds-g-from,.ds-g-to{flex:none;border-radius:50%;border:3px solid var(--c-line);background:var(--c-panel)}.ds-g-from{width:1rem;height:1rem;border-color:var(--c-action);background:var(--c-action)}.ds-g-to{width:1.375rem;height:1.375rem;border-width:4px}.ds-g-rail{position:relative;flex:1;height:5px;margin:0 -1px;background:var(--c-hairline)}.ds-g-run{position:absolute;inset:0 auto 0 0;width:var(--at);background:var(--c-line);transform-origin:left;animation:ds-travel 640ms var(--ease-out)}.ds-g-here{position:absolute;top:50%;left:var(--at);width:1.125rem;height:1.125rem;border:4px solid var(--c-action);border-radius:50%;background:var(--c-panel);transform:translate(-50%,-50%)}@keyframes ds-travel{from{transform:scaleX(0)}}"
     },
     {
-      "name": "Visibility Badge", "kind": "chip", "refersTo": "badge-public",
-      "description": "Pill on an upload row: Private on sunk enamel in soft ink, Public on Confirm Wash in Signal Forest.",
-      "html": "<span class=\"ds-badge ds-badge--private\">Private</span> <span class=\"ds-badge ds-badge--public\">Public</span>",
-      "css": ".ds-badge{display:inline-flex;align-items:center;gap:0.25rem;padding:0.125rem 0.5rem;border:2px solid currentColor;border-radius:999px;font-family:var(--font-board);font-size:0.9375rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase}.ds-badge--private{background:var(--c-panel-sunk);color:var(--c-ink-soft)}.ds-badge--public{background:var(--c-ok-wash);color:var(--c-action)}"
-    },
-    {
-      "name": "Quota Meter", "kind": "meter",
-      "description": "Compact used-of-quota line on an admin account row: figure above, 3px hairline rail, route-green run ending in a small ring, soft-ink terminus ring at the quota; Fault Red at or over the quota.",
+      "name": "Quota Meter",
+      "kind": "meter",
+      "description": "Compact used-of-quota line on an admin account row and account page: figure above, 3px hairline rail, route-green run ending in a small ring, soft-ink terminus ring at the quota; Fault Red at or over the quota.",
       "html": "<div class=\"ds-quota\" style=\"--share:0.2\"><p class=\"ds-quota__figure\"><b>2 GB</b> of 10 GB</p><span class=\"ds-quota__line\"><span class=\"ds-quota__run\"></span><span class=\"ds-quota__stop\"></span></span></div>",
-      "css": ".ds-quota{display:grid;gap:0.5rem;min-width:12rem}.ds-quota__figure{margin:0;font-size:var(--fs-sm);font-weight:600;color:var(--c-ink-soft)}.ds-quota__figure b{color:var(--c-ink)}.ds-quota__line{position:relative;display:block;height:3px;margin:0 0.4375rem;background:var(--c-hairline)}.ds-quota__run{position:absolute;inset:0 auto 0 0;width:calc(var(--share)*100%);background:var(--c-line)}.ds-quota__run::after,.ds-quota__stop{content:\"\";position:absolute;top:50%;right:0;width:0.625rem;height:0.625rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel);transform:translate(50%,-50%)}.ds-quota__stop{width:0.875rem;height:0.875rem;border-color:var(--c-ink-soft)}"
+      "css": ".ds-quota{display:grid;gap:0.5rem;min-width:12rem}.ds-quota__figure{margin:0;font-size:0.875rem;font-weight:600;color:var(--c-ink-soft);font-variant-numeric:tabular-nums}.ds-quota__figure b{color:var(--c-ink);font-weight:700}.ds-quota__line{position:relative;display:block;height:3px;margin:0 0.4375rem;background:var(--c-hairline)}.ds-quota__run{position:absolute;inset:0 auto 0 0;width:min(calc(var(--share)*100%),calc(100% - 0.875rem));background:var(--c-line)}.ds-quota__run::after,.ds-quota__stop{content:\"\";position:absolute;top:50%;right:0;width:0.625rem;height:0.625rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel);transform:translate(50%,-50%)}.ds-quota__stop{width:0.875rem;height:0.875rem;border-color:var(--c-ink-soft)}"
     },
     {
-      "name": "Code Sheet", "kind": "code", "refersTo": "code-sheet",
-      "description": "A paste on sunk enamel, highlighted in metro-line syntax colours.",
+      "name": "Site Ledger",
+      "kind": "custom",
+      "description": "The admin overview's figures (illustrative numbers here), read down like a timetable and never as stat tiles: label in ink 600 with an optional soft-ink line under it, the figure right-aligned in condensed 700 with tabular numbers, on hairline dividers.",
+      "html": "<dl class=\"ds-ledger\"><div class=\"ds-ledger__row\"><dt>Users</dt><dd>3</dd></div><div class=\"ds-ledger__row\"><dt>Uploads<span>4 public, 5 private</span></dt><dd>9</dd></div><div class=\"ds-ledger__row\"><dt>Sign-ups waiting<span>For their e-mail code</span></dt><dd>0</dd></div></dl>",
+      "css": ".ds-ledger{display:grid;margin:0;border-top:2px solid var(--c-hairline)}.ds-ledger__row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:0.75rem;padding:0.5rem 0;border-bottom:2px solid var(--c-hairline)}.ds-ledger dt{display:grid;font-weight:600}.ds-ledger dt span{font-size:0.875rem;font-weight:500;color:var(--c-ink-soft)}.ds-ledger dd{margin:0;font-family:var(--font-board);font-size:1.25rem;font-weight:700;line-height:1.1;text-align:right;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Short Link Row",
+      "kind": "custom",
+      "description": "A row of a list board on a hairline divider, laid out by container query on the board: code as a link, a route-green arrow and the target cut with an ellipsis, the date in soft ink; keys beside all three lines from 30rem of board width, under them below. Upload, paste and admin rows follow the same pattern.",
+      "html": "<ul class=\"ds-rows\"><li class=\"ds-row\"><a class=\"ds-row__code\" href=\"#\">abc123</a><span class=\"ds-row__target\"><svg class=\"ds-row__arrow\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg><span class=\"ds-row__url\">example.com/a/long/path/that/gets/cut/with/an/ellipsis</span></span><span class=\"ds-row__meta\">9 Nov 2026</span><span class=\"ds-row__actions\"><button class=\"ds-rk\">Copy link</button><button class=\"ds-rk ds-rk--ghost\">Delete</button></span></li></ul>",
+      "css": ".ds-rows{display:grid;margin:0;padding:0;list-style:none;border-top:2px solid var(--c-hairline);container-type:inline-size}.ds-row{display:grid;grid-template-columns:minmax(0,1fr);gap:0.25rem 1rem;padding:1rem 0;border-bottom:2px solid var(--c-hairline)}.ds-row__code{justify-self:start;font-family:var(--font-code);font-size:1.0625rem;font-weight:600;color:var(--c-ink);text-decoration-color:var(--c-line);overflow-wrap:anywhere}.ds-row__target{display:flex;align-items:center;gap:0.5rem;min-width:0;font-family:var(--font-code);font-size:0.875rem;font-weight:500;color:var(--c-ink-soft)}.ds-row__arrow{flex:none;color:var(--c-line)}.ds-row__url{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.ds-row__meta{font-size:0.875rem;color:var(--c-ink-soft);font-variant-numeric:tabular-nums}.ds-row__actions{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem}.ds-rk{min-height:2.25rem;padding:0.25rem 1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink);font-family:var(--font-board);font-size:1.0625rem;font-weight:700;line-height:1.2;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;box-shadow:0 0.1875rem 0 var(--c-edge)}.ds-rk--ghost{border-color:transparent;background:transparent;box-shadow:none}.ds-rk--ghost:hover{background:var(--c-field-deep)}.ds-rk:focus-visible{outline:3px solid var(--c-line);outline-offset:3px}@container (min-width:30rem){.ds-row{grid-template-columns:minmax(0,1fr) auto;align-items:center}.ds-row__actions{grid-column:2;grid-row:1/span 3;flex-wrap:nowrap;margin-top:0}}"
+    },
+    {
+      "name": "Code Sheet",
+      "kind": "code",
+      "refersTo": "code-sheet",
+      "description": "A paste on sunk enamel, highlighted in metro-line syntax colours; multi-line pastes get a sticky line-number gutter.",
       "html": "<pre class=\"ds-sheet\"><code><span class=\"k\">def</span> <span class=\"t\">greet</span>(name):\n    <span class=\"c\"># say hi</span>\n    print(<span class=\"s\">\"Hello\"</span>, <span class=\"n\">1</span>)</code></pre>",
       "css": ".ds-sheet{margin:0;padding:1rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel-sunk);color:var(--c-ink);font-family:var(--font-code);font-size:0.95rem;line-height:1.6}.ds-sheet code{font:inherit}.ds-sheet .k{color:var(--c-syn-keyword);font-weight:650}.ds-sheet .t{color:var(--c-syn-title);font-weight:600}.ds-sheet .s{color:var(--c-syn-string)}.ds-sheet .n{color:var(--c-syn-number)}.ds-sheet .c{color:var(--c-syn-comment);font-style:italic}"
     },
     {
-      "name": "Markdown Page", "kind": "prose", "refersTo": "markdown-page",
-      "description": "Rendered Markdown on enamel: author-case condensed headings, stop-ring bullets, quotes as a line leaving a stop.",
-      "html": "<article class=\"ds-prose\"><h2>Notes</h2><ul><li>Back up the volume</li></ul><blockquote>Give it a minute.</blockquote></article>",
-      "css": ".ds-prose{padding:1.5rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink)}.ds-prose h2{margin:0 0 0.75rem;font-family:var(--font-board);font-size:1.25rem;font-weight:700;text-transform:none}.ds-prose ul{margin:0 0 1rem;padding-left:1.5rem;list-style:none}.ds-prose li{position:relative}.ds-prose li::before{content:'';position:absolute;left:-1.35rem;top:0.5em;width:0.6rem;height:0.6rem;border:2px solid var(--c-line);border-radius:50%}.ds-prose blockquote{position:relative;margin:0;padding-left:1.5rem;color:var(--c-ink-soft)}.ds-prose blockquote::before{content:'';position:absolute;left:0.3rem;top:0.7rem;bottom:0.2rem;width:3px;border-radius:999px;background:var(--c-line)}.ds-prose blockquote::after{content:'';position:absolute;left:0;top:0.15rem;width:0.55rem;height:0.55rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel)}"
+      "name": "Markdown Page",
+      "kind": "prose",
+      "refersTo": "markdown-page",
+      "description": "Rendered Markdown on enamel: author-case condensed headings, stop-ring bullets, quotes as a line leaving a stop, links in Signal Forest on a route-green underline.",
+      "html": "<article class=\"ds-prose\"><h2>Notes</h2><p>See the <a href=\"#\">volume</a> first.</p><ul><li>Back up the volume</li></ul><blockquote>Give it a minute.</blockquote></article>",
+      "css": ".ds-prose{padding:1.5rem;border:2px solid var(--c-edge);border-radius:0.5rem;background:var(--c-panel);color:var(--c-ink)}.ds-prose h2{margin:0 0 0.75rem;font-family:var(--font-board);font-size:1.25rem;font-weight:700;line-height:1.1;text-transform:none}.ds-prose a{color:var(--c-action);font-weight:600;text-decoration-color:var(--c-line);text-decoration-thickness:2px;text-underline-offset:0.18em}.ds-prose a:hover{text-decoration-thickness:3px}.ds-prose ul{margin:0 0 1rem;padding-left:1.5rem;list-style:none}.ds-prose li{position:relative}.ds-prose li::before{content:'';position:absolute;left:-1.35rem;top:0.5em;width:0.6rem;height:0.6rem;border:2px solid var(--c-line);border-radius:50%}.ds-prose blockquote{position:relative;margin:0;padding-left:1.5rem;color:var(--c-ink-soft)}.ds-prose blockquote::before{content:'';position:absolute;left:0.3rem;top:0.7rem;bottom:0.2rem;width:3px;border-radius:999px;background:var(--c-line)}.ds-prose blockquote::after{content:'';position:absolute;left:0;top:0.15rem;width:0.55rem;height:0.55rem;border:3px solid var(--c-line);border-radius:50%;background:var(--c-panel)}"
+    },
+    {
+      "name": "Footer",
+      "kind": "nav",
+      "refersTo": "footer",
+      "description": "Terminal Band: the route line arriving from the left and ending in a terminus ring, the name in condensed uppercase, a contact line (E-mail, Matrix) and the tool and account links in on-band ink that brightens to bright route green on hover.",
+      "html": "<footer class=\"ds-foot\"><div class=\"ds-foot__in\"><div><a class=\"ds-foot__name\" href=\"#\">vb2007.hu</a><address class=\"ds-foot__contact\"><a class=\"ds-foot__reach\" href=\"#\"><span class=\"ds-foot__label\">E-mail</span><span class=\"ds-foot__address\">balazs@vb2007.hu</span></a><a class=\"ds-foot__reach\" href=\"#\"><span class=\"ds-foot__label\">Matrix</span><span class=\"ds-foot__address\">@vb2007:vb2007.hu</span></a></address></div><nav class=\"ds-foot__links\"><a href=\"#\">Shorten</a><a href=\"#\">Paste</a><a href=\"#\">Upload</a></nav></div></footer>",
+      "css": ".ds-foot{--ring:1.75rem;position:relative;margin-top:2rem;background:var(--c-deep);color:var(--c-on-deep)}.ds-foot::before{content:'';position:absolute;top:-1.0625rem;right:1.5rem;z-index:1;width:var(--ring);height:var(--ring);border:5px solid var(--c-line-on-deep);border-radius:50%;background:var(--c-deep)}.ds-foot::after{content:'';position:absolute;top:-0.3375rem;left:0;width:calc(100% - 1.5rem - var(--ring)/2);height:0.3rem;background:var(--c-line-on-deep)}.ds-foot__in{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;padding:2rem 1.5rem}.ds-foot__name{font-family:var(--font-board);font-size:1.75rem;font-weight:700;line-height:1;letter-spacing:0.02em;text-transform:uppercase;color:inherit;text-decoration:none}.ds-foot__contact{display:flex;flex-wrap:wrap;column-gap:1.5rem;margin-top:0.25rem;font-size:0.875rem;font-style:normal;line-height:1.5rem}.ds-foot__reach{display:inline-flex;align-items:baseline;gap:0.5rem;white-space:nowrap;text-decoration:none}.ds-foot__label{opacity:0.8}.ds-foot__address{text-decoration:underline;text-decoration-thickness:0.09em}.ds-foot__reach:hover .ds-foot__address{text-decoration-thickness:0.16em}.ds-foot__links{display:flex;flex-wrap:wrap;gap:1.5rem}.ds-foot__reach,.ds-foot__links a{color:inherit;font-weight:500;text-underline-offset:0.25em}.ds-foot__reach:hover,.ds-foot__links a:hover{color:var(--c-line-on-deep)}.ds-foot a:focus-visible{outline:3px solid var(--c-line-on-deep);outline-offset:3px}"
     }
   ],
   "narrative": {
     "northStar": "The Route Board",
-    "overview": "The site is a metro line diagram. A light green field is the ground; white enamel sign panels carry content in dark green ink behind a 2px edge; one mid-green route line ties the pieces together. Open stops are solid, planned stops are dashed with an amber hatch.",
-    "keyCharacteristics": ["Green-tinted neutrals, no gray", "Condensed uppercase station-board headings over Barlow body", "Hard-offset pressable buttons and 2px ink edges", "Solid line = open, dashed + amber hatch = planned", "Reduced-motion collapses all animation"],
-    "rules": [
-      {"name": "The One Line Rule", "body": "There is one route colour. It is a stroke (lines, rings, focus), not a fill for large areas.", "section": "colors"},
-      {"name": "The Green Neutral Rule", "body": "Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.", "section": "colors"},
-      {"name": "The Hatch Means Planned Rule", "body": "The amber diagonal hatch and dashed strokes mean not built yet or work in progress, and nothing else.", "section": "colors"},
-      {"name": "The Route Measure Rule", "body": "Anything that measures (upload progress, storage, a share of a total) is a stretch of line: a hairline rail, a route-green run along it, stop rings at the ends. Fault Red marks a failed run or a full terminus; Soft Ink a cancelled one.", "section": "colors"},
-      {"name": "The Line Colours Rule", "body": "Syntax colours are metro line colours, one per kind of token, kept at 5:1 or more on enamel and sunk enamel in both themes. They colour code only, never UI.", "section": "colors"},
-      {"name": "The Board Voice Rule", "body": "Condensed uppercase is for headings, buttons and route labels. Running text and form labels stay in Barlow sentence case.", "section": "typography"},
-      {"name": "The Thickness Rule", "body": "Raised means a hard offset in a solid colour. A blurred shadow alone never signals elevation.", "section": "elevation"},
-      {"name": "The Own Details Rule", "body": "A destination's description and way in live in its own row. Never show details in a shared panel driven by hover: pointing at one thing must not change another.", "section": "components"}
+    "overview": "The site is a metro line diagram. A light green field is the ground; white enamel sign panels carry content in dark green ink behind a 2px edge; one mid-green route line ties the pieces together. Tools that exist are solid stops on the line, tools that are coming are dashed stops with an amber hatch. The mood is civic, legible, tactile and cheerful, like station wayfinding rather than a developer dashboard.\n\nDensity is moderate: a 78rem page, generous 3rem section gaps, large condensed uppercase headings, and body copy at 17px. Depth comes from physical metaphors (enamel thickness, pressable keys), not from blur or glow. Rejected by the direction: the dark-terminal homelab dashboard and the rounded-card SaaS page.\n\nAll tokens are declared once with CSS `light-dark()`; the `light-theme` / `dark-theme` class on `<html>` only switches `color-scheme`. Dark theme keeps the same hue family (about 152) with a deep green field and the same panel-on-field relationship.",
+    "keyCharacteristics": [
+      "Green-tinted everything: every neutral carries hue 130-152, there is no gray.",
+      "Condensed uppercase station-board headings against humanist Barlow body.",
+      "Hard-offset, pressable buttons; 2px ink edges on panels and fields.",
+      "Solid line = open, dashed line + amber hatch = planned.",
+      "Reduced-motion collapses all animation and transition durations.",
+      "Icons are stroked 24px line glyphs; brand marks (GitHub) are the one filled exception, drawn on their own grid."
     ],
-    "dos": ["Do put content on enamel panels over the green field, with a 2px ink edge and the hard thickness shadow.", "Do mark tools that do not exist yet with dashed strokes, soft-ink labels and the amber hatch.", "Do use condensed uppercase for headings, buttons and route labels.", "Do write colour as tokens only; each is a single light-dark() declaration.", "Do keep focus visible: 3px route-green outline with 3px offset.", "Do honour reduced motion.", "Do draw progress and meters as route lines with stop rings (The Route Measure Rule)."],
-    "donts": ["Don't build a dark-terminal homelab dashboard or a rounded-card SaaS page.", "Don't use gray or pure white/black.", "Don't use blur, glow or glass for elevation.", "Don't use route green as text colour on the field.", "Don't use the amber hatch for anything but planned/in-progress.", "Don't draw progress or meters as filled capsule bars; they are route lines with stop rings."]
+    "rules": [
+      {
+        "name": "The One Line Rule",
+        "body": "There is one route colour. It is a stroke (lines, rings, focus), not a fill for large areas; large fills belong to the field or panel.",
+        "section": "colors"
+      },
+      {
+        "name": "The Green Neutral Rule",
+        "body": "Neutrals are tinted toward hue 130-152. Pure white, black and gray are not used.",
+        "section": "colors"
+      },
+      {
+        "name": "The Hatch Means Planned Rule",
+        "body": "The amber diagonal hatch and dashed strokes mean \"not built yet\" or \"work in progress\", and nothing else.",
+        "section": "colors"
+      },
+      {
+        "name": "The Route Measure Rule",
+        "body": "Anything that measures (upload progress, storage, a share of a total) is a stretch of line: a hairline rail, a route-green run along it, stop rings at the ends. Fault Red marks a failed run or a full terminus; Soft Ink a cancelled one.",
+        "section": "colors"
+      },
+      {
+        "name": "The Line Colours Rule",
+        "body": "Syntax colours are metro line colours, one per kind of token, kept at 5:1 or more on enamel and sunk enamel in both themes. They colour code only, never UI.",
+        "section": "colors"
+      },
+      {
+        "name": "The Board Voice Rule",
+        "body": "Condensed uppercase is for headings, buttons and route labels. Running text and form labels stay in Barlow sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The Thickness Rule",
+        "body": "Raised means a hard offset in a solid colour. A blurred shadow alone never signals elevation; only the panel's soft cast accompanies the hard edge.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Own Details Rule",
+        "body": "A destination's description and way in live in its own row. Never show details in a shared panel driven by hover: pointing at one thing must not change another.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do put content on enamel panels over the green field, with a 2px ink edge and the hard thickness shadow.",
+      "Do mark tools that do not exist yet with dashed strokes, soft-ink labels and the amber hatch; add a tool by appending a stop in `src/constants/stops.ts`.",
+      "Do use condensed uppercase for headings, buttons and route labels, and Barlow sentence case for everything read in running text.",
+      "Do write colour as tokens only; each is a single `light-dark()` declaration.",
+      "Do keep focus visible: 3px route-green outline with 3px offset on everything focusable.",
+      "Do honour reduced motion; animations here are decorative.",
+      "Do draw progress and meters as route lines with stop rings (The Route Measure Rule)."
+    ],
+    "donts": [
+      "Don't build a dark-terminal homelab dashboard or a rounded-card SaaS page; both are rejected directions.",
+      "Don't use gray or pure white/black; neutrals stay green-tinted.",
+      "Don't use blur, glow or glass for elevation; depth is a hard offset in a solid colour.",
+      "Don't use route green as text colour on the field; text is ink or Signal Forest.",
+      "Don't use the amber hatch for anything but planned/in-progress.",
+      "Don't draw progress or meters as filled capsule bars; they are route lines with stop rings."
+    ]
   }
 }
