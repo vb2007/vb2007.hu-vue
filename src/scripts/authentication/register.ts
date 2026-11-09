@@ -23,22 +23,27 @@ const EMAIL_PATTERN = new RegExp(
 /** Only a plain address, with a dotted hostname: the API's `isValidEmail` short of the lengths. */
 const hasEmailFormat = (email: string) => EMAIL_PATTERN.test(normalizeEmail(email));
 
+/*
+ * The API's username rule (its `usernameFormatError`, vb2007/vb2007.hu-api#319), on the trimmed
+ * name. U+FE0E and U+FE0F only pass right after an emoji, whose presentation they pick.
+ */
+const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
+const EMOJI_PRESENTATION_SELECTORS = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
+/** Whitespace other than a space, invisible and control characters, and the braille blank. */
+const INVALID_USERNAME_CHARACTER = /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u;
+const COMBINING_MARKS = /\p{M}/gu;
+
+/** Also any character the collation ignores, e.g. a tatweel or some cantillation marks. */
+const hasInvalidUsernameCharacter = (username: string) => {
+  const checked = username.replace(EMOJI_PRESENTATION_SELECTORS, "");
+  return (
+    INVALID_USERNAME_CHARACTER.test(checked) ||
+    [...checked].some((character) => USERNAME_COLLATOR.compare(character, "") === 0)
+  );
+};
+
 const { minLength: USERNAME_MIN, maxLength: USERNAME_MAX } = Limits.Username;
 const { minLength: PASSWORD_MIN, maxLength: PASSWORD_MAX } = Limits.Password;
-
-export const usernameLengthError = (username: string) => {
-  const { length } = username.trim();
-
-  if (length < USERNAME_MIN) {
-    return Messages.Auth.usernameTooShort(USERNAME_MIN, USERNAME_MAX);
-  }
-
-  if (length > USERNAME_MAX) {
-    return Messages.Auth.usernameTooLong(USERNAME_MIN, USERNAME_MAX);
-  }
-
-  return;
-};
 
 export const passwordLengthError = (password: string) => {
   const length = [...password].length;
@@ -80,11 +85,30 @@ export const emailError = (email: string) => {
 export const emailMissingError = (email: string) =>
   email.trim() ? "" : Messages.Auth.invalidEmail;
 
-export const usernameError = (username: string) => usernameLengthError(username) ?? "";
+/**
+ * A too long username, or one with invalid characters: typing more can't fix those, so they show
+ * while typing. In the API's order, on the trimmed name.
+ */
+export const usernameEarlyError = (username: string) => {
+  const trimmed = username.trim();
+  if (trimmed.length > USERNAME_MAX) {
+    return Messages.Auth.usernameTooLong(USERNAME_MIN, USERNAME_MAX);
+  }
+  return hasInvalidUsernameCharacter(trimmed) ? Messages.Auth.usernameInvalidCharacters : "";
+};
 
-/** Only a too long username: typing more can't fix that one, so it shows while typing. */
-export const usernameEarlyError = (username: string) =>
-  username.trim().length > USERNAME_MAX ? usernameError(username) : "";
+/**
+ * The username field's problem, or "" when the name is fine: the API's `usernameFormatError`. Too
+ * long, then invalid characters, then too short, where combining marks don't count.
+ */
+export const usernameError = (username: string) => {
+  const early = usernameEarlyError(username);
+  if (early) return early;
+  const characters = [...username.trim().replace(COMBINING_MARKS, "")].length;
+  return characters < USERNAME_MIN
+    ? Messages.Auth.usernameTooShort(USERNAME_MIN, USERNAME_MAX)
+    : "";
+};
 
 export const passwordError = (password: string) => passwordLengthError(password) ?? "";
 
@@ -156,7 +180,10 @@ let usernameChecksPausedUntil = 0;
 
 /**
  * Asks the API whether `username` is free (vb2007/vb2007.hu-api#233), sent as register sends it.
- * A failure, a 429 or an API without the endpoint yet is "unknown", never a problem to show. An
+ * A failure, a 429 or an API without the endpoint yet is "unknown", never a problem to show. So is
+ * a 400 for a name the API's rule refuses, which isn't logged: the form only asks about names that
+ * pass `usernameError`, so it comes only from a rule that changed or a browser that judges a
+ * character differently, and registering names the problem then. An
  * aborted check (newer typing replaced it) is "unknown" too, and isn't logged. The 429 (30 checks
  * a minute per IP) is expected and isn't logged either: no check is sent until its `retryAfter`
  * has passed, and those are "unknown" too.
@@ -171,7 +198,7 @@ export const checkUsername = async (
     query: { username },
     signal,
     failure: Messages.Auth.usernameCheckFailed,
-    quietStatuses: [HttpStatus.TooManyRequests]
+    quietStatuses: [HttpStatus.BadRequest, HttpStatus.TooManyRequests]
   });
 
   if (!result.ok && result.status === HttpStatus.TooManyRequests) {

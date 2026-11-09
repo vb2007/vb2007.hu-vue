@@ -16,8 +16,7 @@ import {
   registerStatus,
   requiredError,
   usernameEarlyError,
-  usernameError,
-  usernameLengthError
+  usernameError
 } from "@/scripts/authentication/register";
 
 afterEach(() => {
@@ -29,16 +28,85 @@ const TOO_LONG = "The password's too long: it must be between 8 and 128 characte
 const USERNAME_TOO_SHORT = "The username's too short: it must be between 2 and 16 characters.";
 const USERNAME_TOO_LONG = "The username's too long: it must be between 2 and 16 characters.";
 
-describe("usernameLengthError", () => {
+const USERNAME_INVALID =
+  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+
+// The API's own cases (vb2007/vb2007.hu-api#319), with fixed names in place of its random ones.
+describe("the username checks", () => {
   it.each([
-    ["1 character", "v", USERNAME_TOO_SHORT],
-    ["1 character padded with spaces", " v ", USERNAME_TOO_SHORT],
-    ["17 characters", "v".repeat(17), USERNAME_TOO_LONG],
-    ["2 characters", "vb", undefined],
-    ["16 characters", "v".repeat(16), undefined],
-    ["16 characters padded with spaces", `  ${"v".repeat(16)}  `, undefined]
-  ])("checks %s", (_case, username, expected) => {
-    expect(usernameLengthError(username)).toBe(expected);
+    ["2 characters", "vb"],
+    ["16 characters", "v".repeat(16)],
+    ["16 characters padded with spaces", `  ${"v".repeat(16)}  `],
+    ["an inner space", "Rv a1b2c"],
+    ["accents", "R\u00e9a1b2c\u00e1"],
+    ["an emoji", "\u{1F600}a1b2c"],
+    ["emoji presentation selectors", "\u2764\ufe0f\u2764\ufe0ea1b2c"],
+    ["a heart emoji", "\u2764\ufe0fl9a1b2c"],
+    ["a keycap emoji", "1\ufe0f\u20e3l9a1b2c"],
+    ["two emoji", "\u{1F600}\u{1F600}"],
+    ["a decomposed \u00e9 after a letter", "ae\u0301"],
+    // Trimmed first, like the API: only whitespace inside the name counts.
+    ["a tab and non-breaking spaces at the ends", "\u00a0\tRv\u00a0"],
+    ["a byte order mark at the start", "\ufeffRv"]
+  ])("take a name with %s", (_case, username) => {
+    expect(usernameError(username)).toBe("");
+    expect(usernameEarlyError(username)).toBe("");
+  });
+
+  it.each([
+    ["only word joiners", "\u2060\u2060"],
+    ["a zero-width space", "a\u200b"],
+    ["a tab inside", "Rv\tBase"],
+    ["a line break inside", "Rv\nBase"],
+    ["a non-breaking space inside", "Rv\u00a0Base"],
+    ["a byte order mark inside", "R\ufeffv"],
+    ["a control character", "Rv\u0007Base"],
+    ["a zero-width joiner", "\u{1F468}\u200d\u{1F469}"],
+    ["a zero-width non-joiner", "ab\u200c"],
+    ["only braille blanks", "\u2800\u2800"],
+    ["only Hangul fillers", "\u3164\u3164"],
+    ["a cantillation mark the collation ignores", "a\u0591"],
+    ["a tatweel", "a\u0640"],
+    ["a private-use character", "ab\ue000"],
+    ["an unassigned code point", "ab\u{50000}"],
+    ["a noncharacter", "ab\uffff"],
+    ["a lone surrogate", "a\ud83d"],
+    ["another variation selector", "ab\u{E0100}"],
+    ["a presentation selector after a letter", "ab\ufe0f"],
+    ["two presentation selectors after a letter", "ab\ufe0f\ufe0f"],
+    ["two presentation selectors after an emoji", "\u2764\ufe0f\ufe0fab"],
+    // Invalid characters come before the minimum, like the API.
+    ["one invalid character", "\u200b"]
+  ])("refuse a name with %s, while typing too", (_case, username) => {
+    expect(usernameError(username)).toBe(USERNAME_INVALID);
+    expect(usernameEarlyError(username)).toBe(USERNAME_INVALID);
+  });
+
+  it.each([
+    ["an empty name", ""],
+    ["1 character", "v"],
+    ["1 character padded with spaces", "  a  "],
+    ["only combining marks", "\u0301\u0301"],
+    ["three combining marks", "\u0300\u0301\u0302"],
+    ["a decomposed \u00e9", "e\u0301"],
+    ["one letter and 14 combining marks", `a${"\u0301".repeat(14)}`],
+    ["one emoji letter and a presentation selector", "\u2764\ufe0f"],
+    ["a lone emoji", "\u{1F600}"],
+    ["a lone supplementary CJK character", "\u{20000}"]
+  ])("call %s too short, only once it's left", (_case, username) => {
+    expect(usernameError(username)).toBe(USERNAME_TOO_SHORT);
+    expect(usernameEarlyError(username)).toBe("");
+  });
+
+  it.each([
+    ["17 characters", "v".repeat(17)],
+    // The maximum counts UTF-16 units, like the API: 9 emoji are 18.
+    ["9 emoji", "\u{1F600}".repeat(9)],
+    // The maximum comes first, before the invalid characters.
+    ["17 characters with a tab inside", `v\t${"v".repeat(15)}`]
+  ])("call %s too long, while typing too", (_case, username) => {
+    expect(usernameError(username)).toBe(USERNAME_TOO_LONG);
+    expect(usernameEarlyError(username)).toBe(USERNAME_TOO_LONG);
   });
 });
 
@@ -58,6 +126,7 @@ describe("passwordLengthError", () => {
 describe("registerFieldOf", () => {
   it.each([
     [USERNAME_TOO_SHORT, "username"],
+    [USERNAME_INVALID, "username"],
     [TOO_LONG, "password"],
     ["This username is already taken.", "username"],
     ["An account with this E-mail address already exists.", "email"],
@@ -157,17 +226,6 @@ describe("emailMissingError", () => {
   });
 });
 
-describe("the username checks", () => {
-  it.each([
-    ["vb", "", ""],
-    [" v ", USERNAME_TOO_SHORT, ""],
-    ["v".repeat(17), USERNAME_TOO_LONG, USERNAME_TOO_LONG]
-  ])("check %j", (username, full, early) => {
-    expect(usernameError(username)).toBe(full);
-    expect(usernameEarlyError(username)).toBe(early);
-  });
-});
-
 describe("the password checks", () => {
   it.each([
     ["secret12", "", ""],
@@ -246,6 +304,13 @@ describe("checkUsername", () => {
   ])("can't tell after %s", async (_case, response) => {
     fetchMock.mockResolvedValueOnce(response());
     await expect(checkUsername("anna")).resolves.toBe("unknown");
+  });
+
+  it("can't tell after a 400 for a name the API refuses, and doesn't log it", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: USERNAME_INVALID }));
+
+    await expect(checkUsername("a\u0640")).resolves.toBe("unknown");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("can't tell when the request fails", async () => {
