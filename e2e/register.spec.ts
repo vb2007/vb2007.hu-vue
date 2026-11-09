@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, REGISTRATION_CODE, test } from "./fixtures";
+import { expect, REGISTRATION_CODE, test, type MockApi } from "./fixtures";
 
 // Registering mails a code first (vb2007/vb2007.hu-api#28); the mock "mails" REGISTRATION_CODE.
 // Confirming it creates the account with the form's username and password (vb2007/vb2007.hu-api#295).
@@ -394,10 +394,88 @@ test("an address that already has an account is only refused at the code", async
 
   const email = page.getByLabel("E-mail");
   await expect(email).toHaveAccessibleDescription(
-    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password from the log-in page."
+    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password."
   );
   await expect(email).toBeFocused();
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  // The two actions the message names are links in it.
+  const field = page.locator(".field", { has: email });
+  await expect(field.getByRole("link", { name: "Log in" })).toBeVisible();
+  await expect(field.getByRole("link", { name: "reset the password" })).toBeVisible();
+});
+
+/** Registers with an address that has an account, and lands back on the form with the message. */
+const refusedAsExisting = async (page: Page, api: MockApi) => {
+  api.hasUser("anna");
+  await fillForm(page, " anna@example.com ");
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+};
+
+test("the message for an address with an account links to Log in, address filled in", async ({
+  page,
+  api
+}) => {
+  await refusedAsExisting(page, api);
+
+  await page.locator(".field").getByRole("link", { name: "Log in" }).click();
+
+  // The address travels in the history state, never in the URL.
+  await expect(page).toHaveURL("/login");
+  await expect(page.getByLabel("E-mail")).toHaveValue("anna@example.com");
+  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("E-mail")).not.toHaveAttribute("aria-invalid", "true");
+  expect(await page.evaluate("location.search + location.hash")).toBe("");
+  expect(await page.evaluate("history.state.prefillEmail")).toBe("anna@example.com");
+
+  // Reloading keeps it; a page opened any other way starts empty.
+  await page.reload();
+  await expect(page.getByLabel("E-mail")).toHaveValue("anna@example.com");
+  await page.goto("/shorten");
+  await page.goto("/login");
+  await expect(page.getByLabel("E-mail")).toHaveValue("");
+});
+
+test("the link to Log in lets the user log in with the address it carried", async ({
+  page,
+  api
+}) => {
+  await refusedAsExisting(page, api);
+
+  await page.locator(".field").getByRole("link", { name: "Log in" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
+  await page.getByLabel("Password", { exact: true }).fill(api.password);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+});
+
+test("the link to reset the password opens Reset password with the address filled in", async ({
+  page,
+  api
+}) => {
+  await refusedAsExisting(page, api);
+
+  await page.locator(".field").getByRole("link", { name: "reset the password" }).click();
+
+  await expect(page).toHaveURL("/reset-password");
+  await expect(page.getByLabel("E-mail")).toHaveValue("anna@example.com");
+  // Sending a code stays the user's call.
+  await expect(page.getByRole("button", { name: "Send code" })).not.toBeFocused();
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Code")).toBeFocused();
+  expect(api.passwordResets).toEqual(["anna@example.com"]);
+});
+
+test("editing the address takes the message and its links away", async ({ page, api }) => {
+  await refusedAsExisting(page, api);
+  const field = page.locator(".field", { has: page.getByLabel("E-mail") });
+
+  await page.getByLabel("E-mail").fill("anna2@example.com");
+
+  await expect(field.getByRole("link")).toHaveCount(0);
+  await expect(page.getByLabel("E-mail")).not.toHaveAttribute("aria-invalid", "true");
 });
 
 test("logging out after registering leaves an empty form", async ({ page, isMobile }) => {

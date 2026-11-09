@@ -49,6 +49,22 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
   await expect(page.getByRole("main")).not.toContainText("Password reset successfully");
 });
 
+test("Forgot password? opens Reset password with the typed address filled in", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(" me@example.com ");
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+
+  await expect(page).toHaveURL("/reset-password");
+  await expect(page.getByLabel("E-mail")).toHaveValue("me@example.com");
+  await expect(page.getByLabel("E-mail")).not.toHaveAttribute("aria-invalid", "true");
+
+  // Nothing typed, nothing carried over.
+  await page.goto("/login");
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+  await expect(page).toHaveURL("/reset-password");
+  await expect(page.getByLabel("E-mail")).toHaveValue("");
+});
+
 test("the code can be sent again once the countdown ends, and the address changed", async ({
   page,
   api

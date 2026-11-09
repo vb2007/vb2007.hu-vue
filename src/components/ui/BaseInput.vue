@@ -51,7 +51,10 @@ const describedBy = computed(() => {
       @blur="$emit('blur')"
     />
     <p v-if="hint" :id="`${id}-hint`" class="field__hint">{{ hint }}</p>
-    <p v-if="error" :id="`${id}-error`" class="field__error">{{ error }}</p>
+    <!-- The slot is for an error with markup, e.g. a link; `error` still decides whether it shows. -->
+    <p v-if="error" :id="`${id}-error`" class="field__error">
+      <slot name="error">{{ error }}</slot>
+    </p>
   </div>
 </template>
 

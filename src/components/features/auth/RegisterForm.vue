@@ -10,10 +10,11 @@ import {
   useTemplateRef
 } from "vue";
 import { RouterLink } from "vue-router";
-import { RegisterStatus } from "@/constants/auth";
+import { AuthPaths, RegisterStatus } from "@/constants/auth";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
+import { emailPrefillState } from "@/scripts/authentication/emailPrefill";
 import {
   checkUsername,
   confirmationCodeEarlyError,
@@ -150,6 +151,13 @@ const resendName = computed(() =>
 const errorIsWait = computed(
   () => resendWaiting.value && !!codeError.value && codeError.value === cooldown.note.value
 );
+
+/**
+ * Whether the e-mail field says the address has an account: then its error links to Log in and
+ * Reset password, which open with the address filled in. No other error gets links.
+ */
+const accountExists = computed(() => errors.value.email === Messages.Auth.accountExists);
+const prefilledPage = (path: string) => ({ path, state: emailPrefillState(email.value) });
 
 /** The step on screen (form or code), to move focus into it when it changes. */
 const step = useTemplateRef<HTMLFormElement>("step");
@@ -513,7 +521,19 @@ watch(isLoggedIn, (newVal) => {
           :error="errors.email"
           required
           @blur="leaveField('email')"
-        />
+        >
+          <template v-if="accountExists" #error
+            >{{ Messages.Auth.accountExistsStart }}
+            <RouterLink :to="prefilledPage(AuthPaths.Login)">{{
+              Messages.Auth.accountExistsLogIn
+            }}</RouterLink>
+            {{ Messages.Auth.accountExistsMiddle }}
+            <RouterLink :to="prefilledPage(AuthPaths.ResetPassword)">{{
+              Messages.Auth.accountExistsReset
+            }}</RouterLink
+            >.</template
+          >
+        </BaseInput>
         <BaseInput
           v-model="username"
           label="Username"

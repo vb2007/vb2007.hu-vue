@@ -6,6 +6,7 @@ import { Messages } from "@/constants/messages";
 import { useCountdown } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { isLoggedIn, userEmail, userId } from "@/scripts/authentication/authState";
+import { emailFromHistory } from "@/scripts/authentication/emailPrefill";
 import {
   confirmPasswordReset,
   confirmPasswordResetLink,
@@ -33,10 +34,7 @@ import { statusTextId } from "@/components/ui/statusMessage";
 
 const codeHint = `The ${Limits.Code.digits}-digit code from the e-mail. It works for ${Limits.Code.passwordResetValidMinutes} minutes.`;
 const linkIntro = `Choose a new password for your account. The link from the e-mail works once, for ${Limits.Code.passwordResetValidMinutes} minutes after it was sent.`;
-const passwordHint = Messages.Auth.lengthHint(
-  Limits.Password.minLength,
-  Limits.Password.maxLength
-);
+const passwordHint = Messages.Auth.lengthHint(Limits.Password.minLength, Limits.Password.maxLength);
 
 /** The API allows one code a minute per address. */
 const RESEND_SECONDS = Limits.Code.cooldownSeconds;
@@ -60,7 +58,8 @@ const linkUsername = computed(() =>
   isLoggedIn.value && resetLinkUserId(linkToken.value) === userId.value ? userEmail.value : ""
 );
 
-const email = ref("");
+// Opened from Register or Log in with the address filled in (see emailPrefill).
+const email = ref(emailFromHistory());
 const code = ref("");
 const newPassword = ref("");
 /** The address on the code step; set, it moves the board there. */
@@ -369,18 +368,22 @@ const handleReset = () =>
 
 const handleLinkReset = async () => {
   let passwordRefusal = "";
-  await submitReset(linkChecks, async () => {
-    linkAnswer.value = "";
-    const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
-    if (answer.linkRefused) {
-      linkAnswer.value = "refused";
-    } else if (answer.retryAfter !== undefined) {
-      linkAnswer.value = "limited";
-    } else if (answer.passwordRefused) {
-      passwordRefusal = answer.error!;
-    }
-    return answer;
-  }, linkHold);
+  await submitReset(
+    linkChecks,
+    async () => {
+      linkAnswer.value = "";
+      const answer = await confirmPasswordResetLink(linkToken.value, newPassword.value);
+      if (answer.linkRefused) {
+        linkAnswer.value = "refused";
+      } else if (answer.retryAfter !== undefined) {
+        linkAnswer.value = "limited";
+      } else if (answer.passwordRefused) {
+        passwordRefusal = answer.error!;
+      }
+      return answer;
+    },
+    linkHold
+  );
 
   // The link still works: the refusal belongs to the field, which gets the cursor for another one.
   if (passwordRefusal) {
