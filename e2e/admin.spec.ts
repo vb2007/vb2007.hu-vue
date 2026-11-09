@@ -1224,6 +1224,53 @@ test("the site-wide list finds an upload's owner whatever the case of the name i
   await expect(page.getByRole("button", { name: "report.pdf" })).toBeVisible();
 });
 
+test("the admin's own address is the superuser's, whatever its row on the list says", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // A plain row at the admin's address: the API goes by the address.
+  const own = api.hasUser("vb2007");
+  await page.goto("/admin/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  const suspension = await callApi(page, api, "PATCH", `/admin/users/${own.id}/suspension`, {
+    suspended: true
+  });
+  expect.soft(suspension).toEqual({
+    status: 409,
+    body: { error: "The superuser's account can't be suspended." }
+  });
+  const deletion = await callApi(page, api, "DELETE", `/admin/users/${own.id}`, {});
+  expect.soft(deletion).toEqual({
+    status: 409,
+    body: { error: "The superuser's own account can't be deleted." }
+  });
+  expect(own.suspendedAt).toBeNull();
+  expect(api.users).toContain(own);
+});
+
+test("a deleted account's waiting reset code and links go with it", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+  await page.goto(`/admin/users/${anna.id}`);
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const token = api.mailsResetLink(anna.id, email);
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
+  const link = { token, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).status).toBe(
+    400
+  );
+});
+
 test("the owner link of the admin's own upload leads to their row on the list", async ({
   page,
   api

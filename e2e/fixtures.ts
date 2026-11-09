@@ -51,7 +51,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * replaces `MOCK_EMAIL`'s account (arrange `hasUser(...)` for a second one). A `hasUser(...)` row at an address the login already knows takes
  * that account over with its own id and name, and with `password: false`, `githubLogin`, `emailVerified` and `superuser` when given, in either
  * order (the logged-in account aside, which stays as arranged), so `hasUser("me")` makes `MOCK_EMAIL`'s account "me", which a later `loggedInAs`
- * leaves alone. `DELETE /user` takes the account out of the login and the admin list, with its pastes, short links and uploads, like the admin's delete.
+ * leaves alone. `DELETE /user` takes the account out of the login and the admin list, with its pastes, short links and uploads, like the admin's delete;
+ * either delete also voids the account's waiting reset code, reset links and e-mail change. The admin route refuses to suspend or delete the
+ * superuser's address (`MOCK_SUPERUSER_EMAIL`, or any account arranged with `superuser: true`) with 409, whatever the row's own flag.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
@@ -1801,16 +1803,21 @@ export class MockApi {
       }
     }
     // The API deletes the account by its id: neither the login nor the admin list knows it any more, and what it
-    // owned goes too (`removeUserContent`).
+    // owned goes too (`removeUserContent`), as does what waited on its document: the reset code and links, and the
+    // e-mail change, which is the logged-in account's here.
     const deleted = this.user;
     this.forgetsAccount(deleted);
     this.removesContentOf(deleted.username);
+    const rowIds: string[] = [];
     for (let index = this.users.length - 1; index >= 0; index--) {
       const row = this.users[index];
       if (row.id === deleted._id || normalizeEmail(row.email) === normalizeEmail(deleted.email)) {
+        rowIds.push(row.id);
         this.users.splice(index, 1);
       }
     }
+    this.voidsWaiting([deleted._id, ...rowIds], deleted.email);
+    this.emailChange = null;
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
@@ -2371,14 +2378,15 @@ export class MockApi {
 
   /**
    * `DELETE /admin/users/:id` (vb2007/vb2007.hu-api#276): the account leaves the list and the
-   * logins, with its pastes, short links and uploads. Never the superuser's own.
+   * logins, with its pastes, short links and uploads, and what waited on it. Never the superuser's own, by its address.
    */
   private deleteUser(id: string): MockResponse {
     const target = this.adminTarget(id);
     if ("status" in target) return target;
-    if (target.isSuperuser) {
+    if (this.isSuperuserEmail(target.email)) {
       return { status: 409, body: { error: "The superuser's own account can't be deleted." } };
     }
+    this.voidsWaitingFor(target);
     this.users.splice(this.users.indexOf(target), 1);
     const account = this.accountOf(target);
     if (account) this.accounts.splice(this.accounts.indexOf(account), 1);
@@ -2507,25 +2515,45 @@ export class MockApi {
   }
 
   /**
-   * Voids the reset code, reset links and e-mail change waiting for the admin list's account `user`, as the API's
-   * `setUserSuspension` unsets `passwordReset`, `passwordResetLinks` and `emailChange`. Its session and `githubLink`
-   * go too there, but here they're only this browser's, whose superuser the API never suspends.
+   * Voids the reset code, reset links and e-mail change waiting for the account with one of `ids` at `email`, which
+   * the API keeps on the account's document: `setUserSuspension` unsets them, and deleting the document takes them along.
+   */
+  private voidsWaiting(ids: (string | undefined)[], email: string) {
+    const address = normalizeEmail(email);
+    this.voidResetCode(address);
+    this.voidResetLinks(
+      (link) => ids.includes(link.userId) || normalizeEmail(link.email) === address
+    );
+    for (const id of ids) if (id) this.userPendingEmails.delete(id);
+  }
+
+  /**
+   * `voidsWaiting` for the admin list's account `user`, whose login may carry another id than the row (see
+   * `knowsListedAccount`). The API's suspension also ends the session and unsets `githubLink`, but here those are only
+   * this browser's, whose superuser the API never suspends.
    */
   private voidsWaitingFor(user: MockAdminUser) {
-    const email = normalizeEmail(user.email);
-    // The login may carry another id than the row (see `knowsListedAccount`).
-    const loginId = this.accountOf(user)?._id;
-    this.voidResetCode(email);
-    this.voidResetLinks(
-      (link) =>
-        link.userId === user.id || link.userId === loginId || normalizeEmail(link.email) === email
+    this.voidsWaiting([user.id, this.accountOf(user)?._id], user.email);
+  }
+
+  /**
+   * Whether `email` is the superuser's, like the API's `isSuperuserEmail`: `MOCK_SUPERUSER_EMAIL`, or the address of
+   * an account arranged as the superuser. The admin list's row at that address is the superuser's whatever its flag.
+   */
+  private isSuperuserEmail(email: string) {
+    const address = normalizeEmail(email);
+    return (
+      address === MOCK_SUPERUSER_EMAIL ||
+      [...(this.user ? [this.user] : []), ...this.accounts, ...this.users].some(
+        (account) => account.isSuperuser && normalizeEmail(account.email) === address
+      )
     );
-    this.userPendingEmails.delete(user.id);
   }
 
   /**
    * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
-   * the first `suspendedAt`, and the superuser's row answers 409. Suspending, or lifting a suspension that's there, voids what's waiting (`voidsWaitingFor`).
+   * the first `suspendedAt`, and the superuser's address answers 409. Suspending, or lifting a
+   * suspension that's there, voids what's waiting (`voidsWaitingFor`).
    */
   private setSuspension(id: string, suspended: unknown): MockResponse {
     const refusal = this.refuseNonSuperuser();
@@ -2536,7 +2564,7 @@ export class MockApi {
     if (typeof suspended !== "boolean") {
       return { status: 400, body: { error: "suspended must be true or false." } };
     }
-    if (user.isSuperuser) {
+    if (this.isSuperuserEmail(user.email)) {
       return { status: 409, body: { error: "The superuser's account can't be suspended." } };
     }
     // The API's `setUserSuspension` unsets what's waiting on suspending, and on lifting a suspension that was there.

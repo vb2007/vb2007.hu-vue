@@ -1,6 +1,7 @@
 import {
   callApi,
   expect,
+  getFromApi,
   MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   MOCK_EMAIL_CODE,
@@ -1447,6 +1448,54 @@ test("a superuser row at a login's address makes that login the admin's", async 
   await page.goto("/admin");
   await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
   await expect(page.getByText("Log in with the admin account to open this page.")).toHaveCount(0);
+});
+
+test("a deleted account's waiting reset links and code go with it", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const email = "me@example.com";
+  const newPassword = "a new password";
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const token = api.mailsResetLink();
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/");
+
+  const link = { token, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).status).toBe(
+    400
+  );
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
+});
+
+test("a deleted account's waiting e-mail change doesn't follow the next login", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  api.hasUser("anna");
+  await page.goto("/account");
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("anna@example.com");
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  const user = await getFromApi(page, api, "/user");
+  expect(user.body).toMatchObject({ username: "anna", pendingEmail: null });
+  await page.goto("/account");
+  await expect(page.getByRole("definition").first()).toHaveText("anna");
+  await expect(page.getByText("Waiting for confirmation")).toHaveCount(0);
 });
 
 test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({
