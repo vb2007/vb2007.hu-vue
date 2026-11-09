@@ -40,9 +40,9 @@ test("a failed GitHub login is explained once, then dropped from the URL", async
 });
 
 test("a refused login shows the API's one message and stays logged out", async ({ page, api }) => {
-  // A GitHub-only account has no password to log in with.
-  api.loggedInAs("octo@example.com", "octo", { password: false, githubLinked: true });
-  api.loggedOut();
+  // A GitHub-only account has no password to log in with. A second account next to MOCK_EMAIL's,
+  // which `loggedInAs` would replace (both are MOCK_USER_ID).
+  api.hasUser("octo", { password: false, githubLogin: "octo" });
   await page.goto("/login");
   const main = page.getByRole("main");
   const logIn = main.getByRole("button", { name: "Log in", exact: true });
@@ -721,6 +721,39 @@ for (const [status, address, error] of [
   });
 }
 
+test("the address of an account nobody is logged in to is refused at confirm too", async ({
+  page,
+  api
+}) => {
+  // MOCK_EMAIL's account, which only the login knows. Logging in to another one leaves it there, where
+  // `loggedInAs` would replace it (both are MOCK_USER_ID).
+  api.hasUser("other");
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("other@example.com");
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByText(`Waiting for confirmation: ${MOCK_EMAIL}`)).toBeVisible();
+
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  const confirmed = page.waitForResponse((response) =>
+    response.url().includes("/user/email/confirm")
+  );
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  expect((await confirmed).status()).toBe(409);
+  await expect(page.getByRole("alert")).toHaveText(
+    `${MOCK_EMAIL} wasn't confirmed. An account with this E-mail address already exists.`
+  );
+  await expect(page.getByRole("definition")).toHaveText(["other", "other@example.com"]);
+});
+
 test("a code that expired with the page open takes the waiting change away", async ({
   page,
   api
@@ -1305,6 +1338,53 @@ test("an account is deleted with its password and the visitor lands home logged 
   await expect(page.getByRole("main").getByRole("alert")).toHaveText(
     "Incorrect e-mail address or password. If you signed up with GitHub, log in with GitHub."
   );
+});
+
+test("an account arranged before another login still logs in, under its own name", async ({
+  page,
+  api
+}) => {
+  // MOCK_EMAIL's address: the row takes that login over, so `loggedInAs` doesn't replace it.
+  api.hasUser("me");
+  api.loggedInAs("anna@example.com", "anna");
+  api.loggedOut();
+
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+
+  await page.goto("/account");
+  await expect(page.getByRole("definition")).toHaveText(["me", MOCK_EMAIL]);
+});
+
+test("a deleted account's name and address are free again", async ({ page, api }) => {
+  // The default account: e2e@example.com, "e2e", with MOCK_EMAIL's id, so it's that account moved.
+  api.loggedInAs();
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const checked = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
+  await username.fill("e2e");
+  expect(await (await checked).json()).toEqual({ available: true });
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+
+  // Neither the address it had nor the one it was moved from logs in any more.
+  for (const address of ["e2e@example.com", MOCK_EMAIL]) {
+    const login = await callApi(page, api, "POST", "/auth/login", {
+      email: address,
+      password: MOCK_PASSWORD
+    });
+    expect(login.status).toBe(403);
+  }
 });
 
 test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({
