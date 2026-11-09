@@ -106,12 +106,11 @@ describe("MailBudgetMeter", () => {
     );
   });
 
-  it("turns a passed stop's ring route green once the here ring has left it", () => {
+  it("keeps the ring at 225 out of the here ring's way once it stops short of the terminus", () => {
     const wrapper = mountMeter(aMailBudget({ sentToday: 248 }));
 
-    expect(wrapper.findAll(".mail__mark").map((mark) => mark.classes())).toEqual([
-      ["mail__mark", "mail__mark--reached"],
-      ["mail__mark", "mail__mark--reached"]
+    expect(wrapper.findAll(".mail__mark").map((mark) => mark.attributes("style"))).toEqual([
+      "--mark: 0.8;"
     ]);
   });
 

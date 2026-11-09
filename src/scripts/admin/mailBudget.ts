@@ -35,14 +35,27 @@ export interface MailLine {
   marks: { share: number; reached: boolean }[];
 }
 
+/** The narrowest rail the line is drawn on, in px: a 320px screen's (the Pixel 7's is 291px). */
+const NARROWEST_RAIL = 200;
+
+/**
+ * How far short of the terminus the here ring stops, in px, as `.mail__here` draws it (0.75rem),
+ * so a nearly full line doesn't swallow it.
+ */
+const HERE_INSET = 12;
+
 /**
  * How close (as a share of the line) a stop's ring may come to the "here" ring, or to the ring
  * before it, before it's left out, so rings never merge into one blob; the stops in words still
  * name it. A stop ring and the here ring need 16px between their centres (half of the 18px here
- * ring plus half of the 14px stop ring), two stop rings 14px, which 8 % keeps on a rail down to
- * 200px: the rail on a 320px screen (the Pixel 7's is 291px).
+ * ring plus half of the 14px stop ring), two stop rings 14px: 16px of the narrowest rail is 8 %,
+ * and more on any wider one.
  */
-export const MARK_GAP = 0.08;
+export const MARK_GAP = 16 / NARROWEST_RAIL;
+
+/** How far a mark is from the stretch of line `[from, to]`, as a share of the line. */
+const distance = (mark: number, from: number, to: number): number =>
+  mark < from ? from - mark : Math.max(0, mark - to);
 
 /** Stops on the same count are listed in this order. */
 const ORDER: MailStopKind[] = ["registration", "passwordReset", "warning", "limit"];
@@ -55,6 +68,9 @@ export const mailLine = (budget: MailBudgetResponse): MailLine => {
   const { sentToday, dailyLimit, warningAt, registrationStopsAt, passwordResetStopsAt } = budget;
   const isFull = sentToday >= dailyLimit;
   const share = dailyLimit > 0 ? Math.min(1, sentToday / dailyLimit) : 1;
+  // Near the limit the here ring is drawn short of its count, the further the narrower the rail:
+  // on any rail from the narrowest up, it sits somewhere from here to its true place.
+  const hereFrom = Math.min(share, 1 - HERE_INSET / NARROWEST_RAIL);
   const at: Record<MailStopKind, number> = {
     registration: registrationStopsAt,
     passwordReset: passwordResetStopsAt,
@@ -75,7 +91,7 @@ export const mailLine = (budget: MailBudgetResponse): MailLine => {
       return last && mark.share - last.share < MARK_GAP ? kept : [...kept, mark];
     }, [])
     // At the limit there's no "here" ring for them to run into.
-    .filter((mark) => isFull || Math.abs(mark.share - share) >= MARK_GAP);
+    .filter((mark) => isFull || distance(mark.share, hereFrom, share) >= MARK_GAP);
 
   return {
     share,

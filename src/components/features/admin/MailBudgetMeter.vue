@@ -204,7 +204,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
 }
 
 .mail__here {
-  /* Short of the terminus, so a nearly full line doesn't swallow it. */
+  /* Short of the terminus, so a nearly full line doesn't swallow it (HERE_INSET in mailBudget.ts). */
   left: min(var(--at), calc(100% - 0.75rem));
   width: 1.125rem;
   height: 1.125rem;

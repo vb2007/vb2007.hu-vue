@@ -75,10 +75,11 @@ describe("mailLine", () => {
     expect(mailLine(aMailBudget({ sentToday: 230 })).marks).toEqual([
       { share: 0.8, reached: true }
     ]);
-    expect(mailLine(aMailBudget({ sentToday: 248 })).marks).toEqual([
-      { share: 0.8, reached: true },
-      { share: 0.9, reached: true }
-    ]);
+    // 248 is 0.992 along, but the here ring stops 12px short of the terminus: 0.94 along on a
+    // 200px rail, only 8px past the ring at 225.
+    for (const sentToday of [240, 246, 248, 249]) {
+      expect(mailLine(aMailBudget({ sentToday })).marks).toEqual([{ share: 0.8, reached: true }]);
+    }
     // At the limit there's no here ring, so the rings stay.
     expect(mailLine(aMailBudget({ sentToday: 250 })).marks).toHaveLength(2);
   });

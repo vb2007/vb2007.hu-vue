@@ -91,7 +91,9 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   api.sentMailToday(230);
   await page.reload();
   await expect(mail.getByText("230 of 250 sent")).toBeVisible();
-  await expect(mail.getByRole("listitem").nth(2)).toHaveText("225 Password reset codes stop Reached");
+  await expect(mail.getByRole("listitem").nth(2)).toHaveText(
+    "225 Password reset codes stop Reached"
+  );
   await expect(mail.getByRole("status")).toHaveText(
     "Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out, up to 250."
   );
@@ -102,6 +104,54 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(mail.getByRole("alert")).toHaveText(
     /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\) or the API's next restart\.$/
   );
+});
+
+test("the mail line's rings never run into each other on a 320px screen", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("vb2007");
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/admin");
+  const mail = page.getByRole("region", { name: "Mail today" });
+  const centres = () =>
+    mail.evaluate((root) => {
+      const centre = (el: { getBoundingClientRect(): { left: number; width: number } }) => {
+        const box = el.getBoundingClientRect();
+        return box.left + box.width / 2;
+      };
+      const one = (selector: string) => {
+        const el = root.querySelector(selector);
+        return el ? centre(el) : null;
+      };
+      return {
+        from: one(".mail__end--from")!,
+        to: one(".mail__end--to")!,
+        here: one(".mail__here"),
+        marks: [...root.querySelectorAll(".mail__mark")].map(centre)
+      };
+    });
+
+  // Around each stop (200, 225, the limit at 250), and close to the terminus. Before the day's
+  // first mail and just after, the here ring sits on the departure ring: the line sets out from it.
+  const counts = [
+    0, 1, 184, 185, 190, 196, 200, 204, 205, 210, 216, 217, 220, 225, 229, 230, 233, 236, 240, 244,
+    246, 247, 248, 249, 250
+  ];
+  for (const sent of counts) {
+    api.sentMailToday(sent);
+    await page.getByRole("button", { name: "Refresh" }).click();
+    await expect(mail.getByText(`${sent} of 250 sent`)).toBeVisible();
+    const { from, to, here, marks } = await centres();
+    const apart = (a: number, b: number) => Math.round(Math.abs(a - b));
+
+    // Half of each ring's width: here 18px, stop 14px, departure 16px, terminus 22px.
+    for (const [i, mark] of marks.entries()) {
+      if (here !== null) expect(apart(mark, here), `${sent} sent`).toBeGreaterThanOrEqual(9 + 7);
+      if (i > 0) expect(apart(mark, marks[i - 1]), `${sent} sent`).toBeGreaterThanOrEqual(7 + 7);
+      expect(apart(mark, from)).toBeGreaterThanOrEqual(7 + 8);
+      expect(apart(mark, to)).toBeGreaterThanOrEqual(7 + 11);
+    }
+    if (here !== null) expect(apart(here, to), `${sent} sent`).toBeGreaterThanOrEqual(9 + 11);
+  }
 });
 
 test("the overview's totals and mail fail on their own, and Refresh tries again", async ({
