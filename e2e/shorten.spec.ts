@@ -1,4 +1,4 @@
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import { callApi, expect, getFromApi, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 test("a user logs in and shortens a link", async ({ page, api }) => {
   api.shortenReturns("abc123");
@@ -59,6 +59,36 @@ test("shortening a URL again gives back the user's own link", async ({ page, api
   await expect(page.getByRole("link", { name: /\/r\/def456$/ })).toBeVisible();
   await expect(shown).toBeHidden();
   await expect(spoken).toHaveCount(0);
+});
+
+test("a link filed under another case of the user's name is still theirs", async ({
+  page,
+  api
+}) => {
+  const target = "https://example.com/shared";
+  api.loggedInAs("anna@example.com", "Anna");
+  api.hasShortLink("annas1", target, "anna");
+  api.hasShortLink("annas2", "https://example.com/other", "ANNA");
+  api.shortenReturns("abc123");
+  await page.goto("/shorten");
+
+  await page.getByLabel("URL").fill(target);
+  await page.getByRole("button", { name: "Shorten", exact: true }).click();
+  await expect(page.getByRole("link", { name: /\/r\/annas1$/ })).toBeVisible();
+  await expect(
+    page.locator(".slip").getByText("You've already shortened this URL, so no new link was made.")
+  ).toBeVisible();
+
+  const listed = await getFromApi(page, api, "/shortenUrls?sortOrder=asc");
+  expect(listed.status).toBe(200);
+  expect(
+    (listed.body as { shortUrls: { shortenedUrl: string }[] }).shortUrls.map(
+      (link) => link.shortenedUrl
+    )
+  ).toEqual(["annas1", "annas2"]);
+
+  expect((await callApi(page, api, "DELETE", "/shortenUrl/annas2", {})).status).toBe(200);
+  expect([...api.shortLinks.keys()]).toEqual(["annas1"]);
 });
 
 test("an already logged-in user goes straight to the form", async ({ page, api }) => {

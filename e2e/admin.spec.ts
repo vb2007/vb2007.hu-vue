@@ -680,6 +680,41 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
 });
 
+test("suspending an account voids its waiting reset code, reset links and e-mail change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { pendingEmail: "anna@new.example" });
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+
+  await page.goto(`/admin/users/${anna.id}`);
+  const changingTo = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("Changing to", { exact: true }) });
+  await expect(changingTo).toHaveCount(1);
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const token = api.mailsResetLink(anna.id, email);
+
+  const actions = page.locator(".actions");
+  await actions.getByRole("button", { name: "Suspend", exact: true }).click();
+  await page.getByRole("button", { name: "Suspend anna" }).click();
+  await expect(actions.getByRole("status")).toHaveText(
+    "User suspended successfully: their session was ended."
+  );
+
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
+  const link = { token, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).status).toBe(
+    400
+  );
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await expect(changingTo).toHaveCount(0);
+});
+
 test("a suspended account is logged out and refused, but only after the right password", async ({
   page,
   api
@@ -816,6 +851,40 @@ test("the superuser deletes a user with everything they own", async ({ page, api
   await page.reload();
   await expect(page.locator(".row__name")).toHaveText(["milo"]);
   await expect(page.getByText("anna's account is deleted")).toHaveCount(0);
+});
+
+test("an account's pastes and short links are its own whatever the case of the name they're filed under", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("Anna");
+  api.hasPaste("hello", "anna");
+  api.hasShortLink("annas", "https://example.com/", "ANNA");
+  const theirs = api.hasPaste("theirs", "milo");
+
+  await page.goto(`/admin/users/${anna.id}`);
+  const owns = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("Owns", { exact: true }) })
+    .locator("dd");
+  await expect(owns).toHaveText("1 paste · 1 short link · 0 uploads");
+
+  // Renamed, she keeps them.
+  await page.getByRole("button", { name: "Rename" }).click();
+  await page.getByLabel("New username").fill("Annabel");
+  await page.getByRole("button", { name: "Save username" }).click();
+  await expect(page.getByText("Renamed to Annabel.")).toBeVisible();
+  await page.reload();
+  await expect(owns).toHaveText("1 paste · 1 short link · 0 uploads");
+
+  // Deleted, they go with her, along with one filed under her new name in another case.
+  api.hasPaste("later", "ANNABEL");
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  expect(api.pastes).toEqual([theirs]);
+  expect(api.shortLinks.size).toBe(0);
 });
 
 test("the superuser's own account can't be deleted, and logging it out ends this session", async ({
@@ -1153,6 +1222,120 @@ test("the site-wide list finds an upload's owner whatever the case of the name i
   await page.goto(`/admin/users/${anna.id}/uploads`);
   await expect(page.getByRole("heading", { level: 1, name: "Anna's uploads" })).toBeVisible();
   await expect(page.getByRole("button", { name: "report.pdf" })).toBeVisible();
+});
+
+test("the admin's own address is the superuser's, whatever its row on the list says", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // A plain row at the admin's address: the API goes by the address.
+  const own = api.hasUser("vb2007");
+  await page.goto("/admin/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  const suspension = await callApi(page, api, "PATCH", `/admin/users/${own.id}/suspension`, {
+    suspended: true
+  });
+  expect.soft(suspension).toEqual({
+    status: 409,
+    body: { error: "The superuser's account can't be suspended." }
+  });
+  const deletion = await callApi(page, api, "DELETE", `/admin/users/${own.id}`, {});
+  expect.soft(deletion).toEqual({
+    status: 409,
+    body: { error: "The superuser's own account can't be deleted." }
+  });
+  expect(own.suspendedAt).toBeNull();
+  expect(api.users).toContain(own);
+});
+
+test("a row at the admin's address answers as the superuser's", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // A plain row at the admin's address: the API says whose it is by the address.
+  const own = api.hasUser("vb2007");
+
+  await page.goto(`/admin/users/${own.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+  await expect(page.getByText("The admin's own account can't be suspended.")).toBeVisible();
+  await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
+
+  const listed = await getFromApi(page, api, "/admin/users");
+  const rows = (listed.body as { users: { id: string; isSuperuser: boolean }[] }).users;
+  expect(rows.find((row) => row.id === own.id)?.isSuperuser).toBe(true);
+  const quota = await callApi(page, api, "PATCH", `/admin/users/${own.id}/upload-quota`, {
+    quotaBytes: null
+  });
+  expect(quota.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+  const renamed = await callApi(page, api, "PATCH", `/admin/users/${own.id}`, {
+    username: "vb2007"
+  });
+  expect(renamed.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+});
+
+test("a deleted account's confirmed address isn't carried to the next account there", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+  await page.goto(`/admin/users/${anna.id}`);
+  // A reset by code confirms the address.
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(200);
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+
+  // A new account at the same address starts unconfirmed.
+  api.hasUser("anna");
+  const login = await callApi(page, api, "POST", "/auth/login", { email, password: newPassword });
+  expect(login.status).toBe(200);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({
+    email,
+    emailVerified: false
+  });
+});
+
+test("a deleted account's waiting reset code and links go with it", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+  await page.goto(`/admin/users/${anna.id}`);
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const token = api.mailsResetLink(anna.id, email);
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
+  const link = { token, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).status).toBe(
+    400
+  );
+});
+
+test("the owner link of the admin's own upload leads to their row on the list", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // The list's row at the admin's address, with an id of its own.
+  const own = api.hasUser("vb2007", { count: 1 });
+  api.hasUpload("mine.txt");
+  await page.goto("/admin/uploads");
+
+  await page.getByRole("button", { name: "mine.txt" }).click();
+  await page.getByRole("link", { name: "vb2007's account" }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${own.id}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
 });
 
 test("the superuser finds and removes a pending registration", async ({ page, api }) => {

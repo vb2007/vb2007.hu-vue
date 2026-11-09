@@ -632,6 +632,35 @@ test.describe("the mailed link", () => {
     await expect(page.getByRole("link", { name: "new@example.com" })).toHaveCount(0);
   });
 
+  test("a link mailed while logged out logs out the login it belongs to", async ({
+    page,
+    api,
+    isMobile
+  }) => {
+    api.loggedInAs("me@example.com", "me");
+    // The admin list's row at the same address, which keeps an id of its own.
+    api.hasUser("me");
+    api.loggedOut();
+    const token = api.mailsResetLink();
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill("me@example.com");
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(page.getByRole("main")).toContainText("Login successful!");
+
+    await page.goto(`/reset-password#token=${token}`);
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "me@example.com" })).toBeVisible();
+    if (isMobile) await page.keyboard.press("Escape");
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+  });
+
   test("resetting another account's password with a link keeps the user logged in", async ({
     page,
     api
