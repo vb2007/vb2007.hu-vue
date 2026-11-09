@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, useTemplateRef } from "vue";
+import { useRemWidth } from "@/composables/useRemWidth";
 import { Messages } from "@/constants/messages";
 import { mailLine, type MailStopKind } from "@/scripts/admin/mailBudget";
 import { formatTime } from "@/scripts/utility/dateUtil";
@@ -11,11 +12,30 @@ const props = defineProps<{ budget: MailBudgetResponse }>();
 /** What each stop means, as the API's mail helper does it. */
 const STOP_LABELS: Record<MailStopKind, string> = {
   registration: "Sign-up codes stop",
+  passwordReset: "Password reset codes stop",
   warning: "The API logs a warning",
   limit: "All mail stops"
 };
 
-const line = computed(() => mailLine(props.budget));
+// In rem, like the ring sizes mailLine spaces them by (they're the CSS's below).
+const railWidth = useRemWidth(useTemplateRef("rail"));
+const line = computed(() => mailLine(props.budget, railWidth.value));
+/** Mails until the next kind of code stops, on the scale's left until both have. */
+const untilNext = computed(() => {
+  const { untilRegistrationStops, untilPasswordResetStops } = line.value;
+  if (untilRegistrationStops !== null) {
+    // On a small limit both kinds stop at the same count.
+    const codes =
+      untilPasswordResetStops === untilRegistrationStops
+        ? "sign-up and password reset codes"
+        : "sign-up codes";
+    return `${untilRegistrationStops.toLocaleString()} until ${codes} stop`;
+  }
+  if (untilPasswordResetStops !== null) {
+    return `${untilPasswordResetStops.toLocaleString()} until password reset codes stop`;
+  }
+  return "";
+});
 const sent = computed(() => props.budget.sentToday.toLocaleString());
 const limit = computed(() => props.budget.dailyLimit.toLocaleString());
 const resetsAt = computed(() => formatTime(props.budget.resetsAt));
@@ -41,7 +61,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
       :class="{ 'mail__line--some': budget.sentToday > 0 }"
     >
       <span class="mail__end mail__end--from" aria-hidden="true" />
-      <span class="mail__rail" aria-hidden="true">
+      <span ref="rail" class="mail__rail" aria-hidden="true">
         <span class="mail__run" />
         <span
           v-for="mark in line.marks"
@@ -55,11 +75,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
       <span class="mail__end mail__end--to" aria-hidden="true" />
     </div>
     <p class="mail__scale">
-      <span>{{
-        line.untilRegistrationStops === null
-          ? ""
-          : `${line.untilRegistrationStops.toLocaleString()} until sign-up codes stop`
-      }}</span>
+      <span>{{ untilNext }}</span>
       <span>{{ line.left.toLocaleString() }} left</span>
     </p>
 
@@ -82,8 +98,11 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
     <StatusMessage v-if="line.isFull" tone="error">
       {{ Messages.Admin.mailLimitReached(resetsAt) }}
     </StatusMessage>
+    <StatusMessage v-else-if="line.passwordResetStopped" tone="info">
+      {{ Messages.Admin.passwordResetMailStopped(budget.dailyLimit) }}
+    </StatusMessage>
     <StatusMessage v-else-if="line.registrationStopped" tone="info">
-      {{ Messages.Admin.registrationMailStopped(budget.dailyLimit) }}
+      {{ Messages.Admin.registrationMailStopped(budget.passwordResetStopsAt, budget.dailyLimit) }}
     </StatusMessage>
 
     <p class="mail__note">
@@ -181,6 +200,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
   transform: translate(-50%, -50%);
 }
 
+/* Ring sizes, the inset and the least run are mirrored in mailBudget.ts, which spaces the rings. */
 .mail__mark {
   left: calc(var(--mark) * 100%);
   width: 0.875rem;
@@ -238,6 +258,11 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
   font-weight: 600;
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+/* On a narrow rail the stop's side wraps, never "38 left". */
+.mail__scale span:last-child {
+  flex: none;
 }
 
 /* The stops in words: the line's text equivalent, in the order they come along it. */

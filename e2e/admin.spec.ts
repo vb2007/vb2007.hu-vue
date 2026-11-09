@@ -1,3 +1,4 @@
+import { browserFontSize } from "./browser";
 import { callApi, expect, getFromApi, MOCK_PASSWORD, test } from "./fixtures";
 
 const GB = 1024 ** 3;
@@ -69,20 +70,33 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(mail.getByRole("listitem")).toHaveText([
     "200 Sign-up codes stop",
     "200 The API logs a warning",
+    "225 Password reset codes stop",
     "250 All mail stops"
   ]);
+  await expect(mail.getByText("188 until sign-up codes stop")).toBeVisible();
   await expect(mail.getByText(/since midnight UTC or its last restart/)).toBeVisible();
 
   // The sections still follow, under their own heading.
   await expect(page.getByRole("heading", { level: 2, name: "Sections" })).toBeVisible();
   await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
 
-  // Past the sign-up stop, then at the limit.
+  // Past the sign-up stop, past the password reset stop, then at the limit.
   api.sentMailToday(205);
   await page.reload();
   await expect(mail.getByText("205 of 250 sent")).toBeVisible();
+  await expect(mail.getByText("20 until password reset codes stop")).toBeVisible();
   await expect(mail.getByRole("status")).toHaveText(
-    /^Sign-up codes have stopped until midnight UTC or the API's next restart\. /
+    "Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out until today's count reaches 225, other mail to existing accounts until it reaches 250."
+  );
+
+  api.sentMailToday(230);
+  await page.reload();
+  await expect(mail.getByText("230 of 250 sent")).toBeVisible();
+  await expect(mail.getByRole("listitem").nth(2)).toHaveText(
+    "225 Password reset codes stop Reached"
+  );
+  await expect(mail.getByRole("status")).toHaveText(
+    "Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out until today's count reaches 250."
   );
 
   api.sentMailToday(250);
@@ -92,6 +106,102 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
     /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\) or the API's next restart\.$/
   );
 });
+
+// A 320px screen (a 200px rail), the same with a 20px browser font (rings in rem grow, the screen
+// doesn't), just past the board's side-by-side breakpoint (840px, a 315px rail) and a desktop
+// (a 373px rail).
+for (const [width, fontPx] of [
+  [320, 16],
+  [320, 20],
+  [840, 16],
+  [1280, 16]
+]) {
+  test(`the mail line's rings stay apart at ${width}px with a ${fontPx}px font`, async ({
+    page,
+    api
+  }) => {
+    // Some thirty counts, each a refresh and a measurement.
+    test.slow();
+    api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+    api.hasUser("vb2007");
+    if (fontPx !== 16) await browserFontSize(page, fontPx);
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/admin");
+    const mail = page.getByRole("region", { name: "Mail today" });
+    await expect
+      .poll(() =>
+        page
+          .locator("html")
+          .evaluate((html) => html.ownerDocument.defaultView!.getComputedStyle(html).fontSize)
+      )
+      .toBe(`${fontPx}px`);
+    // Each ring's centre and width (its layout width, which the here ring's arrival doesn't scale).
+    const rings = () =>
+      mail.evaluate((root) => {
+        const all = (selector: string) =>
+          [...root.querySelectorAll(selector)].map((el) => {
+            const box = el.getBoundingClientRect();
+            return {
+              centre: box.left + box.width / 2,
+              width: parseFloat(root.ownerDocument.defaultView!.getComputedStyle(el).width),
+              mark: el.getAttribute("style") ?? ""
+            };
+          });
+        return {
+          from: all(".mail__end--from")[0],
+          to: all(".mail__end--to")[0],
+          here: all(".mail__here").at(0) ?? null,
+          marks: all(".mail__mark")
+        };
+      });
+    // The clear rail mailLine keeps between two rings: 0.125rem.
+    const margin = fontPx * 0.125;
+    // Sub-pixel layout rounding, never a whole pixel.
+    const epsilon = 0.05;
+
+    // Around each stop (200, 225, the limit at 250), and close to the terminus. Before the day's
+    // first mail and just after, the here ring sits on the departure ring: the line sets out from it.
+    const counts = [
+      0, 1, 184, 185, 190, 196, 200, 204, 205, 210, 212, 213, 215, 216, 217, 220, 225, 229, 230,
+      233, 236, 240, 244, 246, 247, 248, 249, 250
+    ];
+    const marksAt = new Map<number, string[]>();
+    for (const sent of counts) {
+      api.sentMailToday(sent);
+      await page.getByRole("button", { name: "Refresh" }).click();
+      await expect(mail.getByText(`${sent} of 250 sent`)).toBeVisible();
+      const { from, to, here, marks } = await rings();
+      type Ring = (typeof marks)[number];
+      const gap = (a: Ring, b: Ring) => Math.abs(a.centre - b.centre);
+      const touching = (a: Ring, b: Ring) => (a.width + b.width) / 2;
+      const at = `${sent} sent`;
+      marksAt.set(
+        sent,
+        marks.map((mark) => mark.mark)
+      );
+
+      for (const [i, mark] of marks.entries()) {
+        if (here)
+          expect(gap(mark, here), at).toBeGreaterThan(touching(mark, here) + margin - epsilon);
+        if (i > 0) {
+          expect(gap(mark, marks[i - 1]), at).toBeGreaterThan(
+            touching(mark, marks[i - 1]) + margin - epsilon
+          );
+        }
+        expect(gap(mark, from), at).toBeGreaterThan(touching(mark, from));
+        expect(gap(mark, to), at).toBeGreaterThan(touching(mark, to));
+      }
+      if (here) expect(gap(here, to), at).toBeGreaterThan(touching(here, to) - epsilon);
+    }
+
+    // Where there's room, the next stop's ring stays on the line as the count comes up to it.
+    if (width === 1280) {
+      expect(marksAt.get(210)).toContain("--mark: 0.9;");
+      expect(marksAt.get(240)).toEqual(["--mark: 0.8;", "--mark: 0.9;"]);
+      expect(marksAt.get(248)).toEqual(["--mark: 0.8;", "--mark: 0.9;"]);
+    }
+  });
+}
 
 test("the overview's totals and mail fail on their own, and Refresh tries again", async ({
   page,
