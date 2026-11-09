@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, useTemplateRef } from "vue";
+import { useElementWidth } from "@/composables/useElementWidth";
 import { Messages } from "@/constants/messages";
 import { mailLine, type MailStopKind } from "@/scripts/admin/mailBudget";
 import { formatTime } from "@/scripts/utility/dateUtil";
@@ -16,12 +17,18 @@ const STOP_LABELS: Record<MailStopKind, string> = {
   limit: "All mail stops"
 };
 
-const line = computed(() => mailLine(props.budget));
+const railWidth = useElementWidth(useTemplateRef("rail"));
+const line = computed(() => mailLine(props.budget, railWidth.value));
 /** Mails until the next kind of code stops, on the scale's left until both have. */
 const untilNext = computed(() => {
   const { untilRegistrationStops, untilPasswordResetStops } = line.value;
   if (untilRegistrationStops !== null) {
-    return `${untilRegistrationStops.toLocaleString()} until sign-up codes stop`;
+    // On a small limit both kinds stop at the same count.
+    const codes =
+      untilPasswordResetStops === untilRegistrationStops
+        ? "sign-up and password reset codes"
+        : "sign-up codes";
+    return `${untilRegistrationStops.toLocaleString()} until ${codes} stop`;
   }
   if (untilPasswordResetStops !== null) {
     return `${untilPasswordResetStops.toLocaleString()} until password reset codes stop`;
@@ -53,7 +60,7 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
       :class="{ 'mail__line--some': budget.sentToday > 0 }"
     >
       <span class="mail__end mail__end--from" aria-hidden="true" />
-      <span class="mail__rail" aria-hidden="true">
+      <span ref="rail" class="mail__rail" aria-hidden="true">
         <span class="mail__run" />
         <span
           v-for="mark in line.marks"

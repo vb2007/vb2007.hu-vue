@@ -37,25 +37,14 @@ export interface MailLine {
 
 /** The narrowest rail the line is drawn on, in px: a 320px screen's (the Pixel 7's is 291px). */
 const NARROWEST_RAIL = 200;
-
-/**
- * How far short of the terminus the here ring stops, in px, as `.mail__here` draws it (0.75rem),
- * so a nearly full line doesn't swallow it.
- */
+/** How far short of the terminus `.mail__here` stops (0.75rem), so a nearly full line doesn't swallow it. */
 const HERE_INSET = 12;
-
-/**
- * How close (as a share of the line) a stop's ring may come to the "here" ring, or to the ring
- * before it, before it's left out, so rings never merge into one blob; the stops in words still
- * name it. A stop ring and the here ring need 16px between their centres (half of the 18px here
- * ring plus half of the 14px stop ring), two stop rings 14px: 16px of the narrowest rail is 8 %,
- * and more on any wider one.
- */
-export const MARK_GAP = 16 / NARROWEST_RAIL;
-
-/** How far a mark is from the stretch of line `[from, to]`, as a share of the line. */
-const distance = (mark: number, from: number, to: number): number =>
-  mark < from ? from - mark : Math.max(0, mark - to);
+/** The least run `.mail__line--some` draws once anything is sent (0.25rem). */
+const LEAST_RUN = 4;
+/** The px between the here ring's centre and a stop ring's: half of the 18px ring plus half of the 14px one. */
+const HERE_CLEARANCE = 16;
+/** The px between two stop rings' centres: a 14px ring's width. */
+const MARK_CLEARANCE = 14;
 
 /** Stops on the same count are listed in this order. */
 const ORDER: MailStopKind[] = ["registration", "passwordReset", "warning", "limit"];
@@ -63,14 +52,31 @@ const ORDER: MailStopKind[] = ["registration", "passwordReset", "warning", "limi
 const until = (count: number, sentToday: number): number | null =>
   sentToday < count ? count - sentToday : null;
 
-/** Lays today's mail out as a line from 0 to the daily limit, with its stops. */
-export const mailLine = (budget: MailBudgetResponse): MailLine => {
+/** How far a mark is from the stretch of line `[from, to]`, as a share of the line. */
+const distance = (mark: number, from: number, to: number): number =>
+  mark < from ? from - mark : Math.max(0, mark - to);
+
+/**
+ * Lays today's mail out as a line from 0 to the daily limit, with its stops. `railWidth` is the
+ * rail's width in px as drawn, which decides which stop rings have room beside the here ring.
+ * Before it's measured (`null` or 0), rings get the room they'd need on any rail from the
+ * narrowest up.
+ */
+export const mailLine = (budget: MailBudgetResponse, railWidth: number | null = null): MailLine => {
   const { sentToday, dailyLimit, warningAt, registrationStopsAt, passwordResetStopsAt } = budget;
   const isFull = sentToday >= dailyLimit;
   const share = dailyLimit > 0 ? Math.min(1, sentToday / dailyLimit) : 1;
-  // Near the limit the here ring is drawn short of its count, the further the narrower the rail:
-  // on any rail from the narrowest up, it sits somewhere from here to its true place.
-  const hereFrom = Math.min(share, 1 - HERE_INSET / NARROWEST_RAIL);
+  const measured = railWidth !== null && railWidth > 0;
+  const rail = measured ? railWidth : NARROWEST_RAIL;
+  // Where the here ring is drawn: never short of the least run, and short of the terminus.
+  const drawn = Math.min(
+    sentToday > 0 ? Math.max(share, LEAST_RUN / rail) : share,
+    1 - HERE_INSET / rail
+  );
+  // Unmeasured, it's somewhere between its true place (a wide rail) and that (the narrowest).
+  const [hereFrom, hereTo] = measured
+    ? [drawn, drawn]
+    : [Math.min(share, drawn), Math.max(share, drawn)];
   const at: Record<MailStopKind, number> = {
     registration: registrationStopsAt,
     passwordReset: passwordResetStopsAt,
@@ -85,13 +91,15 @@ export const mailLine = (budget: MailBudgetResponse): MailLine => {
     .filter((count) => count > 0 && count < dailyLimit)
     .sort((a, b) => a - b)
     .map((count) => ({ share: count / dailyLimit, reached: sentToday >= count }))
-    // On a small limit, stops a count or two apart share the first one's ring.
+    // Stops too close for two rings share the first one's. While the count is between them, the
+    // here ring is too close to show it, so it's only drawn with all its stops reached or none.
     .reduce<MailLine["marks"]>((kept, mark) => {
       const last = kept[kept.length - 1];
-      return last && mark.share - last.share < MARK_GAP ? kept : [...kept, mark];
+      return last && (mark.share - last.share) * rail < MARK_CLEARANCE ? kept : [...kept, mark];
     }, [])
-    // At the limit there's no "here" ring for them to run into.
-    .filter((mark) => isFull || distance(mark.share, hereFrom, share) >= MARK_GAP);
+    // A ring too close to the here ring is left out while it's there; the stops in words still
+    // name it. At the limit there's no here ring for them to run into.
+    .filter((mark) => isFull || distance(mark.share, hereFrom, hereTo) * rail >= HERE_CLEARANCE);
 
   return {
     share,

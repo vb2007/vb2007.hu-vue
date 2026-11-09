@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 import { mount } from "@vue/test-utils";
 import MailBudgetMeter from "@/components/features/admin/MailBudgetMeter.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -77,7 +78,7 @@ describe("MailBudgetMeter", () => {
     const notice = wrapper.findComponent(StatusMessage);
     expect(notice.props("tone")).toBe("info");
     expect(notice.text()).toBe(
-      "Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out up to 225, other mail to existing accounts up to 250."
+      "Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out until today's count reaches 225, other mail to existing accounts until it reaches 250."
     );
   });
 
@@ -102,7 +103,7 @@ describe("MailBudgetMeter", () => {
     const notice = wrapper.findComponent(StatusMessage);
     expect(notice.props("tone")).toBe("info");
     expect(notice.text()).toBe(
-      "Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out, up to 250."
+      "Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out until today's count reaches 250."
     );
   });
 
@@ -132,8 +133,53 @@ describe("MailBudgetMeter", () => {
       `${(900).toLocaleString()} until password reset codes stop`
     );
     expect(wrapper.findComponent(StatusMessage).text()).toContain(
-      `up to ${(9000).toLocaleString()}, other mail to existing accounts up to ${(10000).toLocaleString()}.`
+      `until today's count reaches ${(9000).toLocaleString()}, other mail to existing accounts until it reaches ${(10000).toLocaleString()}.`
     );
+  });
+
+  it("counts down to both kinds of code at once where they stop together", () => {
+    // MAIL_DAILY_LIMIT=5: sign-ups stop at 5 - 1 = 4, password resets at 5 - 1 = 4 too.
+    const budget = aMailBudget({
+      sentToday: 1,
+      dailyLimit: 5,
+      warningAt: 4,
+      registrationStopsAt: 4,
+      passwordResetStopsAt: 4
+    });
+
+    expect(mountMeter(budget).find(".mail__scale span").text()).toBe(
+      "3 until sign-up and password reset codes stop"
+    );
+    expect(
+      mountMeter({ ...budget, sentToday: 4 })
+        .find(".mail__scale span")
+        .text()
+    ).toBe("");
+  });
+
+  it("gives the ring at 225 back its place once the rail is measured wide enough", async () => {
+    let report: (width: number) => void = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: (entries: { contentRect: { width: number } }[]) => void) {
+          report = (width) => callback([{ contentRect: { width } }]);
+        }
+        observe() {}
+        disconnect() {}
+      }
+    );
+    const wrapper = mountMeter(aMailBudget({ sentToday: 240 }));
+    const shares = () => wrapper.findAll(".mail__mark").map((mark) => mark.attributes("style"));
+
+    // Unmeasured, it stays out of the way on any rail.
+    expect(shares()).toEqual(["--mark: 0.8;"]);
+    report(373);
+    await nextTick();
+    expect(shares()).toEqual(["--mark: 0.8;", "--mark: 0.9;"]);
+    report(200);
+    await nextTick();
+    expect(shares()).toEqual(["--mark: 0.8;"]);
   });
 
   it("turns Fault Red at the limit, and says when mail goes out again", () => {

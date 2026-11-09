@@ -100,11 +100,32 @@ describe("mailLine", () => {
       { share: 36 / 41, reached: false }
     ]);
     expect(mailLine(budget).stops.map((stop) => stop.at)).toEqual([32, 33, 36, 41]);
-    // The shared ring turns once its first stop is reached.
+    // Between its two stops the here ring is on top of the shared ring, so it's left out.
+    expect(mailLine({ ...budget, sentToday: 32 }, 300).marks).toEqual([
+      { share: 36 / 41, reached: false }
+    ]);
     expect(mailLine({ ...budget, sentToday: 41 }).marks).toEqual([
       { share: 32 / 41, reached: true },
       { share: 36 / 41, reached: true }
     ]);
+  });
+
+  it("gives the rings the room they need on the rail as it's drawn, once it's measured", () => {
+    const shares = (sentToday: number, railWidth: number | null) =>
+      mailLine(aMailBudget({ sentToday }), railWidth).marks.map((mark) => mark.share);
+
+    // On a 373px rail, 8 % of the line is 30px: at 212 (0.848 along) both rings have room, 18px
+    // and 19px from the here ring, while at 215 the one at 225 is 15px from it.
+    expect(shares(212, 373)).toEqual([0.8, 0.9]);
+    expect(shares(215, 373)).toEqual([0.8]);
+    expect(shares(240, 373)).toEqual([0.8, 0.9]);
+    // At 248 the here ring stops 12px short of the terminus: 25px past the ring at 225 on 373px,
+    // only 8px on 200px.
+    expect(shares(248, 373)).toEqual([0.8, 0.9]);
+    expect(shares(248, 200)).toEqual([0.8]);
+    // Unmeasured (or not drawn), the ring at 225 stays out of the way on any rail from 200px up.
+    expect(shares(212, null)).toEqual([]);
+    expect(shares(240, 0)).toEqual([0.8]);
   });
 
   it("leaves a stop at either end to the end's own ring", () => {
