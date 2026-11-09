@@ -1471,6 +1471,32 @@ test("a deleted account's waiting reset links and code go with it", async ({ pag
   expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
 });
 
+test("a deleted account's confirmed address isn't carried to the next account there", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  const email = "me@example.com";
+  const newPassword = "a new password";
+  await page.goto("/account");
+  // A reset by code confirms the address, and logs the account out.
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(200);
+  const credentials = { email, password: newPassword };
+  expect((await callApi(page, api, "POST", "/auth/login", credentials)).status).toBe(200);
+  const deleted = await callApi(page, api, "DELETE", "/user", { password: newPassword });
+  expect(deleted.status).toBe(200);
+
+  // A new account at the same address starts unconfirmed.
+  api.hasUser("me");
+  expect((await callApi(page, api, "POST", "/auth/login", credentials)).status).toBe(200);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({
+    email,
+    emailVerified: false
+  });
+});
+
 test("a deleted account's waiting e-mail change doesn't follow the next login", async ({
   page,
   api

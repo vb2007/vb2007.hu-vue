@@ -1250,6 +1250,57 @@ test("the admin's own address is the superuser's, whatever its row on the list s
   expect(api.users).toContain(own);
 });
 
+test("a row at the admin's address answers as the superuser's", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // A plain row at the admin's address: the API says whose it is by the address.
+  const own = api.hasUser("vb2007");
+
+  await page.goto(`/admin/users/${own.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+  await expect(page.getByText("The admin's own account can't be suspended.")).toBeVisible();
+  await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
+
+  const listed = await getFromApi(page, api, "/admin/users");
+  const rows = (listed.body as { users: { id: string; isSuperuser: boolean }[] }).users;
+  expect(rows.find((row) => row.id === own.id)?.isSuperuser).toBe(true);
+  const quota = await callApi(page, api, "PATCH", `/admin/users/${own.id}/upload-quota`, {
+    quotaBytes: null
+  });
+  expect(quota.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+  const renamed = await callApi(page, api, "PATCH", `/admin/users/${own.id}`, {
+    username: "vb2007"
+  });
+  expect(renamed.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+});
+
+test("a deleted account's confirmed address isn't carried to the next account there", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+  await page.goto(`/admin/users/${anna.id}`);
+  // A reset by code confirms the address.
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(200);
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+
+  // A new account at the same address starts unconfirmed.
+  api.hasUser("anna");
+  const login = await callApi(page, api, "POST", "/auth/login", { email, password: newPassword });
+  expect(login.status).toBe(200);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({
+    email,
+    emailVerified: false
+  });
+});
+
 test("a deleted account's waiting reset code and links go with it", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   const anna = api.hasUser("anna");

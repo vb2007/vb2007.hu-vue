@@ -52,8 +52,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * that account over with its own id and name, and with `password: false`, `githubLogin`, `emailVerified` and `superuser` when given, in either
  * order (the logged-in account aside, which stays as arranged), so `hasUser("me")` makes `MOCK_EMAIL`'s account "me", which a later `loggedInAs`
  * leaves alone. `DELETE /user` takes the account out of the login and the admin list, with its pastes, short links and uploads, like the admin's delete;
- * either delete also voids the account's waiting reset code, reset links and e-mail change. The admin route refuses to suspend or delete the
- * superuser's address (`MOCK_SUPERUSER_EMAIL`, or any account arranged with `superuser: true`) with 409, whatever the row's own flag.
+ * either delete also voids the account's waiting reset code, reset links and e-mail change, and forgets that a reset confirmed its address. The admin route refuses to suspend or delete the
+ * superuser's address (`MOCK_SUPERUSER_EMAIL`, or any account arranged with `superuser: true`) with 409, whatever the row's own flag, and
+ * its rows answer `isSuperuser` from the address too.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
@@ -534,7 +535,7 @@ export class MockApi {
   private readonly pendingRegistrations = new Map<string, MockCode>();
   /** Password reset codes waiting, by account address. */
   private readonly resetCodes = new Map<string, MockCode>();
-  /** Addresses a password reset confirmed, verified at their next login. */
+  /** Addresses a password reset confirmed, verified at their next login; deleting the account drops its address. */
   private readonly verifiedAddresses = new Set<string>();
   private mailFails = false;
   /** How far `clockRunsFor` moved the mock's clock past real time. */
@@ -1818,6 +1819,7 @@ export class MockApi {
     }
     this.voidsWaiting([deleted._id, ...rowIds], deleted.email);
     this.emailChange = null;
+    this.verifiedAddresses.delete(normalizeEmail(deleted.email));
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
@@ -2067,7 +2069,7 @@ export class MockApi {
       status: 200,
       body: {
         user: {
-          ...user,
+          ...this.adminRow(user),
           hasPassword: account?.hasPassword ?? true,
           emailVerified: account?.emailVerified ?? false,
           githubLogin: account?.githubLogin ?? null,
@@ -2242,7 +2244,7 @@ export class MockApi {
     return {
       status: 200,
       body: {
-        users: matching.slice((page - 1) * limit, page * limit),
+        users: matching.slice((page - 1) * limit, page * limit).map((user) => this.adminRow(user)),
         pagination: {
           limit,
           page,
@@ -2305,7 +2307,10 @@ export class MockApi {
     }
     target.username = name;
     if (account) account.username = name;
-    return { status: 200, body: { message: "Username updated successfully.", user: target } };
+    return {
+      status: 200,
+      body: { message: "Username updated successfully.", user: this.adminRow(target) }
+    };
   }
 
   /**
@@ -2387,6 +2392,7 @@ export class MockApi {
       return { status: 409, body: { error: "The superuser's own account can't be deleted." } };
     }
     this.voidsWaitingFor(target);
+    this.verifiedAddresses.delete(normalizeEmail(target.email));
     this.users.splice(this.users.indexOf(target), 1);
     const account = this.accountOf(target);
     if (account) this.accounts.splice(this.accounts.indexOf(account), 1);
@@ -2504,7 +2510,10 @@ export class MockApi {
     }
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
-    return { status: 200, body: { message: "Upload quota updated successfully.", user } };
+    return {
+      status: 200,
+      body: { message: "Upload quota updated successfully.", user: this.adminRow(user) }
+    };
   }
 
   /** Whether the `hasUser(...)` account at `email` is suspended. */
@@ -2551,6 +2560,14 @@ export class MockApi {
   }
 
   /**
+   * The admin list's account `user` as the admin routes answer it, like the API's `toAdminUser`: `isSuperuser` comes
+   * from the address (`isSuperuserEmail`), not the row's own flag.
+   */
+  private adminRow(user: MockAdminUser): MockAdminUser {
+    return { ...user, isSuperuser: this.isSuperuserEmail(user.email) };
+  }
+
+  /**
    * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
    * the first `suspendedAt`, and the superuser's address answers 409. Suspending, or lifting a
    * suspension that's there, voids what's waiting (`voidsWaitingFor`).
@@ -2576,7 +2593,7 @@ export class MockApi {
         message: suspended
           ? "User suspended successfully: their session was ended."
           : "User unsuspended successfully.",
-        user
+        user: this.adminRow(user)
       }
     };
   }
