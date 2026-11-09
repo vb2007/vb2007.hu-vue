@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
 import { RouterLink } from "vue-router";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import { AuthPaths } from "@/constants/auth";
-import { Messages } from "@/constants/messages";
+import { Messages, type AddressNotice } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
   checkUsername,
@@ -71,6 +71,19 @@ const FIELDS = {
 /** A field's own error, shown under it. */
 const errorUnder = (wrapper: Wrapper, selector: string) =>
   wrapper.find(selector).element.closest(".field")!.querySelector(".field__error")?.textContent;
+
+const {
+  registerCodeSent: SENT,
+  registerCodeResent: RESENT,
+  registerCodeEarlier: EARLIER,
+  registerCodeRecent: RECENT,
+  registerCodeKept: KEPT,
+  registerCodeUnsent: UNSENT
+} = Messages.Auth;
+
+/** The code step's notice as it reads, with the address it went to. */
+const noticeFor = ([before, punctuation, after]: AddressNotice, address = "me@example.com") =>
+  `${before} ${address}${punctuation} ${after}`;
 
 describe("RegisterForm", () => {
   beforeEach(() => {
@@ -175,9 +188,7 @@ describe("RegisterForm", () => {
 
     expect(wrapper.find("h1").text()).toBe("Register");
     const notice = wrapper.find('[role="status"]');
-    expect(notice.text()).toBe(
-      "A 6-digit code is on its way to me@example.com. Enter it to register as vb; it works for 15 minutes."
-    );
+    expect(notice.text()).toBe(noticeFor(SENT("vb", 6, 15)));
     const codeInput = wrapper.find("input");
     expect(codeInput.attributes()).toMatchObject({
       inputmode: "numeric",
@@ -430,9 +441,7 @@ describe("RegisterForm", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find('[role="status"]').text()).toBe(
-      "Less than a minute ago, a code went to me@example.com. It still works: enter it to register as vb."
-    );
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(RECENT("vb")));
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend in 40 sec");
@@ -440,9 +449,7 @@ describe("RegisterForm", () => {
     // "Less than a minute ago" stops being true once the countdown ends.
     vi.advanceTimersByTime(40_000);
     await flushPromises();
-    expect(wrapper.find('[role="status"]').text()).toBe(
-      "Enter the code that was mailed to me@example.com. It works for 15 minutes after sending, and registers you as vb with the password you entered."
-    );
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(EARLIER("vb", 15)));
   });
 
   it("opens the code step for a code that already arrived, sending nothing", async () => {
@@ -453,9 +460,7 @@ describe("RegisterForm", () => {
     await flushPromises();
 
     expect(register).not.toHaveBeenCalled();
-    expect(wrapper.find('[role="status"]').text()).toBe(
-      "Enter the code that was mailed to me@example.com. It works for 15 minutes after sending, and registers you as vb with the password you entered."
-    );
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(EARLIER("vb", 15)));
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend code");
   });
@@ -797,9 +802,7 @@ describe("RegisterForm", () => {
 
       // No new code is mailed: the step reopens with the one typed before, for the new name.
       expect(register).toHaveBeenCalledTimes(1);
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        "Your code for me@example.com works for up to 15 minutes after it was sent: confirm it to register as vb2."
-      );
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(KEPT("vb2", 15)));
       const codeInput = wrapper.find<HTMLInputElement>('input[autocomplete="one-time-code"]');
       expect(codeInput.element.value).toBe("123 456");
       expect(document.activeElement).toBe(codeInput.element);
@@ -824,7 +827,7 @@ describe("RegisterForm", () => {
       await enterCodeButton(wrapper).trigger("click");
       await flushPromises();
 
-      expect(wrapper.find('[role="status"]').text()).toContain("Your code for me@example.com");
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(KEPT("vb2", 15)));
       expect(wrapper.find("input").element.value).toBe("123 456");
     });
 
@@ -840,7 +843,9 @@ describe("RegisterForm", () => {
       await flushPromises();
 
       expect(register).toHaveBeenLastCalledWith("vb2", "you@example.com", "password");
-      expect(wrapper.find('[role="status"]').text()).toContain("on its way to you@example.com");
+      expect(wrapper.find('[role="status"]').text()).toBe(
+        noticeFor(SENT("vb2", 6, 15), "you@example.com")
+      );
       expect(wrapper.find("input").element.value).toBe("");
     });
 
@@ -864,7 +869,7 @@ describe("RegisterForm", () => {
       await wrapper.find("form").trigger("submit");
       await flushPromises();
       expect(register).toHaveBeenCalledTimes(2);
-      expect(wrapper.find('[role="status"]').text()).toContain("Your code for me@example.com");
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(KEPT("vb2", 15)));
       expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123 456");
     });
 
@@ -1054,7 +1059,9 @@ describe("RegisterForm", () => {
       await wrapper.find(FIELDS.email).setValue("Me@example.com");
       await enterCodeButton(wrapper).trigger("click");
       await flushPromises();
-      expect(wrapper.find('[role="status"]').text()).toContain("Enter the code that was mailed to");
+      expect(wrapper.find('[role="status"]').text()).toBe(
+        noticeFor(EARLIER("vb", 15), "Me@example.com")
+      );
       expect(wrapper.find("input").element.value).toBe("");
       expect(register).toHaveBeenCalledTimes(1);
     });
@@ -1180,9 +1187,7 @@ describe("RegisterForm", () => {
         "https://api.test/auth/register/resend",
         expect.objectContaining({ body: JSON.stringify({ email: "me@example.com" }) })
       );
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        "If a registration is waiting for me@example.com, only the latest code to reach it works: enter it to register as vb."
-      );
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(RESENT("vb")));
       expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
       // The key it was on is disabled now; the code is what comes next.
       expect(document.activeElement).toBe(wrapper.find("input").element);
@@ -1204,9 +1209,7 @@ describe("RegisterForm", () => {
       await resendButton(wrapper).trigger("click");
       await flushPromises();
 
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        "Nothing new was sent to me@example.com. If a code reached it in the last 15 minutes, the latest one still works: enter it to register as vb."
-      );
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(UNSENT("vb", 15)));
       // Another resend would get the same 503 until the budget starts over, so the hint stops
       // offering one; the key itself stays usable, since the API names no wait.
       expect(wrapper.find(".field__hint").text()).toBe("Nothing yet? Check your spam folder.");

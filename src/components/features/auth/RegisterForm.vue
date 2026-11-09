@@ -12,7 +12,7 @@ import {
 import { RouterLink } from "vue-router";
 import { AuthPaths, RegisterStatus } from "@/constants/auth";
 import { Limits } from "@/constants/limits";
-import { Messages } from "@/constants/messages";
+import { Messages, type AddressNotice } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { emailPrefillState } from "@/scripts/authentication/emailPrefill";
 import {
@@ -163,50 +163,16 @@ const prefilledPage = (path: string) => ({ path, state: emailPrefillState(email.
 const step = useTemplateRef<HTMLFormElement>("step");
 const doneMessage = useTemplateRef("doneMessage");
 
-/**
- * The code step's notice, around the address: the text before it, the punctuation kept with it,
- * and the rest. The waiting registration only holds the address and code: confirming it registers
- * the username and password in the form (vb2007/vb2007.hu-api#295), so the notice names the
- * username it creates.
- */
-const notices = (name: string): Record<CodeNotice, [string, string, string]> => {
+/** The code step's notice for `name`, around the address (see `AddressNotice`). */
+const notices = (name: string): Record<CodeNotice, AddressNotice> => {
   const minutes = Limits.Code.registerValidMinutes;
   return {
-    sent: [
-      `A ${Limits.Code.digits}-digit code is on its way to`,
-      ".",
-      `Enter it to register as ${name}; it works for ${minutes} minutes.`
-    ],
-    // The API answers a resend the same whether or not a registration is waiting for the address,
-    // and whether it mailed a new code, sent nothing inside the minute or kept the code from before
-    // after a failed mail: in every case the latest code to reach it is the one that works.
-    resent: [
-      "If a registration is waiting for",
-      ",",
-      `only the latest code to reach it works: enter it to register as ${name}.`
-    ],
-    earlier: [
-      "Enter the code that was mailed to",
-      ".",
-      `It works for ${minutes} minutes after sending, and registers you as ${name} with the password you entered.`
-    ],
-    recent: [
-      "Less than a minute ago, a code went to",
-      ".",
-      `It still works: enter it to register as ${name}.`
-    ],
-    kept: [
-      "Your code for",
-      "",
-      `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
-    ],
-    // The API turns the resend away before it looks at the address, so whether a code waits, and
-    // whether it's still fresh, is unknown here.
-    unsent: [
-      "Nothing new was sent to",
-      ".",
-      `If a code reached it in the last ${minutes} minutes, the latest one still works: enter it to register as ${name}.`
-    ]
+    sent: Messages.Auth.registerCodeSent(name, Limits.Code.digits, minutes),
+    resent: Messages.Auth.registerCodeResent(name),
+    earlier: Messages.Auth.registerCodeEarlier(name, minutes),
+    recent: Messages.Auth.registerCodeRecent(name),
+    kept: Messages.Auth.registerCodeKept(name, minutes),
+    unsent: Messages.Auth.registerCodeUnsent(name, minutes)
   };
 };
 
