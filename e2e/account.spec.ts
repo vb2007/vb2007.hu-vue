@@ -1340,6 +1340,25 @@ test("an account is deleted with its password and the visitor lands home logged 
   );
 });
 
+test("an account arranged before another login still logs in, under its own name", async ({
+  page,
+  api
+}) => {
+  // MOCK_EMAIL's address: the row takes that login over, so `loggedInAs` doesn't replace it.
+  api.hasUser("me");
+  api.loggedInAs("anna@example.com", "anna");
+  api.loggedOut();
+
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+
+  await page.goto("/account");
+  await expect(page.getByRole("definition")).toHaveText(["me", MOCK_EMAIL]);
+});
+
 test("a deleted account's name and address are free again", async ({ page, api }) => {
   // The default account: e2e@example.com, "e2e", with MOCK_EMAIL's id, so it's that account moved.
   api.loggedInAs();

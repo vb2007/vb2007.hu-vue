@@ -7,6 +7,7 @@ import {
   MOCK_PASSWORD,
   type MockApi,
   PASSWORD_RESET_SENT as SENT,
+  REGISTRATION_CODE,
   test
 } from "./fixtures";
 
@@ -596,6 +597,39 @@ test.describe("the mailed link", () => {
     await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
     if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
     await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+  });
+
+  test("resetting with the link logs out a user who just registered", async ({
+    page,
+    api,
+    isMobile
+  }) => {
+    // A registered account gets its own id, which the link carries.
+    const registration = {
+      email: "new@example.com",
+      username: "newbie",
+      password: "correct horse"
+    };
+    await page.goto("/register");
+    expect((await callApi(page, api, "POST", "/auth/register", registration)).status).toBe(202);
+    const verified = await callApi(page, api, "POST", "/auth/register/verify", {
+      ...registration,
+      code: REGISTRATION_CODE
+    });
+    expect(verified.status).toBe(201);
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "new@example.com" })).toBeVisible();
+    if (isMobile) await page.keyboard.press("Escape");
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "new@example.com" })).toHaveCount(0);
   });
 
   test("resetting another account's password with a link keeps the user logged in", async ({

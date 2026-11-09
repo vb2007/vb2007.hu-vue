@@ -1023,12 +1023,17 @@ test("the site-wide list finds an upload's owner whatever the case of the name i
   api
 }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
-  api.hasUser("Anna", { count: 1 });
+  const anna = api.hasUser("Anna", { count: 1 });
   api.hasUpload("report.pdf", { owner: "anna" });
   await page.goto("/admin/uploads");
 
   await page.getByRole("button", { name: "report.pdf" }).click();
   await expect(page.getByRole("link", { name: "Anna's account" })).toBeVisible();
+
+  // Her own uploads page lists it too, as the API's, which keys uploads by id, would.
+  await page.goto(`/admin/users/${anna.id}/uploads`);
+  await expect(page.getByRole("heading", { level: 1, name: "Anna's uploads" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "report.pdf" })).toBeVisible();
 });
 
 test("the superuser finds and removes a pending registration", async ({ page, api }) => {

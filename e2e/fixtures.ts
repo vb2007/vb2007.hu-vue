@@ -48,7 +48,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
- * replaces `MOCK_EMAIL`'s account (arrange `hasUser(...)` for a second one). `DELETE /user` takes the account out of the login and the admin list.
+ * replaces `MOCK_EMAIL`'s account (arrange `hasUser(...)` for a second one). A `hasUser(...)` row at an address the login already knows takes
+ * that account over with its own id and name, in either order (the logged-in account aside, which stays as arranged), so `hasUser("me")` makes
+ * `MOCK_EMAIL`'s account "me", which a later `loggedInAs` leaves alone. `DELETE /user` takes the account out of the login and the admin list.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
@@ -63,7 +65,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
  * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
  * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
- * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
+ * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
@@ -313,6 +315,11 @@ export const DISPOSABLE_DOMAINS = ["mailinator.com"];
 export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+/**
+ * Whether two usernames name the same account, whatever their case, like the API's collation. Uploads are kept by
+ * their owner's name here (the API keys them by id), so this is how an upload finds its account.
+ */
+const sameUsername = (one: string, other: string) => one.toLowerCase() === other.toLowerCase();
 
 /** The API's rate limiters in the order `DELETE /admin/rate-limits` names them, with what keys each. */
 const RATE_LIMITERS = {
@@ -627,24 +634,45 @@ export class MockApi {
     };
     this.users.push(user);
     if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
-    // A password reset can reach this account, so logging in reaches it too; an arranged one (same address or id) stays.
+    this.knowsListedAccount(user, { password, emailVerified, githubLogin });
+    return user;
+  }
+
+  /**
+   * Lets `POST /auth/login` find the `hasUser(...)` row `user`, as one account with one id and one name, whatever was
+   * arranged first. The logged-in account stays as `loggedInAs` arranged it. A login already at the address takes the
+   * row's id and name (e.g. `MOCK_EMAIL`'s, which then leaves `MOCK_USER_ID`), and another login with the row's id goes.
+   */
+  private knowsListedAccount(
+    user: MockAdminUser,
+    {
+      password,
+      emailVerified,
+      githubLogin
+    }: { password: boolean; emailVerified: boolean; githubLogin?: string }
+  ) {
     const email = normalizeEmail(user.email);
-    if (
-      !this.accounts.some(
-        (account) => normalizeEmail(account.email) === email || account._id === user.id
-      )
-    ) {
+    const atAddress = this.accounts.find((account) => normalizeEmail(account.email) === email);
+    const withId = this.accounts.find((account) => account._id === user.id);
+    if (this.user && (atAddress === this.user || withId === this.user)) return;
+    for (let index = this.accounts.length - 1; index >= 0; index--) {
+      const account = this.accounts[index];
+      if (account._id === user.id && account !== atAddress) this.accounts.splice(index, 1);
+    }
+    if (atAddress) {
+      atAddress._id = user.id;
+      atAddress.username = user.username;
+    } else {
       this.accounts.push({
         _id: user.id,
         email: user.email,
-        username,
+        username: user.username,
         isSuperuser: false,
         hasPassword: password,
         emailVerified,
-        ...(githubLogin && { githubId: `gh-${username}`, githubLogin })
+        ...(githubLogin && { githubId: `gh-${user.username}`, githubLogin })
       });
     }
-    return user;
   }
 
   /** Lists a sign-up waiting for its code on the admin's System page; a negative time has expired. */
@@ -727,10 +755,17 @@ export class MockApi {
   /**
    * "Mails" a reset link for the account `userId` at `email` and returns its token, which
    * `POST /auth/password-reset/confirm-link` takes once, like the API (vb2007/vb2007.hu-api#256).
+   * Without `userId`, it's the id of the account at `email` (the logged-in one's by default), else `MOCK_USER_ID`.
    */
-  mailsResetLink(userId = MOCK_USER_ID, email = this.user?.email ?? MOCK_EMAIL) {
-    const token = `${userId}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
-    this.resetLinks.set(token, { userId, email });
+  mailsResetLink(userId?: string, email = this.user?.email ?? MOCK_EMAIL) {
+    const id =
+      userId ??
+      this.storedAccounts().find(
+        (account) => normalizeEmail(account.email) === normalizeEmail(email)
+      )?.id ??
+      MOCK_USER_ID;
+    const token = `${id}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
+    this.resetLinks.set(token, { userId: id, email });
     return token;
   }
 
@@ -2050,8 +2085,8 @@ export class MockApi {
    * like the API's lookup of the owner's id (it's kept by name here); `null` once no account has it.
    */
   private ownerOf(uploadId: string) {
-    const name = this.uploadOwners.get(uploadId)!.toLowerCase();
-    const owner = this.storedAccounts().find((account) => account.username.toLowerCase() === name);
+    const name = this.uploadOwners.get(uploadId)!;
+    const owner = this.storedAccounts().find((account) => sameUsername(account.username, name));
     return owner ? { id: owner.id, username: owner.username } : null;
   }
 
@@ -2068,7 +2103,7 @@ export class MockApi {
     const visibility = query.get("visibility");
     const q = query.get("q")?.toLowerCase();
     const matching = this.uploads
-      .filter((upload) => everyone || this.uploadOwners.get(upload.id) === owner)
+      .filter((upload) => everyone || sameUsername(this.uploadOwners.get(upload.id)!, owner!))
       .filter((upload) => !visibility || upload.visibility === visibility)
       .filter(
         (upload) =>
@@ -2189,7 +2224,7 @@ export class MockApi {
     for (const paste of this.pastes) if (paste.addedBy === previous) paste.addedBy = name;
     for (const link of this.shortLinks.values()) if (link.addedBy === previous) link.addedBy = name;
     for (const [upload, owner] of this.uploadOwners) {
-      if (owner === previous) this.uploadOwners.set(upload, name);
+      if (sameUsername(owner, previous)) this.uploadOwners.set(upload, name);
     }
     target.username = name;
     if (account) account.username = name;
@@ -2290,7 +2325,9 @@ export class MockApi {
     for (const [code, link] of this.shortLinks) {
       if (link.addedBy === name) this.shortLinks.delete(code);
     }
-    const keptUploads = this.uploads.filter((upload) => this.uploadOwners.get(upload.id) !== name);
+    const keptUploads = this.uploads.filter(
+      (upload) => !sameUsername(this.uploadOwners.get(upload.id)!, name)
+    );
     this.uploads.splice(0, this.uploads.length, ...keptUploads);
     return { status: 200, body: { message: "User deleted successfully." } };
   }
