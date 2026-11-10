@@ -2,7 +2,7 @@
 /** The sign-ups still waiting for their code: search by address, and remove one. */
 import { computed, onMounted } from "vue";
 import { Limits } from "@/constants/limits";
-import { formatDateTime, isPast } from "@/scripts/utility/dateUtil";
+import { formatDateTime } from "@/scripts/utility/dateUtil";
 import { useConfirmDelete } from "@/composables/useConfirmDelete";
 import { usePendingRegistrations } from "@/composables/usePendingRegistrations";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -11,7 +11,6 @@ import ConfirmDeleteButton from "@/components/ui/ConfirmDeleteButton.vue";
 import ListPager from "@/components/ui/ListPager.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
-import StatusPill from "@/components/ui/StatusPill.vue";
 
 const {
   registrations,
@@ -70,15 +69,9 @@ onMounted(load);
     <ol v-if="registrations.length" class="rows" :aria-busy="isLoading || undefined">
       <li v-for="registration in registrations" :key="registration.id" class="row">
         <p class="row__email">{{ registration.email }}</p>
+        <!-- One piece, so a narrow row doesn't strand "Expires" above its time. -->
         <p class="row__meta">
-          <template v-if="isPast(registration.expiresAt)">
-            <StatusPill tone="danger">Expired</StatusPill>
-            <time :datetime="registration.expiresAt">{{
-              formatDateTime(registration.expiresAt)
-            }}</time>
-          </template>
-          <!-- One piece, so a narrow row doesn't strand "Expires" above its time. -->
-          <span v-else class="row__expiry"
+          <span class="row__expiry"
             >Expires
             <time :datetime="registration.expiresAt">{{
               formatDateTime(registration.expiresAt)
@@ -160,10 +153,6 @@ onMounted(load);
 
 .row__meta {
   grid-area: meta;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-1) var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--c-ink-soft);
   font-variant-numeric: tabular-nums;
