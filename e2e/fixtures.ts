@@ -85,8 +85,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
  * Each address waits for its own code. Registering again within a minute of the last code gets the API's 429, but a resend
  * (`POST /auth/register/resend`) answers 200 whatever the address, even without a code or inside the minute, and then sends
- * nothing (the API answers before it looks); without an address it answers 400 first.
- * A password reset only mails `api.passwordResetCode` to an account's address, any the login knows, and not to a suspended `hasUser(...)` one.
+ * nothing (the API answers before it looks); without an address, or one of only whitespace, it answers 400 first.
+ * A password reset only mails `api.passwordResetCode` to an account's address, any the login knows, and not to a suspended `hasUser(...)` one. Without an address, or with one of only whitespace, it answers 400 before recording or mailing anything.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
  * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
@@ -597,13 +597,13 @@ export class MockApi {
   private statsDown = false;
   /** The API host the app was built against, known once the app has called it. */
   apiOrigin = "";
-  /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
+  /** The code every password reset "mails"; the addresses asked for go to `passwordResets`, trimmed like the API reads them. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
   /** The reset links still live (see `mailsResetLink`): token -> the account's id and address. */
   private readonly resetLinks = new Map<string, { userId: string; email: string }>();
   private resetLinkCount = 0;
-  /** The addresses a password reset was asked for while `limitsMailSends()` refused it. */
+  /** The `email` values a password reset was asked for while `limitsMailSends()` refused it, as sent (the API's limit answers before it reads the body). */
   readonly limitedPasswordResets: string[] = [];
   readonly unhandled: string[] = [];
 
@@ -1355,12 +1355,14 @@ export class MockApi {
           this.limitedPasswordResets.push(body?.email ?? "");
           return MAIL_SENDS_LIMITED;
         }
-        if (!body?.email) {
+        // Like the API (vb2007/vb2007.hu-api#425), decided on the trimmed address: nothing, a non-string or only whitespace is a 400.
+        const address = typeof body?.email === "string" ? body.email.trim() : "";
+        if (!address) {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
-        this.passwordResets.push(body.email);
+        this.passwordResets.push(address);
         // Like the API, only an account's address gets a code, at most one a minute, and not a suspended account's.
-        const email = normalizeEmail(body.email);
+        const email = normalizeEmail(address);
         if (
           this.hasAccount(email) &&
           !this.isSuspended(email) &&
@@ -1528,25 +1530,26 @@ export class MockApi {
   }
 
   /**
-   * Like the API: no address is a 400. Otherwise the registration share of the day's mails is reserved before the
+   * Like the API (vb2007/vb2007.hu-api#425): no address, or one of only whitespace, is a 400. Otherwise the registration share of the day's mails is reserved before the
    * address is looked at, so any address gets the 503 once it's used up, and every resend counts one mail, whether one
    * is sent or not (no waiting registration, the cooldown, a mail that fails). The answer is the same 200 for every
    * address. Only a waiting registration whose minute is over gets a new code: inside the minute the API sends
    * nothing, answers 200 all the same, and the code from before stays.
    */
   private resendRegistrationCode(address?: unknown) {
-    if (typeof address !== "string" || !address) {
+    const email = typeof address === "string" ? normalizeEmail(address) : "";
+    if (!email) {
       return { status: 400, body: { error: "You must provide an E-mail address." } };
     }
     if (this.mailRefused("registration")) return MAIL_FAILED;
-    if (this.countsMail(address)) this.mailSentToday++;
-    const pending = this.pendingRegistrations.get(normalizeEmail(address));
+    if (this.countsMail(email)) this.mailSentToday++;
+    const pending = this.pendingRegistrations.get(email);
     // A code that couldn't be mailed is only logged: the answer stays 200, the code sent before still works, and the
     // reservation stays counted. A reserved domain's mail is only logged, before anything could fail it.
     if (
       pending &&
       !this.resendTooSoon(pending.sentAt) &&
-      (!this.countsMail(address) || !this.mailFailsNow())
+      (!this.countsMail(email) || !this.mailFailsNow())
     ) {
       Object.assign(pending, this.newCode(15));
     }

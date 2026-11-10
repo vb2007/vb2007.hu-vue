@@ -834,9 +834,42 @@ test("a resend without an address answers 400 before anything else", async ({ pa
 
   expect(await resend(page, api, {})).toEqual(missing);
   expect(await resend(page, api, { email: "" })).toEqual(missing);
+  expect(await resend(page, api, { email: "  " })).toEqual(missing);
   expect(await resend(page, api, { email: 42 })).toEqual(missing);
   // With an address, the used-up budget answers.
   expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("a resend with only whitespace answers 400 and uses up no mail of the day", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.sentMailToday(199);
+  const missing = { status: 400, body: { error: "You must provide an E-mail address." } };
+
+  expect(await resend(page, api, { email: "  " })).toEqual(missing);
+  expect(await resend(page, api, { email: " \t\n " })).toEqual(missing);
+  expect(await resend(page, api, { email: "" })).toEqual(missing);
+
+  // Counted, the blanks would have used the 200th mail up: this resend is still the one that takes it.
+  expect(await resend(page, api)).toEqual(RESENT);
+  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("a resend with spaces around the address is decided on the trimmed one", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+
+  expect(await resend(page, api, { email: ` ${REGISTRATION.email.toUpperCase()} ` })).toEqual(
+    RESENT
+  );
+
+  // The waiting registration got a new code, which started a minute of its own.
+  const again = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+  expect(again.status).toBe(429);
 });
 
 test("every resend uses up a mail of the day, whatever the address or the answer", async ({
