@@ -113,11 +113,17 @@ export interface AdminPaste {
 
 /** `GET /admin/pastes` */
 export type AdminPasteListQuery = ListQuery<PasteSortBy> & {
-  /** Matches part of the owner's username or of the language id, whatever its case. */
+  /**
+   * Matches part of the owner's username or of the language id, whatever its case. The owner part
+   * only covers the 100 shortest usernames containing `q` (see `UploadListQuery.q`).
+   */
   q?: string;
 };
 
-/** `GET /admin/pastes` */
+/**
+ * `GET /admin/pastes`. Without `q`, `pagination.total` is an estimate from the collection's count
+ * metadata, exact apart from right after an unclean database shutdown.
+ */
 export interface AdminPastesResponse {
   pastes: AdminPaste[];
   pagination: Pagination<PasteSortBy>;
@@ -131,11 +137,14 @@ export interface AdminShortUrl extends OwnShortUrl {
 
 /** `GET /admin/short-urls` */
 export type AdminShortUrlListQuery = ListQuery<ShortUrlSortBy> & {
-  /** Matches part of the code, the target or the owner's username, whatever its case. */
+  /**
+   * Matches part of the code, the target or the owner's username, whatever its case. The owner part
+   * only covers the 100 shortest usernames containing `q` (see `UploadListQuery.q`).
+   */
   q?: string;
 };
 
-/** `GET /admin/short-urls` */
+/** `GET /admin/short-urls`. Without `q`, `pagination.total` is an estimate, as on the pastes. */
 export interface AdminShortUrlsResponse {
   shortUrls: AdminShortUrl[];
   pagination: Pagination<ShortUrlSortBy>;
@@ -147,7 +156,10 @@ export interface AdminUpload extends Upload {
   owner: UploadOwner | null;
 }
 
-/** `GET /admin/uploads`: every user's uploads, private ones included. Takes `UploadListQuery`. */
+/**
+ * `GET /admin/uploads`: every user's uploads, private ones included. Takes `UploadListQuery`.
+ * Without `q` and `visibility`, `pagination.total` is an estimate, as on the pastes.
+ */
 export interface AdminUploadsResponse {
   uploads: AdminUpload[];
   pagination: Pagination<UploadSortBy>;
@@ -201,7 +213,11 @@ export interface ClearRateLimitsResponse extends MessageResponse {
   cleared: RateLimitName[];
 }
 
-/** `GET /admin/stats` (vb2007/vb2007.hu-api#281): the site's totals and its upload settings. */
+/**
+ * `GET /admin/stats` (vb2007/vb2007.hu-api#281): the site's totals and its upload settings. The
+ * `users`, `pastes` and `shortUrls` totals are estimates from the collections' count metadata,
+ * exact apart from right after an unclean database shutdown.
+ */
 export interface AdminStatsResponse {
   /** Every account, the superuser's included. */
   users: number;
