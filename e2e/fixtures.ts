@@ -93,8 +93,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `GET /admin/short-urls` lists every account's links from the same store for the superuser, with a `null` owner for an `addedBy` no account has.
  * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
  * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
- * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused without counting a failure, a resend sends
- * nothing and registering the address again starts over. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
+ * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused as invalid, a resend sends
+ * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given (both for `loginPerAccount`), answers their names in
  * the API's order (vb2007/vb2007.hu-api#284), and checks the body like the API.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
@@ -1521,7 +1521,7 @@ export class MockApi {
     const email = normalizeEmail(body?.email ?? "");
     const refusal = domainError(email);
     if (refusal) return { status: 400, body: { error: refusal } };
-    // Over an expired leftover it starts fresh: no old cooldown, no old wrong-code count.
+    // Over an expired leftover it starts afresh: a new code, no old cooldown.
     const tooSoon = this.resendTooSoon(this.waitingRegistration(email)?.sentAt);
     if (tooSoon) return tooSoon;
     // A code that couldn't be mailed leaves the registration that waited before (if any) as it was.

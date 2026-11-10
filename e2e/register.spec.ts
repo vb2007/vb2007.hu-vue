@@ -935,7 +935,7 @@ test("a registration past its 24 hours is uncounted, its code is refused and a r
   expect(await verify(page, api)).toEqual(WRONG_CODE);
 });
 
-test("registering over an expired leftover starts fresh, with no old wrong-code count", async ({
+test("registering over an expired leftover, even a spent one, sends a new code that verifies", async ({
   page,
   api
 }) => {
