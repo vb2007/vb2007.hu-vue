@@ -1081,6 +1081,64 @@ test("the short links search shows the API's refusal of a NUL character", async 
   await expect(page.getByText("Invalid value for q.")).toBeVisible();
 });
 
+test("the users search shows the API's refusal of a NUL character", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna");
+
+  await page.goto("/admin/users");
+  await expect(page.getByRole("button", { name: "anna" })).toBeVisible();
+  await page.getByLabel("Search by username or e-mail").fill("an\0nas");
+  await expect(page.getByText("Invalid value for q.")).toBeVisible();
+});
+
+test("the pastes search shows the API's refusal of a NUL character", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasPaste("print('hi')", "vb2007", "python");
+
+  await page.goto("/admin/pastes");
+  await expect(page.getByText("1 paste", { exact: true })).toBeVisible();
+  await page.getByLabel("Search by owner or language").fill("py\0thon");
+  await expect(page.getByText("Invalid value for q.")).toBeVisible();
+});
+
+test("the pending registrations search shows the API's refusal of a NUL character", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasPendingRegistration("anna@example.com");
+
+  await page.goto("/admin/system");
+  await expect(page.getByText("1 pending registration", { exact: true })).toBeVisible();
+  await page.getByLabel("Search by e-mail").fill("an\0na");
+  await expect(page.getByText("Invalid value for q.")).toBeVisible();
+});
+
+test("the uploads search shows the API's refusal of a NUL character", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasUser("anna", { count: 1 });
+  api.hasUpload("flyer.pdf", { owner: "anna" });
+
+  await page.goto("/admin/uploads");
+  await expect(page.getByText("1 upload", { exact: true })).toBeVisible();
+  await page.getByLabel("Search by name or owner").fill("fly\0er");
+  await expect(page.getByText("Invalid value for q.")).toBeVisible();
+});
+
+test("a user's uploads search shows the API's refusal of a NUL character", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { count: 1 });
+  api.hasUpload("flyer.pdf", { owner: "anna" });
+
+  await page.goto(`/admin/users/${anna.id}/uploads`);
+  await expect(page.getByText("1 upload", { exact: true })).toBeVisible();
+  await page.getByLabel("Search by name").fill("fly\0er");
+  await expect(page.getByText("Invalid value for q.")).toBeVisible();
+});
+
 test("deleting the last short link on a page steps back a page", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.hasUser("anna");
