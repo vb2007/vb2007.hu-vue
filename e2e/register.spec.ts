@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
   callApi,
   expect,
+  getFromApi,
   MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   type MockApi,
@@ -912,4 +913,47 @@ test("a registration code that couldn't be mailed gives its mail of the day back
     email: "other@example.com"
   });
   expect(other).toEqual(MAIL_FAILED);
+});
+
+// A sign-up waiting for its code lives 24 hours (vb2007/vb2007.hu-api#459): past that it's gone for every route.
+const A_DAY = 24 * 60 * 60_000;
+test("a registration past its 24 hours is uncounted, its code is refused and a resend sends nothing", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  await registerAndWait(page, api);
+  const waiting = () => getFromApi(page, api, "/admin/stats");
+  expect(await waiting()).toMatchObject({ body: { pendingRegistrations: 1 } });
+
+  api.clockRunsFor(A_DAY);
+
+  expect(await waiting()).toMatchObject({ body: { pendingRegistrations: 0 } });
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+  expect(await resend(page, api)).toEqual(RESENT);
+  // Nothing was sent, so the right code is still refused.
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+});
+
+test("registering over an expired leftover starts fresh, with no old wrong-code count", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  for (let wrong = 0; wrong < 5; wrong++) {
+    expect(
+      await callApi(page, api, "POST", "/auth/register/verify", {
+        ...REGISTRATION,
+        code: "000000"
+      })
+    ).toEqual(WRONG_CODE);
+  }
+  // Spent: even the right code is refused.
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+
+  api.clockRunsFor(A_DAY);
+  const registered = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+
+  expect(registered.status).toBe(202);
+  expect(await verify(page, api)).toEqual(REGISTERED);
 });

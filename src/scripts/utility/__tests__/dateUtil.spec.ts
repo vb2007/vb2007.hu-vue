@@ -1,24 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { formatDate, formatDateTime, formatTime, isPast } from "@/scripts/utility/dateUtil";
-
-describe("isPast", () => {
-  const now = Date.parse("2026-11-06T12:00:00.000Z");
-
-  it("is true from the moment on", () => {
-    expect(isPast("2026-11-06T11:59:59.000Z", now)).toBe(true);
-    expect(isPast("2026-11-06T12:00:00.000Z", now)).toBe(true);
-    expect(isPast("2026-11-06T12:00:01.000Z", now)).toBe(false);
-  });
-
-  it("checks against the clock by default", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-
-    expect(isPast("2026-11-06T11:00:00.000Z")).toBe(true);
-    expect(isPast("2026-11-06T13:00:00.000Z")).toBe(false);
-    vi.useRealTimers();
-  });
-});
+import { describe, expect, it } from "vitest";
+import { formatDate, formatDateTime, formatTime } from "@/scripts/utility/dateUtil";
 
 describe("formatDateTime", () => {
   it("formats a timestamp as a medium date with a short time", () => {

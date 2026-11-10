@@ -92,7 +92,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
  * `GET /admin/short-urls` lists every account's links from the same store for the superuser, with a `null` owner for an `addedBy` no account has.
  * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
- * register flow's own codes) and removes them by id. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
+ * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
+ * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused without counting a failure, a resend sends
+ * nothing and registering the address again starts over. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given (both for `loginPerAccount`), answers their names in
  * the API's order (vb2007/vb2007.hu-api#284), and checks the body like the API.
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
@@ -409,6 +411,13 @@ const usernameRefusal = (username: string): MockResponse | undefined => {
 type MockCode = { sentAt: number; expiresAt: number; attempts: number };
 const CODE_TRIES = 5;
 const CODE_COOLDOWN_MS = 60_000;
+/**
+ * A sign-up waiting for its code lives 24 hours from the last `POST /auth/register` for the address
+ * (`registrationExpiresAt`), longer than its code. Past that it's gone for every route, like the API's
+ * `notExpired` filter (vb2007/vb2007.hu-api#459).
+ */
+type MockRegistration = MockCode & { registrationExpiresAt: number };
+const REGISTRATION_LIFETIME_MS = 24 * 60 * 60_000;
 const MAIL_FAILED: MockResponse = { status: 503, body: { error: MAIL_FAILED_ERROR } };
 
 const invalidCode = (): MockResponse => ({
@@ -555,7 +564,7 @@ export class MockApi {
   private session = "";
   private sessionCount = 0;
   /** Registrations waiting for their code, by address: only the code, like the API's (vb2007/vb2007.hu-api#295). */
-  private readonly pendingRegistrations = new Map<string, MockCode>();
+  private readonly pendingRegistrations = new Map<string, MockRegistration>();
   /** Password reset codes waiting, by account address. */
   private readonly resetCodes = new Map<string, MockCode>();
   /** Addresses a password reset confirmed, verified at their next login; deleting the account drops its address. */
@@ -763,7 +772,7 @@ export class MockApi {
     }
   }
 
-  /** Lists a sign-up waiting for its code on the admin's System page; a negative time has expired. */
+  /** Lists a sign-up waiting for its code on the admin's System page, until its time (on the mock's clock) passes. */
   hasPendingRegistration(email: string, { expiresInMinutes = 24 * 60 } = {}) {
     const registration = {
       id: `${this.adminPendingRegistrations.length + 1}`.padStart(24, "c"),
@@ -931,6 +940,14 @@ export class MockApi {
 
   private newCode(validMinutes: number, sentAt = this.now()): MockCode {
     return { sentAt, expiresAt: sentAt + validMinutes * 60_000, attempts: 0 };
+  }
+
+  /** The register flow's waiting sign-up for `email`: none once its 24 hours are over. */
+  private waitingRegistration(email: string): MockRegistration | undefined {
+    const registration = this.pendingRegistrations.get(email);
+    return registration && registration.registrationExpiresAt > this.now()
+      ? registration
+      : undefined;
   }
 
   /** Like the API's claim: a code that's still live, with tries left, uses one up. */
@@ -1504,11 +1521,15 @@ export class MockApi {
     const email = normalizeEmail(body?.email ?? "");
     const refusal = domainError(email);
     if (refusal) return { status: 400, body: { error: refusal } };
-    const tooSoon = this.resendTooSoon(this.pendingRegistrations.get(email)?.sentAt);
+    // Over an expired leftover it starts fresh: no old cooldown, no old wrong-code count.
+    const tooSoon = this.resendTooSoon(this.waitingRegistration(email)?.sentAt);
     if (tooSoon) return tooSoon;
     // A code that couldn't be mailed leaves the registration that waited before (if any) as it was.
     if (!this.sendsMail("registration", email)) return MAIL_FAILED;
-    this.pendingRegistrations.set(email, this.newCode(15));
+    this.pendingRegistrations.set(email, {
+      ...this.newCode(15),
+      registrationExpiresAt: this.now() + REGISTRATION_LIFETIME_MS
+    });
     return {
       status: 202,
       body: {
@@ -1530,7 +1551,7 @@ export class MockApi {
     }
     if (this.mailRefused("registration")) return MAIL_FAILED;
     if (this.countsMail(address)) this.mailSentToday++;
-    const pending = this.pendingRegistrations.get(normalizeEmail(address));
+    const pending = this.waitingRegistration(normalizeEmail(address));
     // A code that couldn't be mailed is only logged: the answer stays 200, the code sent before still works, and the
     // reservation stays counted. A reserved domain's mail is only logged, before anything could fail it.
     if (
@@ -1667,7 +1688,7 @@ export class MockApi {
     }
     const email = normalizeEmail(body.email);
     if (
-      !this.claims(this.pendingRegistrations.get(email)) ||
+      !this.claims(this.waitingRegistration(email)) ||
       normalizeCode(code) !== REGISTRATION_CODE
     ) {
       return invalidCode();
@@ -2152,7 +2173,9 @@ export class MockApi {
           private: this.uploads.length - publicUploads,
           storedBytes: this.uploads.reduce((sum, upload) => sum + upload.fileSize, 0)
         },
-        pendingRegistrations: this.pendingRegistrations.size,
+        pendingRegistrations: [...this.pendingRegistrations.keys()].filter((email) =>
+          this.waitingRegistration(email)
+        ).length,
         settings: { defaultUploadQuotaBytes: DEFAULT_QUOTA, maxFileSizeBytes: 100 * MB }
       }
     };
@@ -2474,6 +2497,11 @@ export class MockApi {
     this.uploads.splice(0, this.uploads.length, ...keptUploads);
   }
 
+  /** Whether the admin list's sign-up is past its `expiresAt` on the mock's clock. */
+  private hasExpired(registration: { expiresAt: string }) {
+    return Date.parse(registration.expiresAt) <= this.now();
+  }
+
   /** Checks the query after the superuser, like the API, whose bad query answers 400. */
   private listPendingRegistrations(query: URLSearchParams) {
     const refusal = this.refuseNonSuperuser();
@@ -2484,6 +2512,7 @@ export class MockApi {
     const page = Number(query.get("page") ?? 1);
     const q = query.get("q")?.toLowerCase();
     const matching = this.adminPendingRegistrations
+      .filter((registration) => !this.hasExpired(registration))
       .filter((registration) => !q || registration.email.toLowerCase().includes(q))
       .sort((a, b) => b.expiresAt.localeCompare(a.expiresAt));
     return {
@@ -2505,7 +2534,7 @@ export class MockApi {
     if (refusal) return refusal;
     if (!OBJECT_ID.test(id)) return this.invalidId();
     const index = this.adminPendingRegistrations.findIndex((item) => item.id === id);
-    if (index === -1) {
+    if (index === -1 || this.hasExpired(this.adminPendingRegistrations[index])) {
       return {
         status: 404,
         body: { error: "There is no such pending registration with that ID." }
