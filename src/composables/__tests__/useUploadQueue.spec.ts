@@ -4,6 +4,7 @@ import { flushPromises } from "@vue/test-utils";
 import { SIGNED_LINK_REFRESH_LEAD_MS } from "@/composables/useSignedLinkRefresh";
 import { PARALLEL_UPLOADS, useUploadQueue } from "@/composables/useUploadQueue";
 import type { UploadUsage } from "@/types/api/uploads";
+import { isLoggedIn } from "@/scripts/authentication/authState";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { aFile, anUpload, someUsage } from "@/__tests__/helpers/uploads";
@@ -89,7 +90,29 @@ describe("useUploadQueue", () => {
     expect(requests).toHaveLength(2);
   });
 
+  it("fails an upload whose connection dropped because the session ended with the login message", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    isLoggedIn.value = true;
+    mockFetch().mockResolvedValueOnce(
+      jsonResponse(403, { error: "You must be logged in to perform this action." })
+    );
+    const { api } = mountQueue();
+    api.add([aFile("a.png", 2 * MB)], "private");
+    requests[0].fail();
+    await flushPromises();
+
+    expect(api.items.value[0]).toMatchObject({
+      status: "failed",
+      error: "You must be logged in to perform this action."
+    });
+  });
+
   it("rejects a retry the pre-check now says no to, e.g. once the quota filled up", async () => {
+    // The session check after the dropped connection finds the session alive.
+    isLoggedIn.value = true;
+    mockFetch().mockResolvedValueOnce(
+      jsonResponse(200, { _id: "0123456789abcdef01234567", email: "me@example.com" })
+    );
     const { api } = mountQueue();
     api.add([aFile("a.png", 2 * MB)], "private");
     requests[0].fail();

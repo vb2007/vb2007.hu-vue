@@ -15,6 +15,8 @@ import { onSessionRefused } from "@/scripts/api/client";
 import { aFile, anUpload, someUsage } from "@/__tests__/helpers/uploads";
 import { formatTime } from "@/scripts/utility/dateUtil";
 import { mockXhr } from "@/__tests__/helpers/xhr";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { isLoggedIn, sessionEnded } from "@/scripts/authentication/authState";
 
 const MB = 1024 * 1024;
 
@@ -210,12 +212,86 @@ describe("sendUpload", () => {
     expect(onProgress).not.toHaveBeenCalled();
   });
 
-  it("rejects when the connection fails", async () => {
-    const requests = mockXhr();
-    const sent = sendUpload(aFile("a.png"), "private", vi.fn());
-    requests[0].fail();
+  describe("when the connection drops", () => {
+    // The API may answer an upload early and close the connection (vb2007/vb2007.hu-api#451, #455),
+    // which a browser still sending can report as a network error, so the session is checked.
+    const user = { _id: "0123456789abcdef01234567", email: "me@example.com", username: "me" };
 
-    await expect(sent).rejects.toThrow("Error connecting to server");
+    /** An upload whose connection then fails, with the page logged in. */
+    const dropped = () => {
+      isLoggedIn.value = true;
+      const requests = mockXhr();
+      const sent = sendUpload(aFile("a.png"), "private", vi.fn());
+      requests[0].fail();
+      return sent;
+    };
+
+    it("rejects with the session message and logs the page out when the session has ended", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetchMock = mockFetch();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(403, { error: "You must be logged in to perform this action." })
+      );
+
+      await expect(dropped()).rejects.toEqual(
+        new UploadError("You must be logged in to perform this action.")
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith("https://api.test/user", {
+        method: "GET",
+        credentials: "include"
+      });
+      expect(isLoggedIn.value).toBe(false);
+      expect(sessionEnded.value).toBe(true);
+    });
+
+    it("gives every upload that dropped together the session message", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      isLoggedIn.value = true;
+      const fetchMock = mockFetch();
+      const notLoggedIn = () =>
+        jsonResponse(403, { error: "You must be logged in to perform this action." });
+      fetchMock.mockResolvedValueOnce(notLoggedIn()).mockResolvedValueOnce(notLoggedIn());
+      const requests = mockXhr();
+      const first = sendUpload(aFile("a.png"), "private", vi.fn());
+      const second = sendUpload(aFile("b.png"), "private", vi.fn());
+      requests[0].fail();
+      requests[1].fail();
+
+      const message = "You must be logged in to perform this action.";
+      await expect(first).rejects.toThrow(message);
+      await expect(second).rejects.toThrow(message);
+      expect(isLoggedIn.value).toBe(false);
+    });
+
+    it("rejects with the connection error when the session is still there", async () => {
+      const fetchMock = mockFetch();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, user));
+
+      await expect(dropped()).rejects.toEqual(new UploadError("Error connecting to server"));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(isLoggedIn.value).toBe(true);
+      expect(sessionEnded.value).toBe(false);
+    });
+
+    it("rejects with the connection error when the session check can't be made either", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetchMock = mockFetch();
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await expect(dropped()).rejects.toEqual(new UploadError("Error connecting to server"));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(isLoggedIn.value).toBe(true);
+    });
+
+    it("keeps the connection error when the check fails without saying the session ended", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetchMock = mockFetch();
+      fetchMock.mockResolvedValueOnce(jsonResponse(502, undefined, "Bad Gateway"));
+
+      await expect(dropped()).rejects.toEqual(new UploadError("Error connecting to server"));
+      expect(isLoggedIn.value).toBe(true);
+    });
   });
 
   it("aborts through the signal and marks the error as cancelled", async () => {
@@ -225,5 +301,34 @@ describe("sendUpload", () => {
     controller.abort();
 
     await expect(sent).rejects.toMatchObject({ message: "Cancelled", cancelled: true });
+  });
+
+  it("is cancelled when the user cancels while the session is being checked", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    const lookup = deferResponse(fetchMock);
+    const requests = mockXhr();
+    const controller = new AbortController();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn(), controller.signal);
+    requests[0].fail();
+    // A finished request fires no `abort` event, like a real browser's; only the signal says so.
+    requests[0].onabort = null;
+    controller.abort();
+    lookup.respond(jsonResponse(200, { _id: "0123456789abcdef01234567", email: "me@example.com" }));
+
+    await expect(sent).rejects.toMatchObject({ message: "Cancelled", cancelled: true });
+  });
+
+  it("doesn't check the session after an abort, only after a dropped connection", async () => {
+    isLoggedIn.value = true;
+    const fetchMock = mockFetch();
+    mockXhr();
+    const controller = new AbortController();
+    const sent = sendUpload(aFile("a.png"), "private", vi.fn(), controller.signal);
+    controller.abort();
+
+    await expect(sent).rejects.toMatchObject({ cancelled: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(isLoggedIn.value).toBe(true);
   });
 });
