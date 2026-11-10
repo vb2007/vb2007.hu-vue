@@ -389,6 +389,33 @@ describe("useRegisterCode", () => {
       expect(step.formProblem.value).toBeUndefined();
     });
 
+    it("ends the step quietly when the new account was removed before its session started", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: Messages.Auth.notLoggedIn }));
+      const step = openStep();
+
+      expect(await step.verify("123456", "vb", "password")).toBe("account-gone");
+
+      // The step shows nothing itself: the code is spent, so the form tells the visitor.
+      expect(step.codeError.value).toBe("");
+      expect(step.codeFieldError.value).toBe("");
+      expect(step.formProblem.value).toBeUndefined();
+      expect(step.verifyWaiting.value).toBe(false);
+      expect(step.isVerifying.value).toBe(false);
+      expect(fetchUserDetails).not.toHaveBeenCalled();
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it("keeps any other 403 on the step, unlogged like the account's removal", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "Not allowed." }));
+      const step = openStep();
+
+      expect(await step.verify("123456", "vb", "password")).toBe("failed");
+
+      expect(step.codeError.value).toBe("Not allowed.");
+      // `quietStatuses` goes by status, so it silences every 403 here, not only the removal's.
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
     it("falls back to the status, and logs it, when the server fails", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(500, undefined, "Internal Server Error"));
       const step = openStep();

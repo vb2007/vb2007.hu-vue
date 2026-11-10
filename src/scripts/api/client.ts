@@ -133,16 +133,21 @@ export const onSessionRefused = (listener: SessionRefusedListener) => {
 };
 
 /**
+ * Whether an answer is the API's logged-out 403 (`Messages.Auth.notLoggedIn`). Other 403s (a wrong
+ * password, not the owner) aren't. What it means depends on the request: with the session cookie
+ * the session ended (`noticeSessionRefusal`), without one it says an account vanished meanwhile
+ * (the register code check).
+ */
+export const isLoggedOutAnswer = (status: number, error: unknown) =>
+  status === HttpStatus.Forbidden && error === Messages.Auth.notLoggedIn;
+
+/**
  * Runs the `onSessionRefused` listener when `status` and `body` are the API's logged-out 403 to a
  * request with the session cookie. Other 403s (a wrong password, not the owner) mean nothing here.
  * Never rejects: a listener that fails is logged, so `apiRequest` still never throws.
  */
 export const noticeSessionRefusal = async (endpoint: Endpoint, status: number, body: unknown) => {
-  if (
-    endpoint.credentials &&
-    status === HttpStatus.Forbidden &&
-    (body as ApiErrorBody | null)?.error === Messages.Auth.notLoggedIn
-  ) {
+  if (endpoint.credentials && isLoggedOutAnswer(status, (body as ApiErrorBody | null)?.error)) {
     try {
       await sessionRefusedListener?.(endpoint);
     } catch (error) {

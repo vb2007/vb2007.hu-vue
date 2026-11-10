@@ -341,6 +341,16 @@ const handleCode = async () => {
       await focusProblem();
       break;
     }
+    case "account-gone":
+      // The code is spent and no registration waits, so there's nothing to retry here: back to
+      // the form, which keeps what was typed, with the key to register again under the message.
+      // Like the two above, Confirm code was the key pressed, so the Register key doesn't flash.
+      codeKeptFor.value = code.value = "";
+      resetCode();
+      leave();
+      registerStatus.value = Messages.Auth.registrationAccountRemoved;
+      await focusProblem();
+      break;
     default:
       // A held key doesn't shake: it says when to try again instead.
       if (!verifyWaiting.value) flagError();
