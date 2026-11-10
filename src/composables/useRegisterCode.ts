@@ -33,6 +33,11 @@ export type RegisterCodeResult =
   | "fix-form"
   /** The address already has an account (`formProblem`); the waiting registration is gone. */
   | "account-exists"
+  /**
+   * The account the code created was deleted before its session started: the code
+   * is spent and no registration is waiting, so the form is next (`Messages.Auth.registrationAccountRemoved`).
+   */
+  | "account-gone"
   /** Nothing changed; `codeFieldError` or `codeError` says why. */
   | "failed";
 
@@ -192,8 +197,8 @@ export const useRegisterCode = () => {
     const result = await apiRequest(Endpoints.Auth.registerVerify, {
       body: { email: email.value, code: code.replace(/\s/g, ""), username, password },
       failure: Messages.EmailCode.confirmFailed,
-      // A wrong code and the form's refusals are answers the step shows, not faults.
-      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Conflict]
+      // A wrong code, the form's refusals and the account vanishing are answers the step shows, not faults.
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Conflict, HttpStatus.Forbidden]
     });
 
     let outcome: RegisterCodeResult = "failed";
@@ -219,6 +224,12 @@ export const useRegisterCode = () => {
       // The address has an account, so the API dropped the waiting registration.
       formProblem.value = { field, message: Messages.Auth.accountExists };
       outcome = "account-exists";
+    } else if (
+      result.status === HttpStatus.Forbidden &&
+      result.error === Messages.Auth.notLoggedIn
+    ) {
+      // The visitor has no session yet, so only the account vanishing meanwhile can answer this.
+      outcome = "account-gone";
     } else {
       // 429, the server, the network, or a refusal that names no field.
       showError(result.error);

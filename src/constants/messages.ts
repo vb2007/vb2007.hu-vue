@@ -122,6 +122,12 @@ export class Messages {
     static usernameTakenMeanwhile(minutes: number): string {
       return `That username was taken in the meantime: pick another one. Your code works for up to ${minutes} minutes after it was sent.`;
     }
+    /**
+     * The code step's 403 `notLoggedIn` (vb2007/vb2007.hu-api#430): the account the code created
+     * was deleted before the session started, so the code is used up and nothing is left to retry.
+     */
+    static readonly registrationAccountRemoved: string =
+      "The account was removed before registration finished, so that code is used up. Register again to get a new one.";
     /*
      * The register code step's notices, around the address the code went to: the text before it,
      * the punctuation kept with it, and the rest, so the form can let a long address wrap. The

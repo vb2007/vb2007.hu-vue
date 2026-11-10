@@ -780,6 +780,51 @@ describe("RegisterForm", () => {
       }
     );
 
+    describe("when the new account was removed before its session started", () => {
+      const accountGone = async () => {
+        fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: Messages.Auth.notLoggedIn }));
+        const wrapper = await atCodeStep();
+        await confirm(wrapper);
+        return wrapper;
+      };
+
+      it("goes back to the filled-in form with the key to register again, and says why", async () => {
+        const wrapper = await accountGone();
+
+        const alert = wrapper.find('[role="alert"]');
+        expect(alert.text()).toBe(Messages.Auth.registrationAccountRemoved);
+        // Not the API's text, which would read as a session to restore.
+        expect(wrapper.text()).not.toContain(Messages.Auth.notLoggedIn);
+        expect(wrapper.text()).not.toContain("Confirmation code");
+        expect(submitButton(wrapper).text()).toBe("Register");
+        expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+        // Confirm code was pressed, not Register, so the key doesn't flash; it takes the focus.
+        expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+        expect(document.activeElement).toBe(submitButton(wrapper).element);
+        expect(wrapper.findAll("input").map((input) => input.element.value)).toEqual([
+          "me@example.com",
+          "vb",
+          "password",
+          "password"
+        ]);
+        expect(console.error).not.toHaveBeenCalled();
+      });
+
+      it("registers again with a new code, forgetting the spent one", async () => {
+        const wrapper = await accountGone();
+        vi.mocked(register).mockResolvedValueOnce({ sent: true });
+
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+
+        expect(register).toHaveBeenCalledTimes(2);
+        expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+        expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(SENT("vb", 6, 15)));
+        expect(wrapper.find("input").element.value).toBe("");
+        expect(document.activeElement).toBe(wrapper.find("input").element);
+      });
+    });
+
     /** Confirms a code the API refuses for a username taken meanwhile, back on the form. */
     const nameTakenMeanwhile = async (wrapper: Wrapper) => {
       fetchMock.mockResolvedValueOnce(
