@@ -174,13 +174,19 @@ export const sendUpload = (
     // is gone. `fetchUserDetails` logs the page out on the API's 403; a lookup that fails any other
     // way leaves `isLoggedIn` alone, and that stays a connection error.
     request.onerror = () =>
-      void fetchUserDetails().then((kept) =>
-        reject(
-          new UploadError(
-            !kept && !isLoggedIn.value ? Messages.Auth.notLoggedIn : Messages.connectionError
-          )
-        )
-      );
+      void fetchUserDetails().then((kept) => {
+        // Once the request has failed, `abort()` fires no `abort` event, so a cancel made while the
+        // session was being checked only shows in the signal.
+        if (signal?.aborted) {
+          reject(new UploadError(Messages.Uploads.cancelled, true));
+        } else {
+          reject(
+            new UploadError(
+              !kept && !isLoggedIn.value ? Messages.Auth.notLoggedIn : Messages.connectionError
+            )
+          );
+        }
+      });
     request.onabort = () => reject(new UploadError(Messages.Uploads.cancelled, true));
     signal?.addEventListener("abort", () => request.abort(), { once: true });
 

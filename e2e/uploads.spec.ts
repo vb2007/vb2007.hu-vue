@@ -117,7 +117,8 @@ const dropUploadConnection = (page: Page) =>
 
 test("an upload whose connection drops after the session ended logs the page out", async ({
   page,
-  api
+  api,
+  isMobile
 }) => {
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
@@ -134,7 +135,10 @@ test("an upload whose connection drops after the session ended logs the page out
     .getByLabel("Files to upload")
     .setInputFiles([{ name: "holiday.png", mimeType: "image/png", buffer: Buffer.alloc(4096) }]);
 
+  // The page is logged out, which a plain connection error would leave alone.
   await expect(page.getByText("Only logged-in users can upload files.")).toBeVisible();
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
   await expect(page.getByText("Error connecting to server")).toHaveCount(0);
   expect(api.uploads).toHaveLength(0);
 });
