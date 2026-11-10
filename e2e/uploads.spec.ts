@@ -103,6 +103,65 @@ test("an upload after the account was suspended logs the page out", async ({
   await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
 });
 
+/**
+ * Drops the next upload's connection before the API answers, as a browser can when the API answers
+ * an upload early (an ended session's 403, an over-limit 413) and closes the connection while the
+ * file is still being sent (vb2007/vb2007.hu-api#451, #455). Everything else goes on to the mock.
+ */
+const dropUploadConnection = (page: Page) =>
+  page.route(
+    (url) => url.pathname === "/upload",
+    (route) =>
+      route.request().method() === "POST" ? route.abort("connectionreset") : route.fallback()
+  );
+
+test("an upload whose connection drops after the session ended logs the page out", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByText("Login successful!")).toBeVisible();
+  await page.goto("/upload");
+  await expect(page.getByText("No uploads yet.")).toBeVisible();
+
+  // The session ends behind the page's back, and the API's 403 never reaches the upload.
+  api.replacesSession();
+  await dropUploadConnection(page);
+  await page
+    .getByLabel("Files to upload")
+    .setInputFiles([{ name: "holiday.png", mimeType: "image/png", buffer: Buffer.alloc(4096) }]);
+
+  // The page is logged out, which a plain connection error would leave alone.
+  await expect(page.getByText("Only logged-in users can upload files.")).toBeVisible();
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Log in" })).toBeVisible();
+  await expect(page.getByText("Error connecting to server")).toHaveCount(0);
+  expect(api.uploads).toHaveLength(0);
+});
+
+test("an upload whose connection drops with the session alive reports the connection error", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  await page.goto("/upload");
+  await expect(page.getByText("No uploads yet.")).toBeVisible();
+
+  await dropUploadConnection(page);
+  await page
+    .getByLabel("Files to upload")
+    .setInputFiles([{ name: "holiday.png", mimeType: "image/png", buffer: Buffer.alloc(4096) }]);
+
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(queue.getByText("Error connecting to server")).toBeVisible();
+  await expect(page.getByText("Only logged-in users can upload files.")).toHaveCount(0);
+  expect(api.uploads).toHaveLength(0);
+});
+
 test("a user renames, re-scopes and deletes an upload", async ({ page, api }) => {
   api.loggedInAs();
   api.hasUpload("report.pdf", { fileSize: 50_000 });

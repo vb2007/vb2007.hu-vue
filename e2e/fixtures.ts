@@ -95,8 +95,11 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
  * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused as invalid, a resend sends
  * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
- * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given (both for `loginPerAccount`), answers their names in
- * the API's order (vb2007/vb2007.hu-api#284), and checks the body like the API.
+ * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given, answers their names in the API's order
+ * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
+ * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily wrong-code caps
+ * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
+ * `registrationCodeFailures`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
@@ -357,7 +360,12 @@ const RATE_LIMITERS = {
   mailSendsPerIp: ["ip"],
   usernameChecksPerIp: ["ip"],
   accountCodeChecksPerIp: ["ip"],
-  passwordChecksPerIp: ["ip"]
+  accountCodeChecksPerAccount: ["email"],
+  passwordChecksPerIp: ["ip"],
+  passwordChecksPerAccount: ["email"],
+  passwordResetCodeFailures: ["email"],
+  emailChangeCodeFailures: ["email"],
+  registrationCodeFailures: ["email"]
 } as const;
 export type MockRateLimiter = keyof typeof RATE_LIMITERS;
 type RateLimitKey = { email?: string; ip?: string };
@@ -2565,9 +2573,12 @@ export class MockApi {
       email: email === undefined ? undefined : normalizeEmail(email),
       ip
     };
+    // `loginPerAccount` is found by the e-mail alone (from every IP, vb2007/vb2007.hu-api#365); an IP only narrows it.
     const matches = (count: RateLimitKey & { name: MockRateLimiter }) =>
-      RATE_LIMITERS[count.name].every(
-        (part) => key[part] !== undefined && key[part] === count[part]
+      RATE_LIMITERS[count.name].every((part) =>
+        count.name === "loginPerAccount" && part === "ip"
+          ? key.ip === undefined || key.ip === count.ip
+          : key[part] !== undefined && key[part] === count[part]
       );
     const cleared = new Set(this.rateLimitCounts.filter(matches).map((count) => count.name));
     this.rateLimitCounts = this.rateLimitCounts.filter((count) => !matches(count));

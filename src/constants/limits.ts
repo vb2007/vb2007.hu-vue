@@ -53,6 +53,10 @@ export class Limits {
      * A longer wait is the daily cap of rejected codes per address, which a new code doesn't lift.
      */
     static readonly failedChecksWindowSeconds: number = 15 * 60;
+    /** Wrong codes one account may send within `failedChecksWindowSeconds` (the API's `FAILED_ATTEMPTS_PER_ACCOUNT`). */
+    static readonly failedChecksPerAccount: number = 10;
+    /** Wrong codes a day for one address, per kind of code, before even the right one is refused (vb2007/vb2007.hu-api#257). */
+    static readonly failedChecksPerDay: number = 20;
   };
 
   static readonly Github = class {
