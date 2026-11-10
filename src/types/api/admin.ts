@@ -175,7 +175,9 @@ export interface PendingRegistrationsResponse {
 
 /**
  * The API's rate limiters (vb2007/vb2007.hu-api#284), in the order `cleared` lists them. Each is
- * keyed by the e-mail, the IP, or both (`loginPerAccount`).
+ * keyed by the e-mail, the IP, or both (`loginPerAccount`). The last five are keyed by the e-mail
+ * only (vb2007/vb2007.hu-api#384): the account's own limiters, and the stored daily wrong-code
+ * counts of the account or of a registration waiting for the address.
  */
 export type RateLimitName =
   | "loginPerIp"
@@ -187,7 +189,12 @@ export type RateLimitName =
   | "mailSendsPerIp"
   | "usernameChecksPerIp"
   | "accountCodeChecksPerIp"
-  | "passwordChecksPerIp";
+  | "accountCodeChecksPerAccount"
+  | "passwordChecksPerIp"
+  | "passwordChecksPerAccount"
+  | "passwordResetCodeFailures"
+  | "emailChangeCodeFailures"
+  | "registrationCodeFailures";
 
 /** `DELETE /admin/rate-limits`: at least one of the two. */
 export interface ClearRateLimitsBody {

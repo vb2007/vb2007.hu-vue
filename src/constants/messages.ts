@@ -1,3 +1,4 @@
+import { Limits } from "@/constants/limits";
 import { SITE_LOCALE } from "@/constants/locale";
 import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
 import type { RateLimitName } from "@/types/api/admin";
@@ -420,7 +421,12 @@ export class Messages {
       mailSendsPerIp: "E-mails requested from the IP",
       usernameChecksPerIp: "Username checks from the IP",
       accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
-      passwordChecksPerIp: "Wrong passwords on the account page from the IP"
+      accountCodeChecksPerAccount: "Wrong e-mail change codes for the account",
+      passwordChecksPerIp: "Wrong passwords on the account page from the IP",
+      passwordChecksPerAccount: "Wrong passwords on the account page for the account",
+      passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
+      emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
+      registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay} a day`
     };
     /** A limiter's plain name, or the API's own one for a limiter added after this list. */
     static rateLimitName(name: string): string {

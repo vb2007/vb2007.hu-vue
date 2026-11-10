@@ -41,6 +41,36 @@ describe("useClearRateLimits", () => {
     expect(limits.isClearing.value).toBe(false);
   });
 
+  it("names the per-account limiters and the daily caps an e-mail clears, in the API's order", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        message: "Rate limits cleared.",
+        cleared: [
+          "accountCodeChecksPerAccount",
+          "passwordChecksPerAccount",
+          "passwordResetCodeFailures",
+          "emailChangeCodeFailures",
+          "registrationCodeFailures"
+        ]
+      })
+    );
+    const limits = useClearRateLimits();
+
+    await limits.clear("anna@example.com", "");
+
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ email: "anna@example.com" }));
+    expect(limits.outcome.value).toEqual({
+      target: "anna@example.com",
+      cleared: [
+        "Wrong e-mail change codes for the account",
+        "Wrong passwords on the account page for the account",
+        "Wrong password reset codes for the account, 20 a day",
+        "Wrong e-mail change codes for the account, 20 a day",
+        "Wrong sign-up codes for the waiting registration, 20 a day"
+      ]
+    });
+  });
+
   it("leaves a blank field out and keeps an empty answer", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, { message: "Rate limits cleared.", cleared: [] })

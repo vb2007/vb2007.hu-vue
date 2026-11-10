@@ -1483,14 +1483,18 @@ test("the superuser finds and removes a pending registration", async ({ page, ap
   ]);
 });
 
-test("the superuser lifts a log-in lockout with the e-mail and the IP", async ({ page, api }) => {
+test("the superuser lifts a log-in lockout from one IP, or from every IP with the e-mail alone", async ({
+  page,
+  api
+}) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.countsRateLimit("loginPerAccount", { email: "anna@example.com", ip: "203.0.113.7" });
+  api.countsRateLimit("loginPerAccount", { email: "anna@example.com", ip: "198.51.100.9" });
   api.countsRateLimit("loginPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("codeChecksPerEmail", { email: "anna@example.com" });
 
   await page.goto("/admin/system");
-  await expect(page.getByText("so lifting it needs both")).toBeVisible();
+  await expect(page.getByText("lifts its log-in lockout from every IP")).toBeVisible();
   const email = page.getByLabel("E-mail", { exact: true });
   const ip = page.getByLabel("IP address");
   const clear = page.getByRole("button", { name: "Clear rate limits" });
@@ -1501,33 +1505,102 @@ test("the superuser lifts a log-in lockout with the e-mail and the IP", async ({
   await expect(page.getByText("Enter an e-mail address, an IP or both.")).toBeVisible();
   await expect(email).toBeFocused();
 
-  // The e-mail alone leaves the lockout of the address from one IP.
   await email.fill("Anna@example.com");
-  await clear.click();
-  const notice = page.locator(".status--success");
-  await expect(notice).toContainText("Cleared for Anna@example.com:");
-  await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong sign-up and password reset codes for the address."
-  ]);
-
   await ip.fill("203.0.113");
   await clear.click({ force: true });
   await expect(page.getByText("That isn't an IPv4 or IPv6 address.")).toBeVisible();
   await expect(ip).toBeFocused();
 
+  // With the IP, only that IP's lockout of the address goes (and what the e-mail or the IP alone keys).
   await ip.fill("203.0.113.7");
   await clear.click();
+  const notice = page.locator(".status--success");
   await expect(notice).toContainText("Cleared for Anna@example.com and 203.0.113.7:");
   await expect(notice.locator(".cleared__item")).toHaveText([
     "Failed log-ins from the IP.",
+    "Failed log-ins to the address from the IP.",
+    "Wrong sign-up and password reset codes for the address."
+  ]);
+
+  // The e-mail alone lifts the lockout from every other IP too.
+  await ip.fill("");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for Anna@example.com:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
     "Failed log-ins to the address from the IP."
   ]);
 
   await clear.click();
   await expect(
-    page.getByText(
-      "Nothing was counting for Anna@example.com and 203.0.113.7, so there was nothing to clear."
-    )
+    page.getByText("Nothing was counting for Anna@example.com, so there was nothing to clear.")
   ).toBeVisible();
   await expect(notice).toHaveCount(0);
+});
+
+test("the superuser clears an account's own limits and daily caps with its e-mail, not with an IP", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const arrange = (email: string) => {
+    api.countsRateLimit("registrationCodeFailures", { email });
+    api.countsRateLimit("emailChangeCodeFailures", { email });
+    api.countsRateLimit("passwordResetCodeFailures", { email });
+    api.countsRateLimit("passwordChecksPerAccount", { email });
+    api.countsRateLimit("accountCodeChecksPerAccount", { email });
+  };
+  arrange("anna@example.com");
+  api.countsRateLimit("passwordResetCodeFailures", { email: "milo@example.com" });
+  api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
+  api.countsRateLimit("accountCodeChecksPerIp", { ip: "203.0.113.7" });
+
+  await page.goto("/admin/system");
+  const email = page.getByLabel("E-mail", { exact: true });
+  const ip = page.getByLabel("IP address");
+  const clear = page.getByRole("button", { name: "Clear rate limits" });
+  const notice = page.locator(".status--success");
+
+  // An IP can't narrow them: it clears only what is keyed by the IP.
+  await ip.fill("203.0.113.7");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for 203.0.113.7:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Wrong e-mail change codes from the IP.",
+    "Wrong passwords on the account page from the IP."
+  ]);
+
+  // With both, each limiter keyed by the IP or the e-mail goes, in the API's order.
+  api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
+  api.countsRateLimit("accountCodeChecksPerIp", { ip: "203.0.113.7" });
+  await email.fill("Anna@example.com");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for Anna@example.com and 203.0.113.7:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Wrong e-mail change codes from the IP.",
+    "Wrong e-mail change codes for the account.",
+    "Wrong passwords on the account page from the IP.",
+    "Wrong passwords on the account page for the account.",
+    "Wrong password reset codes for the account, 20 a day.",
+    "Wrong e-mail change codes for the account, 20 a day.",
+    "Wrong sign-up codes for the waiting registration, 20 a day."
+  ]);
+
+  // The e-mail alone does the same for an account whose caps are all counting, and spares other addresses.
+  arrange("anna@example.com");
+  await ip.fill("");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for Anna@example.com:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Wrong e-mail change codes for the account.",
+    "Wrong passwords on the account page for the account.",
+    "Wrong password reset codes for the account, 20 a day.",
+    "Wrong e-mail change codes for the account, 20 a day.",
+    "Wrong sign-up codes for the waiting registration, 20 a day."
+  ]);
+
+  await email.fill("milo@example.com");
+  await clear.click();
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Wrong password reset codes for the account, 20 a day."
+  ]);
 });
