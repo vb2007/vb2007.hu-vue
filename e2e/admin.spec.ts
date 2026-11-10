@@ -1503,7 +1503,6 @@ test("the owner link of the admin's own upload leads to their row on the list", 
 
 test("the superuser finds and removes a pending registration", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
-  api.hasPendingRegistration("old@example.com", { expiresInMinutes: -30 });
   api.hasPendingRegistration("anna@example.com");
   api.hasPendingRegistration("milo@example.com", { expiresInMinutes: 60 });
 
@@ -1513,32 +1512,45 @@ test("the superuser finds and removes a pending registration", async ({ page, ap
   await expect(page).toHaveURL(/\/admin\/system$/);
   await expect(page.getByRole("heading", { level: 1, name: "System" })).toBeVisible();
   await expect(page.locator(".bar__admin")).toHaveAttribute("aria-current", "true");
-  await expect(page.getByText("3 pending registrations")).toBeVisible();
-  // The newest sign-ups first, and the one past its time marked.
+  await expect(page.getByText("2 pending registrations")).toBeVisible();
+  // The newest sign-ups first.
   const rows = page.locator(".row");
-  await expect(rows.locator(".row__email")).toHaveText([
-    "anna@example.com",
-    "milo@example.com",
-    "old@example.com"
-  ]);
+  await expect(rows.locator(".row__email")).toHaveText(["anna@example.com", "milo@example.com"]);
   await expect(rows.nth(1)).toContainText("Expires");
-  await expect(rows.nth(2).getByText("Expired")).toBeVisible();
 
   await page.getByLabel("Search by e-mail").fill("mil");
   await expect(page.getByText("1 pending registration found")).toBeVisible();
   await page.getByLabel("Search by e-mail").fill("nobody");
   await expect(page.getByText("No address matches that search.")).toBeVisible();
   await page.getByRole("button", { name: "Show all" }).click();
-  await expect(page.getByText("3 pending registrations")).toBeVisible();
+  await expect(page.getByText("2 pending registrations")).toBeVisible();
 
   await page.getByRole("button", { name: "Delete anna@example.com" }).click();
   await page.getByRole("button", { name: "Confirm delete anna@example.com" }).click();
+  await expect(page.getByText("1 pending registration", { exact: true })).toBeVisible();
+  await expect(rows.locator(".row__email")).toHaveText(["milo@example.com"]);
+  expect(api.adminPendingRegistrations.map((item) => item.email)).toEqual(["milo@example.com"]);
+});
+
+test("a pending registration that expires while the list is open is dropped by the 404", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.hasPendingRegistration("anna@example.com", { expiresInMinutes: 30 });
+  api.hasPendingRegistration("milo@example.com", { expiresInMinutes: 60 });
+  await page.goto("/admin/system");
   await expect(page.getByText("2 pending registrations")).toBeVisible();
-  await expect(rows.locator(".row__email")).toHaveText(["milo@example.com", "old@example.com"]);
-  expect(api.adminPendingRegistrations.map((item) => item.email)).toEqual([
-    "old@example.com",
-    "milo@example.com"
-  ]);
+
+  // Anna's 30 minutes pass behind the open page's back.
+  api.clockRunsFor(31 * 60_000);
+  await page.getByRole("button", { name: "Delete anna@example.com" }).click();
+  await page.getByRole("button", { name: "Confirm delete anna@example.com" }).click();
+
+  await expect(page.getByText("There is no such pending registration with that ID.")).toBeVisible();
+  await expect(page.locator(".row .row__email")).toHaveText(["milo@example.com"]);
+  await expect(page.getByText("1 pending registration", { exact: true })).toBeVisible();
+  await expect(page.getByText("Expired")).toHaveCount(0);
 });
 
 test("the superuser lifts a log-in lockout from one IP, or from every IP with the e-mail alone", async ({

@@ -76,18 +76,21 @@ describe("usePendingRegistrations", () => {
     expect(list.removeError.value).toBe("");
   });
 
-  it("shows the API's 404 and drops the gone row with a reload", async () => {
+  it("shows the API's 404 (e.g. it expired meanwhile) and drops the gone row with a reload", async () => {
     const notFound = "There is no such pending registration with that ID.";
+    fetchMock.mockResolvedValueOnce(listing([pending("a"), pending("b")]));
+    const list = usePendingRegistrations();
+    await list.load();
+    expect(list.registrations.value.map((row) => row.id)).toEqual(["a", "b"]);
+
     fetchMock
       .mockResolvedValueOnce(jsonResponse(404, { error: notFound }))
-      .mockResolvedValueOnce(listing([]));
-    const list = usePendingRegistrations();
-
+      .mockResolvedValueOnce(listing([pending("b")]));
     await list.remove("a");
 
     expect(list.removeError.value).toBe(notFound);
-    expect(urls(fetchMock)).toHaveLength(2);
-    expect(list.registrations.value).toEqual([]);
+    expect(urls(fetchMock)).toHaveLength(3);
+    expect(list.registrations.value.map((row) => row.id)).toEqual(["b"]);
   });
 
   it("keeps the list as it was when the remove fails otherwise", async () => {

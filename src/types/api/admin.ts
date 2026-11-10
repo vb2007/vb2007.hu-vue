@@ -169,7 +169,7 @@ export interface AdminUploadsResponse {
 export interface AdminPendingRegistration {
   id: string;
   email: string;
-  /** 24 hours after the last `POST /auth/register` for the address. Still listed once it passed. */
+  /** 24 hours after the last `POST /auth/register` for the address. The API lists no later one. */
   expiresAt: string;
 }
 

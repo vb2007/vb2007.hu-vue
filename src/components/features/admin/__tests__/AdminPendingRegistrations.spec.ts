@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import AdminPendingRegistrations from "@/components/features/admin/AdminPendingRegistrations.vue";
-import StatusPill from "@/components/ui/StatusPill.vue";
 import { SEARCH_DELAY_MS } from "@/composables/usePagedList";
 import { Limits } from "@/constants/limits";
 import type { AdminPendingRegistration } from "@/types/api/admin";
@@ -53,20 +52,19 @@ describe("AdminPendingRegistrations", () => {
     expect(wrapper.find(".note").text()).toBe("Loading the pending registrations…");
     expect(wrapper.find("input").attributes("maxlength")).toBe(`${Limits.Search.maxLength}`);
 
-    respond(listing([pending("anna"), pending("old", "2026-11-06T11:00:00.000Z")]));
+    respond(listing([pending("anna"), pending("milo", "2026-11-06T12:30:00.000Z")]));
     await flushPromises();
 
     expect(wrapper.find(".count").text()).toBe("2 pending registrations");
     const rows = wrapper.findAll(".row");
     expect(rows.map((row) => row.find(".row__email").text())).toEqual([
       "anna@example.com",
-      "old@example.com"
+      "milo@example.com"
     ]);
     expect(rows[0].find(".row__meta").text()).toMatch(/^Expires \S/);
-    expect(rows[0].findComponent(StatusPill).exists()).toBe(false);
-    expect(rows[1].findComponent(StatusPill).text()).toBe("Expired");
-    expect(rows[1].findComponent(StatusPill).props("tone")).toBe("danger");
-    expect(rows[1].find("time").attributes("datetime")).toBe("2026-11-06T11:00:00.000Z");
+    expect(rows[1].find(".row__meta").text()).toMatch(/^Expires \S/);
+    expect(rows[1].find("time").attributes("datetime")).toBe("2026-11-06T12:30:00.000Z");
+    expect(wrapper.text()).not.toContain("Expired");
     expect(rows[0].find("button .visually-hidden").text()).toBe("anna@example.com");
     expect(wrapper.find(".pager").exists()).toBe(false);
   });
@@ -134,6 +132,26 @@ describe("AdminPendingRegistrations", () => {
     await flushPromises();
 
     expect(wrapper.find(".status").text()).toBe("Something went wrong.");
+  });
+
+  it("drops a row that expired meanwhile: the API answers 404, the reload no longer lists it", async () => {
+    fetchMock.mockResolvedValueOnce(listing([pending("anna"), pending("milo")]));
+    const wrapper = mount(AdminPendingRegistrations);
+    await flushPromises();
+
+    const notFound = "There is no such pending registration with that ID.";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(404, { error: notFound }))
+      .mockResolvedValueOnce(listing([pending("milo")]));
+    await buttonNamed(wrapper, "Delete").trigger("click");
+    await buttonNamed(wrapper, "Confirm delete").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".row__email").map((email) => email.text())).toEqual([
+      "milo@example.com"
+    ]);
+    expect(wrapper.find(".status").text()).toBe(notFound);
+    expect(wrapper.find(".count").text()).toBe("1 pending registration");
   });
 
   it("shows a failed load", async () => {

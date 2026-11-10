@@ -52,8 +52,8 @@ export const usePendingRegistrations = (limit = PENDING_REGISTRATIONS_PER_PAGE) 
       failure: Messages.Admin.removePendingRegistrationFailed
     });
 
-    // Gone either way once the API can't find it (verified or removed meanwhile), so the list
-    // shouldn't keep offering it.
+    // Gone either way once the API can't find it (verified, expired or removed meanwhile), so the
+    // list shouldn't keep offering it.
     if (result.ok || result.status === HttpStatus.NotFound) await reloadAfterRemove();
     if (!result.ok) removeError.value = result.error;
     removingIds.value.delete(id);
