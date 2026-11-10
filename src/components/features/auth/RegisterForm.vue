@@ -12,7 +12,7 @@ import {
 import { RouterLink } from "vue-router";
 import { AuthPaths, RegisterStatus } from "@/constants/auth";
 import { Limits } from "@/constants/limits";
-import { Messages } from "@/constants/messages";
+import { Messages, type AddressNotice } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { emailPrefillState } from "@/scripts/authentication/emailPrefill";
 import {
@@ -163,50 +163,29 @@ const prefilledPage = (path: string) => ({ path, state: emailPrefillState(email.
 const step = useTemplateRef<HTMLFormElement>("step");
 const doneMessage = useTemplateRef("doneMessage");
 
-/**
- * The code step's notice, around the address: the text before it, the punctuation kept with it,
- * and the rest. The waiting registration only holds the address and code: confirming it registers
- * the username and password in the form (vb2007/vb2007.hu-api#295), so the notice names the
- * username it creates.
- */
-const notices = (name: string): Record<CodeNotice, [string, string, string]> => {
+/** The code step's notice for `name`, around the address (see `AddressNotice`). */
+const notices = (name: string): Record<CodeNotice, AddressNotice> => {
   const minutes = Limits.Code.registerValidMinutes;
   return {
-    sent: [
-      `A ${Limits.Code.digits}-digit code is on its way to`,
-      ".",
-      `Enter it to register as ${name}; it works for ${minutes} minutes.`
-    ],
-    // The API answers a resend the same whether or not a registration is waiting for the address.
-    resent: [
-      "If a registration is waiting for",
-      ",",
-      "a new code is on its way, and the one before no longer works."
-    ],
-    earlier: [
-      "Enter the code that was mailed to",
-      ".",
-      `It works for ${minutes} minutes after sending, and registers you as ${name} with the password you entered.`
-    ],
-    recent: [
-      "Less than a minute ago, a code went to",
-      ".",
-      `It still works: enter it to register as ${name}.`
-    ],
-    kept: [
-      "Your code for",
-      "",
-      `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
-    ],
-    lost: [
-      "A new code couldn't be mailed to",
-      ",",
-      "and the one before no longer works. Send a new one below."
-    ]
+    sent: Messages.Auth.registerCodeSent(name, Limits.Code.digits, minutes),
+    resent: Messages.Auth.registerCodeResent(name),
+    earlier: Messages.Auth.registerCodeEarlier(name, minutes),
+    recent: Messages.Auth.registerCodeRecent(name),
+    kept: Messages.Auth.registerCodeKept(name, minutes),
+    unsent: Messages.Auth.registerCodeUnsent(name, minutes)
   };
 };
 
 const noticeText = computed(() => notices(username.value.trim())[notice.value]);
+/**
+ * Under the code field. After the budget's 503 every resend gets the same answer until it starts
+ * over, so the hint doesn't offer one then; the key stays usable, since the API names no wait.
+ */
+const codeHint = computed(() =>
+  notice.value === "unsent"
+    ? "Nothing yet? Check your spam folder."
+    : "Nothing yet? Check your spam folder, or send a new code below."
+);
 /** The address in pieces, so a long one wraps before a dot or the @ rather than mid-word. */
 const addressParts = computed(() => codeEmail.value.split(/(?=[.@])/));
 
@@ -372,12 +351,18 @@ const handleCode = async () => {
 
 const sendAgain = async () => {
   // Decided by this resend's own outcome: the notice can still be an earlier resend's.
-  if ((await resend()) !== "failed") {
-    // A new code replaced the one typed before, even when it couldn't be mailed: confirming the
-    // old one would only spend a try.
+  const outcome = await resend();
+  // Change address and Confirm code wait for the answer; should the step have ended meanwhile
+  // anyway, the answer was dropped, and focus stays where it went.
+  if (outcome === "left") return;
+  if (outcome === "sent") {
+    // The page holds the key for a minute after each code it saw go out, so the API most likely
+    // mailed a new one, which replaced the code typed before: confirming that would spend a try.
     codeKeptFor.value = code.value = "";
     resetCode();
   }
+  // Otherwise (the day's mail used up, a rate limit, the server or the network) no code changed,
+  // so the typed one stays, and so does a kept code's "Continue".
   // The key is disabled now, which drops focus; the code is what comes next anyway.
   await focusStep();
 };
@@ -394,8 +379,9 @@ watch(code, (value) => {
 });
 
 /*
- * The username is checked with the API once typing pauses and its length is right. Each edit
- * aborts the check before it, so an answer about an older name never lands; leaving does too.
+ * The username is checked with the API once typing pauses and it passes `usernameError` (its
+ * length and characters). Each edit aborts the check before it, so an answer about an older name
+ * never lands; leaving does too.
  */
 let usernameTimer: ReturnType<typeof setTimeout> | undefined;
 const usernameCheck = useLatestRequest();
@@ -462,7 +448,7 @@ watch(isLoggedIn, (newVal) => {
         label="Confirmation code"
         inputmode="numeric"
         autocomplete="one-time-code"
-        hint="Nothing yet? Check your spam folder, or send a new code below."
+        :hint="codeHint"
         :describedby="noticeId"
         :error="codeErrors.code || codeFieldError"
         mono
@@ -505,7 +491,12 @@ watch(isLoggedIn, (newVal) => {
                 : "Resend code"
           }}
         </BaseButton>
-        <BaseButton variant="ghost" size="sm" :disabled="isVerifying" @click="changeAddress">
+        <BaseButton
+          variant="ghost"
+          size="sm"
+          :disabled="isVerifying || isResending"
+          @click="changeAddress"
+        >
           Change address
         </BaseButton>
       </div>

@@ -3,6 +3,7 @@ import {
   callApi,
   expect,
   MAIL_FAILED_ERROR,
+  MOCK_EMAIL,
   type MockApi,
   REGISTRATION_CODE,
   test
@@ -28,8 +29,8 @@ test("registering asks for the mailed code, then logs the new account in", async
   await fillForm(page);
 
   await expect(page.getByRole("heading", { level: 1, name: "Register" })).toBeVisible();
-  await expect(page.getByRole("status")).toContainText(
-    "A 6-digit code is on its way to new@example.com."
+  await expect(page.getByRole("status")).toHaveText(
+    "A 6-digit code is on its way to new@example.com. Enter it to register as newbie; it works for 15 minutes."
   );
   const code = page.getByLabel("Confirmation code");
   await expect(code).toBeFocused();
@@ -81,42 +82,48 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await resend.click();
 
   await expect(page.getByRole("status")).toHaveText(
-    "If a registration is waiting for new@example.com, a new code is on its way, and the one before no longer works."
+    "If a registration is waiting for new@example.com, only the latest code to reach it works: enter it to register as newbie."
   );
+  await expect(resend).toHaveText(/^Resend in \d+ sec$/);
+  await expect(resend).toBeDisabled();
+
+  // The minute after a resend survives a reload too.
+  await page.reload();
+  await fillFields(page);
+  await page.getByRole("button", { name: "Enter it" }).click();
   await expect(resend).toHaveText(/^Resend in \d+ sec$/);
   await expect(resend).toBeDisabled();
 });
 
-/** Answers `path` with the API's 429 carrying `json`, e.g. the code cooldown's. */
-const refuse = (page: Page, path: string, json: { error: string; retryAfter: number }) =>
-  page.route(`**${path}`, (route) =>
-    route.request().method() === "OPTIONS"
-      ? route.fallback()
-      : route.fulfill({ status: 429, headers: { "Access-Control-Allow-Origin": "*" }, json })
-  );
-
-test("a refused resend counts down from the API's retryAfter", async ({ page }) => {
-  await refuse(page, "/auth/register/resend", {
-    error: "A code was sent just now: wait 42 seconds before requesting another one.",
-    retryAfter: 42
-  });
+test("a resend once the day's registration mail is used up keeps the code sent before", async ({
+  page,
+  api
+}) => {
   await page.clock.install();
   await fillForm(page);
-  // The minute only starts once the code step is up.
-  await expect(page.getByRole("button", { name: /^Resend in/ })).toBeDisabled();
+  const code = page.getByLabel("Confirmation code");
+  await code.fill(REGISTRATION_CODE);
   await page.clock.runFor(60_000);
+  api.clockRunsFor(60_000);
+  // The first code went out; now the registration share of the day's mails is used up.
+  api.sentMailToday(200);
 
-  await page.getByRole("button", { name: "Resend code" }).click();
+  const resend = page.getByRole("button", { name: /^Resend/ });
+  await resend.click();
 
-  await expect(page.getByRole("alert")).toHaveText(
-    "A code was sent just now. You can send another once the countdown ends."
+  await expect(page.getByRole("alert")).toHaveText(MAIL_FAILED_ERROR);
+  await expect(page.getByRole("status")).toHaveText(
+    "Nothing new was sent to new@example.com. If a code reached it in the last 15 minutes, the latest one still works: enter it to register as newbie."
   );
-  await expect(page.getByRole("button", { name: /^Resend/ })).toHaveText(/^Resend in [1-4]\d sec$/);
-  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  // Nothing replaced the typed code, and the 503 names no wait, so nothing is held.
+  await expect(code).toHaveValue(REGISTRATION_CODE);
+  await expect(code).toBeFocused();
+  await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
+  await expect(resend).toHaveText("Resend code");
+  await expect(resend).toBeEnabled();
 
-  await page.clock.runFor(42_000);
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  await page.getByRole("button", { name: "Confirm code" }).click();
+  await expect(page.getByText("Registration successful!")).toBeVisible();
 });
 
 test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({
@@ -263,15 +270,22 @@ test("a code that already arrived can be entered after a reload", async ({ page 
 test("registering the same address again within the minute keeps the code sent", async ({
   page
 }) => {
+  await page.clock.install();
   await fillForm(page);
   await page.getByRole("button", { name: "Change address" }).click();
 
   await page.getByRole("button", { name: "Register", exact: true }).click();
 
-  await expect(page.getByRole("status")).toContainText(
-    "Less than a minute ago, a code went to new@example.com. It still works"
+  await expect(page.getByRole("status")).toHaveText(
+    "Less than a minute ago, a code went to new@example.com. It still works: enter it to register as newbie."
   );
   await expect(page.getByRole("button", { name: /^Resend in \d+ seconds?$/ })).toBeDisabled();
+  // Once the minute is over, it no longer says "less than a minute ago".
+  await page.clock.runFor(60_000);
+  await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
+  await expect(page.getByRole("status")).toContainText(
+    "Enter the code that was mailed to new@example.com."
+  );
   await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
 
@@ -409,6 +423,22 @@ test("an address that already has an account is only refused at the code", async
   const field = page.locator(".field", { has: email });
   await expect(field.getByRole("link", { name: "Log in" })).toBeVisible();
   await expect(field.getByRole("link", { name: "reset the password" })).toBeVisible();
+});
+
+test("an address only the login knows is refused at the code too", async ({ page }) => {
+  // MOCK_EMAIL's account: nobody is logged in to it and the admin list doesn't hold it.
+  await fillForm(page, MOCK_EMAIL);
+  await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+  const verified = page.waitForResponse((response) =>
+    response.url().includes("/auth/register/verify")
+  );
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  expect((await verified).status()).toBe(409);
+  await expect(page.getByLabel("E-mail")).toHaveAccessibleDescription(
+    "An account already uses this address. Log in instead (with GitHub if that's how you signed up), or reset the password."
+  );
+  await expect(page.getByText("Registration successful!")).toHaveCount(0);
 });
 
 /** Registers with an address that has an account, and lands back on the form with the message. */
@@ -549,6 +579,93 @@ test("a taken username is said while it's typed", async ({ page, api }) => {
 
   await username.fill("anna2");
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
+});
+
+test("the name of an account nobody is logged in to is taken too", async ({ page }) => {
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const checked = page.waitForResponse((response) =>
+    response.url().includes("/auth/username-available")
+  );
+
+  // MOCK_EMAIL's account, which only the login knows.
+  await username.fill("e2e");
+
+  expect(await (await checked).json()).toEqual({ available: false });
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
+});
+
+const USERNAME_INVALID =
+  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+
+test("a username with an invisible character or a tab is refused while it's typed, without asking the API", async ({
+  page,
+  api
+}) => {
+  await page.clock.install();
+  await page.goto("/register");
+  const username = page.getByLabel("Username");
+  const registerKey = page.getByRole("button", { name: "Register", exact: true });
+
+  for (const name of ["anna\u200bb", "anna\tb"]) {
+    await username.fill(name);
+    await page.clock.runFor(500);
+    await expect(username).toHaveAccessibleDescription(USERNAME_INVALID);
+    await expect(registerKey).toHaveAttribute("aria-disabled", "true");
+  }
+  expect(api.usernameChecks).toBe(0);
+
+  // Spaces, and whitespace at the ends, which is trimmed, are fine.
+  await username.fill("\tanna b ");
+  await page.clock.runFor(500);
+  await expect(username).not.toHaveAttribute("aria-invalid", "true");
+  await expect.poll(() => api.usernameChecks).toBe(1);
+});
+
+test("the double refuses a username with an invisible character like the API", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  const refused = { status: 400, body: { error: USERNAME_INVALID } };
+  const name = "anna\u200b";
+
+  const available = await page.evaluate(
+    async (url) => (await fetch(url)).status,
+    `${api.apiOrigin}/auth/username-available?username=${encodeURIComponent(name)}`
+  );
+  expect(available).toBe(400);
+  expect(
+    await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: name })
+  ).toEqual(refused);
+  expect(
+    await callApi(page, api, "POST", "/auth/register/verify", {
+      ...REGISTRATION,
+      username: name,
+      code: REGISTRATION_CODE
+    })
+  ).toEqual(refused);
+
+  // A username that isn't a string is a missing one, like the API's.
+  expect(
+    await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: 42 })
+  ).toEqual({
+    status: 400,
+    body: { error: "You must provide a username, E-mail address, and a password." }
+  });
+  expect(
+    await callApi(page, api, "POST", "/auth/register/verify", {
+      ...REGISTRATION,
+      username: 42,
+      code: REGISTRATION_CODE
+    })
+  ).toEqual({
+    status: 400,
+    body: {
+      error: "You must provide an E-mail address, the confirmation code, a username and a password."
+    }
+  });
 });
 
 // The double's mail failures, checked through the page's own calls: the form can't wait out the API's

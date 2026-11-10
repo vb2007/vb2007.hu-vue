@@ -1,4 +1,5 @@
-import { expect, getFromApi, MOCK_PASSWORD, test } from "./fixtures";
+import { browserFontSize } from "./browser";
+import { callApi, expect, getFromApi, MOCK_PASSWORD, MOCK_SUPERUSER_EMAIL, test } from "./fixtures";
 
 const GB = 1024 ** 3;
 
@@ -69,20 +70,33 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(mail.getByRole("listitem")).toHaveText([
     "200 Sign-up codes stop",
     "200 The API logs a warning",
+    "225 Password reset codes stop",
     "250 All mail stops"
   ]);
+  await expect(mail.getByText("188 until sign-up codes stop")).toBeVisible();
   await expect(mail.getByText(/since midnight UTC or its last restart/)).toBeVisible();
 
   // The sections still follow, under their own heading.
   await expect(page.getByRole("heading", { level: 2, name: "Sections" })).toBeVisible();
   await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
 
-  // Past the sign-up stop, then at the limit.
+  // Past the sign-up stop, past the password reset stop, then at the limit.
   api.sentMailToday(205);
   await page.reload();
   await expect(mail.getByText("205 of 250 sent")).toBeVisible();
+  await expect(mail.getByText("20 until password reset codes stop")).toBeVisible();
   await expect(mail.getByRole("status")).toHaveText(
-    /^Sign-up codes have stopped until midnight UTC or the API's next restart\. /
+    "Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out until today's count reaches 225, other mail to existing accounts until it reaches 250."
+  );
+
+  api.sentMailToday(230);
+  await page.reload();
+  await expect(mail.getByText("230 of 250 sent")).toBeVisible();
+  await expect(mail.getByRole("listitem").nth(2)).toHaveText(
+    "225 Password reset codes stop Reached"
+  );
+  await expect(mail.getByRole("status")).toHaveText(
+    "Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out until today's count reaches 250."
   );
 
   api.sentMailToday(250);
@@ -92,6 +106,102 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
     /^Today's mail limit is used up: no mail goes out until midnight UTC \(.+ your time\) or the API's next restart\.$/
   );
 });
+
+// A 320px screen (a 200px rail), the same with a 20px browser font (rings in rem grow, the screen
+// doesn't), just past the board's side-by-side breakpoint (840px, a 315px rail) and a desktop
+// (a 373px rail).
+for (const [width, fontPx] of [
+  [320, 16],
+  [320, 20],
+  [840, 16],
+  [1280, 16]
+]) {
+  test(`the mail line's rings stay apart at ${width}px with a ${fontPx}px font`, async ({
+    page,
+    api
+  }) => {
+    // Some thirty counts, each a refresh and a measurement.
+    test.slow();
+    api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+    api.hasUser("vb2007");
+    if (fontPx !== 16) await browserFontSize(page, fontPx);
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/admin");
+    const mail = page.getByRole("region", { name: "Mail today" });
+    await expect
+      .poll(() =>
+        page
+          .locator("html")
+          .evaluate((html) => html.ownerDocument.defaultView!.getComputedStyle(html).fontSize)
+      )
+      .toBe(`${fontPx}px`);
+    // Each ring's centre and width (its layout width, which the here ring's arrival doesn't scale).
+    const rings = () =>
+      mail.evaluate((root) => {
+        const all = (selector: string) =>
+          [...root.querySelectorAll(selector)].map((el) => {
+            const box = el.getBoundingClientRect();
+            return {
+              centre: box.left + box.width / 2,
+              width: parseFloat(root.ownerDocument.defaultView!.getComputedStyle(el).width),
+              mark: el.getAttribute("style") ?? ""
+            };
+          });
+        return {
+          from: all(".mail__end--from")[0],
+          to: all(".mail__end--to")[0],
+          here: all(".mail__here").at(0) ?? null,
+          marks: all(".mail__mark")
+        };
+      });
+    // The clear rail mailLine keeps between two rings: 0.125rem.
+    const margin = fontPx * 0.125;
+    // Sub-pixel layout rounding, never a whole pixel.
+    const epsilon = 0.05;
+
+    // Around each stop (200, 225, the limit at 250), and close to the terminus. Before the day's
+    // first mail and just after, the here ring sits on the departure ring: the line sets out from it.
+    const counts = [
+      0, 1, 184, 185, 190, 196, 200, 204, 205, 210, 212, 213, 215, 216, 217, 220, 225, 229, 230,
+      233, 236, 240, 244, 246, 247, 248, 249, 250
+    ];
+    const marksAt = new Map<number, string[]>();
+    for (const sent of counts) {
+      api.sentMailToday(sent);
+      await page.getByRole("button", { name: "Refresh" }).click();
+      await expect(mail.getByText(`${sent} of 250 sent`)).toBeVisible();
+      const { from, to, here, marks } = await rings();
+      type Ring = (typeof marks)[number];
+      const gap = (a: Ring, b: Ring) => Math.abs(a.centre - b.centre);
+      const touching = (a: Ring, b: Ring) => (a.width + b.width) / 2;
+      const at = `${sent} sent`;
+      marksAt.set(
+        sent,
+        marks.map((mark) => mark.mark)
+      );
+
+      for (const [i, mark] of marks.entries()) {
+        if (here)
+          expect(gap(mark, here), at).toBeGreaterThan(touching(mark, here) + margin - epsilon);
+        if (i > 0) {
+          expect(gap(mark, marks[i - 1]), at).toBeGreaterThan(
+            touching(mark, marks[i - 1]) + margin - epsilon
+          );
+        }
+        expect(gap(mark, from), at).toBeGreaterThan(touching(mark, from));
+        expect(gap(mark, to), at).toBeGreaterThan(touching(mark, to));
+      }
+      if (here) expect(gap(here, to), at).toBeGreaterThan(touching(here, to) - epsilon);
+    }
+
+    // Where there's room, the next stop's ring stays on the line as the count comes up to it.
+    if (width === 1280) {
+      expect(marksAt.get(210)).toContain("--mark: 0.9;");
+      expect(marksAt.get(240)).toEqual(["--mark: 0.8;", "--mark: 0.9;"]);
+      expect(marksAt.get(248)).toEqual(["--mark: 0.8;", "--mark: 0.9;"]);
+    }
+  });
+}
 
 test("the overview's totals and mail fail on their own, and Refresh tries again", async ({
   page,
@@ -570,6 +680,41 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
 });
 
+test("suspending an account voids its waiting reset code, reset links and e-mail change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { pendingEmail: "anna@new.example" });
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+
+  await page.goto(`/admin/users/${anna.id}`);
+  const changingTo = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("Changing to", { exact: true }) });
+  await expect(changingTo).toHaveCount(1);
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const token = api.mailsResetLink(anna.id, email);
+
+  const actions = page.locator(".actions");
+  await actions.getByRole("button", { name: "Suspend", exact: true }).click();
+  await page.getByRole("button", { name: "Suspend anna" }).click();
+  await expect(actions.getByRole("status")).toHaveText(
+    "User suspended successfully: their session was ended."
+  );
+
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
+  const link = { token, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).status).toBe(
+    400
+  );
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  await expect(changingTo).toHaveCount(0);
+});
+
 test("a suspended account is logged out and refused, but only after the right password", async ({
   page,
   api
@@ -637,6 +782,15 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
   await expect(
     page.getByText("The username's too long: it must be between 2 and 16 characters.")
   ).toBeVisible();
+  // So are invisible characters and whitespace other than spaces, which the API refuses too.
+  const invalid =
+    "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+  await field.fill("an\tna");
+  await expect(page.getByText(invalid)).toBeVisible();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  expect(
+    await callApi(page, api, "PATCH", `/admin/users/${anna.id}`, { username: "an\u200bna" })
+  ).toEqual({ status: 400, body: { error: invalid } });
 
   // Another account's name, in another case, is taken: the API says so under the field.
   await field.fill("MILO");
@@ -697,6 +851,40 @@ test("the superuser deletes a user with everything they own", async ({ page, api
   await page.reload();
   await expect(page.locator(".row__name")).toHaveText(["milo"]);
   await expect(page.getByText("anna's account is deleted")).toHaveCount(0);
+});
+
+test("an account's pastes and short links are its own whatever the case of the name they're filed under", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("Anna");
+  api.hasPaste("hello", "anna");
+  api.hasShortLink("annas", "https://example.com/", "ANNA");
+  const theirs = api.hasPaste("theirs", "milo");
+
+  await page.goto(`/admin/users/${anna.id}`);
+  const owns = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("Owns", { exact: true }) })
+    .locator("dd");
+  await expect(owns).toHaveText("1 paste · 1 short link · 0 uploads");
+
+  // Renamed, she keeps them.
+  await page.getByRole("button", { name: "Rename" }).click();
+  await page.getByLabel("New username").fill("Annabel");
+  await page.getByRole("button", { name: "Save username" }).click();
+  await expect(page.getByText("Renamed to Annabel.")).toBeVisible();
+  await page.reload();
+  await expect(owns).toHaveText("1 paste · 1 short link · 0 uploads");
+
+  // Deleted, they go with her, along with one filed under her new name in another case.
+  api.hasPaste("later", "ANNABEL");
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  expect(api.pastes).toEqual([theirs]);
+  expect(api.shortLinks.size).toBe(0);
 });
 
 test("the superuser's own account can't be deleted, and logging it out ends this session", async ({
@@ -1016,6 +1204,243 @@ test("the site-wide list renews its private links once they run out", async ({ p
   await expect(open).not.toHaveAttribute("href", first!);
   await expect(open).toHaveAttribute("href", /\?expires=\d+&sig=/);
   await expect(page.getByRole("link", { name: "anna's account" })).toBeVisible();
+});
+
+test("the site-wide list finds an upload's owner whatever the case of the name it's filed under", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("Anna", { count: 1 });
+  api.hasUpload("report.pdf", { owner: "anna" });
+  await page.goto("/admin/uploads");
+
+  await page.getByRole("button", { name: "report.pdf" }).click();
+  await expect(page.getByRole("link", { name: "Anna's account" })).toBeVisible();
+
+  // Her own uploads page lists it too, as the API's, which keys uploads by id, would.
+  await page.goto(`/admin/users/${anna.id}/uploads`);
+  await expect(page.getByRole("heading", { level: 1, name: "Anna's uploads" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "report.pdf" })).toBeVisible();
+});
+
+test("the admin's own address is the superuser's, whatever its row on the list says", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // A plain row at the admin's address: the API goes by the address.
+  const own = api.hasUser("vb2007");
+  await page.goto("/admin/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  const suspension = await callApi(page, api, "PATCH", `/admin/users/${own.id}/suspension`, {
+    suspended: true
+  });
+  expect.soft(suspension).toEqual({
+    status: 409,
+    body: { error: "The superuser's account can't be suspended." }
+  });
+  const deletion = await callApi(page, api, "DELETE", `/admin/users/${own.id}`, {});
+  expect.soft(deletion).toEqual({
+    status: 409,
+    body: { error: "The superuser's own account can't be deleted." }
+  });
+  expect(own.suspendedAt).toBeNull();
+  expect(api.users).toContain(own);
+});
+
+test("a row at the admin's address answers as the superuser's", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // A plain row at the admin's address: the API says whose it is by the address.
+  const own = api.hasUser("vb2007");
+
+  await page.goto(`/admin/users/${own.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+  await expect(page.getByText("The admin's own account can't be suspended.")).toBeVisible();
+  await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
+
+  const listed = await getFromApi(page, api, "/admin/users");
+  const rows = (listed.body as { users: { id: string; isSuperuser: boolean }[] }).users;
+  expect(rows.find((row) => row.id === own.id)?.isSuperuser).toBe(true);
+  const quota = await callApi(page, api, "PATCH", `/admin/users/${own.id}/upload-quota`, {
+    quotaBytes: null
+  });
+  expect(quota.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+  const renamed = await callApi(page, api, "PATCH", `/admin/users/${own.id}`, {
+    username: "vb2007"
+  });
+  expect(renamed.body).toMatchObject({ user: { id: own.id, isSuperuser: true } });
+});
+
+test("the superuser's address is the superuser, without being arranged as one", async ({
+  page,
+  api
+}) => {
+  // The API knows the superuser by SUPERUSER_EMAIL alone, for the session and for every check.
+  api.loggedInAs(MOCK_SUPERUSER_EMAIL, "admin");
+  const paste = api.hasPaste("anna's words", "anna", "plaintext");
+  api.hasShortLink("annas", "https://example.com/", "anna");
+  await page.goto("/");
+
+  const user = await getFromApi(page, api, "/user");
+  expect.soft(user.body).toMatchObject({ email: MOCK_SUPERUSER_EMAIL, isSuperuser: true });
+  expect.soft((await getFromApi(page, api, "/admin/users")).status).toBe(200);
+  const changed = await callApi(page, api, "PATCH", `/paste/${paste._id}`, {
+    language: "markdown"
+  });
+  expect.soft(changed.status).toBe(200);
+  expect.soft((await callApi(page, api, "DELETE", "/shortenUrl/annas", {})).status).toBe(200);
+
+  await page.goto("/admin");
+  await expect(page.getByRole("link", { name: /^Users/ })).toBeVisible();
+});
+
+test("there is one superuser address: arranging the admin's leaves the default an ordinary one", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // The default superuser's address, which the admin's arranged account now stands in for.
+  const other = api.hasUser("admin");
+  expect(other.email).toBe(MOCK_SUPERUSER_EMAIL);
+  await page.goto("/admin/users");
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
+
+  const listed = await getFromApi(page, api, "/admin/users");
+  const rows = (listed.body as { users: { id: string; isSuperuser: boolean }[] }).users;
+  expect.soft(rows.find((row) => row.id === other.id)?.isSuperuser).toBe(false);
+  const suspension = await callApi(page, api, "PATCH", `/admin/users/${other.id}/suspension`, {
+    suspended: true
+  });
+  expect(suspension.status).toBe(200);
+});
+
+test("a listed account's address is stored normalized", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("Anna");
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Anna" })).toBeVisible();
+
+  const shown = await getFromApi(page, api, `/admin/users/${anna.id}`);
+  expect.soft(shown.body).toMatchObject({ user: { email: "anna@example.com" } });
+  const fact = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("E-mail", { exact: true }) })
+    .locator("dd");
+  await expect(fact).toHaveText(/^anna@example\.com/);
+});
+
+test("an account's upload usage is the uploads it owns, unless arranged", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const own = api.hasUser("vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  // An arranged usage stands in for both numbers, whatever the account owns.
+  const milo = api.hasUser("milo", { count: 7 });
+  api.hasUpload("notes.txt", { fileSize: 2048 });
+  // Filed under another case of the name, it's still hers.
+  api.hasUpload("flyer.pdf", { fileSize: 3000, owner: "VB2007" });
+  api.hasUpload("theirs.pdf", { fileSize: 10_000, owner: "anna" });
+  api.hasUpload("milos.zip", { fileSize: 99_999, owner: "milo" });
+  await page.goto(`/admin/users/${own.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+
+  // The API's `calculateUploadUsage` derives both from the same uploads, for the page and the list.
+  const shown = await getFromApi(page, api, `/admin/users/${own.id}`);
+  expect.soft(shown.body).toMatchObject({
+    user: { uploads: { count: 2, usedBytes: 5048 }, counts: { uploads: 2 } }
+  });
+  const listed = await getFromApi(page, api, "/admin/users?sortBy=usedBytes&sortOrder=desc");
+  const rows = (
+    listed.body as { users: { id: string; uploads: { count: number; usedBytes: number } }[] }
+  ).users;
+  expect.soft(rows.map((row) => [row.id, row.uploads.count, row.uploads.usedBytes])).toEqual([
+    [anna.id, 1, 10_000],
+    [own.id, 2, 5048],
+    [milo.id, 7, 0]
+  ]);
+  const owns = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("Owns", { exact: true }) })
+    .locator("dd");
+  await expect(owns).toHaveText("0 pastes · 0 short links · 2 uploads");
+});
+
+test("arranging a second superuser address fails the test at once", ({ api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // The same address again is the same superuser.
+  api.hasUser("vb2007", { superuser: true });
+  expect(() => api.hasUser("anna", { superuser: true })).toThrow(
+    "The superuser is already arranged as vb2007@example.com"
+  );
+  expect(() => api.loggedInAs("anna@example.com", "anna", { superuser: true })).toThrow(
+    "The superuser is already arranged as vb2007@example.com"
+  );
+});
+
+test("a deleted account's confirmed address isn't carried to the next account there", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+  await page.goto(`/admin/users/${anna.id}`);
+  // A reset by code confirms the address.
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(200);
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+
+  // A new account at the same address starts unconfirmed.
+  api.hasUser("anna");
+  const login = await callApi(page, api, "POST", "/auth/login", { email, password: newPassword });
+  expect(login.status).toBe(200);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({
+    email,
+    emailVerified: false
+  });
+});
+
+test("a deleted account's waiting reset code and links go with it", async ({ page, api }) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  const email = "anna@example.com";
+  const newPassword = "a new password";
+  await page.goto(`/admin/users/${anna.id}`);
+  expect((await callApi(page, api, "POST", "/auth/password-reset", { email })).status).toBe(200);
+  const token = api.mailsResetLink(anna.id, email);
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+
+  const code = { email, code: api.passwordResetCode, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm", code)).status).toBe(400);
+  const link = { token, newPassword };
+  expect((await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).status).toBe(
+    400
+  );
+});
+
+test("the owner link of the admin's own upload leads to their row on the list", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  // The list's row at the admin's address, with an id of its own.
+  const own = api.hasUser("vb2007", { count: 1 });
+  api.hasUpload("mine.txt");
+  await page.goto("/admin/uploads");
+
+  await page.getByRole("button", { name: "mine.txt" }).click();
+  await page.getByRole("link", { name: "vb2007's account" }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${own.id}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
 });
 
 test("the superuser finds and removes a pending registration", async ({ page, api }) => {

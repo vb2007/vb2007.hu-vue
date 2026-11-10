@@ -3,6 +3,12 @@ import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
 import type { RateLimitName } from "@/types/api/admin";
 
 /**
+ * A notice around an address it shows in bold: the text before the address, the punctuation kept
+ * with it (it may be empty), and the rest.
+ */
+export type AddressNotice = readonly [before: string, punctuation: string, after: string];
+
+/**
  * The site's own texts about API calls, like the API's `Responses`: the API's `{ error }` message is
  * shown when it sends one, these otherwise. A `failure` text is followed by the status
  * (e.g. "Failed to load paste: 500"), see `errorMessageFrom`.
@@ -116,6 +122,68 @@ export class Messages {
     static usernameTakenMeanwhile(minutes: number): string {
       return `That username was taken in the meantime: pick another one. Your code works for up to ${minutes} minutes after it was sent.`;
     }
+    /*
+     * The register code step's notices, around the address the code went to: the text before it,
+     * the punctuation kept with it, and the rest, so the form can let a long address wrap. The
+     * waiting registration only holds the address and code: confirming it registers the username
+     * and password in the form (vb2007/vb2007.hu-api#295), so each names the username it creates.
+     * `minutes` is how long a register code works.
+     */
+    /** Register mailed a code. */
+    static registerCodeSent(name: string, digits: number, minutes: number): AddressNotice {
+      return [
+        `A ${digits}-digit code is on its way to`,
+        ".",
+        `Enter it to register as ${name}; it works for ${minutes} minutes.`
+      ];
+    }
+    /**
+     * After a resend. The API answers it the same whether or not a registration is waiting for the
+     * address, and whether it mailed a new code, sent nothing inside the minute or kept the code
+     * from before after a failed mail: in every case the latest code to reach it is the one that works.
+     */
+    static registerCodeResent(name: string): AddressNotice {
+      return [
+        "If a registration is waiting for",
+        ",",
+        `only the latest code to reach it works: enter it to register as ${name}.`
+      ];
+    }
+    /** "Enter it" for a code that already arrived: nothing was sent. */
+    static registerCodeEarlier(name: string, minutes: number): AddressNotice {
+      return [
+        "Enter the code that was mailed to",
+        ".",
+        `It works for ${minutes} minutes after sending, and registers you as ${name} with the password you entered.`
+      ];
+    }
+    /** Register refused with the cooldown: a code went to the address moments ago. */
+    static registerCodeRecent(name: string): AddressNotice {
+      return [
+        "Less than a minute ago, a code went to",
+        ".",
+        `It still works: enter it to register as ${name}.`
+      ];
+    }
+    /** Back from fixing the form with the code typed before, which still works. */
+    static registerCodeKept(name: string, minutes: number): AddressNotice {
+      return [
+        "Your code for",
+        "",
+        `works for up to ${minutes} minutes after it was sent: confirm it to register as ${name}.`
+      ];
+    }
+    /**
+     * After the resend's 503 for the day's mail budget. The API turns the resend away before it
+     * looks at the address, so whether a code waits, and whether it's still fresh, is unknown.
+     */
+    static registerCodeUnsent(name: string, minutes: number): AddressNotice {
+      return [
+        "Nothing new was sent to",
+        ".",
+        `If a code reached it in the last ${minutes} minutes, the latest one still works: enter it to register as ${name}.`
+      ];
+    }
     /**
      * The code step's 409 for an address that has an account: the waiting registration is gone.
      * GitHub login only reaches an account that uses GitHub; resetting the password works for
@@ -169,6 +237,9 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
+    /** The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319). */
+    static readonly usernameInvalidCharacters: string =
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
     /** The hint under every new-password field, and the admin's new username field. */
     static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
@@ -373,9 +444,16 @@ export class Messages {
     static mailLimitReached(resetsAt: string): string {
       return `Today's mail limit is used up: no mail goes out until midnight UTC (${resetsAt} your time) or the API's next restart.`;
     }
+    /**
+     * `passwordResetStopsAt` is the count from which password reset codes stop too, `dailyLimit`
+     * the number of mails a day, past which nothing is sent.
+     */
+    static registrationMailStopped(passwordResetStopsAt: number, dailyLimit: number): string {
+      return `Sign-up codes have stopped until midnight UTC or the API's next restart. Password reset codes still go out until today's count reaches ${passwordResetStopsAt.toLocaleString()}, other mail to existing accounts until it reaches ${dailyLimit.toLocaleString()}.`;
+    }
     /** `dailyLimit` is the number of mails a day, past which nothing is sent. */
-    static registrationMailStopped(dailyLimit: number): string {
-      return `Sign-up codes have stopped until midnight UTC or the API's next restart. Mail to existing accounts still goes out, up to ${dailyLimit.toLocaleString()}.`;
+    static passwordResetMailStopped(dailyLimit: number): string {
+      return `Sign-up and password reset codes have stopped until midnight UTC or the API's next restart. E-mail change codes and notices still go out until today's count reaches ${dailyLimit.toLocaleString()}.`;
     }
   };
 }

@@ -7,6 +7,7 @@ import {
   MOCK_PASSWORD,
   type MockApi,
   PASSWORD_RESET_SENT as SENT,
+  REGISTRATION_CODE,
   test
 } from "./fixtures";
 
@@ -272,6 +273,34 @@ test("resetting the password logs out a user who was logged in", async ({
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
   if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+});
+
+test("an account that logged in and out again still gets a code", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  // MOCK_EMAIL's account, which only the login knows.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByRole("link", { name: MOCK_EMAIL })).toHaveCount(0);
+
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page).toHaveURL("/login");
+  await expect(page.getByRole("main").getByRole("status")).toHaveText(
+    "Password reset successfully: log in with the new password."
+  );
 });
 
 test("resetting another account's password keeps the user logged in and says so", async ({
@@ -570,6 +599,68 @@ test.describe("the mailed link", () => {
     await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
   });
 
+  test("resetting with the link logs out a user who just registered", async ({
+    page,
+    api,
+    isMobile
+  }) => {
+    // A registered account gets its own id, which the link carries.
+    const registration = {
+      email: "new@example.com",
+      username: "newbie",
+      password: "correct horse"
+    };
+    await page.goto("/register");
+    expect((await callApi(page, api, "POST", "/auth/register", registration)).status).toBe(202);
+    const verified = await callApi(page, api, "POST", "/auth/register/verify", {
+      ...registration,
+      code: REGISTRATION_CODE
+    });
+    expect(verified.status).toBe(201);
+    const token = api.mailsResetLink();
+    await page.goto(`/reset-password#token=${token}`);
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "new@example.com" })).toBeVisible();
+    if (isMobile) await page.keyboard.press("Escape");
+
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "new@example.com" })).toHaveCount(0);
+  });
+
+  test("a link mailed while logged out logs out the login it belongs to", async ({
+    page,
+    api,
+    isMobile
+  }) => {
+    api.loggedInAs("me@example.com", "me");
+    // The admin list's row at the same address, which keeps an id of its own.
+    api.hasUser("me");
+    api.loggedOut();
+    const token = api.mailsResetLink();
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill("me@example.com");
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(page.getByRole("main")).toContainText("Login successful!");
+
+    await page.goto(`/reset-password#token=${token}`);
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "me@example.com" })).toBeVisible();
+    if (isMobile) await page.keyboard.press("Escape");
+    await page.getByLabel("New password").fill("a new password");
+    await page.getByRole("button", { name: "Reset password" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+    if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("link", { name: "me@example.com" })).toHaveCount(0);
+  });
+
   test("resetting another account's password with a link keeps the user logged in", async ({
     page,
     api
@@ -657,6 +748,19 @@ test("a reset code for an address without an account sends no mail, so a failure
   expect(nobody).toEqual(CODE_SENT);
   expect(await askForCode(page, api)).toEqual(CODE_SENT);
 
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("a suspended account gets no reset code, and the answer doesn't show it", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me", { suspendedAt: "2026-10-01T12:00:00.000Z" });
+  await page.goto("/reset-password");
+
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  expect(api.passwordResets).toEqual([ME]);
   expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
 });
 

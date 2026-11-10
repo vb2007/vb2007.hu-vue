@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises } from "@vue/test-utils";
 import { RouterLink } from "vue-router";
 import RegisterForm from "@/components/features/auth/RegisterForm.vue";
 import { AuthPaths } from "@/constants/auth";
-import { Messages } from "@/constants/messages";
+import { Messages, type AddressNotice } from "@/constants/messages";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import {
   checkUsername,
@@ -71,6 +71,19 @@ const FIELDS = {
 /** A field's own error, shown under it. */
 const errorUnder = (wrapper: Wrapper, selector: string) =>
   wrapper.find(selector).element.closest(".field")!.querySelector(".field__error")?.textContent;
+
+const {
+  registerCodeSent: SENT,
+  registerCodeResent: RESENT,
+  registerCodeEarlier: EARLIER,
+  registerCodeRecent: RECENT,
+  registerCodeKept: KEPT,
+  registerCodeUnsent: UNSENT
+} = Messages.Auth;
+
+/** The code step's notice as it reads, with the address it went to. */
+const noticeFor = ([before, punctuation, after]: AddressNotice, address = "me@example.com") =>
+  `${before} ${address}${punctuation} ${after}`;
 
 describe("RegisterForm", () => {
   beforeEach(() => {
@@ -175,9 +188,7 @@ describe("RegisterForm", () => {
 
     expect(wrapper.find("h1").text()).toBe("Register");
     const notice = wrapper.find('[role="status"]');
-    expect(notice.text()).toBe(
-      "A 6-digit code is on its way to me@example.com. Enter it to register as vb; it works for 15 minutes."
-    );
+    expect(notice.text()).toBe(noticeFor(SENT("vb", 6, 15)));
     const codeInput = wrapper.find("input");
     expect(codeInput.attributes()).toMatchObject({
       inputmode: "numeric",
@@ -301,6 +312,19 @@ describe("RegisterForm", () => {
     vi.useRealTimers();
   });
 
+  it("says a username has invalid characters as it's typed, and doesn't ask the API about it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const wrapper = await mountForm();
+    await fill(wrapper, { username: "anna\u200bb" });
+
+    vi.advanceTimersByTime(400);
+    await flushPromises();
+    expect(checkUsername).not.toHaveBeenCalled();
+    expect(errorUnder(wrapper, FIELDS.username)).toBe(Messages.Auth.usernameInvalidCharacters);
+    expect(submitButton(wrapper).attributes("aria-disabled")).toBe("true");
+    vi.useRealTimers();
+  });
+
   it("stops waiting to check the username when it's gone", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const wrapper = await mountForm();
@@ -417,12 +441,15 @@ describe("RegisterForm", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.find('[role="status"]').text()).toBe(
-      "Less than a minute ago, a code went to me@example.com. It still works: enter it to register as vb."
-    );
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(RECENT("vb")));
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend in 40 sec");
+
+    // "Less than a minute ago" stops being true once the countdown ends.
+    vi.advanceTimersByTime(40_000);
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(EARLIER("vb", 15)));
   });
 
   it("opens the code step for a code that already arrived, sending nothing", async () => {
@@ -433,9 +460,7 @@ describe("RegisterForm", () => {
     await flushPromises();
 
     expect(register).not.toHaveBeenCalled();
-    expect(wrapper.find('[role="status"]').text()).toBe(
-      "Enter the code that was mailed to me@example.com. It works for 15 minutes after sending, and registers you as vb with the password you entered."
-    );
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(EARLIER("vb", 15)));
     expect(document.activeElement).toBe(wrapper.find("input").element);
     expect(resendButton(wrapper).text()).toBe("Resend code");
   });
@@ -777,9 +802,7 @@ describe("RegisterForm", () => {
 
       // No new code is mailed: the step reopens with the one typed before, for the new name.
       expect(register).toHaveBeenCalledTimes(1);
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        "Your code for me@example.com works for up to 15 minutes after it was sent: confirm it to register as vb2."
-      );
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(KEPT("vb2", 15)));
       const codeInput = wrapper.find<HTMLInputElement>('input[autocomplete="one-time-code"]');
       expect(codeInput.element.value).toBe("123 456");
       expect(document.activeElement).toBe(codeInput.element);
@@ -804,7 +827,7 @@ describe("RegisterForm", () => {
       await enterCodeButton(wrapper).trigger("click");
       await flushPromises();
 
-      expect(wrapper.find('[role="status"]').text()).toContain("Your code for me@example.com");
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(KEPT("vb2", 15)));
       expect(wrapper.find("input").element.value).toBe("123 456");
     });
 
@@ -820,7 +843,9 @@ describe("RegisterForm", () => {
       await flushPromises();
 
       expect(register).toHaveBeenLastCalledWith("vb2", "you@example.com", "password");
-      expect(wrapper.find('[role="status"]').text()).toContain("on its way to you@example.com");
+      expect(wrapper.find('[role="status"]').text()).toBe(
+        noticeFor(SENT("vb2", 6, 15), "you@example.com")
+      );
       expect(wrapper.find("input").element.value).toBe("");
     });
 
@@ -844,17 +869,17 @@ describe("RegisterForm", () => {
       await wrapper.find("form").trigger("submit");
       await flushPromises();
       expect(register).toHaveBeenCalledTimes(2);
-      expect(wrapper.find('[role="status"]').text()).toContain("Your code for me@example.com");
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(KEPT("vb2", 15)));
       expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123 456");
     });
 
     it.each([
       ["a new code was mailed", 200, {}, "", ""],
       [
-        "the new code couldn't be mailed",
+        "the day's registration mail is used up, so the code stays",
         503,
         { error: "The e-mail couldn't be sent: please try again later." },
-        "",
+        "123 456",
         "The e-mail couldn't be sent: please try again later."
       ],
       [
@@ -920,7 +945,9 @@ describe("RegisterForm", () => {
       await flushPromises();
 
       // The notice still says "resent" from before, but this resend replaced nothing.
-      expect(wrapper.find('[role="status"]').text()).toContain("a new code is on its way");
+      expect(wrapper.find('[role="status"]').text()).toContain(
+        "only the latest code to reach it works"
+      );
       expect(wrapper.find("input").element.value).toBe("654321");
       expect(wrapper.find('[role="alert"]').exists()).toBe(true);
     });
@@ -942,6 +969,54 @@ describe("RegisterForm", () => {
       answer(jsonResponse(200, {}));
       await flushPromises();
       expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+    });
+
+    it("holds Change address while a new code is being sent", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      let answer!: (response: Response) => void;
+      fetchMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      const back = () =>
+        wrapper.findAll("button").find((button) => button.text() === "Change address")!;
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      // The answer starts the minute for this address: the step stays until it's in.
+      expect(back().attributes("disabled")).toBeDefined();
+      answer(jsonResponse(200, {}));
+      await flushPromises();
+      expect(back().attributes("disabled")).toBeUndefined();
+      expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
+    });
+
+    it("leaves focus alone for a resend's answer that lands after the step ended", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      let answer!: (response: Response) => void;
+      fetchMock
+        .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+        .mockResolvedValueOnce(jsonResponse(201, {}));
+      vi.mocked(fetchUserDetails).mockImplementationOnce(async () => {
+        isLoggedIn.value = true;
+        return true;
+      });
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      await resendButton(wrapper).trigger("click");
+      // Confirm code waits for the resend, but a submit that gets through anyway ends the step.
+      await confirm(wrapper);
+      expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
+
+      answer(jsonResponse(200, {}));
+      await flushPromises();
+
+      expect(wrapper.text()).toContain("Registration successful!");
+      expect(document.activeElement).toBe(wrapper.find('[role="status"]').element);
+      expect(sessionStorage.getItem("register-cooldown")).not.toContain('"id":""');
     });
 
     it("holds Resend and Change address while a code is being confirmed", async () => {
@@ -984,7 +1059,9 @@ describe("RegisterForm", () => {
       await wrapper.find(FIELDS.email).setValue("Me@example.com");
       await enterCodeButton(wrapper).trigger("click");
       await flushPromises();
-      expect(wrapper.find('[role="status"]').text()).toContain("Enter the code that was mailed to");
+      expect(wrapper.find('[role="status"]').text()).toBe(
+        noticeFor(EARLIER("vb", 15), "Me@example.com")
+      );
       expect(wrapper.find("input").element.value).toBe("");
       expect(register).toHaveBeenCalledTimes(1);
     });
@@ -1110,56 +1187,40 @@ describe("RegisterForm", () => {
         "https://api.test/auth/register/resend",
         expect.objectContaining({ body: JSON.stringify({ email: "me@example.com" }) })
       );
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        "If a registration is waiting for me@example.com, a new code is on its way, and the one before no longer works."
-      );
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(RESENT("vb")));
       expect(resendButton(wrapper).text()).toBe("Resend in 60 sec");
       // The key it was on is disabled now; the code is what comes next.
       expect(document.activeElement).toBe(wrapper.find("input").element);
     });
 
-    it("says to send a new code when the new one couldn't be mailed", async () => {
+    it("keeps the typed code when the day's registration mail is used up", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
       fetchMock.mockResolvedValueOnce(
         jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
       );
       const wrapper = await atCodeStep();
+      await wrapper.find("input").setValue("123456");
       vi.advanceTimersByTime(60_000);
       await flushPromises();
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "Nothing yet? Check your spam folder, or send a new code below."
+      );
 
       await resendButton(wrapper).trigger("click");
       await flushPromises();
 
-      expect(wrapper.find('[role="status"]').text()).toBe(
-        "A new code couldn't be mailed to me@example.com, and the one before no longer works. Send a new one below."
-      );
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(UNSENT("vb", 15)));
+      // Another resend would get the same 503 until the budget starts over, so the hint stops
+      // offering one; the key itself stays usable, since the API names no wait.
+      expect(wrapper.find(".field__hint").text()).toBe("Nothing yet? Check your spam folder.");
       expect(wrapper.find('[role="alert"]').text()).toBe(
         "The e-mail couldn't be sent: please try again later."
       );
+      // No new code replaced it, and the 503 names no wait: nothing is held.
+      expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123456");
       expect(resendButton(wrapper).text()).toBe("Resend code");
-    });
-
-    it("counts down from the API's retryAfter when resending is refused", async () => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
-      const error = "A code was sent just now: wait 42 seconds before requesting another one.";
-      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }));
-      const wrapper = await atCodeStep();
-      vi.advanceTimersByTime(60_000);
-      await flushPromises();
-
-      await resendButton(wrapper).trigger("click");
-      await flushPromises();
-
-      expect(wrapper.find('[role="alert"]').text()).toBe(
-        "A code was sent just now. You can send another once the countdown ends."
-      );
-      expect(resendButton(wrapper).text()).toBe("Resend in 42 sec");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
       expect(document.activeElement).toBe(wrapper.find("input").element);
-
-      vi.advanceTimersByTime(42_000);
-      await flushPromises();
-      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
-      expect(resendButton(wrapper).text()).toBe("Resend code");
     });
 
     it("shows the mail limit's message on a refused resend, counting its wait in minutes", async () => {

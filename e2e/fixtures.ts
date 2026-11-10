@@ -10,13 +10,16 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.hasUser(...)`, `api.limitsPasswordChecks()`, `api.limitsMailSends()`) before navigating; `hasUpload(..., { owner })` files an upload under another
  * username, for the admin's view of that user's uploads, which `api.holdsUserUploads()` keeps waiting until released and
  * `api.userUploadsFail()` answers with a bare 502, like a gateway; `GET /admin/uploads` lists every owner's, each with its owner
- * (the logged-in user or a `hasUser(...)` account by that name, else `null`, as for a deleted account), its `q` matching the owner's name too; `api.loggedInAs(..., { superuser: true })` opens the admin page;
+ * (the `hasUser(...)` account by that name, whatever its case, else a login's, else `null`, as for a deleted account), its `q` matching the owner's name too.
+ * The superuser is one address, like the API's `SUPERUSER_EMAIL`: `MOCK_SUPERUSER_EMAIL` until `api.loggedInAs(..., { superuser: true })`
+ * or `hasUser(..., { superuser: true })` makes it that account's instead (arranging a second address throws). Every check goes by the session's address (the admin
+ * routes, `GET /user`'s `isSuperuser`, deleting or changing anyone's paste or short link), so logging in there opens the admin page;
  * its overview counts `GET /admin/stats` from the mock's own admin list, pastes, short links and uploads (`api.statsFail()` makes it a bare 502),
  * and `GET /admin/mail-budget` reports `api.sentMailToday(n)` mails (0 by default) of the API's default 250; `{ githubLinked: true }` links GitHub as @e2e-octocat, and `{ password: false }` makes it a GitHub-only account.
  * A password account's password is `api.password`: `MOCK_PASSWORD` until it's set or changed.
  * `PATCH /user/email` checks it too. It doesn't change the address: it "mails" `MOCK_EMAIL_CODE` to the new one and
  * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
- * A `hasUser(...)` address and `MOCK_SUPERUSER_EMAIL` get the same 202 and code: only the confirm refuses them, with 409
+ * Another account's address (any the login knows, see below) and the superuser's get the same 202 and code: only the confirm refuses them, with 409
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
  * 15 minutes ago has expired.
@@ -47,10 +50,22 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
+ * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
+ * replaces `MOCK_EMAIL`'s account (arrange `hasUser(...)` for a second one). A `hasUser(...)` row at an address the login already knows takes
+ * that account over with its own id and name, and with `password: false`, `githubLogin` and `emailVerified` when given, in either
+ * order (the logged-in account aside, which stays as arranged), so `hasUser("me")` makes `MOCK_EMAIL`'s account "me", which a later `loggedInAs`
+ * leaves alone. `DELETE /user` takes the account out of the login and the admin list, with its pastes, short links and uploads, like the admin's delete;
+ * either delete also voids the account's waiting reset code, reset links and e-mail change, and forgets that a reset confirmed its address. The admin route refuses to suspend or delete the
+ * superuser's address with 409, whatever the row's own flag, and its rows answer `isSuperuser` from the address too. A row's address
+ * is its name's at example.com, normalized like the API's, and its upload usage (count and bytes) the uploads it owns, unless `usedBytes` or `count` stand in for both.
  * There is one `api.password`, shared by every account: registering, setting, changing or resetting a password changes it for all of them.
  * An unknown address, a wrong password and a GitHub-only account all get the API's one 403 (vb2007/vb2007.hu-api#320).
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
+ * Suspending it through the admin route, or lifting a suspension, voids its waiting reset code, reset links and e-mail change, like the API's `setUserSuspension`.
+ * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
+ * Where the API populates the owner (`GET /paste/:id`, `GET /pastes/:username`, `GET /shortenUrl/:code`), it's named by its account's
+ * current name, or the name it was filed under when no account has it.
  * Logging in, setting and changing the password set a fresh `__Host-VB-AUTH` cookie, like the API, and `api.replacesSession()` stands
  * in for a login elsewhere, which keeps the account logged in on a cookie the browser doesn't have. A request that carries an older one
  * gets the logged-out 403 on every route the API guards with `isAuthenticated`; the public ones (`PUBLIC_ROUTES`) answer it as a guest's.
@@ -58,17 +73,20 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.locksLogins(retryAfter)` answers `POST /auth/login` with the API's 429 after too many failed attempts (vb2007/vb2007.hu-api#204),
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
  * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
- * `GET /auth/username-available` counts `hasUser(...)` names and the logged-in user's as taken, whatever their case (vb2007/vb2007.hu-api#233).
- * `api.mailsResetLink()` returns a reset link's token for the `loggedInAs` account, or `MOCK_EMAIL`'s when logged out (both `MOCK_USER_ID`), or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
+ * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
+ * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
+ * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
+ * `GET /auth/username-available`, registering, confirming the code and `PATCH /admin/users/:id` answer 400 first for a name the API's rule refuses (`usernameRefusal`).
+ * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s login's when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
- * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an address of a `hasUser(...)` account gets the same 202, and a taken name a 409.
+ * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
  * Each address waits for its own code. Registering again within a minute of the last code gets the API's 429, but a resend
  * (`POST /auth/register/resend`) answers 200 whatever the address, even without a code or inside the minute, and then sends
  * nothing (the API answers before it looks); without an address it answers 400 first.
- * A password reset only mails `api.passwordResetCode` to an account's address: the logged-in user's or a `hasUser(...)` one.
+ * A password reset only mails `api.passwordResetCode` to an account's address, any the login knows, and not to a suspended `hasUser(...)` one.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
  * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
@@ -82,7 +100,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
  * cdn answers a private file without a link that's still live with a 404. Public links stay plain.
  * The admin can rename a `hasUser(...)` account (what it owns goes along), log it out (`api.loggedOutUsers` lists the ids; the
- * admin's own row, `superuser: true`, ends this session too) and delete it with what it owns (the admin's own row answers 409).
+ * admin's own row, at the logged-in address, ends this session too) and delete it with what it owns (the admin's own row answers 409).
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
  * never reach a real server. Add a case to `respond` when the app starts calling a new endpoint.
@@ -118,6 +136,14 @@ export interface MockAdminUser {
   /** When the superuser suspended them, or `null` (vb2007/vb2007.hu-api#273). */
   suspendedAt: string | null;
   uploads: { usedBytes: number; count: number; quotaBytes: number; hasCustomQuota: boolean };
+}
+
+/**
+ * A `hasUser(...)` account as the mock keeps it: what the admin routes answer, less what the API derives on each
+ * answer (`isSuperuser` from the address, the upload usage from the uploads), which `adminRow` adds.
+ */
+export interface MockListedUser extends Omit<MockAdminUser, "isSuperuser" | "uploads"> {
+  uploads: Pick<MockAdminUser["uploads"], "quotaBytes" | "hasCustomQuota">;
 }
 
 /** `newSession` sets a fresh `__Host-VB-AUTH` cookie and retires the previous one. */
@@ -275,7 +301,10 @@ export const MOCK_EMAIL = "me@example.com";
 export const MOCK_USER_ID = "e2e0e2e0e2e0e2e0e2e0e2e0";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
-/** The API's `SUPERUSER_EMAIL`, which `POST /user/email/confirm` keeps from other accounts. */
+/**
+ * The API's `SUPERUSER_EMAIL` until an account is arranged with `superuser: true`, whose address then takes its place
+ * (there's only ever one: arranging a second throws). `POST /user/email/confirm` keeps it from other accounts.
+ */
 export const MOCK_SUPERUSER_EMAIL = "admin@example.com";
 const DEFAULT_QUOTA = 10 * 1024 * MB;
 /**
@@ -309,6 +338,11 @@ export const DISPOSABLE_DOMAINS = ["mailinator.com"];
 export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+/**
+ * Whether two usernames name the same account, whatever their case, like the API's collation. Pastes, short links and
+ * uploads are kept by their owner's name here (the API keys them by id), so this is how they find their account.
+ */
+const sameUsername = (one: string, other: string) => one.toLowerCase() === other.toLowerCase();
 
 /** The API's rate limiters in the order `DELETE /admin/rate-limits` names them, with what keys each. */
 const RATE_LIMITERS = {
@@ -337,6 +371,37 @@ const domainError = (email: string) => {
   }
   if (isOn(UNDELIVERABLE_DOMAINS)) {
     return "This e-mail address's domain can't receive e-mail: check it for typos.";
+  }
+};
+
+/** What the API asks of a required body field: a string, not an empty one. */
+const isFilledString = (value: unknown): value is string => typeof value === "string" && !!value;
+
+const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
+
+/**
+ * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
+ * the trimmed name: over 16 UTF-16 units, then invisible, control or collation-ignored characters
+ * and whitespace other than spaces (U+FE0E/U+FE0F pass after an emoji), then fewer than 2
+ * characters other than combining marks.
+ */
+const usernameRefusal = (username: string): MockResponse | undefined => {
+  const refuse = (error: string) => ({ status: 400, body: { error } });
+  const name = username.trim();
+  if (name.length > 16) {
+    return refuse("The username's too long: it must be between 2 and 16 characters.");
+  }
+  const checked = name.replace(/(?<=\p{Emoji})[\ufe0e\ufe0f]/gu, "");
+  if (
+    /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u.test(checked) ||
+    [...checked].some((character) => USERNAME_COLLATOR.compare(character, "") === 0)
+  ) {
+    return refuse(
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces."
+    );
+  }
+  if ([...name.replace(/\p{M}/gu, "")].length < 2) {
+    return refuse("The username's too short: it must be between 2 and 16 characters.");
   }
 };
 
@@ -429,7 +494,6 @@ interface MockUser {
   _id: string;
   email: string;
   username: string;
-  isSuperuser: boolean;
   hasPassword: boolean;
   emailVerified: boolean;
   githubId?: string;
@@ -438,13 +502,16 @@ interface MockUser {
 
 export class MockApi {
   private user: MockUser | null = null;
+  /** The one superuser address, like the API's `SUPERUSER_EMAIL`: `MOCK_SUPERUSER_EMAIL` until an account is arranged as the superuser. */
+  private superuserEmail = MOCK_SUPERUSER_EMAIL;
+  /** Whether a test arranged the superuser (`superuser: true`), which then can't move to another address. */
+  private superuserArranged = false;
   /** The accounts `POST /auth/login` knows; logging in makes one of them `user` again. */
   private readonly accounts: MockUser[] = [
     {
       _id: MOCK_USER_ID,
       email: MOCK_EMAIL,
       username: "e2e",
-      isSuperuser: false,
       hasPassword: true,
       emailVerified: false
     }
@@ -459,6 +526,8 @@ export class MockApi {
   /** In-memory paste store, oldest first. */
   readonly pastes: MockPaste[] = [];
   private nextPasteId = 1;
+  /** How many accounts `POST /auth/register/verify` created, for their ids. */
+  private registeredCount = 0;
   /** In-memory upload store, oldest first. */
   readonly uploads: MockUpload[] = [];
   /** Upload id -> the username it belongs to. */
@@ -466,7 +535,12 @@ export class MockApi {
   private nextUploadId = 1;
   private quotaBytes = DEFAULT_QUOTA;
   /** Accounts the admin page lists, oldest first. */
-  readonly users: MockAdminUser[] = [];
+  readonly users: MockListedUser[] = [];
+  /** The upload usage `hasUser(..., { usedBytes, count })` arranged in place of the uploads an account owns. */
+  private readonly arrangedUploadUsage = new WeakMap<
+    MockListedUser,
+    { usedBytes: number; count: number }
+  >();
   /** The ids `POST /admin/users/:id/logout` was asked for. */
   readonly loggedOutUsers: string[] = [];
   /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
@@ -484,7 +558,7 @@ export class MockApi {
   private readonly pendingRegistrations = new Map<string, MockCode>();
   /** Password reset codes waiting, by account address. */
   private readonly resetCodes = new Map<string, MockCode>();
-  /** Addresses a password reset confirmed, verified at their next login. */
+  /** Addresses a password reset confirmed, verified at their next login; deleting the account drops its address. */
   private readonly verifiedAddresses = new Set<string>();
   private mailFails = false;
   /** How far `clockRunsFor` moved the mock's clock past real time. */
@@ -540,11 +614,12 @@ export class MockApi {
     username = "e2e",
     { superuser = false, githubLinked = false, password = true, emailVerified = false } = {}
   ) {
+    // Before anything changes, so a second superuser address leaves the arrangement as it was.
+    if (superuser) this.arrangesSuperuser(normalizeEmail(email));
     this.user = {
       _id: MOCK_USER_ID,
-      email,
+      email: normalizeEmail(email),
       username,
-      isSuperuser: superuser,
       hasPassword: password,
       emailVerified
     };
@@ -555,27 +630,54 @@ export class MockApi {
     this.knowsAccount(this.user);
   }
 
-  /** Lets `POST /auth/login` find `user`, replacing an account with the same address. */
+  /**
+   * Lets `POST /auth/login` find `user`, replacing the account with the same id or address: the API stores one
+   * account per id, so `loggedInAs` with another address moves `MOCK_EMAIL`'s account (the same `MOCK_USER_ID`) to it.
+   */
   private knowsAccount(user: MockUser) {
-    const index = this.accounts.findIndex(
-      (account) => normalizeEmail(account.email) === normalizeEmail(user.email)
-    );
-    if (index === -1) this.accounts.push(user);
-    else this.accounts[index] = user;
+    this.forgetsAccount(user);
+    this.accounts.push(user);
+  }
+
+  /**
+   * Makes `email` the superuser's address, like setting the API's `SUPERUSER_EMAIL`. There's only one, so a test that
+   * arranges another address as the superuser too fails at once rather than quietly moving it.
+   */
+  private arrangesSuperuser(email: string) {
+    if (this.superuserArranged && email !== this.superuserEmail) {
+      throw new Error(
+        `The superuser is already arranged as ${this.superuserEmail}: the API has one SUPERUSER_EMAIL, so ${email} can't be the superuser too.`
+      );
+    }
+    this.superuserEmail = email;
+    this.superuserArranged = true;
+  }
+
+  /** Takes the account with `user`'s id or address out of `accounts`. */
+  private forgetsAccount(user: MockUser) {
+    const same = (account: MockUser) =>
+      account._id === user._id || normalizeEmail(account.email) === normalizeEmail(user.email);
+    for (let index = this.accounts.length - 1; index >= 0; index--) {
+      if (same(this.accounts[index])) this.accounts.splice(index, 1);
+    }
   }
 
   /**
    * Adds an account to the admin list; `quotaBytes` makes it a custom quota, `suspendedAt` suspends
    * it, `githubLogin` links GitHub and `password: false` makes it a GitHub-only account;
    * `emailVerified` confirms its address and `pendingEmail` leaves a change waiting for its code.
-   * `superuser` marks the admin's own row, which the API won't suspend. It also gets the id
-   * `loggedInAs` gives, so logging it out ends this session; the API won't delete it.
+   * Its address is `<username>@example.com`, normalized like the API's. Its upload usage (count and bytes used) is
+   * the uploads it owns, or `usedBytes` and `count` in their place (e.g. for a list that shows many), which then stand
+   * in for both together, the one left out as 0. The admin list and its page both answer it.
+   * `superuser` makes its address the superuser's (see `isSuperuserEmail`), as the admin's own row, which the API
+   * won't suspend or delete. A row at the logged-in account's address is that account, with its id, so logging it
+   * out ends this session.
    */
   hasUser(
     username: string,
     {
-      usedBytes = 0,
-      count = 0,
+      usedBytes,
+      count,
       quotaBytes,
       suspendedAt = null,
       githubLogin,
@@ -595,37 +697,70 @@ export class MockApi {
       pendingEmail?: string;
     } = {}
   ) {
-    const user: MockAdminUser = {
-      id: superuser ? MOCK_USER_ID : `${this.users.length + 1}`.padStart(24, "b"),
+    const email = normalizeEmail(`${username}@example.com`);
+    if (superuser) this.arrangesSuperuser(email);
+    // What the admin routes answer about the superuser and the uploads is derived (see `adminRow`).
+    const user: MockListedUser = {
+      id: this.user?.email === email ? this.user._id : `${this.users.length + 1}`.padStart(24, "b"),
       username,
-      email: `${username}@example.com`,
+      email,
       // Each account is a day newer than the last, so sorting by date is deterministic.
       createdAt: new Date(Date.UTC(2026, 0, 1 + this.users.length)).toISOString(),
-      isSuperuser: superuser,
       suspendedAt,
       uploads: {
-        usedBytes,
-        count,
         quotaBytes: quotaBytes ?? DEFAULT_QUOTA,
         hasCustomQuota: quotaBytes !== undefined
       }
     };
     this.users.push(user);
+    if (usedBytes !== undefined || count !== undefined) {
+      this.arrangedUploadUsage.set(user, { usedBytes: usedBytes ?? 0, count: count ?? 0 });
+    }
     if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
-    // A password reset can reach this account, so logging in reaches it too; an arranged one stays.
+    this.knowsListedAccount(user, { password, emailVerified, githubLogin });
+    return user;
+  }
+
+  /**
+   * Lets `POST /auth/login` find the `hasUser(...)` row `user`, as one account with one id and one name, whatever was
+   * arranged first. The logged-in account stays as `loggedInAs` arranged it. A login already at the address takes the
+   * row's id and name (e.g. `MOCK_EMAIL`'s, which then leaves `MOCK_USER_ID`), and how the row logs in where it was
+   * arranged (no password, GitHub, a confirmed address); another login with the row's id goes. Whether it's the
+   * superuser's comes from the address they share (see `isSuperuserEmail`).
+   */
+  private knowsListedAccount(
+    user: MockListedUser,
+    {
+      password,
+      emailVerified,
+      githubLogin
+    }: { password: boolean; emailVerified: boolean; githubLogin?: string }
+  ) {
     const email = normalizeEmail(user.email);
-    if (!this.accounts.some((account) => normalizeEmail(account.email) === email)) {
+    const atAddress = this.accounts.find((account) => normalizeEmail(account.email) === email);
+    const withId = this.accounts.find((account) => account._id === user.id);
+    if (this.user && (atAddress === this.user || withId === this.user)) return;
+    for (let index = this.accounts.length - 1; index >= 0; index--) {
+      const account = this.accounts[index];
+      if (account._id === user.id && account !== atAddress) this.accounts.splice(index, 1);
+    }
+    if (atAddress) {
+      // One account: what the row was arranged with is on the login too. Defaults leave what the login had.
+      atAddress._id = user.id;
+      atAddress.username = user.username;
+      if (!password) atAddress.hasPassword = false;
+      if (emailVerified) atAddress.emailVerified = true;
+      if (githubLogin) Object.assign(atAddress, { githubId: `gh-${user.username}`, githubLogin });
+    } else {
       this.accounts.push({
         _id: user.id,
         email: user.email,
-        username,
-        isSuperuser: false,
+        username: user.username,
         hasPassword: password,
         emailVerified,
-        ...(githubLogin && { githubId: `gh-${username}`, githubLogin })
+        ...(githubLogin && { githubId: `gh-${user.username}`, githubLogin })
       });
     }
-    return user;
   }
 
   /** Lists a sign-up waiting for its code on the admin's System page; a negative time has expired. */
@@ -697,17 +832,30 @@ export class MockApi {
       cooldownLeftOnSend
     }: { sentSecondsAgo?: number; cooldownLeftOnSend?: number } = {}
   ) {
-    this.emailChange = { email, ...this.newCode(15, this.now() - sentSecondsAgo * 1000) };
+    // Normalized, like the address `PATCH /user/email` stores.
+    this.emailChange = {
+      email: normalizeEmail(email),
+      ...this.newCode(15, this.now() - sentSecondsAgo * 1000)
+    };
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
   /**
    * "Mails" a reset link for the account `userId` at `email` and returns its token, which
    * `POST /auth/password-reset/confirm-link` takes once, like the API (vb2007/vb2007.hu-api#256).
+   * Without `userId`, it's the id of the account at `email` (the logged-in one's by default), else `MOCK_USER_ID`: the
+   * login's id first, which its session carries, then the admin list's.
    */
-  mailsResetLink(userId = MOCK_USER_ID, email = this.user?.email ?? MOCK_EMAIL) {
-    const token = `${userId}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
-    this.resetLinks.set(token, { userId, email });
+  mailsResetLink(userId?: string, email = this.user?.email ?? MOCK_EMAIL) {
+    const atAddress = (account: { email: string }) =>
+      normalizeEmail(account.email) === normalizeEmail(email);
+    const id =
+      userId ??
+      [...(this.user ? [this.user] : []), ...this.accounts].find(atAddress)?._id ??
+      this.storedAccounts().find(atAddress)?.id ??
+      MOCK_USER_ID;
+    const token = `${id}.${`${++this.resetLinkCount}`.padStart(43, "e2e_-")}`;
+    this.resetLinks.set(token, { userId: id, email });
     return token;
   }
 
@@ -806,11 +954,21 @@ export class MockApi {
     }
   }
 
-  /** Whether an account uses the address: the logged-in user's or a `hasUser(...)` one. */
+  /**
+   * Every account the mock holds, like the API's users: the logged-in one, those `POST /auth/login` knows
+   * (whether or not anyone is logged in to them) and the admin list's.
+   */
+  private storedAccounts(): { id: string; email: string; username: string }[] {
+    return [...(this.user ? [this.user] : []), ...this.users, ...this.accounts].map((account) => ({
+      id: "id" in account ? account.id : account._id,
+      email: account.email,
+      username: account.username
+    }));
+  }
+
+  /** Whether an account uses the (normalized) address, like the API's `getUserByEmail`. */
   private hasAccount(email: string) {
-    return [this.user?.email, ...this.users.map((user) => user.email)].some(
-      (address) => address !== undefined && normalizeEmail(address) === email
-    );
+    return this.storedAccounts().some((account) => normalizeEmail(account.email) === email);
   }
 
   /** Answers password checks with 429, like the API after too many failed attempts. */
@@ -997,13 +1155,16 @@ export class MockApi {
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
-      // Shaped like the real API, which also populates the sharer's account.
+      // Shaped like the real API, which also populates the sharer's account, with its current name.
       return link
         ? {
             status: 200,
             body: {
               originalUrl: link.target,
-              addedBy: { _id: "u1", username: link.addedBy, createdAt: "2026-07-31T17:16:07.516Z" },
+              addedBy: {
+                ...this.populatedOwner(link.addedBy),
+                createdAt: "2026-07-31T17:16:07.516Z"
+              },
               addedOn: link.addedOn
             }
           }
@@ -1089,6 +1250,8 @@ export class MockApi {
               status: 200,
               body: {
                 ...this.user,
+                // Like the API's `getUser`, from the address.
+                isSuperuser: this.isSuperuserEmail(this.user.email),
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
               }
             }
@@ -1163,10 +1326,9 @@ export class MockApi {
       case "GET /auth/username-available": {
         this.usernameChecks++;
         if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
-        const name = (query.get("username") ?? "").toLowerCase();
-        const taken = [...this.users.map((user) => user.username), this.user?.username].some(
-          (username) => username?.toLowerCase() === name
-        );
+        const refused = usernameRefusal(query.get("username") ?? "");
+        if (refused) return refused;
+        const taken = this.isUsernameTaken(query.get("username") ?? "");
         return { status: 200, body: { available: !taken } };
       }
       case "POST /auth/register":
@@ -1187,9 +1349,13 @@ export class MockApi {
           return { status: 400, body: { error: "You must provide an E-mail address." } };
         }
         this.passwordResets.push(body.email);
-        // Like the API, only an account's address gets a code, at most one a minute.
+        // Like the API, only an account's address gets a code, at most one a minute, and not a suspended account's.
         const email = normalizeEmail(body.email);
-        if (this.hasAccount(email) && !this.resendTooSoon(this.resetCodes.get(email)?.sentAt)) {
+        if (
+          this.hasAccount(email) &&
+          !this.isSuspended(email) &&
+          !this.resendTooSoon(this.resetCodes.get(email)?.sentAt)
+        ) {
           // A code that couldn't be mailed, or that the day's budget refused, is not kept: the answer stays 200 and the code sent before still works.
           if (this.sendsMail("passwordReset", email)) this.resetCodes.set(email, this.newCode(30));
         }
@@ -1318,6 +1484,20 @@ export class MockApi {
    * has an account gets the same answers, so registering doesn't reveal it.
    */
   private register(body: { email?: string; username?: string; password?: string } | null) {
+    // Like the API, three non-empty strings first: JSON can send anything.
+    const username = body?.username;
+    if (
+      !isFilledString(body?.email) ||
+      !isFilledString(username) ||
+      !isFilledString(body?.password)
+    ) {
+      return {
+        status: 400,
+        body: { error: "You must provide a username, E-mail address, and a password." }
+      };
+    }
+    const refused = usernameRefusal(username);
+    if (refused) return refused;
     if (this.isUsernameTaken(body?.username)) {
       return { status: 409, body: { error: "This username is already taken." } };
     }
@@ -1400,7 +1580,7 @@ export class MockApi {
         body: { error: "The e-mail address is invalid: must match name@provider.com format." }
       };
     }
-    if (this.user.isSuperuser) {
+    if (this.isSuperuserEmail(this.user.email)) {
       return {
         status: 403,
         body: {
@@ -1444,12 +1624,13 @@ export class MockApi {
     };
   }
 
-  /** Whether an account has `username`, whatever its case, like `GET /auth/username-available`. */
+  /**
+   * Whether an account has `username`, trimmed and whatever its case, like the API's `isUsernameTaken`
+   * (its collation ignores case). The logged-in user's own name counts too.
+   */
   private isUsernameTaken(username?: string) {
     const name = username?.trim().toLowerCase();
-    return [...this.users.map((user) => user.username), this.user?.username].some(
-      (taken) => taken?.toLowerCase() === name
-    );
+    return this.storedAccounts().some((account) => account.username.toLowerCase() === name);
   }
 
   /**
@@ -1460,7 +1641,13 @@ export class MockApi {
     body: { email?: string; code?: string; username?: string; password?: string } | null
   ): MockResponse {
     const { code, username, password } = body ?? {};
-    if (!body?.email || !code || !username || !password) {
+    // Like the API, four non-empty strings: JSON can send anything.
+    if (
+      !isFilledString(body?.email) ||
+      !isFilledString(code) ||
+      !isFilledString(username) ||
+      !isFilledString(password)
+    ) {
       return {
         status: 400,
         body: {
@@ -1469,14 +1656,8 @@ export class MockApi {
         }
       };
     }
-    const nameLength = username.trim().length;
-    if (nameLength < 2 || nameLength > 16) {
-      const which = nameLength < 2 ? "short" : "long";
-      return {
-        status: 400,
-        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
-      };
-    }
+    const refused = usernameRefusal(username);
+    if (refused) return refused;
     if (password.length < 8 || password.length > 128) {
       const which = password.length < 8 ? "short" : "long";
       return {
@@ -1503,10 +1684,10 @@ export class MockApi {
       return { status: 409, body: { error: "This username is already taken." } };
     }
     this.user = {
-      _id: MOCK_USER_ID,
+      // A new account gets a new id, so registering leaves `MOCK_EMAIL`'s account (`MOCK_USER_ID`) alone.
+      _id: `${++this.registeredCount}`.padStart(24, "d"),
       email,
       username: username.trim(),
-      isSuperuser: false,
       hasPassword: true,
       // Entering the mailed code confirms the address.
       emailVerified: true
@@ -1541,10 +1722,10 @@ export class MockApi {
     }
     const { email } = this.emailChange;
     this.emailChange = null;
-    if (email === MOCK_SUPERUSER_EMAIL) {
+    if (this.isSuperuserEmail(email)) {
       return { status: 403, body: { error: "This e-mail address is reserved for the superuser." } };
     }
-    if (this.users.some((user) => user.email === email)) {
+    if (this.hasAccount(email)) {
       return {
         status: 409,
         body: { error: "An account with this E-mail address already exists." }
@@ -1669,8 +1850,23 @@ export class MockApi {
         };
       }
     }
-    const index = this.accounts.indexOf(this.user);
-    if (index !== -1) this.accounts.splice(index, 1);
+    // The API deletes the account by its id: neither the login nor the admin list knows it any more, and what it
+    // owned goes too (`removeUserContent`), as does what waited on its document: the reset code and links, and the
+    // e-mail change, which is the logged-in account's here.
+    const deleted = this.user;
+    this.forgetsAccount(deleted);
+    this.removesContentOf(deleted.username);
+    const rowIds: string[] = [];
+    for (let index = this.users.length - 1; index >= 0; index--) {
+      const row = this.users[index];
+      if (row.id === deleted._id || normalizeEmail(row.email) === normalizeEmail(deleted.email)) {
+        rowIds.push(row.id);
+        this.users.splice(index, 1);
+      }
+    }
+    this.voidsWaiting([deleted._id, ...rowIds], deleted.email);
+    this.emailChange = null;
+    this.verifiedAddresses.delete(normalizeEmail(deleted.email));
     this.user = null;
     this.githubConfirmed = false;
     return { status: 200, body: { message: "User deleted successfully." } };
@@ -1772,14 +1968,17 @@ export class MockApi {
     }
     const paste = this.pastes[index];
     if (method === "GET") {
-      // Populated like the real API does since vb2007/vb2007.hu-api#124.
+      // Populated like the real API does since vb2007/vb2007.hu-api#124, with the owner's current name.
       return {
         status: 200,
-        body: { paste: { ...paste, addedBy: { _id: "u1", username: paste.addedBy } } }
+        body: { paste: { ...paste, addedBy: this.populatedOwner(paste.addedBy) } }
       };
     }
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
-    if (paste.addedBy !== this.user!.username && !this.user!.isSuperuser) {
+    if (
+      !sameUsername(paste.addedBy, this.user!.username) &&
+      !this.isSuperuserEmail(this.user!.email)
+    ) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
     if (method === "PATCH") {
@@ -1887,12 +2086,12 @@ export class MockApi {
     };
   }
 
-  /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs. */
+  /** What the API's `isAuthenticated` and `isSuperuser` answer before any admin route runs: the latter by the session's address. */
   private refuseNonSuperuser(): MockResponse | undefined {
     if (!this.user) {
       return NOT_LOGGED_IN;
     }
-    if (!this.user.isSuperuser) {
+    if (!this.isSuperuserEmail(this.user.email)) {
       return { status: 403, body: { error: "You do not have permission to perform this action." } };
     }
   }
@@ -1915,12 +2114,12 @@ export class MockApi {
     const account = this.accounts.find(
       (item) => normalizeEmail(item.email) === normalizeEmail(user.email)
     );
-    const owns = (addedBy: string) => addedBy === user.username;
+    const owns = (addedBy: string) => sameUsername(addedBy, user.username);
     return {
       status: 200,
       body: {
         user: {
-          ...user,
+          ...this.adminRow(user),
           hasPassword: account?.hasPassword ?? true,
           emailVerified: account?.emailVerified ?? false,
           githubLogin: account?.githubLogin ?? null,
@@ -1928,7 +2127,7 @@ export class MockApi {
           counts: {
             pastes: this.pastes.filter((paste) => owns(paste.addedBy)).length,
             shortUrls: [...this.shortLinks.values()].filter((link) => owns(link.addedBy)).length,
-            uploads: user.uploads.count
+            uploads: this.uploadUsage(user).count
           }
         }
       }
@@ -2002,12 +2201,32 @@ export class MockApi {
     return this.refuseNonSuperuser() ?? this.listUploads(query, null);
   }
 
-  /** Whose an upload is, as the site-wide listing names them: `null` once no account has the name. */
+  /**
+   * Whose a paste, short link or upload filed under `name` is, as the admin's lists name them: the account with the
+   * name, whatever its case, like the API's lookup of the owner's id (it's kept by name here). The admin list's row
+   * comes first, as `/admin/users/:id` finds it, then a login's; `null` once no account has it.
+   */
+  private ownerNamed(name: string) {
+    const listed = this.users.find((user) => sameUsername(user.username, name));
+    if (listed) return { id: listed.id, username: listed.username };
+    const account = [...(this.user ? [this.user] : []), ...this.accounts].find((item) =>
+      sameUsername(item.username, name)
+    );
+    return account ? { id: account._id, username: account.username } : null;
+  }
+
+  /**
+   * The owner of content filed under `name` as the API populates it (`populate("addedBy", "username")`): the
+   * account's current name (see `ownerNamed`), or the name it was filed under when no account has it.
+   */
+  private populatedOwner(name: string) {
+    const owner = this.ownerNamed(name);
+    return { _id: owner?.id ?? "u1", username: owner?.username ?? name };
+  }
+
+  /** Whose an upload is (see `ownerNamed`). */
   private ownerOf(uploadId: string) {
-    const name = this.uploadOwners.get(uploadId)!;
-    if (this.user?.username === name) return { id: this.user!._id, username: name };
-    const user = this.users.find((item) => item.username === name);
-    return user ? { id: user.id, username: user.username } : null;
+    return this.ownerNamed(this.uploadOwners.get(uploadId)!);
   }
 
   /** `owner`'s uploads, or everyone's with `null`, each then saying whose it is. A bad query answers 400 like the API's. */
@@ -2023,7 +2242,7 @@ export class MockApi {
     const visibility = query.get("visibility");
     const q = query.get("q")?.toLowerCase();
     const matching = this.uploads
-      .filter((upload) => everyone || this.uploadOwners.get(upload.id) === owner)
+      .filter((upload) => everyone || sameUsername(this.uploadOwners.get(upload.id)!, owner!))
       .filter((upload) => !visibility || upload.visibility === visibility)
       .filter(
         (upload) =>
@@ -2069,8 +2288,10 @@ export class MockApi {
     const sortBy = query.get("sortBy") ?? "usedBytes";
     const sortOrder = query.get("sortOrder") ?? "desc";
     const q = query.get("q")?.toLowerCase();
-    const value = (user: MockAdminUser) =>
-      sortBy === "usedBytes" ? String(user.uploads.usedBytes) : String(user[sortBy as "username"]);
+    const value = (user: MockListedUser) =>
+      sortBy === "usedBytes"
+        ? String(this.uploadUsage(user).usedBytes)
+        : String(user[sortBy as "username"]);
     const matching = this.users
       // Part of the username or the e-mail address, like the API (vb2007/vb2007.hu-api#272).
       .filter(
@@ -2084,7 +2305,7 @@ export class MockApi {
     return {
       status: 200,
       body: {
-        users: matching.slice((page - 1) * limit, page * limit),
+        users: matching.slice((page - 1) * limit, page * limit).map((user) => this.adminRow(user)),
         pagination: {
           limit,
           page,
@@ -2098,7 +2319,7 @@ export class MockApi {
   }
 
   /** The admin list's account `id`, or what the API answers before it gets there. */
-  private adminTarget(id: string): MockAdminUser | MockResponse {
+  private adminTarget(id: string): MockListedUser | MockResponse {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
     if (!OBJECT_ID.test(id)) return this.invalidId();
@@ -2111,7 +2332,7 @@ export class MockApi {
   }
 
   /** The login of an account on the admin list, found by its address like `adminUser`. */
-  private accountOf(user: MockAdminUser) {
+  private accountOf(user: MockListedUser) {
     return this.accounts.find((item) => normalizeEmail(item.email) === normalizeEmail(user.email));
   }
 
@@ -2125,14 +2346,9 @@ export class MockApi {
     if (typeof username !== "string" || !username) {
       return { status: 400, body: { error: "You must provide a username." } };
     }
+    const refused = usernameRefusal(username);
+    if (refused) return refused;
     const name = username.trim();
-    if (name.length < 2 || name.length > 16) {
-      const which = name.length < 2 ? "short" : "long";
-      return {
-        status: 400,
-        body: { error: `The username's too ${which}: it must be between 2 and 16 characters.` }
-      };
-    }
     const account = this.accountOf(target);
     const taken = [...this.users, ...this.accounts].some(
       (other) =>
@@ -2141,14 +2357,21 @@ export class MockApi {
     if (taken) return { status: 409, body: { error: "This username is already taken." } };
 
     const previous = target.username;
-    for (const paste of this.pastes) if (paste.addedBy === previous) paste.addedBy = name;
-    for (const link of this.shortLinks.values()) if (link.addedBy === previous) link.addedBy = name;
+    for (const paste of this.pastes) {
+      if (sameUsername(paste.addedBy, previous)) paste.addedBy = name;
+    }
+    for (const link of this.shortLinks.values()) {
+      if (sameUsername(link.addedBy, previous)) link.addedBy = name;
+    }
     for (const [upload, owner] of this.uploadOwners) {
-      if (owner === previous) this.uploadOwners.set(upload, name);
+      if (sameUsername(owner, previous)) this.uploadOwners.set(upload, name);
     }
     target.username = name;
     if (account) account.username = name;
-    return { status: 200, body: { message: "Username updated successfully.", user: target } };
+    return {
+      status: 200,
+      body: { message: "Username updated successfully.", user: this.adminRow(target) }
+    };
   }
 
   /**
@@ -2183,13 +2406,6 @@ export class MockApi {
     const invalid = refuseListQuery(query, ADMIN_PASTE_LIST_CHECKS);
     if (invalid) return invalid;
 
-    const ownerOf = (name: string) => {
-      const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
-      const listed = this.users.find((user) => sameName(user.username));
-      if (listed) return { id: listed.id, username: listed.username };
-      const account = this.accounts.find((item) => sameName(item.username));
-      return account ? { id: account._id, username: account.username } : null;
-    };
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
@@ -2200,7 +2416,7 @@ export class MockApi {
       // The first 100 code points.
       preview: [...paste.content].slice(0, 100).join(""),
       addedOn: paste.addedOn,
-      owner: ownerOf(paste.addedBy)
+      owner: this.ownerNamed(paste.addedBy)
     }));
     const matching = rows.filter(
       (row) =>
@@ -2228,26 +2444,34 @@ export class MockApi {
 
   /**
    * `DELETE /admin/users/:id` (vb2007/vb2007.hu-api#276): the account leaves the list and the
-   * logins, with its pastes, short links and uploads. Never the superuser's own.
+   * logins, with its pastes, short links and uploads, and what waited on it. Never the superuser's own, by its address.
    */
   private deleteUser(id: string): MockResponse {
     const target = this.adminTarget(id);
     if ("status" in target) return target;
-    if (target.isSuperuser) {
+    if (this.isSuperuserEmail(target.email)) {
       return { status: 409, body: { error: "The superuser's own account can't be deleted." } };
     }
-    const name = target.username;
+    this.voidsWaitingFor(target);
+    this.verifiedAddresses.delete(normalizeEmail(target.email));
     this.users.splice(this.users.indexOf(target), 1);
     const account = this.accountOf(target);
     if (account) this.accounts.splice(this.accounts.indexOf(account), 1);
-    const kept = this.pastes.filter((paste) => paste.addedBy !== name);
+    this.removesContentOf(target.username);
+    return { status: 200, body: { message: "User deleted successfully." } };
+  }
+
+  /** Takes away what the account `name` owns, whatever the name's case, like the API's `removeUserContent`. */
+  private removesContentOf(name: string) {
+    const kept = this.pastes.filter((paste) => !sameUsername(paste.addedBy, name));
     this.pastes.splice(0, this.pastes.length, ...kept);
     for (const [code, link] of this.shortLinks) {
-      if (link.addedBy === name) this.shortLinks.delete(code);
+      if (sameUsername(link.addedBy, name)) this.shortLinks.delete(code);
     }
-    const keptUploads = this.uploads.filter((upload) => this.uploadOwners.get(upload.id) !== name);
+    const keptUploads = this.uploads.filter(
+      (upload) => !sameUsername(this.uploadOwners.get(upload.id)!, name)
+    );
     this.uploads.splice(0, this.uploads.length, ...keptUploads);
-    return { status: 200, body: { message: "User deleted successfully." } };
   }
 
   /** Checks the query after the superuser, like the API, whose bad query answers 400. */
@@ -2347,7 +2571,10 @@ export class MockApi {
     }
     user.uploads.quotaBytes = quotaBytes ?? DEFAULT_QUOTA;
     user.uploads.hasCustomQuota = quotaBytes !== null;
-    return { status: 200, body: { message: "Upload quota updated successfully.", user } };
+    return {
+      status: 200,
+      body: { message: "Upload quota updated successfully.", user: this.adminRow(user) }
+    };
   }
 
   /** Whether the `hasUser(...)` account at `email` is suspended. */
@@ -2358,8 +2585,69 @@ export class MockApi {
   }
 
   /**
+   * Voids the reset code, reset links and e-mail change waiting for the account with one of `ids` at `email`, which
+   * the API keeps on the account's document: `setUserSuspension` unsets them, and deleting the document takes them along.
+   */
+  private voidsWaiting(ids: (string | undefined)[], email: string) {
+    const address = normalizeEmail(email);
+    this.voidResetCode(address);
+    this.voidResetLinks(
+      (link) => ids.includes(link.userId) || normalizeEmail(link.email) === address
+    );
+    for (const id of ids) if (id) this.userPendingEmails.delete(id);
+  }
+
+  /**
+   * `voidsWaiting` for the admin list's account `user`, whose login may carry another id than the row (see
+   * `knowsListedAccount`). The API's suspension also ends the session and unsets `githubLink`, but here those are only
+   * this browser's, whose superuser the API never suspends.
+   */
+  private voidsWaitingFor(user: MockListedUser) {
+    this.voidsWaiting([user.id, this.accountOf(user)?._id], user.email);
+  }
+
+  /**
+   * Whether `email` is the superuser's, like the API's `isSuperuserEmail`: the one superuser address, `MOCK_SUPERUSER_EMAIL`
+   * or the address of the account last arranged as the superuser, whatever its case. Every check of the superuser
+   * (the session's, the admin routes', the owner checks') and every row at that address goes by it, whatever a flag says.
+   */
+  private isSuperuserEmail(email: string) {
+    return normalizeEmail(email) === this.superuserEmail;
+  }
+
+  /**
+   * The upload usage of the admin list's account `user`, like the API's `calculateUploadUsage`: the count and bytes of
+   * the uploads it owns, whatever the case of the name they're filed under, from the same uploads. A usage
+   * `hasUser(..., { usedBytes, count })` arranged stands in for both.
+   */
+  private uploadUsage(user: MockListedUser) {
+    const arranged = this.arrangedUploadUsage.get(user);
+    if (arranged) return arranged;
+    const owned = this.uploads.filter((upload) =>
+      sameUsername(this.uploadOwners.get(upload.id)!, user.username)
+    );
+    return {
+      usedBytes: owned.reduce((sum, upload) => sum + upload.fileSize, 0),
+      count: owned.length
+    };
+  }
+
+  /**
+   * The admin list's account `user` as the admin routes answer it, like the API's `toAdminUser`: `isSuperuser` comes
+   * from the address (`isSuperuserEmail`), and the upload usage from `uploadUsage`, on every answer.
+   */
+  private adminRow(user: MockListedUser): MockAdminUser {
+    return {
+      ...user,
+      isSuperuser: this.isSuperuserEmail(user.email),
+      uploads: { ...this.uploadUsage(user), ...user.uploads }
+    };
+  }
+
+  /**
    * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
-   * the first `suspendedAt`, and the superuser's row answers 409.
+   * the first `suspendedAt`, and the superuser's address answers 409. Suspending, or lifting a
+   * suspension that's there, voids what's waiting (`voidsWaitingFor`).
    */
   private setSuspension(id: string, suspended: unknown): MockResponse {
     const refusal = this.refuseNonSuperuser();
@@ -2370,9 +2658,11 @@ export class MockApi {
     if (typeof suspended !== "boolean") {
       return { status: 400, body: { error: "suspended must be true or false." } };
     }
-    if (user.isSuperuser) {
+    if (this.isSuperuserEmail(user.email)) {
       return { status: 409, body: { error: "The superuser's account can't be suspended." } };
     }
+    // The API's `setUserSuspension` unsets what's waiting on suspending, and on lifting a suspension that was there.
+    if (suspended || user.suspendedAt) this.voidsWaitingFor(user);
     user.suspendedAt = suspended ? (user.suspendedAt ?? new Date(this.now()).toISOString()) : null;
     return {
       status: 200,
@@ -2380,7 +2670,7 @@ export class MockApi {
         message: suspended
           ? "User suspended successfully: their session was ended."
           : "User unsuspended successfully.",
-        user
+        user: this.adminRow(user)
       }
     };
   }
@@ -2413,7 +2703,7 @@ export class MockApi {
     };
     const username = this.user.username;
     const existing = [...this.shortLinks].find(
-      ([, link]) => link.target === url && link.addedBy === username
+      ([, link]) => link.target === url && sameUsername(link.addedBy, username)
     );
     if (existing) return answer(200, "You've already shortened this URL.", existing[0]);
 
@@ -2440,7 +2730,7 @@ export class MockApi {
     const q = query.get("q")?.toLowerCase() ?? "";
     const username = this.user.username;
     const owned = [...this.shortLinks]
-      .filter(([, link]) => link.addedBy === username)
+      .filter(([, link]) => sameUsername(link.addedBy, username))
       .filter(
         ([code, link]) => code.toLowerCase().includes(q) || link.target.toLowerCase().includes(q)
       )
@@ -2477,13 +2767,6 @@ export class MockApi {
     const invalid = refuseListQuery(query, SHORT_URL_LIST_CHECKS);
     if (invalid) return invalid;
 
-    const ownerOf = (name: string) => {
-      const sameName = (other: string) => other.toLowerCase() === name.toLowerCase();
-      const listed = this.users.find((user) => sameName(user.username));
-      if (listed) return { id: listed.id, username: listed.username };
-      const account = this.accounts.find((item) => sameName(item.username));
-      return account ? { id: account._id, username: account.username } : null;
-    };
     const limit = Number(query.get("limit") ?? 20);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
@@ -2492,7 +2775,7 @@ export class MockApi {
       shortenedUrl: code,
       originalUrl: link.target,
       addedOn: link.addedOn,
-      owner: ownerOf(link.addedBy)
+      owner: this.ownerNamed(link.addedBy)
     }));
     const matching = rows.filter(
       (row) =>
@@ -2533,7 +2816,10 @@ export class MockApi {
     }
     const link = this.shortLinks.get(code);
     if (!link) return { status: 404, body: { error: "The shortened URL cannot be found." } };
-    if (link.addedBy !== this.user.username && !this.user.isSuperuser) {
+    if (
+      !sameUsername(link.addedBy, this.user.username) &&
+      !this.isSuperuserEmail(this.user.email)
+    ) {
       return {
         status: 403,
         body: { error: "You can only delete URLs created with your account." }
@@ -2551,29 +2837,27 @@ export class MockApi {
     const invalid = refuseListQuery(query, PASTE_LIST_CHECKS);
     if (invalid) return invalid;
 
-    // Usernames match whatever their case, like the API's collation.
-    const sameName = (name?: string) => name?.toLowerCase() === username.toLowerCase();
     const known = [
       this.user.username,
       ...this.accounts.map((account) => account.username),
       ...this.users.map((user) => user.username),
       ...this.pastes.map((paste) => paste.addedBy)
     ];
-    if (!known.some(sameName)) {
+    if (!known.some((name) => sameUsername(name, username))) {
       return { status: 404, body: { error: "There is no such user with that username." } };
     }
 
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => sameName(paste.addedBy));
+    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, username));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: { _id: "u1", username: paste.addedBy } })),
+          .map((paste) => ({ ...paste, addedBy: this.populatedOwner(paste.addedBy) })),
         pagination: {
           limit,
           page,
@@ -2625,7 +2909,7 @@ export async function getFromApi(page: Page, api: MockApi, path: string) {
 export async function callApi(
   page: Page,
   api: MockApi,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "DELETE",
   path: string,
   body: unknown
 ) {

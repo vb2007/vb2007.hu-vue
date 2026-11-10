@@ -1,4 +1,4 @@
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import { callApi, expect, getFromApi, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 test("a user creates, opens, lists and deletes a paste", async ({ page, api, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -172,6 +172,41 @@ test("the owner changes a paste's language; others can't", async ({ page, api })
   await page.goto(`/pastebin/${theirs._id}`);
   await expect(page.getByLabel("Paste content")).toHaveText("someone else's words");
   await expect(page.getByLabel("Language")).toHaveCount(0);
+});
+
+test("content shows its owner's current name, whatever case it was filed under", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("anna@example.com", "Anna");
+  const paste = api.hasPaste("anna's words", "anna", "plaintext");
+  api.hasShortLink("annas", "https://example.com/", "anna");
+  await page.goto(`/pastebin/${paste._id}`);
+  await expect(page.getByLabel("Paste content")).toHaveText("anna's words");
+
+  // The API populates the owner's account, so its name as it is now.
+  const owner = { username: "Anna" };
+  const shown = await getFromApi(page, api, `/paste/${paste._id}`);
+  expect.soft(shown.body).toMatchObject({ paste: { addedBy: owner } });
+  const listed = await getFromApi(page, api, "/pastes/anna");
+  expect.soft(listed.body).toMatchObject({ pastes: [{ addedBy: owner }] });
+  const link = await getFromApi(page, api, "/shortenUrl/annas");
+  expect.soft(link.body).toMatchObject({ addedBy: owner });
+  // The page compares the owner's name exactly, so it offers her the language.
+  await expect(page.getByLabel("Language")).toBeVisible();
+});
+
+test("a paste filed under another case of the user's name is still theirs to change", async ({
+  page,
+  api
+}) => {
+  const own = api.hasPaste("just some words", "E2E", "plaintext");
+  api.loggedInAs();
+  await page.goto(`/pastebin/${own._id}`);
+
+  const changed = await callApi(page, api, "PATCH", `/paste/${own._id}`, { language: "markdown" });
+  expect(changed.status).toBe(200);
+  expect(api.pastes[0].language).toBe("markdown");
 });
 
 test("a session that ended elsewhere logs the page out when a paste's language is saved", async ({
