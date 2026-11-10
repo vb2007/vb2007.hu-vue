@@ -42,6 +42,7 @@ describe("Messages.Admin.rateLimitNames", () => {
       );
     }
     expect(Limits.Code.failedChecksPerDay).toBe(20);
+    expect(Messages.Admin.rateLimitNames.accountCodeChecksPerAccount).toContain("10 in 15 min");
   });
 
   it("keeps the API's own name for a limiter added later", () => {

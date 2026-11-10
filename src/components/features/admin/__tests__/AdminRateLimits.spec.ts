@@ -24,8 +24,10 @@ describe("AdminRateLimits", () => {
 
     expect(wrapper.find("h2").text()).toBe("Rate limits");
     const lead = wrapper.find(".lead");
-    expect(lead.text()).toContain("An address also lifts its log-in lockout from every IP");
-    expect(lead.text()).toContain("its account's own limits and its daily wrong-code caps");
+    expect(lead.text()).toContain("Giving an address also lifts its log-in lockout from every IP");
+    expect(lead.text()).toContain(
+      "its account's limits and daily wrong-code caps, and those of a sign-up waiting for it"
+    );
     expect(lead.text()).toContain("an IP alone leaves them");
     expect(field(wrapper, "IP address").props("hint")).toContain(
       "An IPv6 address clears its whole network block"

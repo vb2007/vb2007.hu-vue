@@ -1577,9 +1577,9 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   await expect(notice).toContainText("Cleared for Anna@example.com and 203.0.113.7:");
   await expect(notice.locator(".cleared__item")).toHaveText([
     "Wrong e-mail change codes from the IP.",
-    "Wrong e-mail change codes for the account.",
+    "Wrong e-mail change codes for the account, 10 in 15 min.",
     "Wrong passwords on the account page from the IP.",
-    "Wrong passwords on the account page for the account.",
+    "Wrong passwords on the account page, per account.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day."
@@ -1591,8 +1591,8 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   await clear.click();
   await expect(notice).toContainText("Cleared for Anna@example.com:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes for the account.",
-    "Wrong passwords on the account page for the account.",
+    "Wrong e-mail change codes for the account, 10 in 15 min.",
+    "Wrong passwords on the account page, per account.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day."

@@ -421,9 +421,9 @@ export class Messages {
       mailSendsPerIp: "E-mails requested from the IP",
       usernameChecksPerIp: "Username checks from the IP",
       accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
-      accountCodeChecksPerAccount: "Wrong e-mail change codes for the account",
+      accountCodeChecksPerAccount: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerAccount} in ${Limits.Code.failedChecksWindowSeconds / 60} min`,
       passwordChecksPerIp: "Wrong passwords on the account page from the IP",
-      passwordChecksPerAccount: "Wrong passwords on the account page for the account",
+      passwordChecksPerAccount: "Wrong passwords on the account page, per account",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
       registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay} a day`

@@ -31,10 +31,10 @@ const onSubmit = async () => {
 <template>
   <StationBoard title="Rate limits">
     <p :id="noteId" class="lead">
-      Clears what the API counted against an address or an IP, such as failed log-ins. An address
-      also lifts its log-in lockout from every IP, and clears its account's own limits and its daily
-      wrong-code caps. Add an IP to lift the lockout from that IP only: the account's limits and
-      caps are cleared either way, and an IP alone leaves them.
+      Clears what the API counted against an address or an IP, such as failed log-ins. Giving an
+      address also lifts its log-in lockout from every IP, and clears its account's limits and daily
+      wrong-code caps, and those of a sign-up waiting for it. Add an IP to lift the lockout from
+      that IP only: those limits and caps are cleared either way, and an IP alone leaves them.
     </p>
 
     <form ref="form" class="form" novalidate @submit.prevent="onSubmit">
