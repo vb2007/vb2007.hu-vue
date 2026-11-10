@@ -265,6 +265,17 @@ test("the list searches, filters, sorts and pages through uploads", async ({ pag
   await expect(list.getByText("12 uploads")).toBeVisible();
 });
 
+test("the list shows the API's refusal of a NUL character in the search", async ({ page, api }) => {
+  api.loggedInAs();
+  api.hasUpload("photo.png");
+  await page.goto("/upload");
+
+  const list = board(page, "Your uploads");
+  await expect(list.getByText("1 upload", { exact: true })).toBeVisible();
+  await list.getByLabel("Search by name").fill("pho\0to");
+  await expect(list.getByText("Invalid value for q.")).toBeVisible();
+});
+
 test("the list refuses the queries the API refuses, after the login check", async ({
   page,
   api

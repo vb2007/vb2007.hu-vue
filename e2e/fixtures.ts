@@ -220,7 +220,9 @@ const PAGE_CHECK: ListParamCheck = [
   (value) => isIntegerInRange(value, 1, Number.MAX_SAFE_INTEGER)
 ];
 const SORT_ORDER_CHECK: ListParamCheck = ["sortOrder", isOneOf("asc", "desc")];
-const isListQuery = (value: string) => value.length <= LIST_QUERY_MAX_LENGTH;
+/** The API's shared `isListQuery` (vb2007/vb2007.hu-api#414), for every list's `q`: at most `LIST_QUERY_MAX_LENGTH` characters, none a NUL. */
+const isListQuery = (value: string) =>
+  value.length <= LIST_QUERY_MAX_LENGTH && !value.includes("\0");
 
 /** `findInvalidPasteListParam`'s checks, in its order: a user's pastes take no `q`. */
 const PASTE_LIST_CHECKS: ListParamCheck[] = [
@@ -237,7 +239,7 @@ const SHORT_URL_LIST_CHECKS: ListParamCheck[] = [
   PAGE_CHECK,
   ["sortBy", isOneOf("addedOn")],
   SORT_ORDER_CHECK,
-  ["q", (value) => isListQuery(value) && !value.includes("\0")]
+  ["q", isListQuery]
 ];
 /** `findInvalidPendingRegistrationListParam`'s checks, in its order: no sorting, so `sortBy` and `sortOrder` pass unread. */
 const PENDING_REGISTRATION_LIST_CHECKS: ListParamCheck[] = [
