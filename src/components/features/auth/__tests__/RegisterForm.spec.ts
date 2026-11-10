@@ -823,6 +823,33 @@ describe("RegisterForm", () => {
         expect(wrapper.find("input").element.value).toBe("");
         expect(document.activeElement).toBe(wrapper.find("input").element);
       });
+
+      it("forgets a code kept after a username was taken, so the key registers again", async () => {
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(409, { error: "This username is already taken." }))
+          .mockResolvedValueOnce(jsonResponse(403, { error: Messages.Auth.notLoggedIn }));
+        const wrapper = await atCodeStep();
+        await confirm(wrapper);
+        await wrapper.find(FIELDS.username).setValue("vb2");
+        // The code still works, so the key goes on to it instead of mailing another.
+        expect(submitButton(wrapper).text()).toBe("Continue");
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+        await confirm(wrapper);
+
+        expect(wrapper.find('[role="alert"]').text()).toBe(
+          Messages.Auth.registrationAccountRemoved
+        );
+        // The code went with the account: nothing to continue, so the key mails a new one.
+        expect(submitButton(wrapper).text()).toBe("Register");
+        vi.mocked(register).mockResolvedValueOnce({ sent: true });
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+
+        expect(register).toHaveBeenCalledTimes(2);
+        expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(SENT("vb2", 6, 15)));
+        expect(wrapper.find("input").element.value).toBe("");
+      });
     });
 
     /** Confirms a code the API refuses for a username taken meanwhile, back on the form. */

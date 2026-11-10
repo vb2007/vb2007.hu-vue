@@ -405,13 +405,15 @@ describe("useRegisterCode", () => {
       expect(console.error).not.toHaveBeenCalled();
     });
 
-    it("keeps any other 403 on the step", async () => {
+    it("keeps any other 403 on the step, unlogged like the account's removal", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: "Not allowed." }));
       const step = openStep();
 
       expect(await step.verify("123456", "vb", "password")).toBe("failed");
 
       expect(step.codeError.value).toBe("Not allowed.");
+      // `quietStatuses` goes by status, so it silences every 403 here, not only the removal's.
+      expect(console.error).not.toHaveBeenCalled();
     });
 
     it("falls back to the status, and logs it, when the server fails", async () => {

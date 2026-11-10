@@ -9,6 +9,7 @@ import {
   apiRequest,
   apiUrl,
   errorMessageFrom,
+  isLoggedOutAnswer,
   noticeSessionRefusal,
   onSessionRefused,
   readJson,
@@ -347,6 +348,17 @@ describe("apiRequest", () => {
     await apiRequest(Endpoints.Pastebin.update, { params: { id: "a" }, failure });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("isLoggedOutAnswer", () => {
+  it.each([
+    [403, Messages.Auth.notLoggedIn, true],
+    [403, "Not allowed.", false],
+    [403, undefined, false],
+    [401, Messages.Auth.notLoggedIn, false]
+  ])("reads %s %s as %s", (status, error, expected) => {
+    expect(isLoggedOutAnswer(status, error)).toBe(expected);
   });
 });
 

@@ -96,7 +96,9 @@ export class Messages {
     /**
      * The API's 403 to a request without a working session (its `Responses.notLoggedIn`): none was
      * sent, or it ended. Other 403s (a wrong password, not the owner) have their own texts, so only
-     * this one tells the page it's logged out (see `onSessionRefused`).
+     * this one tells the page it's logged out (see `onSessionRefused`). The register code check
+     * reads it too, without a session: there it means the account it just created is gone
+     * (see `isLoggedOutAnswer`).
      */
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
@@ -127,7 +129,7 @@ export class Messages {
      * was deleted before the session started, so the code is used up and nothing is left to retry.
      */
     static readonly registrationAccountRemoved: string =
-      "The account was removed before registration finished, so that code is used up. Register again to get a new one.";
+      "Your account was removed before registration finished, so that code is used up. Register again to get a new code.";
     /*
      * The register code step's notices, around the address the code went to: the text before it,
      * the punctuation kept with it, and the rest, so the form can let a long address wrap. The
