@@ -587,13 +587,13 @@ export class MockApi {
   private statsDown = false;
   /** The API host the app was built against, known once the app has called it. */
   apiOrigin = "";
-  /** The code every password reset "mails"; the addresses asked for go to `passwordResets`. */
+  /** The code every password reset "mails"; the addresses asked for go to `passwordResets`, trimmed like the API reads them. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
   /** The reset links still live (see `mailsResetLink`): token -> the account's id and address. */
   private readonly resetLinks = new Map<string, { userId: string; email: string }>();
   private resetLinkCount = 0;
-  /** The addresses a password reset was asked for while `limitsMailSends()` refused it. */
+  /** The `email` values a password reset was asked for while `limitsMailSends()` refused it, as sent (the API's limit answers before it reads the body). */
   readonly limitedPasswordResets: string[] = [];
   readonly unhandled: string[] = [];
 

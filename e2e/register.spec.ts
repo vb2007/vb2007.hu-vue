@@ -834,6 +834,7 @@ test("a resend without an address answers 400 before anything else", async ({ pa
 
   expect(await resend(page, api, {})).toEqual(missing);
   expect(await resend(page, api, { email: "" })).toEqual(missing);
+  expect(await resend(page, api, { email: "  " })).toEqual(missing);
   expect(await resend(page, api, { email: 42 })).toEqual(missing);
   // With an address, the used-up budget answers.
   expect(await resend(page, api)).toEqual(MAIL_FAILED);
