@@ -4,6 +4,8 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { apiUrl, errorMessageFrom, noticeSessionRefusal } from "@/scripts/api/client";
 import type { BodyOf, ResponseOf } from "@/scripts/api/endpoint";
+import { isLoggedIn } from "@/scripts/authentication/authState";
+import { fetchUserDetails } from "@/scripts/authentication/user";
 import { formatTime } from "@/scripts/utility/dateUtil";
 import { formatBytes } from "@/scripts/utility/sizeUtil";
 import type {
@@ -134,6 +136,8 @@ const readXhrJson = (request: XMLHttpRequest): unknown => {
 /**
  * Sends one file as multipart form data. Uses XMLHttpRequest because fetch can't report upload
  * progress. Rejects with an `UploadError` carrying the API's message, or `cancelled` on abort.
+ * A dropped connection is checked against the session first: an ended one rejects with the same
+ * `Messages.Auth.notLoggedIn` text the API's own 403 carries.
  */
 export const sendUpload = (
   file: File,
@@ -164,7 +168,19 @@ export const sendUpload = (
         void noticeSessionRefusal(endpoint, request.status, body).finally(() => reject(error));
       }
     };
-    request.onerror = () => reject(new UploadError(Messages.connectionError));
+    // The API answers some uploads before reading their body (an ended session's 403, an
+    // over-limit 413) and closes the connection (vb2007/vb2007.hu-api#451, #455). A browser still
+    // sending then may report a network error instead of that answer, so ask whether the session
+    // is gone. `fetchUserDetails` logs the page out on the API's 403; a lookup that fails any other
+    // way leaves `isLoggedIn` alone, and that stays a connection error.
+    request.onerror = () =>
+      void fetchUserDetails().then((kept) =>
+        reject(
+          new UploadError(
+            !kept && !isLoggedIn.value ? Messages.Auth.notLoggedIn : Messages.connectionError
+          )
+        )
+      );
     request.onabort = () => reject(new UploadError(Messages.Uploads.cancelled, true));
     signal?.addEventListener("abort", () => request.abort(), { once: true });
 
