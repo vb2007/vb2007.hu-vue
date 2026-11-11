@@ -1569,6 +1569,37 @@ test("a deleted account's waiting e-mail change doesn't follow the next login", 
   await expect(page.getByText("Waiting for confirmation")).toHaveCount(0);
 });
 
+test("deleting an account keeps the waiting e-mail change that belongs to another account", async ({
+  page,
+  api
+}) => {
+  // The change is me's, started while me was logged in; anna then logs in and deletes herself.
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  api.hasUser("anna");
+  api.loggedOut();
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("anna@example.com");
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  await page.goto("/account");
+  await expect(page.getByText("Waiting for confirmation")).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill("me@example.com");
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  const user = await getFromApi(page, api, "/user");
+  expect(user.body).toMatchObject({ username: "me", pendingEmail: "new@example.com" });
+});
+
 test("an account made with GitHub is deleted by typing its username, once GitHub confirms it's them", async ({
   page,
   api

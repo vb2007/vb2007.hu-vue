@@ -23,8 +23,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
  * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
- * view's pending address), like suspension and deletion do and the API since vb2007/vb2007.hu-api#462: `GET /user` answers
- * `pendingEmail: null` and the earlier code is refused with 400. Another account's change stays.
+ * view's pending address), as the API has since vb2007/vb2007.hu-api#462: `GET /user` answers `pendingEmail: null` and the
+ * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
  * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
  * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
@@ -892,6 +892,11 @@ export class MockApi {
     this.resetCodes.delete(normalizeEmail(email));
   }
 
+  /** Whether `emailChange` waits on `account`: its owner's, else the logged-in account's (see `emailChangeOwnerId`). */
+  private ownsEmailChange(account: { _id: string }) {
+    return (this.emailChangeOwnerId ?? this.user?._id) === account._id;
+  }
+
   /**
    * Drops the e-mail change waiting for the account a password reset is for, which the API unsets
    * (`passwordResetUpdate`, vb2007/vb2007.hu-api#462; the wrong-code counter `emailChangeFailures` stays). The account is
@@ -910,8 +915,7 @@ export class MockApi {
     for (const id of [userId, account?._id, ...rowIds]) {
       if (id) this.userPendingEmails.delete(id);
     }
-    if (account && (this.emailChangeOwnerId ?? this.user?._id) === account._id)
-      this.emailChange = null;
+    if (account && this.ownsEmailChange(account)) this.emailChange = null;
   }
 
   /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
@@ -1917,8 +1921,8 @@ export class MockApi {
       }
     }
     // The API deletes the account by its id: neither the login nor the admin list knows it any more, and what it
-    // owned goes too (`removeUserContent`), as does what waited on its document: the reset code and links, and the
-    // e-mail change, which is the logged-in account's here.
+    // owned goes too (`removeUserContent`), as does what waited on its document: the reset code and links, and its
+    // e-mail change (another account's, in the one slot, stays).
     const deleted = this.user;
     this.forgetsAccount(deleted);
     this.removesContentOf(deleted.username);
@@ -1931,7 +1935,7 @@ export class MockApi {
       }
     }
     this.voidsWaiting([deleted._id, ...rowIds], deleted.email);
-    this.emailChange = null;
+    if (this.ownsEmailChange(deleted)) this.emailChange = null;
     this.verifiedAddresses.delete(normalizeEmail(deleted.email));
     this.user = null;
     this.githubConfirmed = false;

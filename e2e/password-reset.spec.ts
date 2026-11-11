@@ -861,7 +861,7 @@ test("a reset code asked for another account's address survives this account's n
   expect(reset).toEqual(RESET);
 });
 
-// Since vb2007/vb2007.hu-api#462 a password reset also unsets the account's waiting e-mail change, as a suspension does.
+// Since vb2007/vb2007.hu-api#462 a password reset also unsets the account's waiting e-mail change.
 // The reset ends the session, so the site shows nothing of it until the user logs in again.
 
 const WAITING = "Waiting for confirmation: new@example.com";
