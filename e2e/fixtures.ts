@@ -24,7 +24,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
  * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
  * view's pending address), as the API has since vb2007/vb2007.hu-api#462: `GET /user` answers `pendingEmail: null` and the
- * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself.
+ * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself; one arranged
+ * with nobody logged in belongs to whichever account is reset.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
  * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
  * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
@@ -541,7 +542,8 @@ export class MockApi {
   private emailChange: (MockCode & { email: string }) | null = null;
   /**
    * The `_id` of the account `emailChange` waits on: the one that asked for it, or the one logged in when `hasPendingEmail`
-   * arranged it. Null when nobody was, then the logged-in account's at the time (see `voidsEmailChangeOf`). It only decides
+   * arranged it. Null when nobody was: then it's the logged-in account's at the time, or, with nobody logged in either, the
+   * account a reset or deletion is for (see `ownsEmailChange`). It only decides
    * what a password reset drops: `GET /user`, the confirm and the `PATCH` cooldown still use the one slot whoever is logged in.
    */
   private emailChangeOwnerId: string | null = null;
@@ -892,9 +894,13 @@ export class MockApi {
     this.resetCodes.delete(normalizeEmail(email));
   }
 
-  /** Whether `emailChange` waits on `account`: its owner's, else the logged-in account's (see `emailChangeOwnerId`). */
+  /**
+   * Whether `emailChange` waits on `account`: its owner's, else the logged-in account's, else (arranged by `hasPendingEmail`
+   * with nobody logged in) the account asked about, as the single slot has no other candidate (see `emailChangeOwnerId`).
+   */
   private ownsEmailChange(account: { _id: string }) {
-    return (this.emailChangeOwnerId ?? this.user?._id) === account._id;
+    const owner = this.emailChangeOwnerId ?? this.user?._id;
+    return owner === undefined || owner === account._id;
   }
 
   /**

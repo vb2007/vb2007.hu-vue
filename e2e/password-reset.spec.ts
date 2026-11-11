@@ -950,6 +950,68 @@ test("a reset after the user logged out still drops the change they started", as
   await expectNoWaitingChangeAfterLogin(page, api);
 });
 
+test("a change arranged with nobody logged in is dropped by a reset with a code", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill(ME);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await expect(page).toHaveURL("/login");
+
+  await expectNoWaitingChangeAfterLogin(page, api);
+});
+
+test("a change arranged with nobody logged in is dropped by a reset with a link", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  api.hasPendingEmail("new@example.com");
+  const token = api.mailsResetLink(undefined, ME);
+  await page.goto(`/reset-password#token=${token}`);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await expect(page).toHaveURL("/login");
+
+  await expectNoWaitingChangeAfterLogin(page, api);
+});
+
+test("a change with an owner survives another account's reset while nobody is logged in", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(ME, "me");
+  api.hasPendingEmail("new@example.com");
+  api.hasUser("anna");
+  api.loggedOut();
+  await page.goto("/reset-password");
+  const anna = { email: "anna@example.com" };
+  expect(await callApi(page, api, "POST", "/auth/password-reset", anna)).toEqual(CODE_SENT);
+  const byCode = { ...anna, code: api.passwordResetCode, newPassword: "a new password" };
+  expect(await callApi(page, api, "POST", "/auth/password-reset/confirm", byCode)).toEqual(RESET);
+  const token = api.mailsResetLink(undefined, anna.email);
+  const byLink = { token, newPassword: "another password" };
+  expect(await callApi(page, api, "POST", "/auth/password-reset/confirm-link", byLink)).toEqual(
+    RESET
+  );
+
+  // me logs in with the password the double holds, and finds the change still waiting.
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(ME);
+  await page.getByLabel("Password", { exact: true }).fill("another password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({
+    pendingEmail: "new@example.com"
+  });
+});
+
 test("resetting another account's password keeps the logged-in account's waiting change", async ({
   page,
   api
