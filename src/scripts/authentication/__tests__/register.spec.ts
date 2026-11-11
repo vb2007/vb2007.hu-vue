@@ -421,7 +421,9 @@ describe("register", () => {
 
   it("passes on the cooldown's retryAfter, since the code sent then still works", async () => {
     const error = "A code was sent just now: wait 42 seconds before requesting another one.";
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 41.5 }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(429, { error, retryAfter: 41.5, reason: "resendCooldown" })
+    );
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual({
       sent: false,
@@ -442,6 +444,16 @@ describe("register", () => {
       limitedFor: retryAfter
     });
     expect(registerStatus.value).toBe(error);
+  });
+
+  it("doesn't take a limiter's 429 for the cooldown by its text, only by its reason", async () => {
+    const error = "A code was sent just now: wait 42 seconds before requesting another one.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }));
+
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({
+      sent: false,
+      limitedFor: 42
+    });
   });
 
   it("waits a minute after a rate limiter's 429 without a retryAfter", async () => {

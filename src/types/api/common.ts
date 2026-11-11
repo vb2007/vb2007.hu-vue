@@ -15,6 +15,8 @@ export interface ApiErrorBody {
   error?: string;
   /** Seconds before trying again, on any 429: the code cooldown's or a rate limiter's. */
   retryAfter?: number;
+  /** Which kind of failure this is, when the message shouldn't decide (see `ErrorReason`). */
+  reason?: string;
 }
 
 /** The `pagination` object of every list route; `pages` is 0 for an empty list. */

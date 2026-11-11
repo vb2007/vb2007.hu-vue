@@ -21,9 +21,10 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * answers 202, and `POST /user/email/confirm` with that code switches to it, like the API (vb2007/vb2007.hu-api#215).
  * Another account's address (any the login knows, see below) and the superuser's get the same 202 and code: only the confirm refuses them, with 409
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
- * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter`, and one sent over
+ * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
  * 15 minutes ago has expired.
- * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds, and the rate
+ * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds and adds
+ * `reason: "resendCooldown"` (vb2007/vb2007.hu-api#461), and the rate
  * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
  * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
  * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
@@ -975,7 +976,8 @@ export class MockApi {
         status: 429,
         body: {
           error: `A code was sent just now: wait ${retryAfter} seconds before requesting another one.`,
-          retryAfter
+          retryAfter,
+          reason: "resendCooldown"
         }
       };
     }

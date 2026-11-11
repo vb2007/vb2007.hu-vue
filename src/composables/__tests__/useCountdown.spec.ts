@@ -309,7 +309,7 @@ describe("codeCooldownOf", () => {
   /** A failure as `apiRequest` returns it; `error` is the API's message or the fallback. */
   const http = (
     status: number,
-    body: { error?: string; retryAfter?: number } | null
+    body: { error?: string; retryAfter?: number; reason?: string } | null
   ): ApiFailure => ({
     ok: false,
     kind: "http",
@@ -319,11 +319,21 @@ describe("codeCooldownOf", () => {
   });
 
   it("takes the cooldown's retryAfter: a code went out moments ago", () => {
-    expect(codeCooldownOf(http(429, { error: cooldownError, retryAfter: 41.5 }))).toBe(42);
+    expect(
+      codeCooldownOf(
+        http(429, { error: cooldownError, retryAfter: 41.5, reason: "resendCooldown" })
+      )
+    ).toBe(42);
   });
 
   it("waits a minute for a cooldown's 429 without a retryAfter", () => {
-    expect(codeCooldownOf(http(429, { error: cooldownError }))).toBe(60);
+    expect(codeCooldownOf(http(429, { error: cooldownError, reason: "resendCooldown" }))).toBe(60);
+  });
+
+  it("recognises the cooldown by its reason, whatever its message says", () => {
+    expect(
+      codeCooldownOf(http(429, { error: "Slow down.", retryAfter: 30, reason: "resendCooldown" }))
+    ).toBe(30);
   });
 
   it.each([
@@ -331,8 +341,20 @@ describe("codeCooldownOf", () => {
       "a rate limiter's 429, though it has a retryAfter",
       http(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
     ],
+    [
+      "a rate limiter's 429 whose text starts like the old cooldown's",
+      http(429, { error: cooldownError, retryAfter: 42 })
+    ],
+    ["a 429 without a reason", http(429, { error: "Wait.", retryAfter: 42 })],
+    [
+      "another reason",
+      http(429, { error: cooldownError, retryAfter: 42, reason: "somethingElse" })
+    ],
     ["a 429 without a body", http(429, null)],
-    ["the cooldown's text on another status", http(503, { error: cooldownError, retryAfter: 42 })],
+    [
+      "the cooldown's reason on another status",
+      http(503, { error: cooldownError, retryAfter: 42, reason: "resendCooldown" })
+    ],
     [
       "a network failure",
       { ok: false, kind: "network", status: 0, error: "Error connecting to server" } as ApiFailure

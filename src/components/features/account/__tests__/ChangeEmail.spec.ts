@@ -664,7 +664,9 @@ describe("ChangeEmail", () => {
       fakeCountdown();
       const error = "A code was sent just now: wait 42 seconds before requesting another one.";
       fetchMock
-        .mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }))
+        .mockResolvedValueOnce(
+          jsonResponse(429, { error, retryAfter: 42, reason: "resendCooldown" })
+        )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await remount();
       await button("Change e-mail").trigger("click");
@@ -699,7 +701,8 @@ describe("ChangeEmail", () => {
         .mockResolvedValueOnce(
           jsonResponse(429, {
             error: "A code was sent just now: wait 50 seconds before requesting another one.",
-            retryAfter: 50
+            retryAfter: 50,
+            reason: "resendCooldown"
           })
         )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));
