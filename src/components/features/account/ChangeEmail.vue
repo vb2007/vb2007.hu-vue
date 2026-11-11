@@ -157,7 +157,7 @@ const confirmCode = async () => {
     codeChecks.reset();
   }
   await nextTick();
-  // Confirmed, dropped or expired: the code step is gone, and its key is left.
+  // Confirmed, dropped, expired or out of tries: the code step is gone, and its key is left.
   if (!pendingEmail.value) return key.value?.$el.focus();
   if (!codeForm.value?.querySelector(":focus:not(:disabled)")) focusField(codeField.value);
 };

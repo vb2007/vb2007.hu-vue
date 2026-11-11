@@ -113,9 +113,10 @@ export const useChangeEmail = () => {
 
   /**
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
-   * refreshes the user: a 400 may mean it expired or its tries are used up, and a 403 or 409 drops the waiting change. The
-   * API refuses the superuser's address (403) or another account's (409) only here, not when it
-   * mails the code, so it doesn't show which addresses have accounts (vb2007/vb2007.hu-api#291).
+   * refreshes the user: a 400 may mean it expired or its tries are used up, and a 403 or 409
+   * drops the waiting change. The API refuses the superuser's address (403) or another account's
+   * (409) only here, not when it mails the code, so it doesn't show which addresses have accounts
+   * (vb2007/vb2007.hu-api#291).
    * A 403 can also be the session ending (expired, ended by a password reset, or replaced by a
    * login elsewhere): the client's own check has then logged the page out (`onSessionRefused`), as
    * a refresh after a 400 does for one, and the account page says so instead.
