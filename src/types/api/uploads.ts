@@ -48,7 +48,12 @@ export interface UploadOwner {
 /** `GET /uploads`, `GET /admin/users/:id/uploads` and `GET /admin/uploads` */
 export type UploadListQuery = ListQuery<UploadSortBy> & {
   visibility?: UploadVisibility;
-  /** Searches the file names, and on `GET /admin/uploads` the owners' usernames too. */
+  /**
+   * Searches the file names, and on `GET /admin/uploads` the owners' usernames too. That owner part
+   * only reaches the 100 shortest usernames containing `q` (oldest account first among equal
+   * lengths, whether they own anything or not), so a `q` found in more names misses the rest's
+   * uploads; a full username always finds its owner (vb2007/vb2007.hu-api#459).
+   */
   q?: string;
 };
 

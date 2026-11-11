@@ -860,6 +860,38 @@ test("a reset code asked for another account's address survives this account's n
   expect(reset).toEqual(RESET);
 });
 
+test("a reset asked for without an address, or with only whitespace, answers 400 and records nothing", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+  const missing = { status: 400, body: { error: "You must provide an E-mail address." } };
+
+  for (const email of [undefined, "", "  ", " \t\n ", 42]) {
+    expect(await callApi(page, api, "POST", "/auth/password-reset", { email })).toEqual(missing);
+  }
+
+  expect(api.passwordResets).toEqual([]);
+  // No code went out for the account.
+  expect(await confirmCode(page, api)).toEqual(WRONG_CODE);
+});
+
+test("a reset asked for with spaces around the address is decided on the trimmed one", async ({
+  page,
+  api
+}) => {
+  api.hasUser("me");
+  await page.goto("/reset-password");
+
+  expect(await callApi(page, api, "POST", "/auth/password-reset", { email: ` ${ME} ` })).toEqual(
+    CODE_SENT
+  );
+
+  expect(api.passwordResets).toEqual([ME]);
+  expect(await confirmCode(page, api)).toEqual(RESET);
+});
+
 // The day's mails (vb2007/vb2007.hu-api's budget): reset codes stop at 225 of 250, still answering 200.
 
 test("from 225 mails of the day, a reset code is not mailed and the answer doesn't show it", async ({

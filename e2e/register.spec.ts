@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
   callApi,
   expect,
+  getFromApi,
   MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   type MockApi,
@@ -834,9 +835,42 @@ test("a resend without an address answers 400 before anything else", async ({ pa
 
   expect(await resend(page, api, {})).toEqual(missing);
   expect(await resend(page, api, { email: "" })).toEqual(missing);
+  expect(await resend(page, api, { email: "  " })).toEqual(missing);
   expect(await resend(page, api, { email: 42 })).toEqual(missing);
   // With an address, the used-up budget answers.
   expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("a resend with only whitespace answers 400 and uses up no mail of the day", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  api.sentMailToday(199);
+  const missing = { status: 400, body: { error: "You must provide an E-mail address." } };
+
+  expect(await resend(page, api, { email: "  " })).toEqual(missing);
+  expect(await resend(page, api, { email: " \t\n " })).toEqual(missing);
+  expect(await resend(page, api, { email: "" })).toEqual(missing);
+
+  // Counted, the blanks would have used the 200th mail up: this resend is still the one that takes it.
+  expect(await resend(page, api)).toEqual(RESENT);
+  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+});
+
+test("a resend with spaces around the address is decided on the trimmed one", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+
+  expect(await resend(page, api, { email: ` ${REGISTRATION.email.toUpperCase()} ` })).toEqual(
+    RESENT
+  );
+
+  // The waiting registration got a new code, which started a minute of its own.
+  const again = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+  expect(again.status).toBe(429);
 });
 
 test("every resend uses up a mail of the day, whatever the address or the answer", async ({
@@ -912,4 +946,47 @@ test("a registration code that couldn't be mailed gives its mail of the day back
     email: "other@example.com"
   });
   expect(other).toEqual(MAIL_FAILED);
+});
+
+// A sign-up waiting for its code lives 24 hours (vb2007/vb2007.hu-api#459): past that it's gone for every route.
+const A_DAY = 24 * 60 * 60_000;
+test("a registration past its 24 hours is uncounted, its code is refused and a resend sends nothing", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  await registerAndWait(page, api);
+  const waiting = () => getFromApi(page, api, "/admin/stats");
+  expect(await waiting()).toMatchObject({ body: { pendingRegistrations: 1 } });
+
+  api.clockRunsFor(A_DAY);
+
+  expect(await waiting()).toMatchObject({ body: { pendingRegistrations: 0 } });
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+  expect(await resend(page, api)).toEqual(RESENT);
+  // Nothing was sent, so the right code is still refused.
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+});
+
+test("registering over an expired leftover, even a spent one, sends a new code that verifies", async ({
+  page,
+  api
+}) => {
+  await registerAndWait(page, api);
+  for (let wrong = 0; wrong < 5; wrong++) {
+    expect(
+      await callApi(page, api, "POST", "/auth/register/verify", {
+        ...REGISTRATION,
+        code: "000000"
+      })
+    ).toEqual(WRONG_CODE);
+  }
+  // Spent: even the right code is refused.
+  expect(await verify(page, api)).toEqual(WRONG_CODE);
+
+  api.clockRunsFor(A_DAY);
+  const registered = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
+
+  expect(registered.status).toBe(202);
+  expect(await verify(page, api)).toEqual(REGISTERED);
 });

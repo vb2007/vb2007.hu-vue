@@ -1,3 +1,4 @@
+import { Limits } from "@/constants/limits";
 import { SITE_LOCALE } from "@/constants/locale";
 import { formatWait, type WaitUnits } from "@/scripts/utility/durationUtil";
 import type { RateLimitName } from "@/types/api/admin";
@@ -96,7 +97,9 @@ export class Messages {
     /**
      * The API's 403 to a request without a working session (its `Responses.notLoggedIn`): none was
      * sent, or it ended. Other 403s (a wrong password, not the owner) have their own texts, so only
-     * this one tells the page it's logged out (see `onSessionRefused`).
+     * this one tells the page it's logged out (see `onSessionRefused`). The register code check
+     * reads it too, without a session: there it means the account it just created is gone
+     * (see `isLoggedOutAnswer`).
      */
     static readonly notLoggedIn: string = "You must be logged in to perform this action.";
     /** The API turned away a session the page had: expired, ended by a reset, or replaced. */
@@ -122,6 +125,12 @@ export class Messages {
     static usernameTakenMeanwhile(minutes: number): string {
       return `That username was taken in the meantime: pick another one. Your code works for up to ${minutes} minutes after it was sent.`;
     }
+    /**
+     * The code step's 403 `notLoggedIn` (vb2007/vb2007.hu-api#430): the account the code created
+     * was deleted before the session started, so the code is used up and nothing is left to retry.
+     */
+    static readonly registrationAccountRemoved: string =
+      "Your account was removed before registration finished, so that code is used up. Register again to get a new code.";
     /*
      * The register code step's notices, around the address the code went to: the text before it,
      * the punctuation kept with it, and the rest, so the form can let a long address wrap. The
@@ -420,7 +429,12 @@ export class Messages {
       mailSendsPerIp: "E-mails requested from the IP",
       usernameChecksPerIp: "Username checks from the IP",
       accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
-      passwordChecksPerIp: "Wrong passwords on the account page from the IP"
+      accountCodeChecksPerAccount: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerAccount} in ${Limits.Code.failedChecksWindowSeconds / 60} min`,
+      passwordChecksPerIp: "Wrong passwords on the account page from the IP",
+      passwordChecksPerAccount: "Wrong passwords on the account page, per account",
+      passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
+      emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
+      registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay} a day`
     };
     /** A limiter's plain name, or the API's own one for a limiter added after this list. */
     static rateLimitName(name: string): string {

@@ -198,6 +198,17 @@ test.describe("your links on /shorten", () => {
     await expect(search).toHaveValue("");
   });
 
+  test("the search shows the API's refusal of a NUL character", async ({ page, api }) => {
+    api.loggedInAs();
+    api.hasShortLink("abc123", TARGET);
+    await page.goto("/shorten");
+    const board = yourLinks(page);
+    await expect(board.getByText("1 link", { exact: true })).toBeVisible();
+
+    await board.getByLabel("Search by code or target").fill("ab\0c");
+    await expect(board.getByText("Invalid value for q.")).toBeVisible();
+  });
+
   test("deleting takes a second click, and emptying the last page steps back one", async ({
     page,
     api
