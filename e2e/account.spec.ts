@@ -815,10 +815,45 @@ test("a code that expired with the page open takes the waiting change away", asy
   await page.getByRole("button", { name: "Confirm code" }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
-    "new@example.com wasn't confirmed: its code expired. Send a new one with Change e-mail."
+    "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+});
+
+test("a code whose tries ran out takes the waiting change away, also after a reload", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+
+  const code = page.getByLabel("Confirmation code");
+  const confirm = page.getByRole("button", { name: "Confirm code" });
+  // Four wrong codes leave the change waiting, each as the field's own error.
+  for (let wrong = 1; wrong <= 4; wrong++) {
+    await code.fill("000000");
+    await confirm.click();
+    await expect(code).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  }
+
+  // The fifth uses up the tries, so the API no longer lists the change.
+  await code.fill("000000");
+  await confirm.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeVisible();
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
 });
 
 test("a change confirmed in another tab shows as confirmed, not as an expired code", async ({

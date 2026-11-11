@@ -113,7 +113,7 @@ export const useChangeEmail = () => {
 
   /**
    * Sends the code mailed to `pendingEmail`; returns whether the address changed. A refused code
-   * refreshes the user: a 400 may mean it expired, and a 403 or 409 drops the waiting change. The
+   * refreshes the user: a 400 may mean it expired or its tries are used up, and a 403 or 409 drops the waiting change. The
    * API refuses the superuser's address (403) or another account's (409) only here, not when it
    * mails the code, so it doesn't show which addresses have accounts (vb2007/vb2007.hu-api#291).
    * A 403 can also be the session ending (expired, ended by a password reset, or replaced by a
@@ -151,7 +151,9 @@ export const useChangeEmail = () => {
         result.status === HttpStatus.Forbidden || result.status === HttpStatus.Conflict;
       // An ended session's 403 has logged the page out already (`onSessionRefused`): no refresh.
       if (isLoggedIn.value && (dropped || result.status === HttpStatus.BadRequest)) {
-        // GET /user leaves out an expired change, so a 400 for one takes the code step away too.
+        // GET /user leaves out a change whose code expired or whose tries ran out (the 5th wrong
+        // code, or any code after that: vb2007/vb2007.hu-api#463), so a 400 for one takes the code
+        // step away too.
         const refreshed = await fetchUserDetails();
         if (dropped && !refreshed) pendingEmail.value = "";
       }
@@ -168,11 +170,12 @@ export const useChangeEmail = () => {
         changed = true;
       } else if (!pendingEmail.value) {
         // Its code step is gone with it, so the message names the address it was about. A 400
-        // means the code expired, and the API's "check it" no longer fits without the field.
+        // means the code expired or ran out of tries (the refresh can't tell which), and the API's
+        // "check it" no longer fits without the field.
         endCooldown();
         confirmError.value =
           result.status === HttpStatus.BadRequest
-            ? Messages.Account.codeExpired(address)
+            ? Messages.Account.codeExpiredOrUsedUp(address)
             : Messages.Account.notConfirmed(address, result.error);
       } else if (result.status === HttpStatus.BadRequest) {
         codeError.value = result.error;

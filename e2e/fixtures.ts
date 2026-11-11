@@ -1737,9 +1737,16 @@ export class MockApi {
     };
   }
 
-  /** A waiting change's code works for 15 minutes; after that, GET /user leaves it out. */
+  /**
+   * A waiting change's code works for 15 minutes and `CODE_TRIES` tries; after either, GET /user
+   * leaves it out (vb2007/vb2007.hu-api#463).
+   */
   private isEmailChangeLive() {
-    return this.emailChange !== null && this.now() < this.emailChange.expiresAt;
+    return (
+      this.emailChange !== null &&
+      this.now() < this.emailChange.expiresAt &&
+      this.emailChange.attempts < CODE_TRIES
+    );
   }
 
   /**
