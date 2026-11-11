@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import {
   callApi,
   expect,
@@ -10,6 +11,18 @@ import {
   type MockApi,
   test
 } from "./fixtures";
+/**
+ * A refusal that took the waiting change away shrinks the page, so the browser may scroll it past
+ * the message: the message takes the focus, which scrolls it fully into view below the sticky navbar.
+ */
+const expectAlertFocusedBelowNavbar = async (page: Page) => {
+  const alert = page.getByRole("alert");
+  await expect(alert).toBeFocused();
+  const navbar = (await page.locator("header.bar").boundingBox())!;
+  const box = (await alert.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(navbar.y + navbar.height);
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+};
 
 // GitHub login is a navigation to the API, which the mock doesn't serve, so these check where the
 // keys lead instead of following them. Only linking is served: the mock skips GitHub and comes back.
@@ -707,7 +720,7 @@ for (const [status, address, error] of [
     await expect(page.getByRole("alert")).toHaveText(`${address} wasn't confirmed. ${error}`);
     await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
     await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+    await expectAlertFocusedBelowNavbar(page);
     await expect(page.getByRole("definition")).toHaveText(["me", "me@example.com"]);
 
     // Nothing waits any more, so the form comes back empty and a new address goes straight away.
@@ -818,7 +831,7 @@ test("a code that expired with the page open takes the waiting change away", asy
     "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  await expectAlertFocusedBelowNavbar(page);
 });
 
 test("a code whose tries ran out takes the waiting change away, also after a reload", async ({
@@ -840,15 +853,17 @@ test("a code whose tries ran out takes the waiting change away, also after a rel
     await expect(page.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
   }
 
-  // The fifth uses up the tries, so the API no longer lists the change.
+  // The fifth uses up the tries, so the API no longer lists the change. The user is at the bottom
+  // of the page, which then shrinks, so the browser clamps the scroll past the message.
   await code.fill("000000");
+  await page.mouse.wheel(0, 100_000);
   await confirm.click();
   await expect(page.getByRole("alert")).toHaveText(
     "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  await expectAlertFocusedBelowNavbar(page);
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Change e-mail" })).toBeVisible();
