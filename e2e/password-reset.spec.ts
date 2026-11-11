@@ -937,8 +937,11 @@ test("a reset after the user logged out still drops the change they started", as
   await expect(page.getByText(WAITING)).toBeVisible();
   if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
   await page.getByRole("button", { name: "Log out" }).click();
+  // The change stays in the double while nobody is logged in: wait until the logout has landed, so the reset
+  // can't drop it as the logged-in account's.
+  await expect.poll(async () => (await getFromApi(page, api, "/user")).status).toBe(403);
 
-  const token = api.mailsResetLink();
+  const token = api.mailsResetLink(undefined, ME);
   await page.goto(`/reset-password#token=${token}`);
   await page.getByLabel("New password").fill("a new password");
   await page.getByRole("button", { name: "Reset password" }).click();
@@ -962,7 +965,7 @@ test("resetting another account's password keeps the logged-in account's waiting
   await page.reload();
   await expect(page.getByText(WAITING)).toBeVisible();
 
-  const token = api.mailsResetLink("0123456789abcdef01234567", ME);
+  const token = api.mailsResetLink(undefined, ME);
   const link = { token, newPassword: "another password" };
   expect(await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).toEqual(
     RESET
@@ -981,6 +984,7 @@ test("a reset drops the pending address of the admin's view of the account, by c
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   const anna = api.hasUser("anna", { pendingEmail: "anna@new.example" });
   const milo = api.hasUser("milo", { pendingEmail: "milo@new.example" });
+  api.countsRateLimit("emailChangeCodeFailures", { email: "anna@example.com" });
   await page.goto(`/admin/users/${anna.id}`);
   const pendingOf = async (id: string) => (await getFromApi(page, api, `/admin/users/${id}`)).body;
   expect(await pendingOf(anna.id)).toMatchObject({ user: { pendingEmail: "anna@new.example" } });
@@ -993,9 +997,11 @@ test("a reset drops the pending address of the admin's view of the account, by c
   expect(await callApi(page, api, "POST", "/auth/password-reset", { email: byCode.email })).toEqual(
     CODE_SENT
   );
-  byCode.code = api.passwordResetCode;
   expect(await callApi(page, api, "POST", "/auth/password-reset/confirm", byCode)).toEqual(RESET);
   expect(await pendingOf(anna.id)).toMatchObject({ user: { pendingEmail: null } });
+  // The API leaves the wrong-code counter of e-mail changes (`emailChangeFailures`) alone.
+  const cleared = await callApi(page, api, "DELETE", "/admin/rate-limits", { email: byCode.email });
+  expect(cleared.body).toMatchObject({ cleared: ["emailChangeCodeFailures"] });
   expect(await pendingOf(milo.id)).toMatchObject({ user: { pendingEmail: "milo@new.example" } });
 
   const token = api.mailsResetLink(milo.id, "milo@example.com");

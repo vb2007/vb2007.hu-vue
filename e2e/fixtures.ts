@@ -540,10 +540,11 @@ export class MockApi {
   /** A new address waiting for `MOCK_EMAIL_CODE`. */
   private emailChange: (MockCode & { email: string }) | null = null;
   /**
-   * The account `emailChange` waits on: the one that asked for it, or the one logged in when `hasPendingEmail` arranged it.
-   * Null when nobody was, then the logged-in account's at the time (see `voidsEmailChangeOf`).
+   * The `_id` of the account `emailChange` waits on: the one that asked for it, or the one logged in when `hasPendingEmail`
+   * arranged it. Null when nobody was, then the logged-in account's at the time (see `voidsEmailChangeOf`). It only decides
+   * what a password reset drops: `GET /user`, the confirm and the `PATCH` cooldown still use the one slot whoever is logged in.
    */
-  private emailChangeOwner: MockUser | null = null;
+  private emailChangeOwnerId: string | null = null;
   /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
   private emailCooldownOnSend: number | null = null;
   private shortCode = "e2e123";
@@ -863,7 +864,7 @@ export class MockApi {
       email: normalizeEmail(email),
       ...this.newCode(15, this.now() - sentSecondsAgo * 1000)
     };
-    this.emailChangeOwner = this.user;
+    this.emailChangeOwnerId = this.user?._id ?? null;
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
@@ -909,7 +910,8 @@ export class MockApi {
     for (const id of [userId, account?._id, ...rowIds]) {
       if (id) this.userPendingEmails.delete(id);
     }
-    if (account && (this.emailChangeOwner ?? this.user) === account) this.emailChange = null;
+    if (account && (this.emailChangeOwnerId ?? this.user?._id) === account._id)
+      this.emailChange = null;
   }
 
   /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
@@ -1679,7 +1681,7 @@ export class MockApi {
       return MAIL_FAILED;
     }
     this.emailChange = { email: normalized, ...this.newCode(15) };
-    this.emailChangeOwner = this.user;
+    this.emailChangeOwnerId = this.user?._id ?? null;
     return {
       status: 202,
       body: {
