@@ -24,9 +24,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
  * 15 minutes ago has expired.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds and adds
- * `reason: "resendCooldown"` (vb2007/vb2007.hu-api#461), and the rate
- * limiters' (`limitsPasswordChecks()`, and `limitsMailSends()` for every route that mails a code, whose refused password resets go to
- * `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
+ * `reason: "resendCooldown"` (vb2007/vb2007.hu-api#461), and the rate limiters' (`limitsPasswordChecks()`, and `limitsMailSends()`
+ * for every route that mails a code, whose refused password resets go to `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
  * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
  * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` fails the next code mail that is
  * actually sent, like a mail server that's down (vb2007/vb2007.hu-api#294): `PATCH /user/email` and `POST /auth/register` answer
