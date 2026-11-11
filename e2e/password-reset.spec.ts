@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
   callApi,
   expect,
+  getFromApi,
   MOCK_EMAIL,
   MOCK_EMAIL_CODE,
   MOCK_PASSWORD,
@@ -858,6 +859,151 @@ test("a reset code asked for another account's address survives this account's n
     newPassword: "a new password"
   });
   expect(reset).toEqual(RESET);
+});
+
+// Since vb2007/vb2007.hu-api#462 a password reset also unsets the account's waiting e-mail change, as a suspension does.
+// The reset ends the session, so the site shows nothing of it until the user logs in again.
+
+const WAITING = "Waiting for confirmation: new@example.com";
+
+/** Logs in at `/login` with the password the reset set, then expects the account page to know no waiting change. */
+async function expectNoWaitingChangeAfterLogin(page: Page, api: MockApi) {
+  await page.getByLabel("E-mail").fill(ME);
+  await page.getByLabel("Password", { exact: true }).fill("a new password");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Login successful!");
+
+  await page.goto("/account");
+  await expect(page.getByRole("definition").first()).toHaveText("me");
+  await expect(page.getByText("Waiting for confirmation")).toHaveCount(0);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({ pendingEmail: null });
+  // The earlier code is refused like any wrong one, and doesn't switch the address.
+  const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+  expect(confirmed.status).toBe(400);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({ email: ME });
+}
+
+test("resetting the password with a code drops the waiting e-mail change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(ME, "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await expect(page.getByText(WAITING)).toBeVisible();
+
+  await page.goto("/reset-password");
+  await page.getByLabel("E-mail").fill(ME);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("Code").fill(api.passwordResetCode);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await expect(page).toHaveURL("/login");
+
+  await expectNoWaitingChangeAfterLogin(page, api);
+});
+
+test("resetting the password with a link drops the waiting e-mail change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(ME, "me");
+  api.hasPendingEmail("new@example.com");
+  const token = api.mailsResetLink();
+  await page.goto("/account");
+  await expect(page.getByText(WAITING)).toBeVisible();
+
+  await page.goto(`/reset-password#token=${token}`);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await expect(page).toHaveURL("/login");
+
+  await expectNoWaitingChangeAfterLogin(page, api);
+});
+
+test("a reset after the user logged out still drops the change they started", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.loggedInAs(ME, "me");
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("new@example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByText(WAITING)).toBeVisible();
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  const token = api.mailsResetLink();
+  await page.goto(`/reset-password#token=${token}`);
+  await page.getByLabel("New password").fill("a new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await expect(page).toHaveURL("/login");
+
+  await expectNoWaitingChangeAfterLogin(page, api);
+});
+
+test("resetting another account's password keeps the logged-in account's waiting change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("anna@example.com", "anna");
+  api.hasPendingEmail("new@example.com");
+  api.hasUser("me");
+  await page.goto("/account");
+  await expect(page.getByText(WAITING)).toBeVisible();
+  expect(await askForCode(page, api)).toEqual(CODE_SENT);
+
+  expect(await confirmCode(page, api)).toEqual(RESET);
+  await page.reload();
+  await expect(page.getByText(WAITING)).toBeVisible();
+
+  const token = api.mailsResetLink("0123456789abcdef01234567", ME);
+  const link = { token, newPassword: "another password" };
+  expect(await callApi(page, api, "POST", "/auth/password-reset/confirm-link", link)).toEqual(
+    RESET
+  );
+  await page.reload();
+  await expect(page.getByText(WAITING)).toBeVisible();
+  expect(
+    (await callApi(page, api, "POST", "/user/email/confirm", { code: MOCK_EMAIL_CODE })).status
+  ).toBe(200);
+});
+
+test("a reset drops the pending address of the admin's view of the account, by code and by link", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna", { pendingEmail: "anna@new.example" });
+  const milo = api.hasUser("milo", { pendingEmail: "milo@new.example" });
+  await page.goto(`/admin/users/${anna.id}`);
+  const pendingOf = async (id: string) => (await getFromApi(page, api, `/admin/users/${id}`)).body;
+  expect(await pendingOf(anna.id)).toMatchObject({ user: { pendingEmail: "anna@new.example" } });
+
+  const byCode = {
+    email: "anna@example.com",
+    code: api.passwordResetCode,
+    newPassword: "a new password"
+  };
+  expect(await callApi(page, api, "POST", "/auth/password-reset", { email: byCode.email })).toEqual(
+    CODE_SENT
+  );
+  byCode.code = api.passwordResetCode;
+  expect(await callApi(page, api, "POST", "/auth/password-reset/confirm", byCode)).toEqual(RESET);
+  expect(await pendingOf(anna.id)).toMatchObject({ user: { pendingEmail: null } });
+  expect(await pendingOf(milo.id)).toMatchObject({ user: { pendingEmail: "milo@new.example" } });
+
+  const token = api.mailsResetLink(milo.id, "milo@example.com");
+  const byLink = { token, newPassword: "a new password" };
+  expect(await callApi(page, api, "POST", "/auth/password-reset/confirm-link", byLink)).toEqual(
+    RESET
+  );
+  expect(await pendingOf(milo.id)).toMatchObject({ user: { pendingEmail: null } });
 });
 
 test("a reset asked for without an address, or with only whitespace, answers 400 and records nothing", async ({
