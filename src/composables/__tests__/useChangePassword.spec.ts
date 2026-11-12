@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { useChangePassword } from "@/composables/useChangePassword";
+import { isLoggedIn, pendingEmail } from "@/scripts/authentication/authState";
+
+/** `GET /user` after a password change: the API dropped any waiting e-mail change. */
+const USER = { email: "vb@example.com", username: "vb", hasPassword: true, pendingEmail: null };
+/** The success when a change to new@example.com waited. */
+const CANCELLED =
+  "Password changed successfully. The change to new@example.com was cancelled, so its code no longer works: get a new one with Change e-mail.";
 
 describe("useChangePassword", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
@@ -12,10 +19,10 @@ describe("useChangePassword", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("changes the password and keeps the API's message", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { message: "Password changed successfully." })
-    );
+  it("changes the password, keeps the API's message and refreshes the user", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, USER));
     const password = mountComposable(useChangePassword).api;
 
     const pending = password.change("old-password", "new-password");
@@ -28,12 +35,62 @@ describe("useChangePassword", () => {
       credentials: "include",
       body: JSON.stringify({ currentPassword: "old-password", newPassword: "new-password" })
     });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+      method: "GET",
+      credentials: "include"
+    });
     expect(password.changed.value).toBe("Password changed successfully.");
     expect(password.changeError.value).toBe("");
     expect(password.isChanging.value).toBe(false);
   });
 
-  it("shows the API's refusal", async () => {
+  it("says a waiting e-mail change was cancelled, as the refresh no longer has it", async () => {
+    isLoggedIn.value = true;
+    pendingEmail.value = "new@example.com";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, USER));
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("old-password", "new-password")).toBe(true);
+
+    expect(pendingEmail.value).toBe("");
+    expect(password.changed.value).toBe(CANCELLED);
+  });
+
+  it("drops the waiting e-mail change itself when the refresh fails", async () => {
+    isLoggedIn.value = true;
+    pendingEmail.value = "new@example.com";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(500));
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("old-password", "new-password")).toBe(true);
+
+    expect(isLoggedIn.value).toBe(true);
+    expect(pendingEmail.value).toBe("");
+    expect(password.changed.value).toBe(CANCELLED);
+  });
+
+  it("says nothing was cancelled when a change waits again by the refresh", async () => {
+    // E.g. another tab asked for a new code between the change and the refresh.
+    isLoggedIn.value = true;
+    pendingEmail.value = "new@example.com";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, { ...USER, pendingEmail: "newer@example.com" }));
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("old-password", "new-password")).toBe(true);
+
+    expect(pendingEmail.value).toBe("newer@example.com");
+    expect(password.changed.value).toBe("Password changed successfully.");
+  });
+
+  it("shows the API's refusal, which keeps a waiting e-mail change", async () => {
+    isLoggedIn.value = true;
+    pendingEmail.value = "new@example.com";
     fetchMock.mockResolvedValueOnce(
       jsonResponse(403, { error: "The provided password is incorrect." })
     );
@@ -41,6 +98,8 @@ describe("useChangePassword", () => {
 
     expect(await password.change("wrong-password", "new-password")).toBe(false);
 
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(pendingEmail.value).toBe("new@example.com");
     expect(password.changeError.value).toBe("The provided password is incorrect.");
     expect(password.changed.value).toBe("");
     expect(password.isChanging.value).toBe(false);
@@ -58,6 +117,7 @@ describe("useChangePassword", () => {
   it("reports an unreachable server and forgets an earlier success", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, USER))
       .mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const password = mountComposable(useChangePassword).api;
     await password.change("old-password", "new-password");

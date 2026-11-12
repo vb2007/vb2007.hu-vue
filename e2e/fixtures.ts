@@ -23,7 +23,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
  * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
- * view's pending address), as the API has since vb2007/vb2007.hu-api#462: `GET /user` answers `pendingEmail: null` and the
+ * view's pending address), as the API has since vb2007/vb2007.hu-api#462, and so does the logged-in account's `PATCH /user/password`
+ * once the current password is right (vb2007/vb2007.hu-api#474): `GET /user` answers `pendingEmail: null` and the
  * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself; one arranged
  * with nobody logged in belongs to whichever account is reset.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds and adds
@@ -914,8 +915,9 @@ export class MockApi {
   }
 
   /**
-   * Drops the e-mail change waiting for the account a password reset is for, which the API unsets
-   * (`passwordResetUpdate`, vb2007/vb2007.hu-api#462; the wrong-code counter `emailChangeFailures` stays). The account is
+   * Drops the e-mail change waiting for the account a password reset or change is for, which the API unsets
+   * (`passwordResetUpdate`, vb2007/vb2007.hu-api#462, and `changePassword`, vb2007/vb2007.hu-api#474; the wrong-code
+   * counter `emailChangeFailures` stays). The account is
    * the login with `userId` (a link's) else the one at `email`, whose admin list rows go by their own ids. Another
    * account's change, the logged-in one's if it isn't the reset account, stays.
    */
@@ -1868,6 +1870,7 @@ export class MockApi {
     this.password = newPassword;
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.voidResetCode(this.user.email);
+    this.voidsEmailChangeOf(this.user.email, this.user._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
