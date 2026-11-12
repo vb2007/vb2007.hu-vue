@@ -246,9 +246,9 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
-    /** The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319). */
+    /** The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319, #470). */
     static readonly usernameInvalidCharacters: string =
-      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
     /** The hint under every new-password field, and the admin's new username field. */
     static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
