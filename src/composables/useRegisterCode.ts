@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { mailBudgetOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest, isLoggedOutAnswer } from "@/scripts/api/client";
 import {
@@ -19,6 +19,14 @@ export const RESEND_COOLDOWN_SECONDS = Limits.Code.cooldownSeconds;
 
 /** Where the resend countdown is kept, so a reload doesn't forget it (one address at a time). */
 export const COOLDOWN_STORAGE_KEY = "register-cooldown";
+/**
+ * Where the wait for the day's used-up registration mail is kept (vb2007/vb2007.hu-api#468). The
+ * API refuses it for every address alike, so it's one wait under one id, for Register and Resend.
+ */
+export const REGISTRATION_BUDGET_STORAGE_KEY = "register-mail-budget";
+export const REGISTRATION_BUDGET_ID = "registration";
+
+type Countdown = ReturnType<typeof useCountdown>;
 
 /** What confirming the code led to. */
 export type RegisterCodeResult =
@@ -74,9 +82,9 @@ export type CodeNotice =
   /** Back from fixing the form: nothing was sent, and the code typed before is kept. */
   | "kept"
   /**
-   * A resend the API turned away with its 503 (the day's registration mail is used up), before it
-   * looked at the address: it made no new code, so a code that reached the address in the last
-   * minutes it works for, if any did, still works.
+   * A resend the API turned away with a 503 (the day's registration mail is used up, before it
+   * looked at the address, or a failed send): it made no new code, so a code that reached the
+   * address in the last minutes it works for, if any did, still works.
    */
   | "unsent";
 
@@ -100,12 +108,30 @@ export const useRegisterCode = () => {
   const cooldown = useCountdown(COOLDOWN_STORAGE_KEY);
   /** The address the countdown holds back; any other can be sent a code right away. */
   const cooldownFor = ref("");
-  /** True while `codeError` is a refused resend's, which only holds until the countdown ends. */
-  let errorEndsWithCooldown = false;
+  /** Set while `codeError` is why a countdown holds the resend key: it goes when that one ends. */
+  let errorEndsWith: Countdown | undefined;
+  /**
+   * Runs after the 503 for the day's used-up registration mail, until it starts over: it holds
+   * Resend for every address, and Register (see `RegisterForm`), also after a reload.
+   */
+  const budget = useCountdown(REGISTRATION_BUDGET_STORAGE_KEY);
+  budget.resume(REGISTRATION_BUDGET_ID);
+  const budgetWaiting = budget.active;
 
-  const resendWaiting = computed(
+  const cooldownWaiting = computed(
     () => cooldown.active.value && normalizeEmail(cooldownFor.value) === normalizeEmail(email.value)
   );
+  const resendWaiting = computed(() => cooldownWaiting.value || budgetWaiting.value);
+  /** Whichever wait holds the resend key longer, the budget's or the address's. */
+  const resendWait = (): Countdown =>
+    budgetWaiting.value &&
+    (!cooldownWaiting.value || budget.remaining.value >= cooldown.remaining.value)
+      ? budget
+      : cooldown;
+  /** The seconds the resend key counts down; 0 while it doesn't wait. */
+  const resendIn = computed(() => (resendWaiting.value ? resendWait().remaining.value : 0));
+  /** Why the resend key waits, as its countdown keeps it; "" when nothing has to be said. */
+  const resendNote = computed(() => (resendWaiting.value ? resendWait().note.value : ""));
   /**
    * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
    * is refused), Confirm code waits for the address; another address can be confirmed at once.
@@ -123,10 +149,10 @@ export const useRegisterCode = () => {
   );
 
   /** Shows one problem at a time; an empty message clears both. */
-  const showError = (message: string, endsWithCooldown = false) => {
+  const showError = (message: string, endsWith?: Countdown) => {
     codeError.value = message;
     codeFieldError.value = "";
-    errorEndsWithCooldown = endsWithCooldown;
+    errorEndsWith = endsWith;
   };
 
   const showCodeProblem = (message: string) => {
@@ -140,9 +166,17 @@ export const useRegisterCode = () => {
     cooldown.start(seconds, normalizeEmail(email.value), reason);
   };
 
+  /** Holds Register and Resend until the day's registration mail starts over, for any address. */
+  const holdForBudget = (seconds: number, reason: string) =>
+    budget.start(seconds, REGISTRATION_BUDGET_ID, reason);
+
+  watch(budget.active, (active) => {
+    if (!active && errorEndsWith === budget) showError("");
+  });
+
   watch(cooldown.active, (active) => {
     if (active) return;
-    if (errorEndsWithCooldown) {
+    if (errorEndsWith === cooldown) {
       showError("");
     }
     // "Less than a minute ago" stops being true with the minute: then it's a code mailed earlier.
@@ -169,7 +203,7 @@ export const useRegisterCode = () => {
     }
     // Kept or still running in memory (e.g. without sessionStorage), the wait says why again.
     if (resendWaiting.value) {
-      showError(cooldown.note.value, true);
+      showError(resendNote.value, resendWait());
     }
   };
 
@@ -266,15 +300,19 @@ export const useRegisterCode = () => {
     } else if (result.status === HttpStatus.TooManyRequests) {
       // A rate limiter (e.g. too many e-mails) only says to try later, which the key times.
       holdResend(retryAfterFrom(result.body), result.error);
-      showError(result.error, true);
+      showError(result.error, cooldown);
     } else {
-      showError(result.error);
-      if (result.status === HttpStatus.ServiceUnavailable) {
-        // The day's registration mail is used up: the API made no new code, so the one before
-        // still works. Its 503 names no wait, and the budget also starts over when the API
-        // restarts, so the key isn't held.
-        notice.value = "unsent";
+      const budgetWait = mailBudgetOf(result);
+      if (budgetWait !== undefined) {
+        // The day's registration mail is used up, for every address: every resend (and Register)
+        // gets the same 503 until it starts over, so both wait that long.
+        holdForBudget(budgetWait, result.error);
+        showError(result.error, budget);
+      } else {
+        showError(result.error);
       }
+      // Either 503 made no new code, so a code that reached the address before still works.
+      if (result.status === HttpStatus.ServiceUnavailable) notice.value = "unsent";
     }
     isResending.value = false;
 
@@ -290,7 +328,12 @@ export const useRegisterCode = () => {
     codeFieldError,
     formProblem,
     cooldown,
+    budget,
+    budgetWaiting,
+    holdForBudget,
     resendWaiting,
+    resendIn,
+    resendNote,
     verifyWaiting,
     verifyHold,
     shownError,

@@ -4,7 +4,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { codeCooldownOf, retryAfterFrom } from "@/composables/useCountdown";
+import { codeCooldownOf, mailBudgetOf, retryAfterFrom } from "@/composables/useCountdown";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 
 /** A `RegisterStatus`, or the API's message when registering failed. */
@@ -238,10 +238,13 @@ export interface RegisterAnswer {
    */
   retryAfter?: number;
   /**
-   * Set only for a rate limiter's 429 (the hourly mail limit, per IP): nothing was sent, and the
-   * API takes no registration for this many seconds.
+   * Set only when nothing was sent and the API takes no registration for this many seconds, from
+   * any address: a rate limiter's 429 (the hourly mail limit, per IP), or the 503 for the day's
+   * registration mail being used up (`mailBudget`), whose wait may end sooner if the API restarts.
    */
   limitedFor?: number;
+  /** Set with `limitedFor` when it's the day's mail limit that waits, not a rate limiter. */
+  mailBudget?: boolean;
 }
 
 /**
@@ -268,7 +271,7 @@ export const register = async (
   }
 
   // 400 (rules, disposable or undeliverable address), 409 (a taken username),
-  // 429 (too soon or rate limited), 503 (mail failed)
+  // 429 (too soon or rate limited), 503 (the day's mail used up, or a failed send)
   const message = apiErrorOf(result) ?? RegisterStatus.Error;
   const answer: RegisterAnswer = { sent: false };
   if (result.status === HttpStatus.BadRequest || result.status === HttpStatus.Conflict) {
@@ -279,6 +282,12 @@ export const register = async (
     const codeWait = codeCooldownOf(result);
     if (codeWait !== undefined) answer.retryAfter = codeWait;
     else answer.limitedFor = retryAfterFrom(result.body);
+  }
+  // A 503 for the used-up mail limit waits until it starts over; any other 503 may work at once.
+  const budgetWait = mailBudgetOf(result);
+  if (budgetWait !== undefined) {
+    answer.limitedFor = budgetWait;
+    answer.mailBudget = true;
   }
   registerStatus.value = message;
   return answer;

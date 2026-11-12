@@ -18,8 +18,6 @@ import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { statusTextId } from "@/components/ui/statusMessage";
 
-const codeHint = `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail.`;
-
 const emit = defineEmits<{ start: [] }>();
 
 const {
@@ -31,11 +29,25 @@ const {
   codeError,
   confirmError,
   confirm,
-  cooldown,
+  budget,
+  sendWait,
   showWait,
   confirmHold
 } = useChangeEmail();
-const { remaining: waitSeconds, active: isWaiting } = cooldown;
+/**
+ * Under the code field. While the day's mail is used up a new code can't be sent before it starts
+ * over, so neither hint offers one then.
+ */
+const codeHint = computed(
+  () =>
+    `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder${budget.active.value ? "." : ", or get a new one with Change e-mail."}`
+);
+const newEmailHint = computed(() =>
+  pendingEmail.value && !budget.active.value
+    ? "A new code replaces the one already sent."
+    : undefined
+);
+const { remaining: waitSeconds, active: isWaiting } = sendWait;
 const isConfirmHeld = computed(() => confirmHold.isHeld());
 const confirmErrorId = useId();
 
@@ -85,7 +97,7 @@ const sendName = computed(() =>
 );
 /** Whether the error on show is why the key waits, which then describes the key. */
 const errorIsWait = computed(
-  () => isWaiting.value && !!changeError.value && changeError.value === cooldown.note.value
+  () => isWaiting.value && !!changeError.value && changeError.value === sendWait.note.value
 );
 
 const key = useTemplateRef("key");
@@ -253,7 +265,7 @@ const confirmCode = async () => {
       label="New e-mail"
       type="email"
       autocomplete="email"
-      :hint="pendingEmail ? 'A new code replaces the one already sent.' : undefined"
+      :hint="newEmailHint"
       :error="changeErrors.email"
       required
       @blur="leaveChange('email')"
@@ -275,19 +287,20 @@ const confirmCode = async () => {
       <BaseButton
         type="submit"
         size="sm"
+        :class="{ change__counting: isWaiting && !isChanging }"
         :loading="isChanging"
         :disabled="isWaiting"
         :aria-label="sendName"
         :aria-describedby="errorIsWait ? statusTextId(changeErrorId) : undefined"
         :blocked="!isChangeValid"
       >
-        {{
-          isChanging
-            ? "Sending"
-            : isWaiting
-              ? Messages.EmailCode.sendCodeIn(waitSeconds)
-              : "Send code"
-        }}
+        <template v-if="isChanging">Sending</template>
+        <!-- The verb stays whole, so a wrapped wait goes under it (see .change__counting). -->
+        <template v-else-if="isWaiting"
+          ><span class="change__verb">{{ Messages.EmailCode.sendCode }}</span>
+          {{ Messages.EmailCode.waitIn(waitSeconds) }}</template
+        >
+        <template v-else>{{ Messages.EmailCode.sendCode }}</template>
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
         Cancel
@@ -324,9 +337,32 @@ const confirmCode = async () => {
   overflow-wrap: anywhere;
 }
 
+/* One column no wider than the row it's in. */
 .change {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-4);
+}
+
+/* A waiting key's label ("Send code in 11 hr 59 min") is longer than "Send code". Where the row is
+   too narrow for it on one line but wide enough for "Send code" (a phone at a large font, under a
+   long waiting address), the key takes the width of its unbroken verb and the wait wraps under
+   it; narrower still, it wraps like the key at rest. Either way it's no wider than "Send code"
+   would be. The row itself can still be wider than the board at 200 %, as the account board's
+   other rows are. */
+.change__actions {
+  container-type: inline-size;
+}
+
+@container (7.5rem <= width < 14rem) {
+  .change__counting {
+    width: min-content;
+    min-width: 0;
+  }
+
+  .change__verb {
+    white-space: nowrap;
+  }
 }
 
 .change__actions {

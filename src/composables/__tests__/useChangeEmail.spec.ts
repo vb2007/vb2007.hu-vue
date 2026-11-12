@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { COOLDOWN_STORAGE_KEY, useChangeEmail } from "@/composables/useChangeEmail";
+import {
+  COOLDOWN_STORAGE_KEY,
+  ACCOUNT_BUDGET_ID,
+  ACCOUNT_BUDGET_STORAGE_KEY,
+  useChangeEmail
+} from "@/composables/useChangeEmail";
 import { Messages } from "@/constants/messages";
 import {
   emailVerified,
@@ -209,6 +214,106 @@ describe("useChangeEmail", () => {
       expect(email.changeError.value).toBe(error);
       expect(pendingEmail.value).toBe("earlier@example.com");
       expect(email.cooldown.active.value).toBe(false);
+      // A failed send may work on the next try, so nothing waits.
+      expect(email.sendWait.active.value).toBe(false);
+    });
+
+    describe("once the day's mail is used up", () => {
+      const budget =
+        "No more e-mails can be sent today: please try again after the daily limit resets.";
+      const budgetUsedUp = () =>
+        jsonResponse(503, { error: budget, reason: "mailBudget", retryAfter: 51234 });
+
+      it("holds Send code until it starts over, kept apart from the cooldown", async () => {
+        vi.useFakeTimers();
+        fetchMock
+          .mockResolvedValueOnce(budgetUsedUp())
+          .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+        const email = useEmail();
+
+        expect(await email.change("new@example.com", "secret-password")).toBe(false);
+
+        // The API restores the change that waited before (none here), so it's asked what it has.
+        expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+          method: "GET",
+          credentials: "include"
+        });
+        expect(pendingEmail.value).toBe("");
+        expect(email.changeError.value).toBe(budget);
+        expect(email.sendWait.active.value).toBe(true);
+        expect(email.sendWait.remaining.value).toBe(51234);
+        expect(email.sendWait.note.value).toBe(budget);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(savedCooldown()).toBeNull();
+        expect(JSON.parse(sessionStorage.getItem(ACCOUNT_BUDGET_STORAGE_KEY)!)).toEqual({
+          id: ACCOUNT_BUDGET_ID,
+          deadline: Date.now() + 51234 * 1000,
+          note: budget
+        });
+        expect(console.error).toHaveBeenCalledWith("Failed to change e-mail: ", 503);
+
+        // A reload picks the wait up for the account, and opening the form says why again.
+        const reloaded = useEmail();
+        expect(reloaded.sendWait.remaining.value).toBe(51234);
+        reloaded.showWait();
+        expect(reloaded.changeError.value).toBe(budget);
+
+        vi.advanceTimersByTime(51234 * 1000);
+        await nextTick();
+        expect(email.sendWait.active.value).toBe(false);
+        expect(email.changeError.value).toBe("");
+        vi.useRealTimers();
+      });
+
+      it("keeps waiting when a change confirmed meanwhile ends the cooldown", async () => {
+        vi.useFakeTimers();
+        pendingEmail.value = "earlier@example.com";
+        fetchMock
+          .mockResolvedValueOnce(budgetUsedUp())
+          .mockResolvedValueOnce(
+            jsonResponse(200, { ...waitingUser, pendingEmail: "earlier@example.com" })
+          )
+          .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated." }))
+          .mockResolvedValueOnce(
+            jsonResponse(200, {
+              ...waitingUser,
+              email: "earlier@example.com",
+              emailVerified: true,
+              pendingEmail: null
+            })
+          );
+        const email = useEmail();
+        await email.change("new@example.com", "secret-password");
+        // The code for the waiting change went out moments ago.
+        email.cooldown.start(42, "old@example.com");
+        expect(email.cooldown.active.value).toBe(true);
+
+        expect(await email.confirm("123456")).toBe(true);
+
+        // The cooldown ends with the change; the day's mail hasn't started over, and the wait
+        // stays for the confirmed address too, since it isn't kept for one.
+        expect(email.cooldown.active.value).toBe(false);
+        expect(email.sendWait.active.value).toBe(true);
+        expect(email.sendWait.note.value).toBe(budget);
+        const reloaded = useEmail();
+        expect(reloaded.sendWait.active.value).toBe(true);
+        vi.useRealTimers();
+      });
+
+      it("shows the longer of the two waits", async () => {
+        vi.useFakeTimers();
+        const email = useEmail();
+        email.cooldown.start(60, "old@example.com", "A code was sent just now.");
+        expect(email.sendWait.remaining.value).toBe(60);
+        expect(email.sendWait.note.value).toBe("A code was sent just now.");
+
+        email.budget.start(51234, "old@example.com", budget);
+        expect(email.sendWait.remaining.value).toBe(51234);
+        expect(email.sendWait.note.value).toBe(budget);
+        email.showWait();
+        expect(email.changeError.value).toBe(budget);
+        vi.useRealTimers();
+      });
     });
 
     it("counts down the API's retryAfter after a 429, with a message that has no number", async () => {

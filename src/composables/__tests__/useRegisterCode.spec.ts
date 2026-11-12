@@ -4,6 +4,8 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import {
   COOLDOWN_STORAGE_KEY,
+  REGISTRATION_BUDGET_ID,
+  REGISTRATION_BUDGET_STORAGE_KEY,
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode
 } from "@/composables/useRegisterCode";
@@ -508,7 +510,69 @@ describe("useRegisterCode", () => {
       expect(step.codeFieldError.value).toBe(invalidCode);
     });
 
-    it("keeps the code from before when the day's registration mail is used up", async () => {
+    it("holds the key until the day's registration mail starts over, keeping the code from before", async () => {
+      const budget =
+        "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, { error: budget, reason: "mailBudget", retryAfter: 51234 })
+      );
+      const step = openStep();
+      vi.advanceTimersByTime(60_000);
+
+      expect(await step.resend()).toBe("failed");
+
+      expect(step.codeError.value).toBe(budget);
+      expect(step.notice.value).toBe("unsent");
+      // Every resend gets the same 503 until then, so the key waits, also after a reload, and says why.
+      expect(step.resendWaiting.value).toBe(true);
+      expect(step.budgetWaiting.value).toBe(true);
+      expect(step.resendIn.value).toBe(51234);
+      expect(step.resendNote.value).toBe(budget);
+      expect(JSON.parse(sessionStorage.getItem(REGISTRATION_BUDGET_STORAGE_KEY)!)).toEqual({
+        id: REGISTRATION_BUDGET_ID,
+        deadline: Date.now() + 51234 * 1000,
+        note: budget
+      });
+      // The budget is the same for every address, so another one waits too.
+      const { api: reloaded } = mountComposable(useRegisterCode);
+      reloaded.open("other@example.com", "earlier");
+      expect(reloaded.resendWaiting.value).toBe(true);
+      expect(reloaded.codeError.value).toBe(budget);
+      // Like the rate limiter's 429, it's logged.
+      expect(console.error).toHaveBeenCalledWith("Failed to send a new code: ", 503);
+
+      // Its message goes with the wait.
+      vi.advanceTimersByTime(51234 * 1000);
+      await nextTick();
+      expect(step.resendWaiting.value).toBe(false);
+      expect(step.codeError.value).toBe("");
+    });
+
+    it("waits out the longer of the address's cooldown and the budget, with its message", () => {
+      const step = openStep();
+      expect(step.resendIn.value).toBe(60);
+      expect(step.resendNote.value).toBe("");
+
+      // The address's cooldown is longer, so it's what the key counts, with its own (empty) message.
+      step.holdForBudget(30, "No more registration e-mails can be sent today.");
+      expect(step.resendIn.value).toBe(60);
+      expect(step.resendNote.value).toBe("");
+      step.holdForBudget(51234, "No more registration e-mails can be sent today.");
+      expect(step.resendIn.value).toBe(51234);
+      expect(step.resendNote.value).toBe("No more registration e-mails can be sent today.");
+
+      // Register's budget wait holds Resend too, once the step opens.
+      const { api: other } = mountComposable(useRegisterCode);
+      other.open("other@example.com", "earlier");
+      expect(other.resendWaiting.value).toBe(true);
+      expect(other.codeError.value).toBe("No more registration e-mails can be sent today.");
+      vi.advanceTimersByTime(51234 * 1000);
+      expect(other.resendWaiting.value).toBe(false);
+      expect(other.resendIn.value).toBe(0);
+      expect(other.resendNote.value).toBe("");
+    });
+
+    it("keeps the key usable after a 503 without the budget's reason, a failed send", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
       );
@@ -519,12 +583,11 @@ describe("useRegisterCode", () => {
 
       expect(step.codeError.value).toBe("The e-mail couldn't be sent: please try again later.");
       expect(step.notice.value).toBe("unsent");
-      // The 503 names no wait and nothing went out, so the key isn't held, nor after a reload.
+      // It may work on the next try, so the key isn't held, nor after a reload.
       expect(step.resendWaiting.value).toBe(false);
       const { api: reloaded } = mountComposable(useRegisterCode);
       reloaded.open("me@example.com", "earlier");
       expect(reloaded.resendWaiting.value).toBe(false);
-      expect(console.error).toHaveBeenCalledWith("Failed to send a new code: ", 503);
     });
 
     it.each([
@@ -538,8 +601,18 @@ describe("useRegisterCode", () => {
           })
       ],
       [
-        "the budget's 503",
+        "a failed send's 503",
         () => jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
+      ],
+      [
+        "the budget's 503",
+        () =>
+          jsonResponse(503, {
+            error:
+              "No more registration e-mails can be sent today: please try again after the daily limit resets.",
+            reason: "mailBudget",
+            retryAfter: 51234
+          })
       ]
     ])("drops %s that lands after the step was left", async (_, response) => {
       let answer!: (response: Response) => void;

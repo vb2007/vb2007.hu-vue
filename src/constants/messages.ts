@@ -115,6 +115,12 @@ export class Messages {
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
     static readonly registerUnknownError: string = "Registration failed. Please try again.";
+    /**
+     * Under the 503 for the day's used-up registration mail (`ErrorReason.MailBudget`): a GitHub
+     * login makes the account without mailing a code, so it still works.
+     */
+    static readonly registerWithGithubInstead: string =
+      "Registering with GitHub below sends no e-mail, so it works now.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
     /** `GET /auth/username-available` said the typed name is taken. */
     static readonly usernameTaken: string = "That username is taken: pick another one.";
@@ -287,9 +293,15 @@ export class Messages {
     static resendIn(seconds: number, units: WaitUnits = "short"): string {
       return `Resend in ${formatWait(seconds, SITE_LOCALE, units)}`;
     }
+    /** The change e-mail form's key. */
+    static readonly sendCode: string = "Send code";
+    /** What follows `sendCode` while the key waits ("in 57 min"), which may wrap under it. */
+    static waitIn(seconds: number, units: WaitUnits = "short"): string {
+      return `in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
     /** The change e-mail form's key while it waits. */
     static sendCodeIn(seconds: number, units: WaitUnits = "short"): string {
-      return `Send code in ${formatWait(seconds, SITE_LOCALE, units)}`;
+      return `${this.sendCode} ${this.waitIn(seconds, units)}`;
     }
     /** The password reset's resend key while it waits. */
     static sendAgainIn(seconds: number, units: WaitUnits = "short"): string {

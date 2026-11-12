@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import {
+  codeCooldownOf,
+  mailBudgetOf,
+  retryAfterFrom,
+  useCountdown
+} from "@/composables/useCountdown";
 import type { ApiFailure } from "@/scripts/api/client";
 
 describe("useCountdown", () => {
@@ -361,5 +366,73 @@ describe("codeCooldownOf", () => {
     ]
   ])("is undefined for %s", (_, failure) => {
     expect(codeCooldownOf(failure)).toBeUndefined();
+  });
+});
+
+describe("mailBudgetOf", () => {
+  const budgetError =
+    "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+  const http = (
+    status: number,
+    body: { error?: string; retryAfter?: number; reason?: string } | null
+  ): ApiFailure => ({
+    ok: false,
+    kind: "http",
+    status,
+    error: body?.error ?? `Failed: ${status}`,
+    body
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("takes the used-up limit's retryAfter, which may be most of a day", () => {
+    expect(
+      mailBudgetOf(http(503, { error: budgetError, reason: "mailBudget", retryAfter: 51234 }))
+    ).toBe(51234);
+  });
+
+  it("cuts a wait longer than a day to a day, the most the API names", () => {
+    // Milliseconds by mistake would otherwise hold the key for about 593 days.
+    expect(
+      mailBudgetOf(http(503, { error: budgetError, reason: "mailBudget", retryAfter: 51_234_000 }))
+    ).toBe(86_400);
+    expect(
+      mailBudgetOf(http(503, { error: budgetError, reason: "mailBudget", retryAfter: 86_400 }))
+    ).toBe(86_400);
+  });
+
+  it("waits until the next UTC midnight without a retryAfter", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 12, 22, 59, 30, 500));
+
+    expect(mailBudgetOf(http(503, { error: budgetError, reason: "mailBudget" }))).toBe(3630);
+  });
+
+  it("waits at least a second right before UTC midnight", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 12, 23, 59, 59, 999));
+
+    expect(mailBudgetOf(http(503, { reason: "mailBudget" }))).toBe(1);
+  });
+
+  it.each([
+    [
+      "a 503 without a reason: a failed send",
+      http(503, { error: "The e-mail couldn't be sent: please try again later.", retryAfter: 42 })
+    ],
+    ["another reason", http(503, { error: budgetError, retryAfter: 42, reason: "somethingElse" })],
+    [
+      "the budget's reason on another status",
+      http(429, { error: budgetError, retryAfter: 42, reason: "mailBudget" })
+    ],
+    ["a 503 without a body", http(503, null)],
+    [
+      "a network failure",
+      { ok: false, kind: "network", status: 0, error: "Error connecting to server" } as ApiFailure
+    ]
+  ])("is undefined for %s", (_, failure) => {
+    expect(mailBudgetOf(failure)).toBeUndefined();
   });
 });

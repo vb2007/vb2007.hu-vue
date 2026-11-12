@@ -522,12 +522,27 @@ describe("register", () => {
     expect(registerStatus.value).toBe(error);
   });
 
-  it("ignores a retryAfter on anything but a 429", async () => {
+  it("ignores a retryAfter on a 503 without the budget's reason: a failed send", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(503, { error: "The e-mail couldn't be sent.", retryAfter: 42 })
     );
 
     await expect(register("vb", "me@example.com", "password")).resolves.toEqual({ sent: false });
+  });
+
+  it("waits out the day's used-up registration mail, blaming no field though it names e-mails", async () => {
+    const error =
+      "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(503, { error, reason: "mailBudget", retryAfter: 51234 })
+    );
+
+    await expect(register("vb", "me@example.com", "password")).resolves.toEqual({
+      sent: false,
+      limitedFor: 51234,
+      mailBudget: true
+    });
+    expect(registerStatus.value).toBe(error);
   });
 
   it("falls back to a generic error when the body has no message", async () => {
