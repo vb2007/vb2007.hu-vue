@@ -14,6 +14,7 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
+import { COOLDOWN_STORAGE_KEY } from "@/composables/useChangeEmail";
 import { DELETE_INTENT_STORAGE_KEY, saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
@@ -346,7 +347,7 @@ describe("AccountPanel", () => {
     pendingEmail.value = "new@example.com";
     // The code was sent moments ago, so Send code still counts down (kept for a reload).
     sessionStorage.setItem(
-      "email-change-cooldown",
+      COOLDOWN_STORAGE_KEY,
       JSON.stringify({ id: "vb@example.com", deadline: Date.now() + 50_000 })
     );
     const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
@@ -380,10 +381,75 @@ describe("AccountPanel", () => {
     );
     expect(emailRow(wrapper).text()).not.toContain("Waiting for confirmation");
     expect(emailRow(wrapper).find('input[autocomplete="one-time-code"]').exists()).toBe(false);
-    expect(sessionStorage.getItem("email-change-cooldown")).toBeNull();
+    expect(sessionStorage.getItem(COOLDOWN_STORAGE_KEY)).toBeNull();
     await changeKey().trigger("click");
     await flushPromises();
     expect(emailRow(wrapper).find('button[type="submit"]').text()).toBe("Send code");
+    wrapper.unmount();
+  });
+
+  it("leaves no earlier confirm error behind once the password change drops the change", async () => {
+    logIn();
+    hasPassword.value = true;
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", hasPassword: true, pendingEmail: null })
+      );
+    await emailRow(wrapper).find('input[autocomplete="one-time-code"]').setValue("123456");
+    await emailRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+    expect(emailRow(wrapper).find('[role="alert"]').text()).toBe("Error connecting to server");
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(passwordRow(wrapper).find('[role="status"]').text()).toMatch(/was cancelled/);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("doesn't leave a refusal that took the change away under a later password change", async () => {
+    logIn();
+    hasPassword.value = true;
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+    mockFetch()
+      // The last of the code's tries (or a password change in another tab): the change is gone.
+      .mockResolvedValueOnce(jsonResponse(400, { error: "The code is wrong." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", hasPassword: true, pendingEmail: null })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", hasPassword: true, pendingEmail: null })
+      );
+    await emailRow(wrapper).find('input[autocomplete="one-time-code"]').setValue("123456");
+    await emailRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+    expect(emailRow(wrapper).find('[role="alert"]').text()).toMatch(/^new@example.com wasn't/);
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(passwordRow(wrapper).find('[role="status"]').text()).toBe(
+      "Password changed successfully."
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

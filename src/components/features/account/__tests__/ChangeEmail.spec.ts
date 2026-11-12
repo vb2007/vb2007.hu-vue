@@ -188,7 +188,7 @@ describe("ChangeEmail", () => {
   ])("shows the API's %i and keeps what was typed", async (status, error) => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(status, { error }))
-      // A 503 looks the account up again, which fails too.
+      // A 403 or 503 looks the account up again, which fails too.
       .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
@@ -235,7 +235,9 @@ describe("ChangeEmail", () => {
 
   it("brings focus back into the form after a clicked save fails, so Escape still works", async () => {
     let answer!: (response: Response) => void;
-    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    fetchMock
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
 
@@ -289,9 +291,9 @@ describe("ChangeEmail", () => {
     ["the Cancel key", () => button("Cancel").trigger("click")],
     ["Escape", () => wrapper.find("form").trigger("keydown", { key: "Escape" })]
   ])("%s clears the form and focuses the key", async (_how, cancel) => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(403, { error: "The provided password is incorrect." })
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { error: "The provided password is incorrect." }))
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
     await wrapper.find("form").trigger("submit");
@@ -400,6 +402,64 @@ describe("ChangeEmail", () => {
         "Change e-mail"
       ]);
     });
+
+    it("moves the focus to the key when the change goes from under the code field", async () => {
+      await remount();
+      (codeInput().element as HTMLInputElement).focus();
+
+      // E.g. the refresh on coming back to the tab, after another tab's password change.
+      pendingEmail.value = "";
+      await flushPromises();
+
+      expect(codeInput().exists()).toBe(false);
+      expect(document.activeElement).toBe(key().element);
+    });
+
+    it("leaves the focus where it is when it wasn't in the code form", async () => {
+      await remount();
+      const outside = document.createElement("button");
+      document.body.append(outside);
+      try {
+        outside.focus();
+
+        pendingEmail.value = "";
+        await flushPromises();
+
+        expect(document.activeElement).toBe(outside);
+      } finally {
+        outside.remove();
+      }
+    });
+
+    it.each([
+      [
+        "a 409",
+        jsonResponse(409, { error: "An account with this E-mail address already exists." })
+      ],
+      ["a 200", jsonResponse(200, { message: "E-mail address updated successfully." })]
+    ])(
+      "focuses only where the confirm leads when it drops the change itself after %s",
+      async (_, answer) => {
+        await remount();
+        // The refresh fails, so the confirm empties the waiting address itself.
+        fetchMock.mockResolvedValueOnce(answer).mockResolvedValueOnce(jsonResponse(500));
+        await codeInput().setValue("123456");
+        (codeInput().element as HTMLInputElement).focus();
+        const focused: Element[] = [];
+        const track = (event: FocusEvent) => focused.push(event.target as Element);
+        document.addEventListener("focusin", track);
+        try {
+          await button("Confirm code").trigger("click");
+          await flushPromises();
+        } finally {
+          document.removeEventListener("focusin", track);
+        }
+
+        // Straight to the message or the key: the key isn't announced on the way.
+        const target = answer.status === 409 ? wrapper.find(".change__dropped") : key();
+        expect(focused).toEqual([target.element]);
+      }
+    );
 
     it("confirms the code without its spaces, then shows the new address's message", async () => {
       await remount();
@@ -638,7 +698,7 @@ describe("ChangeEmail", () => {
 
       expect(codeInput().exists()).toBe(false);
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+        "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
       );
       expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
     });
