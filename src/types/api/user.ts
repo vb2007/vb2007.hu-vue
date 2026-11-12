@@ -12,7 +12,10 @@ export interface UserDetails {
   hasPassword: boolean;
   /** Confirmed with a code or by GitHub; false for older accounts. */
   emailVerified: boolean;
-  /** The new address while a change waits for its code (vb2007/vb2007.hu-api#215). */
+  /**
+   * The new address while a change waits for its code (vb2007/vb2007.hu-api#215): null once it
+   * expired or its tries are used up (vb2007/vb2007.hu-api#463).
+   */
   pendingEmail: string | null;
   isSuperuser: boolean;
 }

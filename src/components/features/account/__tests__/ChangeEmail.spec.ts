@@ -530,7 +530,7 @@ describe("ChangeEmail", () => {
       expect(wrapper.find('[role="alert"]').text()).toBe(
         `new@example.com wasn't confirmed. ${error}`
       );
-      expect(document.activeElement).toBe(key().element);
+      expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
       expect(userEmail.value).toBe("old@example.com");
 
       await openForm();
@@ -600,7 +600,7 @@ describe("ChangeEmail", () => {
       expect(button("Send code").attributes("disabled")).toBeUndefined();
     });
 
-    it("takes the code step away when the code had expired, and says which address", async () => {
+    it("takes the code step away when the code had expired or run out of tries, and focuses the message naming the address", async () => {
       await remount();
       const error = "The code is wrong, expired or already used: check it or request a new one.";
       fetchMock
@@ -611,9 +611,9 @@ describe("ChangeEmail", () => {
 
       expect(codeInput().exists()).toBe(false);
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "new@example.com wasn't confirmed: its code expired. Send a new one with Change e-mail."
+        "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
       );
-      expect(document.activeElement).toBe(key().element);
+      expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
     });
 
     it("shows the change as confirmed when another tab already confirmed it", async () => {
@@ -664,7 +664,9 @@ describe("ChangeEmail", () => {
       fakeCountdown();
       const error = "A code was sent just now: wait 42 seconds before requesting another one.";
       fetchMock
-        .mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 42 }))
+        .mockResolvedValueOnce(
+          jsonResponse(429, { error, retryAfter: 42, reason: "resendCooldown" })
+        )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await remount();
       await button("Change e-mail").trigger("click");
@@ -699,7 +701,8 @@ describe("ChangeEmail", () => {
         .mockResolvedValueOnce(
           jsonResponse(429, {
             error: "A code was sent just now: wait 50 seconds before requesting another one.",
-            retryAfter: 50
+            retryAfter: 50,
+            reason: "resendCooldown"
           })
         )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));

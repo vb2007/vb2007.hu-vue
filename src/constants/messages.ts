@@ -266,11 +266,9 @@ export class Messages {
     static readonly confirmFailed: string = "Failed to confirm the code";
     static readonly resendFailed: string = "Failed to send a new code";
     /**
-     * How the API's 429 starts when a code went out less than a minute ago (its
-     * `EmailCodes.resendTooSoon`); the rate limiters' 429s send `retryAfter` too, but no code went.
+     * What the site says in place of the cooldown 429's own message (see `ErrorReason.ResendCooldown`),
+     * which names its seconds and would freeze next to the countdown.
      */
-    static readonly cooldownPrefix: string = "A code was sent just now:";
-    /** The cooldown's own message names its seconds, which would freeze next to the countdown. */
     static readonly cooldown: string =
       "A code was sent just now. You can send another once the countdown ends.";
     /**
@@ -336,9 +334,12 @@ export class Messages {
     static readonly deleteFailed: string = "Failed to delete the account";
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
     static readonly githubLinkFailed: string = "Failed to start linking GitHub";
-    /** A 400 that took the waiting change away: its code expired. */
-    static codeExpired(address: string): string {
-      return `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`;
+    /**
+     * A 400 that took the waiting change away: the code expired, or its tries ran out (since
+     * vb2007/vb2007.hu-api#463 the API drops the change then, and the refresh can't tell which).
+     */
+    static codeExpiredOrUsedUp(address: string): string {
+      return `${address} wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail.`;
     }
     /** Any other refusal that took the waiting change away. */
     static notConfirmed(address: string, error: string): string {
