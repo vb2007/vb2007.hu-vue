@@ -22,7 +22,10 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Another account's address (any the login knows, see below) and the superuser's get the same 202 and code: only the confirm refuses them, with 409
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
- * 15 minutes ago has expired.
+ * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
+ * view's pending address), as the API has since vb2007/vb2007.hu-api#462: `GET /user` answers `pendingEmail: null` and the
+ * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself; one arranged
+ * with nobody logged in belongs to whichever account is reset.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds and adds
  * `reason: "resendCooldown"` (vb2007/vb2007.hu-api#461), and the rate limiters' (`limitsPasswordChecks()`, and `limitsMailSends()`
  * for every route that mails a code, whose refused password resets go to `limitedPasswordResets`) wait a fixed 15 or 57 minutes.
@@ -537,6 +540,13 @@ export class MockApi {
   ];
   /** A new address waiting for `MOCK_EMAIL_CODE`. */
   private emailChange: (MockCode & { email: string }) | null = null;
+  /**
+   * The `_id` of the account `emailChange` waits on: the one that asked for it, or the one logged in when `hasPendingEmail`
+   * arranged it. Null when nobody was: then it's the logged-in account's at the time, or, with nobody logged in either, the
+   * account a reset or deletion is for (see `ownsEmailChange`). It only decides
+   * what a password reset drops: `GET /user`, the confirm and the `PATCH` cooldown still use the one slot whoever is logged in.
+   */
+  private emailChangeOwnerId: string | null = null;
   /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
   private emailCooldownOnSend: number | null = null;
   private shortCode = "e2e123";
@@ -856,6 +866,7 @@ export class MockApi {
       email: normalizeEmail(email),
       ...this.newCode(15, this.now() - sentSecondsAgo * 1000)
     };
+    this.emailChangeOwnerId = this.user?._id ?? null;
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
@@ -881,6 +892,36 @@ export class MockApi {
   /** Voids the reset code waiting for `email`, which the API unsets (`passwordReset`) wherever it voids the links. */
   private voidResetCode(email: string) {
     this.resetCodes.delete(normalizeEmail(email));
+  }
+
+  /**
+   * Whether `emailChange` waits on `account`: its owner's, else the logged-in account's, else (arranged by `hasPendingEmail`
+   * with nobody logged in) the account asked about, as the single slot has no other candidate (see `emailChangeOwnerId`).
+   */
+  private ownsEmailChange(account: { _id: string }) {
+    const owner = this.emailChangeOwnerId ?? this.user?._id;
+    return owner === undefined || owner === account._id;
+  }
+
+  /**
+   * Drops the e-mail change waiting for the account a password reset is for, which the API unsets
+   * (`passwordResetUpdate`, vb2007/vb2007.hu-api#462; the wrong-code counter `emailChangeFailures` stays). The account is
+   * the login with `userId` (a link's) else the one at `email`, whose admin list rows go by their own ids. Another
+   * account's change, the logged-in one's if it isn't the reset account, stays.
+   */
+  private voidsEmailChangeOf(email: string, userId?: string) {
+    const address = normalizeEmail(email);
+    const logins = [...(this.user ? [this.user] : []), ...this.accounts];
+    const account =
+      logins.find((login) => login._id === userId) ??
+      logins.find((login) => normalizeEmail(login.email) === address);
+    const rowIds = this.users
+      .filter((row) => row.id === userId || normalizeEmail(row.email) === address)
+      .map((row) => row.id);
+    for (const id of [userId, account?._id, ...rowIds]) {
+      if (id) this.userPendingEmails.delete(id);
+    }
+    if (account && this.ownsEmailChange(account)) this.emailChange = null;
   }
 
   /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
@@ -1651,6 +1692,7 @@ export class MockApi {
       return MAIL_FAILED;
     }
     this.emailChange = { email: normalized, ...this.newCode(15) };
+    this.emailChangeOwnerId = this.user?._id ?? null;
     return {
       status: 202,
       body: {
@@ -1738,9 +1780,16 @@ export class MockApi {
     };
   }
 
-  /** A waiting change's code works for 15 minutes; after that, GET /user leaves it out. */
+  /**
+   * A waiting change's code works for 15 minutes and `CODE_TRIES` tries; after either, GET /user
+   * leaves it out (vb2007/vb2007.hu-api#463).
+   */
   private isEmailChangeLive() {
-    return this.emailChange !== null && this.now() < this.emailChange.expiresAt;
+    return (
+      this.emailChange !== null &&
+      this.now() < this.emailChange.expiresAt &&
+      this.emailChange.attempts < CODE_TRIES
+    );
   }
 
   /**
@@ -1886,8 +1935,8 @@ export class MockApi {
       }
     }
     // The API deletes the account by its id: neither the login nor the admin list knows it any more, and what it
-    // owned goes too (`removeUserContent`), as does what waited on its document: the reset code and links, and the
-    // e-mail change, which is the logged-in account's here.
+    // owned goes too (`removeUserContent`), as does what waited on its document: the reset code and links, and its
+    // e-mail change (another account's, in the one slot, stays).
     const deleted = this.user;
     this.forgetsAccount(deleted);
     this.removesContentOf(deleted.username);
@@ -1900,7 +1949,7 @@ export class MockApi {
       }
     }
     this.voidsWaiting([deleted._id, ...rowIds], deleted.email);
-    this.emailChange = null;
+    if (this.ownsEmailChange(deleted)) this.emailChange = null;
     this.verifiedAddresses.delete(normalizeEmail(deleted.email));
     this.user = null;
     this.githubConfirmed = false;
@@ -1930,6 +1979,7 @@ export class MockApi {
       return invalidCode();
     }
     this.resetCodes.delete(email);
+    this.voidsEmailChangeOf(email);
     this.password = body.newPassword;
     this.verifiedAddresses.add(email);
     // A reset by code voids the account's mailed links too.
@@ -1979,6 +2029,7 @@ export class MockApi {
     // Using one link voids the account's others and the code waiting for its address, like any new password.
     this.voidResetLinks((link) => link.userId === userId);
     this.voidResetCode(email);
+    this.voidsEmailChangeOf(email, userId);
     this.password = newPassword;
     if (this.user?._id === userId) {
       this.user = null;

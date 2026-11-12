@@ -91,6 +91,7 @@ const errorIsWait = computed(
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
 const codeForm = useTemplateRef("codeForm");
+const droppedMessage = useTemplateRef("droppedMessage");
 const emailField = useTemplateRef("emailField");
 const passwordField = useTemplateRef("passwordField");
 const codeField = useTemplateRef("codeField");
@@ -157,8 +158,12 @@ const confirmCode = async () => {
     codeChecks.reset();
   }
   await nextTick();
-  // Confirmed, dropped or expired: the code step is gone, and its key is left.
-  if (!pendingEmail.value) return key.value?.$el.focus();
+  if (!pendingEmail.value) {
+    // The code step is gone and the page shrank, so what scrolled into view may be below the
+    // message, which would hide under the navbar. A refusal that took the change away takes the
+    // focus (and scrolls clear of the navbar); a confirmation leaves it on the key.
+    return (confirmError.value ? droppedMessage.value : key.value)?.$el.focus();
+  }
   if (!codeForm.value?.querySelector(":focus:not(:disabled)")) focusField(codeField.value);
 };
 </script>
@@ -168,7 +173,13 @@ const confirmCode = async () => {
     {{ changeMessage }}
   </StatusMessage>
   <!-- A refusal that took the waiting change away; one that keeps it shows in the code form. -->
-  <StatusMessage v-if="confirmError && !pendingEmail" class="change__saved" tone="error">
+  <StatusMessage
+    v-if="confirmError && !pendingEmail"
+    ref="droppedMessage"
+    class="change__saved change__dropped"
+    tone="error"
+    tabindex="-1"
+  >
     {{ confirmError }}
   </StatusMessage>
 
@@ -297,6 +308,11 @@ const confirmCode = async () => {
 .change__pending,
 .change {
   justify-self: stretch;
+}
+
+/* Focused when a refused code took the waiting change away; clear of the sticky navbar. */
+.change__dropped {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
 }
 
 /* The new address, so a typo is easy to spot; it moves to the next line whole, and only an
