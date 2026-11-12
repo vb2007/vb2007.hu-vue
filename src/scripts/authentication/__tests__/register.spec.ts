@@ -29,9 +29,15 @@ const USERNAME_TOO_SHORT = "The username's too short: it must be between 2 and 1
 const USERNAME_TOO_LONG = "The username's too long: it must be between 2 and 16 characters.";
 
 const USERNAME_INVALID =
-  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
 
-// The API's own cases (vb2007/vb2007.hu-api#319), with fixed names in place of its random ones.
+/** Tag characters spelling `text`, as in a subdivision flag. */
+const emojiTags = (text: string) =>
+  [...text].map((character) => String.fromCodePoint(0xe0000 + character.charCodeAt(0))).join("");
+const subdivisionFlag = (code: string) => `\u{1F3F4}${emojiTags(code)}\u{E007F}`;
+
+// The API's own cases (vb2007/vb2007.hu-api#319, #470, #478), with fixed names in place of its
+// random ones.
 describe("the username checks", () => {
   it.each([
     ["2 characters", "vb"],
@@ -45,6 +51,23 @@ describe("the username checks", () => {
     ["a keycap emoji", "1\ufe0f\u20e3l9a1b2c"],
     ["two emoji", "\u{1F600}\u{1F600}"],
     ["a decomposed \u00e9 after a letter", "ae\u0301"],
+    ["a family emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}abc"],
+    ["a rainbow flag emoji", "\u{1F3F3}\ufe0f\u200d\u{1F308}abc"],
+    ["a skin tone and hair emoji", "\u{1F468}\u{1F3FD}\u200d\u{1F9B0}abc"],
+    ["a technologist emoji", "\u{1F9D1}\u200d\u{1F4BB}abc"],
+    ["an eye in speech bubble emoji", "\u{1F441}\ufe0f\u200d\u{1F5E8}\ufe0fabc"],
+    // A joiner counts toward the minimum, but a valid one always sits between two emoji.
+    ["two joined emoji", "\u{1F468}\u200d\u{1F469}"],
+    ["the England flag", `${subdivisionFlag("gbeng")}\u4e00\u4e01`],
+    ["the Scotland flag", `${subdivisionFlag("gbsct")}\u4e00\u4e01`],
+    ["the Wales flag", `${subdivisionFlag("gbwls")}\u4e00\u4e01`],
+    ["a flag after a letter", `\u4e00\u4e01${subdivisionFlag("gbeng")}`],
+    ["a shorter subdivision flag", `${subdivisionFlag("usca")}\u4e00\u4e01\u4e02\u4e03`],
+    ["a presentation selector after a flag", `${subdivisionFlag("gbeng")}\ufe0f\u4e00`],
+    ["a presentation selector after the Wales flag", `${subdivisionFlag("gbwls")}\ufe0f\u4e00`],
+    ["a presentation selector after the Scotland flag", `${subdivisionFlag("gbsct")}\ufe0f\u4e00`],
+    // The tags count toward the maximum: a 5 tag run makes a flag 14 units, so 2 more fit.
+    ["a flag with a 5 tag run and 2 more characters", `${subdivisionFlag("gbeng")}ab`],
     // Trimmed first, like the API: only whitespace inside the name counts.
     ["a tab and non-breaking spaces at the ends", "\u00a0\tRv\u00a0"],
     ["a byte order mark at the start", "\ufeffRv"]
@@ -61,7 +84,33 @@ describe("the username checks", () => {
     ["a non-breaking space inside", "Rv\u00a0Base"],
     ["a byte order mark inside", "R\ufeffv"],
     ["a control character", "Rv\u0007Base"],
-    ["a zero-width joiner", "\u{1F468}\u200d\u{1F469}"],
+    ["a lone zero-width joiner", "\u200d\u200d"],
+    ["a zero-width joiner between letters", "a\u200db"],
+    ["a zero-width joiner between digits", "1\u200d2"],
+    ["a zero-width joiner between an emoji and a letter", "\u{1F468}\u200da"],
+    ["a zero-width joiner between a letter and an emoji", "a\u200d\u{1F469}"],
+    ["a leading zero-width joiner", "\u200d\u{1F468}\u{1F469}"],
+    ["a trailing zero-width joiner", "\u{1F468}\u{1F469}\u200d"],
+    ["a doubled zero-width joiner", "\u{1F468}\u200d\u200d\u{1F469}"],
+    ["a zero-width joiner after a presentation selector of a letter", "a\ufe0f\u200d\u{1F469}"],
+    ["a stray tag", "ab\u{E0067}"],
+    ["a stray tag run", `ab${emojiTags("gbeng")}`],
+    ["a lone cancel tag", "ab\u{E007F}"],
+    ["a tag run without the cancel tag", `\u{1F3F4}${emojiTags("gbeng")}ab`],
+    ["a tag run before the black flag", `${emojiTags("gbeng")}\u{E007F}ab`],
+    ["a tag run after a letter", `a${emojiTags("gbeng")}\u{E007F}`],
+    ["a tag run after another emoji", `\u{1F600}${emojiTags("gbeng")}\u{E007F}`],
+    ["a tag run after a presentation selector", `\u{1F3F4}\ufe0f${emojiTags("gbeng")}\u{E007F}`],
+    ["a tag run after a flag", `${subdivisionFlag("abc")}${emojiTags("gb")}`],
+    ["a doubled cancel tag", `${subdivisionFlag("gbe")}\u{E007F}ab`],
+    ["a zero-width joiner after a flag", `${subdivisionFlag("gbe")}\u200d\u{1F469}`],
+    ["a tag run after the pirate flag", `\u{1F3F4}\u200d\u2620\ufe0f${emojiTags("abc")}\u{E007F}`],
+    ["a tag run of 1", `\u{1F3F4}${emojiTags("g")}\u{E007F}ab`],
+    ["a tag run of 2", `\u{1F3F4}${emojiTags("gb")}\u{E007F}ab`],
+    ["a tag run of 6", `\u{1F3F4}${emojiTags("gbengl")}\u{E007F}`],
+    ["a tag run of uppercase letters", `\u{1F3F4}${emojiTags("GBENG")}\u{E007F}`],
+    ["a tag run with a hyphen", `\u{1F3F4}${emojiTags("gb-en")}\u{E007F}`],
+    ["an empty tag run", "\u{1F3F4}\u{E007F}ab"],
     ["a zero-width non-joiner", "ab\u200c"],
     ["only braille blanks", "\u2800\u2800"],
     ["only Hangul fillers", "\u3164\u3164"],
@@ -92,7 +141,10 @@ describe("the username checks", () => {
     ["one letter and 14 combining marks", `a${"\u0301".repeat(14)}`],
     ["one emoji letter and a presentation selector", "\u2764\ufe0f"],
     ["a lone emoji", "\u{1F600}"],
-    ["a lone supplementary CJK character", "\u{20000}"]
+    ["a lone supplementary CJK character", "\u{20000}"],
+    // A flag's tags don't count toward the minimum, nor does a presentation selector after it.
+    ["a lone subdivision flag", subdivisionFlag("gbeng")],
+    ["a lone subdivision flag and a presentation selector", `${subdivisionFlag("gbeng")}\ufe0f`]
   ])("call %s too short, only once it's left", (_case, username) => {
     expect(usernameError(username)).toBe(USERNAME_TOO_SHORT);
     expect(usernameEarlyError(username)).toBe("");
@@ -102,6 +154,9 @@ describe("the username checks", () => {
     ["17 characters", "v".repeat(17)],
     // The maximum counts UTF-16 units, like the API: 9 emoji are 18.
     ["9 emoji", "\u{1F600}".repeat(9)],
+    // Joiners and tags count too: a family emoji is 8 units, a flag with a 5 tag run 14.
+    ["a family emoji and 9 letters", `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${"v".repeat(9)}`],
+    ["a flag with a 5 tag run and 3 more characters", `${subdivisionFlag("gbeng")}abc`],
     // The maximum comes first, before the invalid characters.
     ["17 characters with a tab inside", `v\t${"v".repeat(15)}`]
   ])("call %s too long, while typing too", (_case, username) => {

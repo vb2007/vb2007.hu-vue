@@ -784,7 +784,7 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
   ).toBeVisible();
   // So are invisible characters and whitespace other than spaces, which the API refuses too.
   const invalid =
-    "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+    "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
   await field.fill("an\tna");
   await expect(page.getByText(invalid)).toBeVisible();
   await expect(field).toHaveAttribute("aria-invalid", "true");

@@ -13,8 +13,9 @@ export class Limits {
   };
 
   /**
-   * Counted after trimming: the maximum in UTF-16 units (JS `.length`), the minimum in characters
-   * (code points) other than combining marks (`\p{M}`), like the API's `usernameFormatError`.
+   * Counted after trimming: the maximum in UTF-16 units (JS `.length`, emoji joiners and a
+   * subdivision flag's tags included), the minimum in characters (code points) other than
+   * combining marks (`\p{M}`) and a flag's tags, like the API's `usernameFormatError`.
    */
   static readonly Username = class {
     static readonly minLength: number = 2;
