@@ -1401,7 +1401,7 @@ test("coming back to the tab drops a change another tab's password change took a
   await changePasswordElsewhere(page, api);
 
   // The browser says so when the user switches back from the other tab.
-  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.evaluate('document.dispatchEvent(new Event("visibilitychange"))');
 
   await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
   await expect(details.getByLabel("Confirmation code")).toHaveCount(0);
