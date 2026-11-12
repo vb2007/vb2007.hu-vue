@@ -828,7 +828,7 @@ test("a code that expired with the page open takes the waiting change away", asy
   await page.getByRole("button", { name: "Confirm code" }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
-    "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+    "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expectAlertFocusedBelowNavbar(page);
@@ -859,7 +859,7 @@ test("a code whose tries ran out takes the waiting change away, also after a rel
   await page.mouse.wheel(0, 100_000);
   await confirm.click();
   await expect(page.getByRole("alert")).toHaveText(
-    "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+    "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
@@ -1315,6 +1315,100 @@ test("a code asked for as the password changes elsewhere says nothing was sent",
   await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
   await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
   await expect(page.getByText(/Your session ended/)).toHaveCount(0);
+});
+
+// This tab still shows a change that another tab of the same browser dealt with.
+
+/** Changes the password from the page, as another tab of the same browser would. */
+async function changePasswordElsewhere(page: Page, api: MockApi) {
+  const changed = await callApi(page, api, "PATCH", "/user/password", {
+    currentPassword: MOCK_PASSWORD,
+    newPassword: "another password"
+  });
+  expect(changed.status).toBe(200);
+}
+
+test("a change confirmed in another tab isn't called cancelled by the password change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+  expect(confirmed.status).toBe(200);
+
+  await changePassword(page, MOCK_PASSWORD);
+
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+});
+
+test("a code confirmed after a password change elsewhere doesn't blame the code alone", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await changePasswordElsewhere(page, api);
+
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
+  );
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+});
+
+test("the old password on Send code after a change elsewhere shows the change is gone", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await changePasswordElsewhere(page, api);
+
+  await details.getByRole("button", { name: "Send code" }).click();
+
+  await expect(details.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(details.getByLabel("New e-mail")).toHaveValue("new@example.com");
+});
+
+test("coming back to the tab drops a change another tab's password change took away", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("New e-mail").fill("new@example.com");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await details.getByRole("button", { name: "Send code" }).click();
+  await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await changePasswordElsewhere(page, api);
+
+  // The browser says so when the user switches back from the other tab.
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(details.getByLabel("Confirmation code")).toHaveCount(0);
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  const send = details.getByRole("button", { name: "Send code", exact: true });
+  await expect(send).toHaveText("Send code");
+  await expect(send).not.toHaveAttribute("disabled");
 });
 
 test("a session that ended elsewhere logs the page out when a code is asked for", async ({

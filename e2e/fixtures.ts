@@ -933,7 +933,11 @@ export class MockApi {
     for (const id of [userId, account?._id, ...rowIds]) {
       if (id) this.userPendingEmails.delete(id);
     }
-    if (account && this.ownsEmailChange(account)) this.emailChange = null;
+    if (account && this.ownsEmailChange(account)) {
+      this.emailChange = null;
+      // The cooldown pinned for that change's next send goes with it.
+      this.emailCooldownOnSend = null;
+    }
   }
 
   /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
