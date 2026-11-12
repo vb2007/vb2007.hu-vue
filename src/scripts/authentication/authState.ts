@@ -16,6 +16,11 @@ export const githubLogin = ref("");
 export const hasPassword = ref(false);
 /** The new address while a change waits for its mailed code, or "" (vb2007/vb2007.hu-api#215). */
 export const pendingEmail = ref("");
+/**
+ * Counts the password changes made on this page, so the e-mail form can drop outcomes a new
+ * password made obsolete (vb2007/vb2007.hu-api#474).
+ */
+export const passwordChanges = ref(0);
 /** Whether the address was confirmed with a code or by GitHub; false for older accounts. */
 export const emailVerified = ref(false);
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */

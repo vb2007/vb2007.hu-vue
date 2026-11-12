@@ -403,6 +403,31 @@ describe("ChangeEmail", () => {
       ]);
     });
 
+    it("moves the focus to the key when the change goes from under the code field", async () => {
+      await remount();
+      (codeInput().element as HTMLInputElement).focus();
+
+      // E.g. the refresh on coming back to the tab, after another tab's password change.
+      pendingEmail.value = "";
+      await flushPromises();
+
+      expect(codeInput().exists()).toBe(false);
+      expect(document.activeElement).toBe(key().element);
+    });
+
+    it("leaves the focus where it is when it wasn't in the code form", async () => {
+      await remount();
+      const outside = document.createElement("button");
+      document.body.append(outside);
+      outside.focus();
+
+      pendingEmail.value = "";
+      await flushPromises();
+
+      expect(document.activeElement).toBe(outside);
+      outside.remove();
+    });
+
     it("confirms the code without its spaces, then shows the new address's message", async () => {
       await remount();
       fetchMock

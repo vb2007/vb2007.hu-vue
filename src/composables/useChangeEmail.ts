@@ -9,6 +9,7 @@ import { apiErrorOf, apiRequest, isLoggedOutAnswer } from "@/scripts/api/client"
 import {
   emailVerified,
   isLoggedIn,
+  passwordChanges,
   pendingEmail,
   userEmail
 } from "@/scripts/authentication/authState";
@@ -64,20 +65,25 @@ export const useChangeEmail = () => {
     { immediate: true }
   );
 
+  /** Errors about a code that no longer works, shown with the code step or in its place. */
+  const clearCodeErrors = () => {
+    codeError.value = "";
+    confirmError.value = "";
+  };
+
   /**
-   * A change that goes outside `confirm` (a password change, or a refresh that no longer finds
-   * it) takes the errors of its code step with it: they were about a code that no longer works.
-   * `confirm`'s own outcome stays, so this watches synchronously, while it still runs.
+   * A change that goes or is replaced (a password change, a refresh that no longer finds it, or a
+   * new one from another tab) takes the errors of its code step with it. This runs synchronously,
+   * as the address is set: `confirm` sets its own outcome only after its refresh, so it stays.
    */
-  watch(
-    pendingEmail,
-    (waiting) => {
-      if (waiting || isConfirming.value) return;
-      codeError.value = "";
-      confirmError.value = "";
-    },
-    { flush: "sync" }
-  );
+  watch(pendingEmail, clearCodeErrors, { flush: "sync" });
+
+  /**
+   * A new password also drops a refusal that already took the change away (e.g. its tries ran out
+   * here, or another tab's password change left this tab's code unusable): shown under the new
+   * password's success, it would read as caused by it.
+   */
+  watch(passwordChanges, clearCodeErrors);
 
   /**
    * Coming back to the tab while a change waits looks the account up again: another tab may have

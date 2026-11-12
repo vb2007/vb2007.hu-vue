@@ -5,7 +5,7 @@ import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
-import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import { passwordChanges, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
 
@@ -46,6 +46,7 @@ export const useChangePassword = () => {
       changed.value = cancelled
         ? `${result.data.message} ${Messages.Account.emailChangeCancelled(waiting)}`
         : result.data.message;
+      passwordChanges.value++;
     } else {
       changeError.value = result.error;
       if (result.status === HttpStatus.TooManyRequests) hold.start(retryAfterFrom(result.body));

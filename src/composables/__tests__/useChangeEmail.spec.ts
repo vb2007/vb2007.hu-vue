@@ -8,6 +8,7 @@ import { Messages } from "@/constants/messages";
 import {
   emailVerified,
   isLoggedIn,
+  passwordChanges,
   pendingEmail,
   sessionEnded,
   userEmail
@@ -178,14 +179,14 @@ describe("useChangeEmail", () => {
       [403, "The provided password is incorrect."],
       [409, "This account has no password: set one before changing the e-mail address."]
     ])("shows the API's %i and keeps the address", async (status, error) => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
-      // A 403 looks the account up again (see below).
-      if (status === 403)
-        fetchMock.mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(status, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
       const email = useEmail();
 
       expect(await email.change("new@example.com", "secret-password")).toBe(false);
 
+      // Only a 403 looks the account up again (see below).
       expect(fetchMock).toHaveBeenCalledTimes(status === 403 ? 2 : 1);
       expect(email.changeError.value).toBe(error);
       expect(email.changeMessage.value).toBe("");
@@ -527,13 +528,62 @@ describe("useChangeEmail", () => {
       expect(email.codeError.value).toBe("");
     });
 
-    it("keeps an error while a change still waits", () => {
+    it("takes them with a change another one replaced, e.g. from another tab", () => {
       const email = useEmail();
       email.confirmError.value = "Error connecting to server";
+      email.codeError.value = "The code is wrong.";
 
       pendingEmail.value = "newer@example.com";
 
+      expect(email.confirmError.value).toBe("");
+      expect(email.codeError.value).toBe("");
+    });
+
+    it("keeps them while a refresh finds the same change waiting", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, waitingUser));
+      const email = useEmail();
+      email.confirmError.value = "Error connecting to server";
+      email.codeError.value = "The code is wrong.";
+
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledOnce();
       expect(email.confirmError.value).toBe("Error connecting to server");
+      expect(email.codeError.value).toBe("The code is wrong.");
+    });
+
+    it("drops a refusal that already took the change away once the password changes", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error: "The code is wrong." }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+      const email = useEmail();
+      await email.confirm("123456");
+      expect(email.confirmError.value).toBe(Messages.Account.codeNoLongerWorks("new@example.com"));
+
+      passwordChanges.value++;
+      await nextTick();
+
+      expect(email.confirmError.value).toBe("");
+    });
+
+    it("keeps a held Confirm code, with its reason, for the next code", async () => {
+      vi.useFakeTimers();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const email = useEmail();
+      await email.confirm("123456");
+      expect(email.confirmHold.isHeld()).toBe(true);
+
+      // The API counts code checks per account, so the cap outlasts the change it was met on.
+      pendingEmail.value = "";
+      passwordChanges.value++;
+      await nextTick();
+      expect(email.confirmError.value).toBe("");
+      pendingEmail.value = "newer@example.com";
+
+      expect(email.confirmHold.isHeld()).toBe(true);
+      expect(email.confirmHold.shown()).toBe(error);
     });
 
     it("refreshes the account after a wrong password, which may have dropped the change", async () => {

@@ -418,6 +418,41 @@ describe("AccountPanel", () => {
     wrapper.unmount();
   });
 
+  it("doesn't leave a refusal that took the change away under a later password change", async () => {
+    logIn();
+    hasPassword.value = true;
+    pendingEmail.value = "new@example.com";
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+    mockFetch()
+      // The last of the code's tries (or a password change in another tab): the change is gone.
+      .mockResolvedValueOnce(jsonResponse(400, { error: "The code is wrong." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", hasPassword: true, pendingEmail: null })
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", hasPassword: true, pendingEmail: null })
+      );
+    await emailRow(wrapper).find('input[autocomplete="one-time-code"]').setValue("123456");
+    await emailRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+    expect(emailRow(wrapper).find('[role="alert"]').text()).toMatch(/^new@example.com wasn't/);
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(passwordRow(wrapper).find('[role="status"]').text()).toBe(
+      "Password changed successfully."
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("drops the top notice once a waiting e-mail change is confirmed", async () => {
     linkGithub();
     pendingEmail.value = "new@example.com";

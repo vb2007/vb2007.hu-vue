@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef, watch } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useChangeEmail } from "@/composables/useChangeEmail";
@@ -166,6 +166,17 @@ const confirmCode = async () => {
   }
   if (!codeForm.value?.querySelector(":focus:not(:disabled)")) focusField(codeField.value);
 };
+
+/**
+ * A change that goes outside `confirmCode` (e.g. the refresh on coming back to the tab) takes the
+ * code form away under the focus, which would fall to the page: it moves to the key instead, as
+ * after a confirmation. This runs before the form leaves the page, so it still knows the focus.
+ */
+watch(pendingEmail, async (waiting) => {
+  if (waiting || isConfirming.value || !codeForm.value?.contains(document.activeElement)) return;
+  await nextTick();
+  key.value?.$el.focus();
+});
 </script>
 
 <template>
