@@ -131,12 +131,16 @@ const secondsUntilUtcMidnight = () => {
  * limit (vb2007/vb2007.hu-api#468 and #476): nothing was sent, and the API would refuse every
  * mail of that kind until then. It's an upper bound, since an API restart starts the count again.
  * Recognised by the body's `reason`; a body without `retryAfter` waits until the next UTC
- * midnight, the API's own reset. Undefined for anything else, including a 503 without the reason,
- * which is a failed send that may work on the next try.
+ * midnight, the API's own reset, and a longer one than a day (e.g. milliseconds by mistake) is cut
+ * to a day, the most the API names. Undefined for anything else, including a 503 without the
+ * reason, which is a failed send that may work on the next try.
  */
 export const mailBudgetOf = (failure: ApiFailure): number | undefined =>
   failure.kind === "http" &&
   failure.status === HttpStatus.ServiceUnavailable &&
   failure.body?.reason === ErrorReason.MailBudget
-    ? retryAfterFrom(failure.body, secondsUntilUtcMidnight())
+    ? Math.min(
+        retryAfterFrom(failure.body, secondsUntilUtcMidnight()),
+        Limits.Mail.budgetMaxWaitSeconds
+      )
     : undefined;

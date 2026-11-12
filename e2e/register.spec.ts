@@ -3,6 +3,7 @@ import {
   callApi,
   expect,
   getFromApi,
+  BUDGET_WAIT,
   MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   type MockApi,
@@ -97,14 +98,11 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await expect(resend).toBeDisabled();
 });
 
-/** A held key's wait, whatever is left of the day: the double's clock is real time, so near midnight it's minutes or seconds. */
-const BUDGET_WAIT = /\d+ (sec|min|hr)( \d+ min)?$/;
-
 test("a resend once the day's registration mail is used up holds the key and keeps the code sent before", async ({
   page,
   api
 }) => {
-  await page.clock.install();
+  await page.clock.install({ time: api.clockAtMiddayUtc() });
   await fillForm(page);
   const code = page.getByLabel("Confirmation code");
   await code.fill(REGISTRATION_CODE);
@@ -136,6 +134,15 @@ test("a resend once the day's registration mail is used up holds the key and kee
   await expect(page.getByRole("alert")).toHaveText(REGISTRATION_BUDGET_ERROR);
   await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
   await expect(resend).toBeDisabled();
+  // The notice is the one for an earlier code now, but the hint still offers no resend.
+  await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
+
+  // The budget is the same for every address, so Register waits for it too.
+  await page.getByRole("button", { name: "Change address" }).click();
+  await expect(
+    page.locator("form").getByRole("button", { name: /^(Register|Try again)/ })
+  ).toHaveText(new RegExp(`^Try again in ${BUDGET_WAIT.source}`));
+  await page.getByRole("button", { name: "Enter it" }).click();
 
   await code.fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
@@ -146,12 +153,13 @@ test("registering once the day's registration mail is used up holds Register and
   page,
   api
 }) => {
+  await page.clock.install({ time: api.clockAtMiddayUtc() });
   api.sentMailToday(200);
   await fillForm(page);
 
   await expect(page.getByRole("alert")).toHaveText(
     new RegExp(
-      `^${REGISTRATION_BUDGET_ERROR} Registering with GitHub below needs no e-mail\\. Try again in \\d+ (seconds|minutes?|hours?)`
+      `^${REGISTRATION_BUDGET_ERROR} Registering with GitHub below sends no e-mail, so it works now\\. Try again in (12 hours|11 hours \\d+ minutes?)\\.$`
     )
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
@@ -165,9 +173,12 @@ test("registering once the day's registration mail is used up holds Register and
   await page.getByLabel("E-mail").fill("other@example.com");
   await expect(key).toBeDisabled();
 
-  // A code that already arrived needs no mail, so it can still be entered.
+  // A code that already arrived needs no mail, so it can still be entered; Resend waits too.
   await page.getByRole("button", { name: "Enter it" }).click();
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  const resend = page.getByRole("button", { name: /^Resend/ });
+  await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
+  await expect(resend).toBeDisabled();
 });
 
 test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({

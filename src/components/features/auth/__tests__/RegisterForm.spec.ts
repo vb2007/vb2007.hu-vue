@@ -12,6 +12,7 @@ import {
   type RegisterAnswer
 } from "@/scripts/authentication/register";
 import { fetchUserDetails, restoreSession } from "@/scripts/authentication/user";
+import { MAIL_BUDGET_ID, MAIL_BUDGET_STORAGE_KEY } from "@/composables/useRegisterCode";
 import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
@@ -458,6 +459,36 @@ describe("RegisterForm", () => {
     await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(submitButton(wrapper).text()).toBe("Register");
+  });
+
+  it("picks the budget's wait up after a reload, for Register and Resend alike", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error =
+      "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+    sessionStorage.setItem(
+      MAIL_BUDGET_STORAGE_KEY,
+      JSON.stringify({ id: MAIL_BUDGET_ID, deadline: Date.now() + 51_234_000, note: error })
+    );
+    const wrapper = await mountForm();
+
+    // Nothing was tried on this page yet, but the API would refuse it.
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      `${error} ${Messages.Auth.registerWithGithubInstead} Try again in 14 hours 14 minutes.`
+    );
+    expect(submitButton(wrapper).text()).toBe("Try again in 14 hr 14 min");
+    expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+
+    // A code that already arrived can still be entered; Resend waits for the budget, and the hint
+    // offers no new code, though the notice is the one for an earlier code.
+    await fill(wrapper);
+    await enterCodeButton(wrapper).trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(EARLIER("vb", 15)));
+    expect(resendButton(wrapper).text()).toBe("Resend in 14 hr 14 min");
+    expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+    expect(wrapper.find(".field__hint").text()).toBe("Nothing yet? Check your spam folder.");
+    expect(wrapper.find('[role="alert"]').text()).toBe(error);
+    expect(descriptionOf(resendButton(wrapper))).toBe(error);
   });
 
   it("points to GitHub for the mail budget's hold only", async () => {
@@ -1362,6 +1393,56 @@ describe("RegisterForm", () => {
         "Nothing yet? Check your spam folder, or send a new code below."
       );
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
+
+    it("holds Register too after a resend's budget 503, once back on the form", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error =
+        "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, { error, reason: "mailBudget", retryAfter: 51234 })
+      );
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      await wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Change address")!
+        .trigger("click");
+      await flushPromises();
+
+      // The budget is the same for every address, so another one would be refused too.
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${error} ${Messages.Auth.registerWithGithubInstead} Try again in 14 hours 14 minutes.`
+      );
+      expect(submitButton(wrapper).text()).toBe("Try again in 14 hr 14 min");
+      expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(register).toHaveBeenCalledOnce();
+    });
+
+    it("holds Resend after Register's budget 503, once a code is entered", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error =
+        "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+      vi.mocked(register).mockImplementationOnce(async () => {
+        registerStatus.value = error;
+        return { sent: false, limitedFor: 51234, mailBudget: true };
+      });
+      const wrapper = await mountForm();
+      await fill(wrapper);
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      await enterCodeButton(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(resendButton(wrapper).text()).toBe("Resend in 14 hr 14 min");
+      expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("keeps the typed code and the key after a failed send's 503, which may work on the next try", async () => {

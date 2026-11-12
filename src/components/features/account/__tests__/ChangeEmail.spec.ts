@@ -270,6 +270,15 @@ describe("ChangeEmail", () => {
       await flushPromises();
 
       expect(wrapper.find(".change__pending").text()).toContain("new@example.com");
+      // No new code can go out before the day's mail starts over, so the hint offers none.
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder."
+      );
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".field__hint").exists()).toBe(false);
+      await button("Cancel").trigger("click");
+      await flushPromises();
       fetchMock
         .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated." }))
         .mockResolvedValueOnce(jsonResponse(200, refreshedUser));

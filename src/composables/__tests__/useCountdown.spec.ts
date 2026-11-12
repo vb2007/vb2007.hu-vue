@@ -393,6 +393,16 @@ describe("mailBudgetOf", () => {
     ).toBe(51234);
   });
 
+  it("cuts a wait longer than a day to a day, the most the API names", () => {
+    // Milliseconds by mistake would otherwise hold the key for about 593 days.
+    expect(
+      mailBudgetOf(http(503, { error: budgetError, reason: "mailBudget", retryAfter: 51_234_000 }))
+    ).toBe(86_400);
+    expect(
+      mailBudgetOf(http(503, { error: budgetError, reason: "mailBudget", retryAfter: 86_400 }))
+    ).toBe(86_400);
+  });
+
   it("waits until the next UTC midnight without a retryAfter", () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.UTC(2026, 10, 12, 22, 59, 30, 500));

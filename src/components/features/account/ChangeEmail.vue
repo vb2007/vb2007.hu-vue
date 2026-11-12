@@ -18,8 +18,6 @@ import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { statusTextId } from "@/components/ui/statusMessage";
 
-const codeHint = `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder, or get a new one with Change e-mail.`;
-
 const emit = defineEmits<{ start: [] }>();
 
 const {
@@ -31,10 +29,24 @@ const {
   codeError,
   confirmError,
   confirm,
+  budget,
   sendWait,
   showWait,
   confirmHold
 } = useChangeEmail();
+/**
+ * Under the code field. While the day's mail is used up a new code can't be sent before it starts
+ * over, so neither hint offers one then.
+ */
+const codeHint = computed(
+  () =>
+    `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder${budget.active.value ? "." : ", or get a new one with Change e-mail."}`
+);
+const newEmailHint = computed(() =>
+  pendingEmail.value && !budget.active.value
+    ? "A new code replaces the one already sent."
+    : undefined
+);
 const { remaining: waitSeconds, active: isWaiting } = sendWait;
 const isConfirmHeld = computed(() => confirmHold.isHeld());
 const confirmErrorId = useId();
@@ -253,7 +265,7 @@ const confirmCode = async () => {
       label="New e-mail"
       type="email"
       autocomplete="email"
-      :hint="pendingEmail ? 'A new code replaces the one already sent.' : undefined"
+      :hint="newEmailHint"
       :error="changeErrors.email"
       required
       @blur="leaveChange('email')"
@@ -324,8 +336,11 @@ const confirmCode = async () => {
   overflow-wrap: anywhere;
 }
 
+/* One column no wider than the row, so a long key (a held "Send code in 11 hr 59 min" at a large
+   font) wraps its label instead of pushing past the board's edge. */
 .change {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-4);
 }
 

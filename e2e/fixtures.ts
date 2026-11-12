@@ -47,7 +47,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
  * resend's check, which comes before it looks at the address.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
- * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
+ * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out, and `api.clockAtMiddayUtc()`
+ * sets it to 12:00 UTC today (for `page.clock.install({ time })` too), so the budget's wait is about 12 hours whenever the test runs.
  * `api.capsCodeChecks()` refuses every code check (register verify, password reset confirm, e-mail confirm), even the right code,
  * for 23 hr 45 min like the daily cap; `api.limitsUsernameChecks()` refuses `GET /auth/username-available` for 42 seconds, and
  * `api.usernameChecks` counts how often it was asked.
@@ -348,6 +349,11 @@ export const REGISTRATION_BUDGET_ERROR =
 /** The API's `Responses.EmailCodes.mailBudgetUsedUpForAccounts`: an e-mail change over the whole limit. */
 export const ACCOUNT_BUDGET_ERROR =
   "No more e-mails can be sent today: please try again after the daily limit resets.";
+/**
+ * A key's label as it waits for the day's mail to start over, from about 12:00 UTC (see `clockAtMiddayUtc`): "12 hr", or
+ * "11 hr 59 min" once a minute of the test has passed.
+ */
+export const BUDGET_WAIT = /(12 hr|11 hr \d+ min)$/;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -1015,6 +1021,17 @@ export class MockApi {
   /** Moves the mock's clock on, e.g. along with `page.clock.runFor(ms)`, which only moves the page's. */
   clockRunsFor(ms: number) {
     this.clockOffset += ms;
+  }
+
+  /**
+   * Sets the mock's clock to 12:00 UTC today and returns that time for `page.clock.install({ time })`, so the day's mail
+   * budget waits about 12 hours whenever the test runs, and no hold can end mid-test at midnight.
+   */
+  clockAtMiddayUtc() {
+    const today = new Date();
+    const midday = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 12);
+    this.clockOffset = midday - Date.now();
+    return new Date(midday);
   }
 
   private now() {

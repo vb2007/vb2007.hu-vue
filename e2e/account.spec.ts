@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import {
   ACCOUNT_BUDGET_ERROR,
+  BUDGET_WAIT,
   callApi,
   expect,
   getFromApi,
@@ -1070,14 +1071,12 @@ test("a code whose mail failed keeps the change that waited, and another goes at
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
 });
 
-/** A held key's wait, whatever is left of the day: the double's clock is real time, so near midnight it's minutes or seconds. */
-const BUDGET_WAIT = /\d+ (sec|min|hr)( \d+ min)?$/;
-
 for (const waiting of [false, true]) {
   test(`once the day's mails are used up, Send code waits for them to start over${waiting ? ", keeping the waiting change" : ""}`, async ({
     page,
     api
   }) => {
+    await page.clock.install({ time: api.clockAtMiddayUtc() });
     api.loggedInAs("me@example.com", "me");
     if (waiting) api.hasPendingEmail("old@example.com", { sentSecondsAgo: 120 });
     api.sentMailToday(250);
@@ -1097,8 +1096,16 @@ for (const waiting of [false, true]) {
     await expect(page.getByText("Waiting for confirmation: old@example.com")).toHaveCount(
       waiting ? 1 : 0
     );
+    // No hint offers a new code while none can go out.
+    await expect(page.getByLabel("New e-mail")).toHaveAccessibleDescription("");
+    if (waiting) {
+      await page.getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByLabel("Confirmation code")).toHaveAccessibleDescription(
+        /Nothing yet\? Check your spam folder\.$/
+      );
+    }
 
-    // Kept for the account, so a reload doesn't offer a key the API would refuse.
+    // Kept for the session, so a reload doesn't offer a key the API would refuse.
     await page.reload();
     await page.getByRole("button", { name: "Change e-mail" }).click();
     await expect(page.getByRole("alert")).toHaveText(ACCOUNT_BUDGET_ERROR);

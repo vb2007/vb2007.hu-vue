@@ -120,7 +120,7 @@ export class Messages {
      * login makes the account without mailing a code, so it still works.
      */
     static readonly registerWithGithubInstead: string =
-      "Registering with GitHub below needs no e-mail.";
+      "Registering with GitHub below sends no e-mail, so it works now.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
     /** `GET /auth/username-available` said the typed name is taken. */
     static readonly usernameTaken: string = "That username is taken: pick another one.";

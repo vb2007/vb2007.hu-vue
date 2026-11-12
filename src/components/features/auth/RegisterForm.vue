@@ -115,7 +115,12 @@ const {
   codeFieldError,
   formProblem,
   cooldown,
+  budget,
+  budgetWaiting,
+  holdForBudget,
   resendWaiting,
+  resendIn,
+  resendNote,
   verifyWaiting,
   verifyHold,
   shownError: shownCodeError,
@@ -126,15 +131,28 @@ const {
   verify,
   resend
 } = useRegisterCode();
-const { remaining: resendIn } = cooldown;
 /**
- * After the mail limit's 429 (per IP), or the 503 for the day's used-up registration mail, Register
- * waits its `retryAfter`, whatever the address.
+ * After the mail limit's 429 (per IP), or while the day's registration mail is used up (the
+ * budget's wait, shared with Resend), Register waits, whatever the address.
  * "Continue" with a kept code mails nothing, so it isn't held, like "Enter it".
  */
 const registerHold = useRetryHold(registerStatus);
 /** Whether the hold is the day's used-up registration mail's, which GitHub gets around. */
 const isHeldForBudget = ref(false);
+/**
+ * Holds Register for the budget's wait with its message, whenever that starts: after Register's
+ * own 503, a resend's, or picked up after a reload.
+ */
+watch(
+  budget.active,
+  (active) => {
+    if (!active) return;
+    isHeldForBudget.value = true;
+    registerStatus.value = budget.note.value;
+    registerHold.start(budget.remaining.value);
+  },
+  { immediate: true, flush: "sync" }
+);
 const isRegisterHeld = computed(() => registerHold.isHeld() && !hasKeptCode.value);
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
@@ -152,7 +170,7 @@ const resendName = computed(() =>
 );
 /** Whether the error on show is why the resend key waits, which then describes the key. */
 const errorIsWait = computed(
-  () => resendWaiting.value && !!codeError.value && codeError.value === cooldown.note.value
+  () => resendWaiting.value && !!codeError.value && codeError.value === resendNote.value
 );
 
 /**
@@ -181,11 +199,11 @@ const notices = (name: string): Record<CodeNotice, AddressNotice> => {
 
 const noticeText = computed(() => notices(username.value.trim())[notice.value]);
 /**
- * Under the code field. After the budget's 503 every resend gets the same answer until it starts
- * over, so the hint doesn't offer one while the key waits for that; after a failed send it does.
+ * Under the code field. While the day's registration mail is used up every resend gets the same
+ * answer until it starts over, so the hint doesn't offer one then (also after a reload).
  */
 const codeHint = computed(() =>
-  notice.value === "unsent" && resendWaiting.value
+  budgetWaiting.value
     ? "Nothing yet? Check your spam folder."
     : "Nothing yet? Check your spam folder, or send a new code below."
 );
@@ -293,8 +311,10 @@ const handleSubmit = async () => {
       setError(answer.field, registerStatus.value);
       registerStatus.value = "";
     }
-    if (answer.limitedFor) {
-      isHeldForBudget.value = !!answer.mailBudget;
+    // The budget's wait holds Register through its watcher above, and Resend too.
+    if (answer.mailBudget) holdForBudget(answer.limitedFor!, registerStatus.value);
+    else if (answer.limitedFor) {
+      isHeldForBudget.value = false;
       registerHold.start(answer.limitedFor);
     }
     // A held key doesn't shake: it says when to try again instead.
@@ -617,8 +637,11 @@ watch(isLoggedIn, (newVal) => {
 </template>
 
 <style scoped>
+/* One column no wider than the board, so a long key (a held "Resend in 11 hr 59 min" at a large
+   font) wraps its label instead of pushing past the board's edge. */
 .form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-4);
 }
 

@@ -4,6 +4,8 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import {
   COOLDOWN_STORAGE_KEY,
+  MAIL_BUDGET_ID,
+  MAIL_BUDGET_STORAGE_KEY,
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode
 } from "@/composables/useRegisterCode";
@@ -523,10 +525,17 @@ describe("useRegisterCode", () => {
       expect(step.notice.value).toBe("unsent");
       // Every resend gets the same 503 until then, so the key waits, also after a reload, and says why.
       expect(step.resendWaiting.value).toBe(true);
-      expect(step.cooldown.remaining.value).toBe(51234);
-      expect(step.cooldown.note.value).toBe(budget);
+      expect(step.budgetWaiting.value).toBe(true);
+      expect(step.resendIn.value).toBe(51234);
+      expect(step.resendNote.value).toBe(budget);
+      expect(JSON.parse(sessionStorage.getItem(MAIL_BUDGET_STORAGE_KEY)!)).toEqual({
+        id: MAIL_BUDGET_ID,
+        deadline: Date.now() + 51234 * 1000,
+        note: budget
+      });
+      // The budget is the same for every address, so another one waits too.
       const { api: reloaded } = mountComposable(useRegisterCode);
-      reloaded.open("me@example.com", "earlier");
+      reloaded.open("other@example.com", "earlier");
       expect(reloaded.resendWaiting.value).toBe(true);
       expect(reloaded.codeError.value).toBe(budget);
       // Like the rate limiter's 429, it's logged.
@@ -537,6 +546,28 @@ describe("useRegisterCode", () => {
       await nextTick();
       expect(step.resendWaiting.value).toBe(false);
       expect(step.codeError.value).toBe("");
+    });
+
+    it("waits out the longer of the address's cooldown and the budget, with its message", () => {
+      const step = openStep();
+      expect(step.resendIn.value).toBe(60);
+      expect(step.resendNote.value).toBe("");
+
+      step.holdForBudget(30, "No more registration e-mails can be sent today.");
+      expect(step.resendIn.value).toBe(60);
+      step.holdForBudget(51234, "No more registration e-mails can be sent today.");
+      expect(step.resendIn.value).toBe(51234);
+      expect(step.resendNote.value).toBe("No more registration e-mails can be sent today.");
+
+      // Register's budget wait holds Resend too, once the step opens.
+      const { api: other } = mountComposable(useRegisterCode);
+      other.open("other@example.com", "earlier");
+      expect(other.resendWaiting.value).toBe(true);
+      expect(other.codeError.value).toBe("No more registration e-mails can be sent today.");
+      vi.advanceTimersByTime(51234 * 1000);
+      expect(other.resendWaiting.value).toBe(false);
+      expect(other.resendIn.value).toBe(0);
+      expect(other.resendNote.value).toBe("");
     });
 
     it("keeps the key usable after a 503 without the budget's reason, a failed send", async () => {

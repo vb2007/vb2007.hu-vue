@@ -4,6 +4,7 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import {
   COOLDOWN_STORAGE_KEY,
+  MAIL_BUDGET_ID,
   MAIL_BUDGET_STORAGE_KEY,
   useChangeEmail
 } from "@/composables/useChangeEmail";
@@ -245,7 +246,7 @@ describe("useChangeEmail", () => {
         expect(email.cooldown.active.value).toBe(false);
         expect(savedCooldown()).toBeNull();
         expect(JSON.parse(sessionStorage.getItem(MAIL_BUDGET_STORAGE_KEY)!)).toEqual({
-          id: "old@example.com",
+          id: MAIL_BUDGET_ID,
           deadline: Date.now() + 51234 * 1000,
           note: budget
         });
@@ -283,13 +284,19 @@ describe("useChangeEmail", () => {
           );
         const email = useEmail();
         await email.change("new@example.com", "secret-password");
+        // The code for the waiting change went out moments ago.
+        email.cooldown.start(42, "old@example.com");
+        expect(email.cooldown.active.value).toBe(true);
 
         expect(await email.confirm("123456")).toBe(true);
 
-        // The cooldown ends with the change; the day's mail hasn't started over.
+        // The cooldown ends with the change; the day's mail hasn't started over, and the wait
+        // stays for the confirmed address too, since it isn't kept for one.
         expect(email.cooldown.active.value).toBe(false);
         expect(email.sendWait.active.value).toBe(true);
         expect(email.sendWait.note.value).toBe(budget);
+        const reloaded = useEmail();
+        expect(reloaded.sendWait.active.value).toBe(true);
         vi.useRealTimers();
       });
 
