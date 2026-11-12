@@ -196,6 +196,30 @@ test("content shows its owner's current name, whatever case it was filed under",
   await expect(page.getByLabel("Language")).toBeVisible();
 });
 
+// The API finds the user by its collation, which ignores a flag's tags (vb2007/vb2007.hu-api#478).
+test("a user's pastes are listed under another flag's name, and a name nobody has is unknown", async ({
+  page,
+  api
+}) => {
+  const englandX = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}x";
+  const walesX = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}x";
+  api.hasUser(englandX);
+  const paste = api.hasPaste("flag words", englandX, "plaintext");
+  await page.goto(`/pastebin/${paste._id}`);
+  await expect(page.getByLabel("Paste content")).toHaveText("flag words");
+  api.loggedInAs();
+
+  const listed = await getFromApi(page, api, `/pastes/${encodeURIComponent(walesX)}`);
+  expect(listed).toMatchObject({
+    status: 200,
+    body: { pastes: [{ _id: paste._id }], pagination: { total: 1 } }
+  });
+  expect(await getFromApi(page, api, "/pastes/nobody")).toEqual({
+    status: 404,
+    body: { error: "There is no such user with that username." }
+  });
+});
+
 test("a paste filed under another case of the user's name is still theirs to change", async ({
   page,
   api

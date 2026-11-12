@@ -78,8 +78,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
  * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
  * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
- * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
- * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
+ * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and compared like the API's collation
+ * (`sameAccountName`: case, emoji joiners and a flag's tags don't count), for `GET /auth/username-available` and registering
+ * (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
  * `GET /auth/username-available`, registering, confirming the code and `PATCH /admin/users/:id` answer 400 first for a name the API's rule refuses (`usernameRefusal`).
  * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s login's when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
@@ -350,8 +351,9 @@ export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 /**
- * Whether two usernames name the same account, whatever their case, like the API's collation. Pastes, short links and
- * uploads are kept by their owner's name here (the API keys them by id), so this is how they find their account.
+ * Whether two usernames name the same account here, whatever their case: lower-casing only, not the API's collation
+ * (`sameAccountName` stands in for that). Pastes, short links and uploads are kept by their owner's name here (the API
+ * keys them by id), so this is how they find their account.
  */
 const sameUsername = (one: string, other: string) => one.toLowerCase() === other.toLowerCase();
 
@@ -396,13 +398,24 @@ const isFilledString = (value: unknown): value is string => typeof value === "st
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 
 /**
+ * Whether a username takes another's place, like the API's `isUsernameTaken`: its `en` collation
+ * at strength 2 ignores case and the characters it ignores, e.g. emoji joiners and a flag's tags,
+ * so the Wales flag + x is the England flag + x (vb2007/vb2007.hu-api#478). Accents count. The
+ * taken checks trim both names, like `isUsernameTaken`; `GET /pastes/:username` looks the name up
+ * as sent (`trim: false`), like the API's `getUserByUsername` there. What an account owns is found
+ * with `sameUsername`.
+ */
+const sameAccountName = (one: string, other: string, { trim = true } = {}) =>
+  USERNAME_COLLATOR.compare(trim ? one.trim() : one, trim ? other.trim() : other) === 0;
+
+/**
  * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
  * the trimmed name: over 16 UTF-16 units, then invisible, control or collation-ignored characters
  * and whitespace other than spaces, then fewer than 2 characters other than combining marks and
  * a flag's tags. Before the characters are checked, these go, in this order: U+200D between emoji
  * (after one, its U+FE0F or a skin tone, before one; vb2007/vb2007.hu-api#470), a subdivision
- * flag's run of 3 to 5 lowercase or digit tags and the cancel tag right after U+1F3F4 (#478), and
- * U+FE0E/U+FE0F after an emoji.
+ * flag's run of 3 to 5 lowercase or digit tags and the cancel tag right after U+1F3F4
+ * (vb2007/vb2007.hu-api#478), and U+FE0E/U+FE0F after an emoji.
  */
 const usernameRefusal = (username: string): MockResponse | undefined => {
   const refuse = (error: string) => ({ status: 400, body: { error } });
@@ -1714,12 +1727,13 @@ export class MockApi {
   }
 
   /**
-   * Whether an account has `username`, trimmed and whatever its case, like the API's `isUsernameTaken`
-   * (its collation ignores case). The logged-in user's own name counts too.
+   * Whether an account has `username`, trimmed and as the API's collation compares it
+   * (`sameAccountName`), like the API's `isUsernameTaken`. The logged-in user's own name counts too.
    */
   private isUsernameTaken(username?: string) {
-    const name = username?.trim().toLowerCase();
-    return this.storedAccounts().some((account) => account.username.toLowerCase() === name);
+    return this.storedAccounts().some((account) =>
+      sameAccountName(account.username, username ?? "")
+    );
   }
 
   /**
@@ -2439,7 +2453,8 @@ export class MockApi {
 
   /**
    * `PATCH /admin/users/:id` (vb2007/vb2007.hu-api#274): the name is kept trimmed, and another
-   * account's, in any case, is taken. What they own goes along, as it's kept by name here.
+   * account's, as the API's collation compares it (`sameAccountName`), is taken. What they own
+   * goes along, as it's kept by name here.
    */
   private renameUser(id: string, username: unknown): MockResponse {
     const target = this.adminTarget(id);
@@ -2452,8 +2467,7 @@ export class MockApi {
     const name = username.trim();
     const account = this.accountOf(target);
     const taken = [...this.users, ...this.accounts].some(
-      (other) =>
-        other !== target && other !== account && other.username.toLowerCase() === name.toLowerCase()
+      (other) => other !== target && other !== account && sameAccountName(other.username, name)
     );
     if (taken) return { status: 409, body: { error: "This username is already taken." } };
 
@@ -2939,7 +2953,11 @@ export class MockApi {
     return { status: 200, body: { message: "Shortened URL deleted successfully." } };
   }
 
-  /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
+  /**
+   * Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). The
+   * lookup compares like the API's collation (`sameAccountName`), so the Wales flag + x lists the
+   * England flag + x's pastes; the pastes are then that account's.
+   */
   private listPastes(username: string, query: URLSearchParams) {
     if (!this.user) {
       return NOT_LOGGED_IN;
@@ -2953,14 +2971,15 @@ export class MockApi {
       ...this.users.map((user) => user.username),
       ...this.pastes.map((paste) => paste.addedBy)
     ];
-    if (!known.some((name) => sameUsername(name, username))) {
+    const owner = known.find((name) => sameAccountName(name, username, { trim: false }));
+    if (owner === undefined) {
       return { status: 404, body: { error: "There is no such user with that username." } };
     }
 
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, username));
+    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, owner));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,

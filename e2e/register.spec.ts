@@ -625,7 +625,8 @@ test("a username with an invisible character or a tab is refused while it's type
 });
 
 // The API takes emoji that a zero-width joiner makes one (vb2007/vb2007.hu-api#470) and
-// subdivision flags, whose tags are invisible (#478): the form and the double let both register.
+// subdivision flags, whose tags are invisible (vb2007/vb2007.hu-api#478): the form and the double
+// let both register.
 for (const [kind, name] of [
   ["joined emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab"],
   // England's flag: 14 UTF-16 units, so 2 more characters fit.
@@ -695,6 +696,107 @@ test("the double refuses a username with an invisible character like the API", a
       error: "You must provide an E-mail address, the confirmation code, a username and a password."
     }
   });
+});
+
+/** Tag characters spelling `text`, as in a subdivision flag. */
+const emojiTags = (text: string) =>
+  [...text].map((character) => String.fromCodePoint(0xe0000 + character.charCodeAt(0))).join("");
+const subdivisionFlag = (code: string) => `\u{1F3F4}${emojiTags(code)}\u{E007F}`;
+const usernameAvailable = (page: Page, api: MockApi, name: string) =>
+  getFromApi(page, api, `/auth/username-available?username=${encodeURIComponent(name)}`);
+
+// The double's own copy of the rule for emoji joiners (vb2007/vb2007.hu-api#470) and flag tags
+// (vb2007/vb2007.hu-api#478), asked directly: the form never sends what it refuses.
+test("the double judges emoji joiners and flag tags like the API", async ({ page, api }) => {
+  await page.goto("/register");
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  const invalid = { status: 400, body: { error: USERNAME_INVALID } };
+  const tooShort = {
+    status: 400,
+    body: { error: "The username's too short: it must be between 2 and 16 characters." }
+  };
+
+  const refusals = [
+    // A joiner with an emoji on one side only.
+    ["a\u200d\u{1F469}", invalid],
+    ["\u{1F468}\u200da", invalid],
+    // A joiner between letters, a stray tag, a joiner after a flag's cancel tag.
+    ["a\u200db", invalid],
+    ["ab\u{E0067}", invalid],
+    [`${subdivisionFlag("gbe")}\u200d\u{1F469}`, invalid],
+    // A whole run with its cancel tag, but not after the black flag.
+    [`ab${emojiTags("gbeng")}\u{E007F}cd`, invalid],
+    // Runs of 2 and of 6 tags: a flag's is 3 to 5.
+    [`\u{1F3F4}${emojiTags("gb")}\u{E007F}ab`, invalid],
+    [`\u{1F3F4}${emojiTags("gbengl")}\u{E007F}`, invalid],
+    // A flag's tags don't count toward the minimum.
+    [subdivisionFlag("gbeng"), tooShort]
+  ] as const;
+  for (const [index, [name, refused]] of refusals.entries()) {
+    expect(await usernameAvailable(page, api, name)).toEqual(refused);
+    expect(
+      await callApi(page, api, "POST", "/auth/register", {
+        ...REGISTRATION,
+        email: `refused${index}@example.com`,
+        username: name
+      })
+    ).toEqual(refused);
+  }
+
+  for (const [index, name] of [
+    "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab",
+    `${subdivisionFlag("gbeng")}ab`,
+    // Digit tags pass too.
+    `${subdivisionFlag("us06")}ab`
+  ].entries()) {
+    expect(await usernameAvailable(page, api, name)).toEqual({
+      status: 200,
+      body: { available: true }
+    });
+    const registered = await callApi(page, api, "POST", "/auth/register", {
+      ...REGISTRATION,
+      email: `free${index}@example.com`,
+      username: name
+    });
+    expect(registered.status).toBe(202);
+  }
+});
+
+test("a name that differs only by what the API's collation ignores is taken", async ({
+  page,
+  api
+}) => {
+  api.hasUser(`${subdivisionFlag("gbeng")}x`);
+  api.hasUser("\u{1F468}\u200d\u{1F469}ab");
+  await page.goto("/register");
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  const taken = { status: 409, body: { error: "This username is already taken." } };
+
+  // The tags of another flag, the plain black flag, no joiner, another case: the same name.
+  for (const name of [
+    `${subdivisionFlag("gbwls")}x`,
+    "\u{1F3F4}x",
+    "\u{1F468}\u{1F469}ab",
+    "\u{1F468}\u200d\u{1F469}AB"
+  ]) {
+    expect(await usernameAvailable(page, api, name)).toEqual({
+      status: 200,
+      body: { available: false }
+    });
+    expect(
+      await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: name })
+    ).toEqual(taken);
+  }
+  // Accents count, like the API's strength 2.
+  expect(await usernameAvailable(page, api, "\u{1F468}\u200d\u{1F469}\u00e1b")).toEqual({
+    status: 200,
+    body: { available: true }
+  });
+
+  // The form says so while it's typed.
+  const username = page.getByLabel("Username");
+  await username.fill(`${subdivisionFlag("gbsct")}x`);
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
 });
 
 // The double's mail failures, checked through the page's own calls: the form can't wait out the API's
