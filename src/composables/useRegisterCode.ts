@@ -23,8 +23,8 @@ export const COOLDOWN_STORAGE_KEY = "register-cooldown";
  * Where the wait for the day's used-up registration mail is kept (vb2007/vb2007.hu-api#468). The
  * API refuses it for every address alike, so it's one wait under one id, for Register and Resend.
  */
-export const MAIL_BUDGET_STORAGE_KEY = "register-mail-budget";
-export const MAIL_BUDGET_ID = "registration";
+export const REGISTRATION_BUDGET_STORAGE_KEY = "register-mail-budget";
+export const REGISTRATION_BUDGET_ID = "registration";
 
 type Countdown = ReturnType<typeof useCountdown>;
 
@@ -114,8 +114,8 @@ export const useRegisterCode = () => {
    * Runs after the 503 for the day's used-up registration mail, until it starts over: it holds
    * Resend for every address, and Register (see `RegisterForm`), also after a reload.
    */
-  const budget = useCountdown(MAIL_BUDGET_STORAGE_KEY);
-  budget.resume(MAIL_BUDGET_ID);
+  const budget = useCountdown(REGISTRATION_BUDGET_STORAGE_KEY);
+  budget.resume(REGISTRATION_BUDGET_ID);
   const budgetWaiting = budget.active;
 
   const cooldownWaiting = computed(
@@ -168,7 +168,7 @@ export const useRegisterCode = () => {
 
   /** Holds Register and Resend until the day's registration mail starts over, for any address. */
   const holdForBudget = (seconds: number, reason: string) =>
-    budget.start(seconds, MAIL_BUDGET_ID, reason);
+    budget.start(seconds, REGISTRATION_BUDGET_ID, reason);
 
   watch(budget.active, (active) => {
     if (!active && errorEndsWith === budget) showError("");

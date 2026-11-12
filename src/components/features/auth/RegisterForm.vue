@@ -140,13 +140,17 @@ const registerHold = useRetryHold(registerStatus);
 /** Whether the hold is the day's used-up registration mail's, which GitHub gets around. */
 const isHeldForBudget = ref(false);
 /**
- * Holds Register for the budget's wait with its message, whenever that starts: after Register's
- * own 503, a resend's, or picked up after a reload.
+ * Holds Register for the budget's wait with its message once the form is on show: after
+ * Register's own 503, back from the code step after a resend's, or picked up after a reload. It
+ * starts then, so the wait it reads out is the one left at that moment. A rate limiter's hold that
+ * lasts longer stays as it is.
  */
 watch(
-  budget.active,
-  (active) => {
-    if (!active) return;
+  [budget.active, codeEmail],
+  () => {
+    if (!budget.active.value || codeEmail.value) return;
+    const limiterHold = registerHold.isHeld() && !isHeldForBudget.value;
+    if (limiterHold && registerHold.remaining.value >= budget.remaining.value) return;
     isHeldForBudget.value = true;
     registerStatus.value = budget.note.value;
     registerHold.start(budget.remaining.value);

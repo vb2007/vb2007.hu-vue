@@ -287,19 +287,20 @@ const confirmCode = async () => {
       <BaseButton
         type="submit"
         size="sm"
+        :class="{ change__counting: isWaiting && !isChanging }"
         :loading="isChanging"
         :disabled="isWaiting"
         :aria-label="sendName"
         :aria-describedby="errorIsWait ? statusTextId(changeErrorId) : undefined"
         :blocked="!isChangeValid"
       >
-        {{
-          isChanging
-            ? "Sending"
-            : isWaiting
-              ? Messages.EmailCode.sendCodeIn(waitSeconds)
-              : "Send code"
-        }}
+        <template v-if="isChanging">Sending</template>
+        <!-- The verb stays whole, so a wrapped wait goes under it (see .change__counting). -->
+        <template v-else-if="isWaiting"
+          ><span class="change__verb">{{ Messages.EmailCode.sendCode }}</span>
+          {{ Messages.EmailCode.waitIn(waitSeconds) }}</template
+        >
+        <template v-else>{{ Messages.EmailCode.sendCode }}</template>
       </BaseButton>
       <BaseButton size="sm" variant="ghost" :disabled="isChanging" @click="cancel">
         Cancel
@@ -336,12 +337,32 @@ const confirmCode = async () => {
   overflow-wrap: anywhere;
 }
 
-/* One column no wider than the row, so a long key (a held "Send code in 11 hr 59 min" at a large
-   font) wraps its label instead of pushing past the board's edge. */
+/* One column no wider than the row it's in. */
 .change {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-4);
+}
+
+/* A waiting key's label ("Send code in 11 hr 59 min") is longer than "Send code". Where the row is
+   too narrow for it on one line but wide enough for "Send code" (a phone at a large font, under a
+   long waiting address), the key takes the width of its unbroken verb and the wait wraps under
+   it; narrower still, it wraps like the key at rest. Either way it's no wider than "Send code"
+   would be. The row itself can still be wider than the board at 200 %, as the account board's
+   other rows are. */
+.change__actions {
+  container-type: inline-size;
+}
+
+@container (7.5rem <= width < 14rem) {
+  .change__counting {
+    width: min-content;
+    min-width: 0;
+  }
+
+  .change__verb {
+    white-space: nowrap;
+  }
 }
 
 .change__actions {

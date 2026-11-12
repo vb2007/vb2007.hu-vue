@@ -4,8 +4,8 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import {
   COOLDOWN_STORAGE_KEY,
-  MAIL_BUDGET_ID,
-  MAIL_BUDGET_STORAGE_KEY,
+  REGISTRATION_BUDGET_ID,
+  REGISTRATION_BUDGET_STORAGE_KEY,
   RESEND_COOLDOWN_SECONDS,
   useRegisterCode
 } from "@/composables/useRegisterCode";
@@ -528,8 +528,8 @@ describe("useRegisterCode", () => {
       expect(step.budgetWaiting.value).toBe(true);
       expect(step.resendIn.value).toBe(51234);
       expect(step.resendNote.value).toBe(budget);
-      expect(JSON.parse(sessionStorage.getItem(MAIL_BUDGET_STORAGE_KEY)!)).toEqual({
-        id: MAIL_BUDGET_ID,
+      expect(JSON.parse(sessionStorage.getItem(REGISTRATION_BUDGET_STORAGE_KEY)!)).toEqual({
+        id: REGISTRATION_BUDGET_ID,
         deadline: Date.now() + 51234 * 1000,
         note: budget
       });
@@ -553,8 +553,10 @@ describe("useRegisterCode", () => {
       expect(step.resendIn.value).toBe(60);
       expect(step.resendNote.value).toBe("");
 
+      // The address's cooldown is longer, so it's what the key counts, with its own (empty) message.
       step.holdForBudget(30, "No more registration e-mails can be sent today.");
       expect(step.resendIn.value).toBe(60);
+      expect(step.resendNote.value).toBe("");
       step.holdForBudget(51234, "No more registration e-mails can be sent today.");
       expect(step.resendIn.value).toBe(51234);
       expect(step.resendNote.value).toBe("No more registration e-mails can be sent today.");

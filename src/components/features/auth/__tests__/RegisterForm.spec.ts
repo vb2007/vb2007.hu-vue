@@ -12,7 +12,10 @@ import {
   type RegisterAnswer
 } from "@/scripts/authentication/register";
 import { fetchUserDetails, restoreSession } from "@/scripts/authentication/user";
-import { MAIL_BUDGET_ID, MAIL_BUDGET_STORAGE_KEY } from "@/composables/useRegisterCode";
+import {
+  REGISTRATION_BUDGET_ID,
+  REGISTRATION_BUDGET_STORAGE_KEY
+} from "@/composables/useRegisterCode";
 import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
@@ -466,8 +469,8 @@ describe("RegisterForm", () => {
     const error =
       "No more registration e-mails can be sent today: please try again after the daily limit resets.";
     sessionStorage.setItem(
-      MAIL_BUDGET_STORAGE_KEY,
-      JSON.stringify({ id: MAIL_BUDGET_ID, deadline: Date.now() + 51_234_000, note: error })
+      REGISTRATION_BUDGET_STORAGE_KEY,
+      JSON.stringify({ id: REGISTRATION_BUDGET_ID, deadline: Date.now() + 51_234_000, note: error })
     );
     const wrapper = await mountForm();
 
@@ -1421,6 +1424,68 @@ describe("RegisterForm", () => {
       expect(submitButton(wrapper).text()).toBe("Try again in 14 hr 14 min");
       expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
       expect(register).toHaveBeenCalledOnce();
+    });
+
+    it("reads out the wait left when the form comes back, not the one from the resend", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error =
+        "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, { error, reason: "mailBudget", retryAfter: 51234 })
+      );
+      const wrapper = await atCodeStep();
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+      vi.advanceTimersByTime(600_000);
+      await flushPromises();
+
+      await wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Change address")!
+        .trigger("click");
+      await flushPromises();
+
+      // Ten minutes on: 14 hr 3 min 54 sec are left, read out rounded up.
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${error} ${Messages.Auth.registerWithGithubInstead} Try again in 14 hours 4 minutes.`
+      );
+      expect(submitButton(wrapper).text()).toBe("Try again in 14 hr 4 min");
+    });
+
+    it("keeps a longer rate limiter's hold on Register when the budget's wait starts", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const limited = "Too many e-mails requested: try again later.";
+      vi.mocked(register).mockImplementationOnce(async () => {
+        registerStatus.value = limited;
+        return { sent: false, limitedFor: 7200 };
+      });
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, {
+          error: "No more registration e-mails can be sent today.",
+          reason: "mailBudget",
+          retryAfter: 3600
+        })
+      );
+      const wrapper = await mountForm();
+      await fill(wrapper);
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      await enterCodeButton(wrapper).trigger("click");
+      await flushPromises();
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      await wrapper
+        .findAll("button")
+        .find((button) => button.text() === "Change address")!
+        .trigger("click");
+      await flushPromises();
+
+      // The limiter's two hours outlast the budget's one, so its hold and message stay.
+      expect(submitButton(wrapper).text()).toBe("Try again in 2 hr");
+      expect(wrapper.find('[role="alert"]').text()).toBe(`${limited} Try again in 2 hours.`);
     });
 
     it("holds Resend after Register's budget 503, once a code is entered", async () => {

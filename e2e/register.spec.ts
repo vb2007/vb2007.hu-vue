@@ -127,7 +127,7 @@ test("a resend once the day's registration mail is used up holds the key and kee
   await expect(code).toBeFocused();
   await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
 
-  // A reload doesn't make the key usable: the wait and why are kept with the address.
+  // A reload doesn't make the key usable: the wait and why are kept for the session, for every address.
   await page.reload();
   await fillFields(page);
   await page.getByRole("button", { name: "Enter it" }).click();

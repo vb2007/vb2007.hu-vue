@@ -1025,7 +1025,8 @@ export class MockApi {
 
   /**
    * Sets the mock's clock to 12:00 UTC today and returns that time for `page.clock.install({ time })`, so the day's mail
-   * budget waits about 12 hours whenever the test runs, and no hold can end mid-test at midnight.
+   * budget waits about 12 hours whenever the test runs, and no hold can end mid-test at midnight. It assigns the offset
+   * rather than adding to it, so call it before any `clockRunsFor(ms)`.
    */
   clockAtMiddayUtc() {
     const today = new Date();

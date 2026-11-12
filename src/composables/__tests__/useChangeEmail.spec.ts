@@ -4,8 +4,8 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import {
   COOLDOWN_STORAGE_KEY,
-  MAIL_BUDGET_ID,
-  MAIL_BUDGET_STORAGE_KEY,
+  ACCOUNT_BUDGET_ID,
+  ACCOUNT_BUDGET_STORAGE_KEY,
   useChangeEmail
 } from "@/composables/useChangeEmail";
 import { Messages } from "@/constants/messages";
@@ -245,8 +245,8 @@ describe("useChangeEmail", () => {
         expect(email.sendWait.note.value).toBe(budget);
         expect(email.cooldown.active.value).toBe(false);
         expect(savedCooldown()).toBeNull();
-        expect(JSON.parse(sessionStorage.getItem(MAIL_BUDGET_STORAGE_KEY)!)).toEqual({
-          id: MAIL_BUDGET_ID,
+        expect(JSON.parse(sessionStorage.getItem(ACCOUNT_BUDGET_STORAGE_KEY)!)).toEqual({
+          id: ACCOUNT_BUDGET_ID,
           deadline: Date.now() + 51234 * 1000,
           note: budget
         });

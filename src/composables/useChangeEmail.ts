@@ -31,8 +31,8 @@ export const COOLDOWN_STORAGE_KEY = "email-change-cooldown";
  * waiting ends it. The API's limit is the same for every account, so it's kept under one id, and
  * a confirmed change or another login keeps it.
  */
-export const MAIL_BUDGET_STORAGE_KEY = "email-change-mail-budget";
-export const MAIL_BUDGET_ID = "account";
+export const ACCOUNT_BUDGET_STORAGE_KEY = "email-change-mail-budget";
+export const ACCOUNT_BUDGET_ID = "account";
 
 /**
  * Changes the logged-in user's e-mail address (vb2007/vb2007.hu-api#162). The API mails a code to
@@ -53,8 +53,8 @@ export const useChangeEmail = () => {
   const account = () => normalizeEmail(userEmail.value);
   cooldown.resume(account());
   /** Runs after the 503 for the day's used-up mail limit, until the next UTC midnight. */
-  const budget = useCountdown(MAIL_BUDGET_STORAGE_KEY);
-  budget.resume(MAIL_BUDGET_ID);
+  const budget = useCountdown(ACCOUNT_BUDGET_STORAGE_KEY);
+  budget.resume(ACCOUNT_BUDGET_ID);
   /** What Send code waits for: whichever of the two runs longer, with its message. */
   const longer = () => (budget.remaining.value >= cooldown.remaining.value ? budget : cooldown);
   const sendWait = {
@@ -161,7 +161,7 @@ export const useChangeEmail = () => {
       // gets the same 503 until it starts over, so the key waits that long. A failed send may
       // work on the next try.
       const budgetWait = mailBudgetOf(result);
-      if (budgetWait !== undefined) budget.start(budgetWait, MAIL_BUDGET_ID, changeError.value);
+      if (budgetWait !== undefined) budget.start(budgetWait, ACCOUNT_BUDGET_ID, changeError.value);
       // Either way, the API restores the change that waited before, if any (`restoreEmailChange`,
       // vb2007/vb2007.hu-api#294), so show what it has now.
       if (result.status === HttpStatus.ServiceUnavailable) await fetchUserDetails();

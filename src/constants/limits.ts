@@ -35,7 +35,7 @@ export class Limits {
     static readonly localPartMaxLength: number = 64;
   };
 
-  /** The API's daily mail limit (`MAIL_DAILY_LIMIT`, vb2007/vb2007.hu-api#468). */
+  /** What the API's 503 for its used-up daily mail limit promises (vb2007/vb2007.hu-api#468). */
   static readonly Mail = class {
     /**
      * The longest wait its 503 can name: `retryAfter` is the seconds until the next UTC midnight,
