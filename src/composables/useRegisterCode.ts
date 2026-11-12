@@ -3,7 +3,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { mailBudgetOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest, isLoggedOutAnswer } from "@/scripts/api/client";
 import {
@@ -74,9 +74,9 @@ export type CodeNotice =
   /** Back from fixing the form: nothing was sent, and the code typed before is kept. */
   | "kept"
   /**
-   * A resend the API turned away with its 503 (the day's registration mail is used up), before it
-   * looked at the address: it made no new code, so a code that reached the address in the last
-   * minutes it works for, if any did, still works.
+   * A resend the API turned away with a 503 (the day's registration mail is used up, before it
+   * looked at the address, or a failed send): it made no new code, so a code that reached the
+   * address in the last minutes it works for, if any did, still works.
    */
   | "unsent";
 
@@ -268,13 +268,17 @@ export const useRegisterCode = () => {
       holdResend(retryAfterFrom(result.body), result.error);
       showError(result.error, true);
     } else {
-      showError(result.error);
-      if (result.status === HttpStatus.ServiceUnavailable) {
-        // The day's registration mail is used up: the API made no new code, so the one before
-        // still works. Its 503 names no wait, and the budget also starts over when the API
-        // restarts, so the key isn't held.
-        notice.value = "unsent";
+      const budgetWait = mailBudgetOf(result);
+      if (budgetWait !== undefined) {
+        // The day's registration mail is used up, for every address: every resend gets the same
+        // 503 until it starts over, so the key waits that long, as for a rate limiter's 429.
+        holdResend(budgetWait, result.error);
+        showError(result.error, true);
+      } else {
+        showError(result.error);
       }
+      // Either 503 made no new code, so a code that reached the address before still works.
+      if (result.status === HttpStatus.ServiceUnavailable) notice.value = "unsent";
     }
     isResending.value = false;
 

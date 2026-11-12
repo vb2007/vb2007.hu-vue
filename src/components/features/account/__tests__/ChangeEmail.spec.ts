@@ -204,6 +204,86 @@ describe("ChangeEmail", () => {
     ]);
     expect(document.activeElement).toBe(inputs()[1].element);
     expect(userEmail.value).toBe("old@example.com");
+    // None of them holds the key: a failed send (a 503 without the budget's reason) may work at once.
+    expect(button("Send code").attributes("disabled")).toBeUndefined();
+  });
+
+  describe("once the day's mail is used up", () => {
+    const error =
+      "No more e-mails can be sent today: please try again after the daily limit resets.";
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const sendRefused = async (user: object) => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(503, { error, reason: "mailBudget", retryAfter: 51234 })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, user));
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await fill("newer@example.com", "secret-password");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+    };
+
+    it("holds Send code until it starts over, in hours and minutes, with nothing waiting", async () => {
+      await sendRefused({ ...refreshedUser, email: "old@example.com" });
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      const held = button("Send code in 14 hr 14 min");
+      expect(held.attributes("disabled")).toBeDefined();
+      // "14 hours" doesn't contain "14 hr", so the visible label names the key.
+      expect(held.attributes("aria-label")).toBeUndefined();
+      expect(descriptionOf(held)).toBe(error);
+      expect(wrapper.find(".change__pending").exists()).toBe(false);
+
+      // Kept for the account: a reload still holds it, and the form says why again.
+      wrapper.unmount();
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      await flushPromises();
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Send code in 14 hr 14 min").attributes("disabled")).toBeDefined();
+
+      vi.advanceTimersByTime(51_234_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(button("Send code").attributes("disabled")).toBeUndefined();
+    });
+
+    it("keeps the change that waited, and holds Send code after it's confirmed", async () => {
+      wrapper.unmount();
+      pendingEmail.value = "new@example.com";
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      await flushPromises();
+
+      await sendRefused(waitingUser);
+      await button("Cancel").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find(".change__pending").text()).toContain("new@example.com");
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated." }))
+        .mockResolvedValueOnce(jsonResponse(200, refreshedUser));
+      await wrapper.find('input[autocomplete="one-time-code"]').setValue("123456");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(userEmail.value).toBe("new@example.com");
+
+      // The day's mail hasn't started over, though the cooldown ended with the change.
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Send code in 14 hr 14 min").attributes("disabled")).toBeDefined();
+    });
   });
 
   it("brings focus back into the form after a clicked save fails, so Escape still works", async () => {

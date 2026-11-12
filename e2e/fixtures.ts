@@ -32,16 +32,19 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
  * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` fails the next code mail that is
  * actually sent, like a mail server that's down (vb2007/vb2007.hu-api#294): `PATCH /user/email` and `POST /auth/register` answer
- * the API's 503 and keep the change or registration that waited before (a new one isn't kept); `POST /auth/register/resend` and
+ * the API's 503 without a `reason` (`MAIL_FAILED_ERROR`) and keep the change or registration that waited before (a new one isn't kept); `POST /auth/register/resend` and
  * `POST /auth/password-reset` answer 200 as ever and keep the code sent before. A request that sends no mail (a cooldown's 429 or,
  * for a resend, its silent 200, an address nobody waits on) leaves it for the next one.
  * The day's mails are counted like the API's (`api.sentMailToday(n)` sets the count, `GET /admin/mail-budget` reports it): every
  * mail the mock sends adds one (the codes, and the notices after an e-mail change or a password reset, which the budget can refuse
  * unseen), a failed code mail gives its count back, and each resend reserves one before it looks at the address, kept whatever
- * becomes of it. At `n` 200 of 250 or more registering fails the same way (503), and a resend answers the 503 the API gives
- * before it touches the code; from 225 a password reset mails nothing (still 200, keeping the code from before); at 250 every
- * mail is refused, `PATCH /user/email` too (503). Addresses on the reserved top-level domains (`.test`, `.example`, `.invalid`,
- * `.localhost`) are neither counted nor refused.
+ * becomes of it. At `n` 200 of 250 or more registering answers the API's budget 503 (vb2007/vb2007.hu-api#468), `{ error, reason:
+ * "mailBudget", retryAfter }` with `REGISTRATION_BUDGET_ERROR` and the whole seconds (at least 1) from the mock's clock to the next
+ * UTC midnight, keeping the registration that waited before, and a resend answers the same before it touches the code; from 225 a
+ * password reset mails nothing (still 200, keeping the code from before); at 250 every mail is refused, and `PATCH /user/email`
+ * answers that 503 too with `ACCOUNT_BUDGET_ERROR` (vb2007/vb2007.hu-api#476), keeping the change that waited before. Addresses on
+ * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
+ * resend's check, which comes before it looks at the address.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
  * `api.capsCodeChecks()` refuses every code check (register verify, password reset confirm, e-mail confirm), even the right code,
@@ -338,6 +341,12 @@ export const PASSWORD_RESET_SENT =
 
 /** The API's `Responses.EmailCodes.mailFailed`: a code that couldn't be mailed. */
 export const MAIL_FAILED_ERROR = "The e-mail couldn't be sent: please try again later.";
+/** The API's `Responses.EmailCodes.mailBudgetUsedUp`: registering or its resend over the registration share. */
+export const REGISTRATION_BUDGET_ERROR =
+  "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+/** The API's `Responses.EmailCodes.mailBudgetUsedUpForAccounts`: an e-mail change over the whole limit. */
+export const ACCOUNT_BUDGET_ERROR =
+  "No more e-mails can be sent today: please try again after the daily limit resets.";
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -954,6 +963,17 @@ export class MockApi {
       account: MAIL_DAILY_LIMIT
     }[kind];
     return this.mailSentToday >= stopsAt;
+  }
+
+  /**
+   * The API's `answerMailBudgetUsedUp`: nothing was sent, and `retryAfter` is the whole seconds (at least 1) to the next
+   * UTC midnight on the mock's clock, when the count starts again.
+   */
+  private mailBudgetUsedUp(error: string): MockResponse {
+    const now = new Date(this.now());
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    const retryAfter = Math.max(1, Math.ceil((midnight - now.getTime()) / 1000));
+    return { status: 503, body: { error, reason: "mailBudget", retryAfter } };
   }
 
   /** Whether the API counts a mail to `address` against the day's budget: not for the reserved top-level domains. */
@@ -1578,7 +1598,10 @@ export class MockApi {
     // Over an expired leftover it starts afresh: a new code, no old cooldown.
     const tooSoon = this.resendTooSoon(this.waitingRegistration(email)?.sentAt);
     if (tooSoon) return tooSoon;
-    // A code that couldn't be mailed leaves the registration that waited before (if any) as it was.
+    // A code the budget refused or that couldn't be mailed leaves the registration that waited before (if any) as it was.
+    if (this.countsMail(email) && this.mailRefused("registration")) {
+      return this.mailBudgetUsedUp(REGISTRATION_BUDGET_ERROR);
+    }
     if (!this.sendsMail("registration", email)) return MAIL_FAILED;
     this.pendingRegistrations.set(email, {
       ...this.newCode(15),
@@ -1604,7 +1627,7 @@ export class MockApi {
     if (!email) {
       return { status: 400, body: { error: "You must provide an E-mail address." } };
     }
-    if (this.mailRefused("registration")) return MAIL_FAILED;
+    if (this.mailRefused("registration")) return this.mailBudgetUsedUp(REGISTRATION_BUDGET_ERROR);
     if (this.countsMail(email)) this.mailSentToday++;
     const pending = this.waitingRegistration(email);
     // A code that couldn't be mailed is only logged: the answer stays 200, the code sent before still works, and the
@@ -1687,10 +1710,11 @@ export class MockApi {
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
-    if (!this.sendsMail("account", normalized)) {
-      // Like the API, the change that waited before (if any) stays, so a new code may go at once.
-      return MAIL_FAILED;
+    // Like the API, a refusal keeps the change that waited before (if any): after a failed send a new code may go at once.
+    if (this.countsMail(normalized) && this.mailRefused("account")) {
+      return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
     }
+    if (!this.sendsMail("account", normalized)) return MAIL_FAILED;
     this.emailChange = { email: normalized, ...this.newCode(15) };
     this.emailChangeOwnerId = this.user?._id ?? null;
     return {

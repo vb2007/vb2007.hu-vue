@@ -1,9 +1,14 @@
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import {
+  codeCooldownOf,
+  mailBudgetOf,
+  retryAfterFrom,
+  useCountdown
+} from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest } from "@/scripts/api/client";
 import {
@@ -20,6 +25,12 @@ import { removeSaved } from "@/scripts/utility/savedForOwner";
 export const CODE_COOLDOWN_SECONDS = Limits.Code.cooldownSeconds;
 /** Where the countdown to the next code is kept, so a reload doesn't spend a try on a 429. */
 export const COOLDOWN_STORAGE_KEY = "email-change-cooldown";
+/**
+ * Where the wait for the day's used-up mail limit is kept, apart from the cooldown: it's about the
+ * API's mail, not a code, so neither a confirmed or dropped change nor a first change with nothing
+ * waiting ends it. It's kept for the account's address like the cooldown.
+ */
+export const MAIL_BUDGET_STORAGE_KEY = "email-change-mail-budget";
 
 /**
  * Changes the logged-in user's e-mail address (vb2007/vb2007.hu-api#162). The API mails a code to
@@ -39,6 +50,16 @@ export const useChangeEmail = () => {
   /** The API's cooldown is per account, so it's kept for the account's current address. */
   const account = () => normalizeEmail(userEmail.value);
   cooldown.resume(account());
+  /** Runs after the 503 for the day's used-up mail limit, until the next UTC midnight. */
+  const budget = useCountdown(MAIL_BUDGET_STORAGE_KEY);
+  budget.resume(account());
+  /** What Send code waits for: whichever of the two runs longer, with its message. */
+  const longer = () => (budget.remaining.value >= cooldown.remaining.value ? budget : cooldown);
+  const sendWait = {
+    active: computed(() => cooldown.active.value || budget.active.value),
+    remaining: computed(() => longer().remaining.value),
+    note: computed(() => longer().note.value)
+  };
 
   /** Once the waiting change is gone, the API takes a new address straight away. */
   const endCooldown = () => {
@@ -52,15 +73,18 @@ export const useChangeEmail = () => {
    */
   const confirmHold = useRetryHold(confirmError);
 
-  // Every 429 counts its wait down on the key and keeps its message as the countdown's note, so
-  // the message goes once the key comes back. `showWait` brings it back, e.g. after a reload.
-  watch(cooldown.active, (waiting) => {
-    if (!waiting && changeError.value === cooldown.note.value) changeError.value = "";
-  });
+  // Every 429 and the mail limit's 503 count their wait down on the key and keep their message as
+  // the countdown's note, so the message goes once that countdown ends. `showWait` brings it back,
+  // e.g. after a reload.
+  for (const countdown of [cooldown, budget]) {
+    watch(countdown.active, (waiting) => {
+      if (!waiting && changeError.value === countdown.note.value) changeError.value = "";
+    });
+  }
 
-  /** Shows why the key waits, if a 429 started its countdown (also one from before a reload). */
+  /** Shows why the key waits, if a 429 or 503 started a countdown (also one from before a reload). */
   const showWait = () => {
-    if (cooldown.active.value) changeError.value = cooldown.note.value;
+    if (sendWait.active.value) changeError.value = sendWait.note.value;
   };
 
   /**
@@ -102,8 +126,13 @@ export const useChangeEmail = () => {
       if (isCooldown) await fetchUserDetails();
     } else {
       changeError.value = result.error;
-      // When its mail fails, the API restores the change that waited before, if any
-      // (`restoreEmailChange`, vb2007/vb2007.hu-api#294), so show what it has now.
+      // The day's mail is used up (only once all of it is, vb2007/vb2007.hu-api#476): every try
+      // gets the same 503 until it starts over, so the key waits that long. A failed send may
+      // work on the next try.
+      const budgetWait = mailBudgetOf(result);
+      if (budgetWait !== undefined) budget.start(budgetWait, account(), changeError.value);
+      // Either way, the API restores the change that waited before, if any (`restoreEmailChange`,
+      // vb2007/vb2007.hu-api#294), so show what it has now.
       if (result.status === HttpStatus.ServiceUnavailable) await fetchUserDetails();
     }
     isChanging.value = false;
@@ -208,6 +237,8 @@ export const useChangeEmail = () => {
     confirmError,
     confirm,
     cooldown,
+    budget,
+    sendWait,
     showWait,
     confirmHold
   };

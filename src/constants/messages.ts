@@ -115,6 +115,12 @@ export class Messages {
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
     static readonly registerUnknownError: string = "Registration failed. Please try again.";
+    /**
+     * Under the 503 for the day's used-up registration mail (`ErrorReason.MailBudget`): a GitHub
+     * login makes the account without mailing a code, so it still works.
+     */
+    static readonly registerWithGithubInstead: string =
+      "Registering with GitHub below needs no e-mail.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
     /** `GET /auth/username-available` said the typed name is taken. */
     static readonly usernameTaken: string = "That username is taken: pick another one.";

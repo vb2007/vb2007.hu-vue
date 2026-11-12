@@ -428,6 +428,63 @@ describe("RegisterForm", () => {
     expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
   });
 
+  it("holds the key for the day's used-up registration mail, pointing to GitHub", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error =
+      "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+    vi.mocked(register).mockImplementationOnce(async () => {
+      registerStatus.value = error;
+      return { sent: false, limitedFor: 51234, mailBudget: true };
+    });
+    const wrapper = await mountForm();
+    await fill(wrapper);
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    // Hours read as hours and minutes, never as seconds; registering with GitHub mails nothing.
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      `${error} ${Messages.Auth.registerWithGithubInstead} Try again in 14 hours 14 minutes.`
+    );
+    expect(submitButton(wrapper).text()).toBe("Try again in 14 hr 14 min");
+    expect(submitButton(wrapper).attributes("disabled")).toBeDefined();
+    expect(submitButton(wrapper).classes()).not.toContain("btn--error");
+    expect(descriptionOf(submitButton(wrapper))).toBe(
+      `${error} ${Messages.Auth.registerWithGithubInstead}`
+    );
+    expect(document.activeElement).toBe(wrapper.find(FIELDS.email).element);
+
+    vi.advanceTimersByTime(51_234_000);
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(submitButton(wrapper).text()).toBe("Register");
+  });
+
+  it("points to GitHub for the mail budget's hold only", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const error = "Too many e-mails requested: try again later.";
+    vi.mocked(register)
+      .mockImplementationOnce(async () => {
+        registerStatus.value = "No more registration e-mails can be sent today.";
+        return { sent: false, limitedFor: 1, mailBudget: true };
+      })
+      .mockImplementationOnce(async () => {
+        registerStatus.value = error;
+        return { sent: false, limitedFor: 3412 };
+      });
+    const wrapper = await mountForm();
+    await fill(wrapper);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 57 minutes.`);
+  });
+
   it("opens the code step when a code went to the address moments ago", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
     vi.mocked(register).mockImplementationOnce(async () => {
@@ -1265,10 +1322,12 @@ describe("RegisterForm", () => {
       expect(document.activeElement).toBe(wrapper.find("input").element);
     });
 
-    it("keeps the typed code when the day's registration mail is used up", async () => {
+    it("keeps the typed code and holds the key while the day's registration mail is used up", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      const error =
+        "No more registration e-mails can be sent today: please try again after the daily limit resets.";
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
+        jsonResponse(503, { error, reason: "mailBudget", retryAfter: 51234 })
       );
       const wrapper = await atCodeStep();
       await wrapper.find("input").setValue("123456");
@@ -1282,16 +1341,53 @@ describe("RegisterForm", () => {
       await flushPromises();
 
       expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(UNSENT("vb", 15)));
-      // Another resend would get the same 503 until the budget starts over, so the hint stops
-      // offering one; the key itself stays usable, since the API names no wait.
+      // Another resend would get the same 503 until the budget starts over, so the key waits for
+      // it, in hours and minutes, and the hint stops offering one.
+      expect(resendButton(wrapper).text()).toBe("Resend in 14 hr 14 min");
+      expect(resendButton(wrapper).attributes("disabled")).toBeDefined();
+      expect(resendButton(wrapper).attributes("aria-label")).toBeUndefined();
+      expect(descriptionOf(resendButton(wrapper))).toBe(error);
       expect(wrapper.find(".field__hint").text()).toBe("Nothing yet? Check your spam folder.");
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      // No new code replaced the typed one, which can still be confirmed.
+      expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123456");
+      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+      expect(document.activeElement).toBe(wrapper.find("input").element);
+
+      // Once it starts over, the key, the hint's offer and the message are as before.
+      vi.advanceTimersByTime(51_234_000);
+      await flushPromises();
+      expect(resendButton(wrapper).text()).toBe("Resend code");
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "Nothing yet? Check your spam folder, or send a new code below."
+      );
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    });
+
+    it("keeps the typed code and the key after a failed send's 503, which may work on the next try", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "Date"] });
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, { error: "The e-mail couldn't be sent: please try again later." })
+      );
+      const wrapper = await atCodeStep();
+      await wrapper.find("input").setValue("123456");
+      vi.advanceTimersByTime(60_000);
+      await flushPromises();
+
+      await resendButton(wrapper).trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find('[role="status"]').text()).toBe(noticeFor(UNSENT("vb", 15)));
       expect(wrapper.find('[role="alert"]').text()).toBe(
         "The e-mail couldn't be sent: please try again later."
       );
-      // No new code replaced it, and the 503 names no wait: nothing is held.
-      expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123456");
+      // Nothing is held, so the hint still offers another try.
       expect(resendButton(wrapper).text()).toBe("Resend code");
-      expect(submitButton(wrapper).attributes("disabled")).toBeUndefined();
+      expect(resendButton(wrapper).attributes("disabled")).toBeUndefined();
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "Nothing yet? Check your spam folder, or send a new code below."
+      );
+      expect(wrapper.find<HTMLInputElement>("input").element.value).toBe("123456");
       expect(document.activeElement).toBe(wrapper.find("input").element);
     });
 

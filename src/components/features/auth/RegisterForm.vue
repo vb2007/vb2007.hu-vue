@@ -128,10 +128,13 @@ const {
 } = useRegisterCode();
 const { remaining: resendIn } = cooldown;
 /**
- * After the mail limit's 429 (per IP), Register waits its `retryAfter`, whatever the address.
+ * After the mail limit's 429 (per IP), or the 503 for the day's used-up registration mail, Register
+ * waits its `retryAfter`, whatever the address.
  * "Continue" with a kept code mails nothing, so it isn't held, like "Enter it".
  */
 const registerHold = useRetryHold(registerStatus);
+/** Whether the hold is the day's used-up registration mail's, which GitHub gets around. */
+const isHeldForBudget = ref(false);
 const isRegisterHeld = computed(() => registerHold.isHeld() && !hasKeptCode.value);
 /** Ties the code field to the notice above it, which is already filled in when it appears. */
 const noticeId = useId();
@@ -179,10 +182,10 @@ const notices = (name: string): Record<CodeNotice, AddressNotice> => {
 const noticeText = computed(() => notices(username.value.trim())[notice.value]);
 /**
  * Under the code field. After the budget's 503 every resend gets the same answer until it starts
- * over, so the hint doesn't offer one then; the key stays usable, since the API names no wait.
+ * over, so the hint doesn't offer one while the key waits for that; after a failed send it does.
  */
 const codeHint = computed(() =>
-  notice.value === "unsent"
+  notice.value === "unsent" && resendWaiting.value
     ? "Nothing yet? Check your spam folder."
     : "Nothing yet? Check your spam folder, or send a new code below."
 );
@@ -290,7 +293,10 @@ const handleSubmit = async () => {
       setError(answer.field, registerStatus.value);
       registerStatus.value = "";
     }
-    if (answer.limitedFor) registerHold.start(answer.limitedFor);
+    if (answer.limitedFor) {
+      isHeldForBudget.value = !!answer.mailBudget;
+      registerHold.start(answer.limitedFor);
+    }
     // A held key doesn't shake: it says when to try again instead.
     else flagError();
     await focusProblem();
@@ -566,7 +572,12 @@ watch(isLoggedIn, (newVal) => {
           :id="formErrorId"
           tone="error"
           :spoken="registerHold.spokenFor()"
-          >{{ formError }}</StatusMessage
+          >{{ formError
+          }}{{
+            isHeldForBudget && registerHold.isHeld()
+              ? ` ${Messages.Auth.registerWithGithubInstead}`
+              : ""
+          }}</StatusMessage
         >
         <BaseButton
           type="submit"

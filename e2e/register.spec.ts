@@ -6,6 +6,7 @@ import {
   MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   type MockApi,
+  REGISTRATION_BUDGET_ERROR,
   REGISTRATION_CODE,
   test
 } from "./fixtures";
@@ -96,7 +97,10 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await expect(resend).toBeDisabled();
 });
 
-test("a resend once the day's registration mail is used up keeps the code sent before", async ({
+/** A held key's wait, whatever is left of the day: the double's clock is real time, so near midnight it's minutes or seconds. */
+const BUDGET_WAIT = /\d+ (sec|min|hr)( \d+ min)?$/;
+
+test("a resend once the day's registration mail is used up holds the key and keeps the code sent before", async ({
   page,
   api
 }) => {
@@ -112,19 +116,58 @@ test("a resend once the day's registration mail is used up keeps the code sent b
   const resend = page.getByRole("button", { name: /^Resend/ });
   await resend.click();
 
-  await expect(page.getByRole("alert")).toHaveText(MAIL_FAILED_ERROR);
+  await expect(page.getByRole("alert")).toHaveText(REGISTRATION_BUDGET_ERROR);
   await expect(page.getByRole("status")).toHaveText(
     "Nothing new was sent to new@example.com. If a code reached it in the last 15 minutes, the latest one still works: enter it to register as newbie."
   );
-  // Nothing replaced the typed code, and the 503 names no wait, so nothing is held.
+  // Every resend gets the same 503 until the day's mail starts over, so the key waits for it.
+  await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
+  await expect(resend).toBeDisabled();
+  await expect(resend).toHaveAccessibleDescription(REGISTRATION_BUDGET_ERROR);
+  // Nothing replaced the typed code, and the hint offers no resend while the key waits.
   await expect(code).toHaveValue(REGISTRATION_CODE);
   await expect(code).toBeFocused();
   await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
-  await expect(resend).toHaveText("Resend code");
-  await expect(resend).toBeEnabled();
 
+  // A reload doesn't make the key usable: the wait and why are kept with the address.
+  await page.reload();
+  await fillFields(page);
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByRole("alert")).toHaveText(REGISTRATION_BUDGET_ERROR);
+  await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
+  await expect(resend).toBeDisabled();
+
+  await code.fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
   await expect(page.getByText("Registration successful!")).toBeVisible();
+});
+
+test("registering once the day's registration mail is used up holds Register and points to GitHub", async ({
+  page,
+  api
+}) => {
+  api.sentMailToday(200);
+  await fillForm(page);
+
+  await expect(page.getByRole("alert")).toHaveText(
+    new RegExp(
+      `^${REGISTRATION_BUDGET_ERROR} Registering with GitHub below needs no e-mail\\. Try again in \\d+ (seconds|minutes?|hours?)`
+    )
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  // The budget is the same for every address, so Register waits it out whatever is typed.
+  const key = page.locator("form").getByRole("button", { name: /^(Register|Try again)/ });
+  await expect(key).toHaveText(new RegExp(`^Try again in ${BUDGET_WAIT.source}`));
+  await expect(key).toBeDisabled();
+  await expect(key).not.toHaveClass(/btn--error/);
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+  await expect(page.getByRole("link", { name: "Register with GitHub" })).toBeVisible();
+  await page.getByLabel("E-mail").fill("other@example.com");
+  await expect(key).toBeDisabled();
+
+  // A code that already arrived needs no mail, so it can still be entered.
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
 });
 
 test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({
@@ -678,6 +721,11 @@ const WRONG_CODE = {
   body: { error: "The code is wrong, expired or already used: check it or request a new one." }
 };
 const MAIL_FAILED = { status: 503, body: { error: MAIL_FAILED_ERROR } };
+/** The day's registration mail used up (vb2007/vb2007.hu-api#468): unlike a failed send, it names its reason and wait. */
+const MAIL_BUDGET = {
+  status: 503,
+  body: { error: REGISTRATION_BUDGET_ERROR, reason: "mailBudget", retryAfter: expect.any(Number) }
+};
 const REGISTERED = {
   status: 201,
   body: { message: "User newbie registered successfully." }
@@ -783,7 +831,7 @@ test("once the day's registration mails are used up, a resend answers 503 before
     email: "other@example.com"
   });
 
-  expect([waiting, unknown, registering]).toEqual([MAIL_FAILED, MAIL_FAILED, MAIL_FAILED]);
+  expect([waiting, unknown, registering]).toEqual([MAIL_BUDGET, MAIL_BUDGET, MAIL_BUDGET]);
   // The code sent before is untouched.
   expect(await verify(page, api)).toEqual(REGISTERED);
 });
@@ -798,6 +846,22 @@ test("a sign-up code still goes out one mail short of the registration share", a
   const registered = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
 
   expect(registered.status).toBe(202);
+});
+
+test("a registration share's 503 tells its wait: the seconds to the next UTC midnight", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  api.sentMailToday(200);
+
+  const { body } = (await callApi(page, api, "POST", "/auth/register", REGISTRATION)) as {
+    body: { retryAfter: number };
+  };
+
+  expect(Number.isInteger(body.retryAfter)).toBe(true);
+  expect(body.retryAfter).toBeGreaterThanOrEqual(1);
+  expect(body.retryAfter).toBeLessThanOrEqual(24 * 60 * 60);
 });
 
 const RESENT = {
@@ -838,7 +902,7 @@ test("a resend without an address answers 400 before anything else", async ({ pa
   expect(await resend(page, api, { email: "  " })).toEqual(missing);
   expect(await resend(page, api, { email: 42 })).toEqual(missing);
   // With an address, the used-up budget answers.
-  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+  expect(await resend(page, api)).toEqual(MAIL_BUDGET);
 });
 
 test("a resend with only whitespace answers 400 and uses up no mail of the day", async ({
@@ -855,7 +919,7 @@ test("a resend with only whitespace answers 400 and uses up no mail of the day",
 
   // Counted, the blanks would have used the 200th mail up: this resend is still the one that takes it.
   expect(await resend(page, api)).toEqual(RESENT);
-  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+  expect(await resend(page, api)).toEqual(MAIL_BUDGET);
 });
 
 test("a resend with spaces around the address is decided on the trimmed one", async ({
@@ -892,8 +956,8 @@ test("every resend uses up a mail of the day, whatever the address or the answer
     ...REGISTRATION,
     email: "other@example.com"
   });
-  expect(other).toEqual(MAIL_FAILED);
-  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+  expect(other).toEqual(MAIL_BUDGET);
+  expect(await resend(page, api)).toEqual(MAIL_BUDGET);
 });
 
 test("mail to a reserved top-level domain is neither counted nor failed", async ({ page, api }) => {
@@ -924,7 +988,7 @@ test("a registration code counts against the day's mails", async ({ page, api })
     expect(sent.status).toBe(202);
   }
 
-  expect(await callApi(page, api, "POST", "/auth/register", REGISTRATION)).toEqual(MAIL_FAILED);
+  expect(await callApi(page, api, "POST", "/auth/register", REGISTRATION)).toEqual(MAIL_BUDGET);
 });
 
 test("a registration code that couldn't be mailed gives its mail of the day back", async ({
@@ -945,7 +1009,7 @@ test("a registration code that couldn't be mailed gives its mail of the day back
     ...REGISTRATION,
     email: "other@example.com"
   });
-  expect(other).toEqual(MAIL_FAILED);
+  expect(other).toEqual(MAIL_BUDGET);
 });
 
 // A sign-up waiting for its code lives 24 hours (vb2007/vb2007.hu-api#459): past that it's gone for every route.

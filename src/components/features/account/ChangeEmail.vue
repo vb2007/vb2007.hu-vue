@@ -31,11 +31,11 @@ const {
   codeError,
   confirmError,
   confirm,
-  cooldown,
+  sendWait,
   showWait,
   confirmHold
 } = useChangeEmail();
-const { remaining: waitSeconds, active: isWaiting } = cooldown;
+const { remaining: waitSeconds, active: isWaiting } = sendWait;
 const isConfirmHeld = computed(() => confirmHold.isHeld());
 const confirmErrorId = useId();
 
@@ -85,7 +85,7 @@ const sendName = computed(() =>
 );
 /** Whether the error on show is why the key waits, which then describes the key. */
 const errorIsWait = computed(
-  () => isWaiting.value && !!changeError.value && changeError.value === cooldown.note.value
+  () => isWaiting.value && !!changeError.value && changeError.value === sendWait.note.value
 );
 
 const key = useTemplateRef("key");

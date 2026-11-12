@@ -93,7 +93,8 @@ export const useCountdown = (storageKey?: string) => {
 
 /**
  * The seconds to wait after a 429, sent as `retryAfter` in the body by the code cooldown and the
- * rate limiters alike (vb2007/vb2007.hu-api#242), next to the same Retry-After header. Only the body
+ * rate limiters alike (vb2007/vb2007.hu-api#242), next to the same Retry-After header; also after
+ * the used-up mail limit's 503 (see `mailBudgetOf`). Only the body
  * is read here, and `fallback` stands in for a body without it.
  */
 export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSeconds): number => {
@@ -116,4 +117,26 @@ export const codeCooldownOf = (failure: ApiFailure): number | undefined =>
   failure.status === HttpStatus.TooManyRequests &&
   failure.body?.reason === ErrorReason.ResendCooldown
     ? retryAfterFrom(failure.body)
+    : undefined;
+
+/** Whole seconds until the next UTC midnight, at least 1: when the API's day of mail starts over. */
+const secondsUntilUtcMidnight = () => {
+  const now = new Date();
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((midnight - now.getTime()) / 1000));
+};
+
+/**
+ * The seconds until the day's mail limit starts over, when `failure` is the 503 for a used-up
+ * limit (vb2007/vb2007.hu-api#468 and #476): nothing was sent, and the API would refuse every
+ * mail of that kind until then. It's an upper bound, since an API restart starts the count again.
+ * Recognised by the body's `reason`; a body without `retryAfter` waits until the next UTC
+ * midnight, the API's own reset. Undefined for anything else, including a 503 without the reason,
+ * which is a failed send that may work on the next try.
+ */
+export const mailBudgetOf = (failure: ApiFailure): number | undefined =>
+  failure.kind === "http" &&
+  failure.status === HttpStatus.ServiceUnavailable &&
+  failure.body?.reason === ErrorReason.MailBudget
+    ? retryAfterFrom(failure.body, secondsUntilUtcMidnight())
     : undefined;
