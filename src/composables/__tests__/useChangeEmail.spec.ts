@@ -204,7 +204,8 @@ describe("useChangeEmail", () => {
         .mockResolvedValueOnce(
           jsonResponse(429, {
             error: "A code was sent just now: wait 42 seconds before requesting another one.",
-            retryAfter: 42
+            retryAfter: 42,
+            reason: "resendCooldown"
           })
         )
         .mockResolvedValueOnce(jsonResponse(200, waitingUser));

@@ -1,8 +1,7 @@
 import { computed, onScopeDispose, ref } from "vue";
-import { HttpStatus } from "@/constants/http";
+import { ErrorReason, HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
-import { Messages } from "@/constants/messages";
-import { apiErrorOf, type ApiFailure } from "@/scripts/api/client";
+import type { ApiFailure } from "@/scripts/api/client";
 import { readSaved, writeSaved } from "@/scripts/utility/savedForOwner";
 
 /**
@@ -107,12 +106,14 @@ export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSec
 
 /**
  * The seconds left before another code can be mailed, when `failure` is the one-code-a-minute
- * cooldown's 429: a code went out moments ago and still works. Undefined for anything else,
- * including a rate limiter's 429, which sends `retryAfter` too but means no code was sent.
+ * cooldown's 429: a code went out moments ago and still works. It's recognised by the body's
+ * `reason`, never by the message, so rewording that can't break it. Undefined for anything else,
+ * including a rate limiter's 429, which sends `retryAfter` too (but no `reason`) and means no
+ * code was sent.
  */
 export const codeCooldownOf = (failure: ApiFailure): number | undefined =>
   failure.kind === "http" &&
   failure.status === HttpStatus.TooManyRequests &&
-  apiErrorOf(failure)?.startsWith(Messages.EmailCode.cooldownPrefix)
+  failure.body?.reason === ErrorReason.ResendCooldown
     ? retryAfterFrom(failure.body)
     : undefined;

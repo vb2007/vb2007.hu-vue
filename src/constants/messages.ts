@@ -266,11 +266,9 @@ export class Messages {
     static readonly confirmFailed: string = "Failed to confirm the code";
     static readonly resendFailed: string = "Failed to send a new code";
     /**
-     * How the API's 429 starts when a code went out less than a minute ago (its
-     * `EmailCodes.resendTooSoon`); the rate limiters' 429s send `retryAfter` too, but no code went.
+     * What the site says in place of the cooldown 429's own message (see `ErrorReason.ResendCooldown`),
+     * which names its seconds and would freeze next to the countdown.
      */
-    static readonly cooldownPrefix: string = "A code was sent just now:";
-    /** The cooldown's own message names its seconds, which would freeze next to the countdown. */
     static readonly cooldown: string =
       "A code was sent just now. You can send another once the countdown ends.";
     /**

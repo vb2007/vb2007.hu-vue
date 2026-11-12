@@ -21,6 +21,18 @@ export class HttpStatus {
   static readonly ServiceUnavailable = 503;
 }
 
+/**
+ * The `reason` an error body can carry, naming which kind of failure it is when the message
+ * alone shouldn't decide (vb2007/vb2007.hu-api's `ErrorReason`).
+ */
+export class ErrorReason {
+  /**
+   * A code went out less than a minute ago and still works: the 429 of `POST /auth/register` and
+   * `PATCH /user/email`. A rate limiter's 429 has no `reason`.
+   */
+  static readonly ResendCooldown = "resendCooldown";
+}
+
 export class Header {
   static readonly ContentType = "Content-Type";
 }
