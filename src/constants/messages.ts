@@ -335,11 +335,12 @@ export class Messages {
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
     static readonly githubLinkFailed: string = "Failed to start linking GitHub";
     /**
-     * A 400 that took the waiting change away: the code expired, or its tries ran out (since
-     * vb2007/vb2007.hu-api#463 the API drops the change then, and the refresh can't tell which).
+     * A 400 that took the waiting change away: the code expired, its tries ran out (since
+     * vb2007/vb2007.hu-api#463 the API drops the change then), or a password change elsewhere
+     * dropped it (vb2007/vb2007.hu-api#474). The refresh can't tell which, so it names them all.
      */
-    static codeExpiredOrUsedUp(address: string): string {
-      return `${address} wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail.`;
+    static codeNoLongerWorks(address: string): string {
+      return `${address} wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail.`;
     }
     /** Any other refusal that took the waiting change away. */
     static notConfirmed(address: string, error: string): string {

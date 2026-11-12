@@ -188,7 +188,7 @@ describe("ChangeEmail", () => {
   ])("shows the API's %i and keeps what was typed", async (status, error) => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(status, { error }))
-      // A 503 looks the account up again, which fails too.
+      // A 403 or 503 looks the account up again, which fails too.
       .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
@@ -235,7 +235,9 @@ describe("ChangeEmail", () => {
 
   it("brings focus back into the form after a clicked save fails, so Escape still works", async () => {
     let answer!: (response: Response) => void;
-    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    fetchMock
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
 
@@ -289,9 +291,9 @@ describe("ChangeEmail", () => {
     ["the Cancel key", () => button("Cancel").trigger("click")],
     ["Escape", () => wrapper.find("form").trigger("keydown", { key: "Escape" })]
   ])("%s clears the form and focuses the key", async (_how, cancel) => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(403, { error: "The provided password is incorrect." })
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { error: "The provided password is incorrect." }))
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
     await wrapper.find("form").trigger("submit");
@@ -638,7 +640,7 @@ describe("ChangeEmail", () => {
 
       expect(codeInput().exists()).toBe(false);
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+        "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
       );
       expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
     });
