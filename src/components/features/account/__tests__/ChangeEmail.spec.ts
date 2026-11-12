@@ -223,7 +223,7 @@ describe("ChangeEmail", () => {
     await flushPromises();
 
     expect(wrapper.find('[role="alert"]').text()).toBe(
-      "No code was sent: your password or session changed meanwhile, e.g. in another tab. Try again with your current password."
+      "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password."
     );
     expect(inputs().map((input) => (input.element as HTMLInputElement).value)).toEqual([
       "other@example.com",

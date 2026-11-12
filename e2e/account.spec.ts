@@ -1307,7 +1307,7 @@ test("a code asked for as the password changes elsewhere says nothing was sent",
   await details.getByRole("button", { name: "Send code" }).click();
 
   await expect(details.getByRole("alert")).toHaveText(
-    "No code was sent: your password or session changed meanwhile, e.g. in another tab. Try again with your current password."
+    "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password."
   );
   await expect(details.getByLabel("New e-mail")).toHaveValue("other@example.com");
   await expect(details.getByLabel("Current password")).toHaveValue(MOCK_PASSWORD);

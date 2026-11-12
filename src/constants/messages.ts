@@ -358,7 +358,7 @@ export class Messages {
      * kept or mailed (vb2007/vb2007.hu-api#466). The password typed may be the old one now.
      */
     static readonly emailChangeInterrupted: string =
-      "No code was sent: your password or session changed meanwhile, e.g. in another tab. Try again with your current password.";
+      "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password.";
   };
 
   static readonly Uploads = class {
