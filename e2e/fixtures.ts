@@ -397,8 +397,11 @@ const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 /**
  * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
  * the trimmed name: over 16 UTF-16 units, then invisible, control or collation-ignored characters
- * and whitespace other than spaces (U+FE0E/U+FE0F pass after an emoji), then fewer than 2
- * characters other than combining marks.
+ * and whitespace other than spaces, then fewer than 2 characters other than combining marks and
+ * a flag's tags. Before the characters are checked, these go, in this order: U+200D between emoji
+ * (after one, its U+FE0F or a skin tone, before one; vb2007/vb2007.hu-api#470), a subdivision
+ * flag's run of 3 to 5 lowercase or digit tags and the cancel tag right after U+1F3F4 (#478), and
+ * U+FE0E/U+FE0F after an emoji.
  */
 const usernameRefusal = (username: string): MockResponse | undefined => {
   const refuse = (error: string) => ({ status: 400, body: { error } });
@@ -406,16 +409,23 @@ const usernameRefusal = (username: string): MockResponse | undefined => {
   if (name.length > 16) {
     return refuse("The username's too long: it must be between 2 and 16 characters.");
   }
-  const checked = name.replace(/(?<=\p{Emoji})[\ufe0e\ufe0f]/gu, "");
+  const flagTags = /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
+  const checked = name
+    .replace(
+      /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu,
+      ""
+    )
+    .replace(flagTags, "")
+    .replace(/(?<=\p{Emoji})[\ufe0e\ufe0f]/gu, "");
   if (
     /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u.test(checked) ||
     [...checked].some((character) => USERNAME_COLLATOR.compare(character, "") === 0)
   ) {
     return refuse(
-      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces."
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space."
     );
   }
-  if ([...name.replace(/\p{M}/gu, "")].length < 2) {
+  if ([...name.replace(/\p{M}/gu, "").replace(flagTags, "")].length < 2) {
     return refuse("The username's too short: it must be between 2 and 16 characters.");
   }
 };
