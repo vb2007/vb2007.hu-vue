@@ -717,10 +717,18 @@ test("the double judges emoji joiners and flag tags like the API", async ({ page
   };
 
   const refusals = [
+    // A joiner with an emoji on one side only.
+    ["a\u200d\u{1F469}", invalid],
+    ["\u{1F468}\u200da", invalid],
     // A joiner between letters, a stray tag, a joiner after a flag's cancel tag.
     ["a\u200db", invalid],
     ["ab\u{E0067}", invalid],
     [`${subdivisionFlag("gbe")}\u200d\u{1F469}`, invalid],
+    // A whole run with its cancel tag, but not after the black flag.
+    [`ab${emojiTags("gbeng")}\u{E007F}cd`, invalid],
+    // Runs of 2 and of 6 tags: a flag's is 3 to 5.
+    [`\u{1F3F4}${emojiTags("gb")}\u{E007F}ab`, invalid],
+    [`\u{1F3F4}${emojiTags("gbengl")}\u{E007F}`, invalid],
     // A flag's tags don't count toward the minimum.
     [subdivisionFlag("gbeng"), tooShort]
   ] as const;
@@ -737,7 +745,9 @@ test("the double judges emoji joiners and flag tags like the API", async ({ page
 
   for (const [index, name] of [
     "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab",
-    `${subdivisionFlag("gbeng")}ab`
+    `${subdivisionFlag("gbeng")}ab`,
+    // Digit tags pass too.
+    `${subdivisionFlag("us06")}ab`
   ].entries()) {
     expect(await usernameAvailable(page, api, name)).toEqual({
       status: 200,
@@ -745,7 +755,7 @@ test("the double judges emoji joiners and flag tags like the API", async ({ page
     });
     const registered = await callApi(page, api, "POST", "/auth/register", {
       ...REGISTRATION,
-      email: `taken${index}@example.com`,
+      email: `free${index}@example.com`,
       username: name
     });
     expect(registered.status).toBe(202);

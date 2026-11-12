@@ -351,8 +351,9 @@ export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 /**
- * Whether two usernames name the same account, whatever their case, like the API's collation. Pastes, short links and
- * uploads are kept by their owner's name here (the API keys them by id), so this is how they find their account.
+ * Whether two usernames name the same account here, whatever their case: lower-casing only, not the API's collation
+ * (`sameAccountName` stands in for that). Pastes, short links and uploads are kept by their owner's name here (the API
+ * keys them by id), so this is how they find their account.
  */
 const sameUsername = (one: string, other: string) => one.toLowerCase() === other.toLowerCase();
 
@@ -399,11 +400,13 @@ const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 /**
  * Whether a username takes another's place, like the API's `isUsernameTaken`: its `en` collation
  * at strength 2 ignores case and the characters it ignores, e.g. emoji joiners and a flag's tags,
- * so the Wales flag + x is the England flag + x (vb2007/vb2007.hu-api#478). Accents count. Only
- * the taken checks use it: what an account owns is found with `sameUsername`.
+ * so the Wales flag + x is the England flag + x (vb2007/vb2007.hu-api#478). Accents count. The
+ * taken checks trim both names, like `isUsernameTaken`; `GET /pastes/:username` looks the name up
+ * as sent (`trim: false`), like the API's `getUserByUsername` there. What an account owns is found
+ * with `sameUsername`.
  */
-const sameAccountName = (one: string, other: string) =>
-  USERNAME_COLLATOR.compare(one.trim(), other.trim()) === 0;
+const sameAccountName = (one: string, other: string, { trim = true } = {}) =>
+  USERNAME_COLLATOR.compare(trim ? one.trim() : one, trim ? other.trim() : other) === 0;
 
 /**
  * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
@@ -2950,7 +2953,11 @@ export class MockApi {
     return { status: 200, body: { message: "Shortened URL deleted successfully." } };
   }
 
-  /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
+  /**
+   * Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). The
+   * lookup compares like the API's collation (`sameAccountName`), so the Wales flag + x lists the
+   * England flag + x's pastes; the pastes are then that account's.
+   */
   private listPastes(username: string, query: URLSearchParams) {
     if (!this.user) {
       return NOT_LOGGED_IN;
@@ -2964,14 +2971,15 @@ export class MockApi {
       ...this.users.map((user) => user.username),
       ...this.pastes.map((paste) => paste.addedBy)
     ];
-    if (!known.some((name) => sameUsername(name, username))) {
+    const owner = known.find((name) => sameAccountName(name, username, { trim: false }));
+    if (owner === undefined) {
       return { status: 404, body: { error: "There is no such user with that username." } };
     }
 
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, username));
+    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, owner));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,
