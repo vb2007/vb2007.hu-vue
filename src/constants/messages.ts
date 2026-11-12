@@ -252,9 +252,9 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
-    /** The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319). */
+    /** The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319, #470). */
     static readonly usernameInvalidCharacters: string =
-      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
     /** The hint under every new-password field, and the admin's new username field. */
     static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
@@ -351,6 +351,20 @@ export class Messages {
     static notConfirmed(address: string, error: string): string {
       return `${address} wasn't confirmed. ${error}`;
     }
+    /**
+     * After the API's own "password changed" message, when a change waited: changing the password
+     * drops it, and its code with it (vb2007/vb2007.hu-api#474).
+     */
+    static emailChangeCancelled(address: string): string {
+      return `The change to ${address} was cancelled, so its code no longer works: get a new one with Change e-mail.`;
+    }
+    /**
+     * `PATCH /user/email`'s logged-out 403 while the page is still logged in: the password or the
+     * session changed between the API's check and its store (e.g. in another tab), so nothing was
+     * kept or mailed (vb2007/vb2007.hu-api#466). The password typed may be the old one now.
+     */
+    static readonly emailChangeInterrupted: string =
+      "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password.";
   };
 
   static readonly Uploads = class {

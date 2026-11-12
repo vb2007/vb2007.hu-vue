@@ -23,7 +23,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
  * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
- * view's pending address), as the API has since vb2007/vb2007.hu-api#462: `GET /user` answers `pendingEmail: null` and the
+ * view's pending address), as the API has since vb2007/vb2007.hu-api#462, and so does the logged-in account's `PATCH /user/password`
+ * once the current password is right (vb2007/vb2007.hu-api#474): `GET /user` answers `pendingEmail: null` and the
  * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself; one arranged
  * with nobody logged in belongs to whichever account is reset.
  * Every 429 sends `{ error, retryAfter }` like the API (vb2007/vb2007.hu-api#242): the cooldown's names its seconds and adds
@@ -406,8 +407,11 @@ const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 /**
  * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
  * the trimmed name: over 16 UTF-16 units, then invisible, control or collation-ignored characters
- * and whitespace other than spaces (U+FE0E/U+FE0F pass after an emoji), then fewer than 2
- * characters other than combining marks.
+ * and whitespace other than spaces, then fewer than 2 characters other than combining marks and
+ * a flag's tags. Before the characters are checked, these go, in this order: U+200D between emoji
+ * (after one, its U+FE0F or a skin tone, before one; vb2007/vb2007.hu-api#470), a subdivision
+ * flag's run of 3 to 5 lowercase or digit tags and the cancel tag right after U+1F3F4 (#478), and
+ * U+FE0E/U+FE0F after an emoji.
  */
 const usernameRefusal = (username: string): MockResponse | undefined => {
   const refuse = (error: string) => ({ status: 400, body: { error } });
@@ -415,16 +419,23 @@ const usernameRefusal = (username: string): MockResponse | undefined => {
   if (name.length > 16) {
     return refuse("The username's too long: it must be between 2 and 16 characters.");
   }
-  const checked = name.replace(/(?<=\p{Emoji})[\ufe0e\ufe0f]/gu, "");
+  const flagTags = /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
+  const checked = name
+    .replace(
+      /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu,
+      ""
+    )
+    .replace(flagTags, "")
+    .replace(/(?<=\p{Emoji})[\ufe0e\ufe0f]/gu, "");
   if (
     /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u.test(checked) ||
     [...checked].some((character) => USERNAME_COLLATOR.compare(character, "") === 0)
   ) {
     return refuse(
-      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces."
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space."
     );
   }
-  if ([...name.replace(/\p{M}/gu, "")].length < 2) {
+  if ([...name.replace(/\p{M}/gu, "").replace(flagTags, "")].length < 2) {
     return refuse("The username's too short: it must be between 2 and 16 characters.");
   }
 };
@@ -913,8 +924,9 @@ export class MockApi {
   }
 
   /**
-   * Drops the e-mail change waiting for the account a password reset is for, which the API unsets
-   * (`passwordResetUpdate`, vb2007/vb2007.hu-api#462; the wrong-code counter `emailChangeFailures` stays). The account is
+   * Drops the e-mail change waiting for the account a password reset or change is for, which the API unsets
+   * (`passwordResetUpdate`, vb2007/vb2007.hu-api#462, and `changePassword`, vb2007/vb2007.hu-api#474; the wrong-code
+   * counter `emailChangeFailures` stays). The account is
    * the login with `userId` (a link's) else the one at `email`, whose admin list rows go by their own ids. Another
    * account's change, the logged-in one's if it isn't the reset account, stays.
    */
@@ -1882,6 +1894,7 @@ export class MockApi {
     this.password = newPassword;
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.voidResetCode(this.user.email);
+    this.voidsEmailChangeOf(this.user.email, this.user._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 

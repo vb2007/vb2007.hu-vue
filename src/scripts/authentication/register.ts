@@ -25,17 +25,31 @@ const hasEmailFormat = (email: string) => EMAIL_PATTERN.test(normalizeEmail(emai
 
 /*
  * The API's username rule (its `usernameFormatError`, vb2007/vb2007.hu-api#319), on the trimmed
- * name. U+FE0E and U+FE0F only pass right after an emoji, whose presentation they pick.
+ * name. U+FE0E and U+FE0F only pass right after an emoji, whose presentation they pick. U+200D
+ * only passes between emoji, which it joins (vb2007/vb2007.hu-api#470), and tag characters only
+ * as a subdivision flag's run after the black flag U+1F3F4, e.g. England's (#478).
  */
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
+/** After an emoji, its presentation selector or a skin tone; before an emoji, not a digit or #. */
+const EMOJI_JOINERS =
+  /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
+/** 3 to 5 tags for digits and lowercase letters, then the cancel tag. */
+const EMOJI_TAG_SEQUENCES =
+  /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
 const EMOJI_PRESENTATION_SELECTORS = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
 /** Whitespace other than a space, invisible and control characters, and the braille blank. */
 const INVALID_USERNAME_CHARACTER = /[^\S ]|[\p{C}\p{Default_Ignorable_Code_Point}\u2800]/u;
 const COMBINING_MARKS = /\p{M}/gu;
 
-/** Also any character the collation ignores, e.g. a tatweel or some cantillation marks. */
+/**
+ * Also any character the collation ignores, e.g. a tatweel or some cantillation marks. In the
+ * API's order: the joiners go while the tags after a flag are still there, then the tags.
+ */
 const hasInvalidUsernameCharacter = (username: string) => {
-  const checked = username.replace(EMOJI_PRESENTATION_SELECTORS, "");
+  const checked = username
+    .replace(EMOJI_JOINERS, "")
+    .replace(EMOJI_TAG_SEQUENCES, "")
+    .replace(EMOJI_PRESENTATION_SELECTORS, "");
   return (
     INVALID_USERNAME_CHARACTER.test(checked) ||
     [...checked].some((character) => USERNAME_COLLATOR.compare(character, "") === 0)
@@ -99,12 +113,15 @@ export const usernameEarlyError = (username: string) => {
 
 /**
  * The username field's problem, or "" when the name is fine: the API's `usernameFormatError`. Too
- * long, then invalid characters, then too short, where combining marks don't count.
+ * long, then invalid characters, then too short, where combining marks and a flag's tags don't
+ * count (joiners do).
  */
 export const usernameError = (username: string) => {
   const early = usernameEarlyError(username);
   if (early) return early;
-  const characters = [...username.trim().replace(COMBINING_MARKS, "")].length;
+  const characters = [
+    ...username.trim().replace(COMBINING_MARKS, "").replace(EMOJI_TAG_SEQUENCES, "")
+  ].length;
   return characters < USERNAME_MIN
     ? Messages.Auth.usernameTooShort(USERNAME_MIN, USERNAME_MAX)
     : "";

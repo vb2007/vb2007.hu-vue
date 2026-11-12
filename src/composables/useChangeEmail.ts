@@ -10,7 +10,7 @@ import {
   useCountdown
 } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
-import { apiErrorOf, apiRequest } from "@/scripts/api/client";
+import { apiErrorOf, apiRequest, isLoggedOutAnswer } from "@/scripts/api/client";
 import {
   emailVerified,
   isLoggedIn,
@@ -68,6 +68,24 @@ export const useChangeEmail = () => {
   };
 
   /**
+   * The code's own cooldown ends with the change it was for, however that went: e.g. a password
+   * change, here or in another tab (vb2007/vb2007.hu-api#474), or a reset, which logs the page out
+   * first, so this also looks as the form mounts again. That cooldown is the count a sent code
+   * started (no note) or the cooldown's 429 (its message as the note). A hold with any other note
+   * (a rate limiter's, or one that can come with no change waiting at all) isn't about the change,
+   * so it stays.
+   */
+  watch(
+    pendingEmail,
+    (waiting) => {
+      const note = cooldown.note.value;
+      const isCodeCooldown = !note || note === Messages.EmailCode.cooldown;
+      if (!waiting && isLoggedIn.value && cooldown.active.value && isCodeCooldown) endCooldown();
+    },
+    { immediate: true }
+  );
+
+  /**
    * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
    * is refused), Confirm code waits; Change e-mail has limits of its own, so it doesn't.
    */
@@ -100,7 +118,10 @@ export const useChangeEmail = () => {
 
     const result = await apiRequest(Endpoints.User.changeEmail, {
       body: { email, password },
-      failure: Messages.Account.changeEmailFailed
+      failure: Messages.Account.changeEmailFailed,
+      // A wrong password, the superuser's address, or the password or session changing meanwhile:
+      // each is shown, none is a fault.
+      quietStatuses: [HttpStatus.Forbidden]
     });
 
     if (result.ok && result.status === HttpStatus.Accepted) {
@@ -124,6 +145,14 @@ export const useChangeEmail = () => {
       cooldown.start(retryAfterFrom(result.body), account(), changeError.value);
       // The code it waits for may have been asked for elsewhere, e.g. in another tab.
       if (isCooldown) await fetchUserDetails();
+    } else if (isLoggedOutAnswer(result.status, apiErrorOf(result))) {
+      // The password or session stopped holding between the API's check and its store, so it kept
+      // and mailed nothing (vb2007/vb2007.hu-api#466). The client's recheck (`onSessionRefused`)
+      // has run by now: an ended session logged the page out, and the account page says so. Still
+      // logged in, it changed in this browser (e.g. the password, in another tab), and that recheck
+      // already refreshed the account, which a password change left without its waiting change.
+      // The form keeps what was typed.
+      if (isLoggedIn.value) changeError.value = Messages.Account.emailChangeInterrupted;
     } else {
       changeError.value = result.error;
       // The day's mail is used up (only once all of it is, vb2007/vb2007.hu-api#476): every try

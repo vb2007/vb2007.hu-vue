@@ -314,9 +314,16 @@ describe("AccountPanel", () => {
     );
     await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
-    mockFetch().mockResolvedValueOnce(
-      jsonResponse(200, { message: "Password changed successfully." })
-    );
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          email: "vb@example.com",
+          githubId: "583231",
+          githubLogin: "octocat",
+          hasPassword: true
+        })
+      );
 
     await passwordRow(wrapper).find("button").trigger("click");
     await flushPromises();
@@ -330,6 +337,53 @@ describe("AccountPanel", () => {
     expect(wrapper.findAll('[role="status"]').map((status) => status.text())).toEqual([
       "Password changed successfully."
     ]);
+    wrapper.unmount();
+  });
+
+  it("takes a waiting e-mail change and its countdown away once the password changes", async () => {
+    logIn();
+    hasPassword.value = true;
+    pendingEmail.value = "new@example.com";
+    // The code was sent moments ago, so Send code still counts down (kept for a reload).
+    sessionStorage.setItem(
+      "email-change-cooldown",
+      JSON.stringify({ id: "vb@example.com", deadline: Date.now() + 50_000 })
+    );
+    const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });
+    const changeKey = () =>
+      emailRow(wrapper)
+        .findAll("button")
+        .find((button) => button.text() === "Change e-mail")!;
+    await changeKey().trigger("click");
+    await flushPromises();
+    expect(emailRow(wrapper).find('button[type="submit"]').text()).toMatch(
+      /^Send code in \d+ sec$/
+    );
+    await emailRow(wrapper).find("form").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    mockFetch()
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", hasPassword: true, pendingEmail: null })
+      );
+
+    await passwordRow(wrapper).find("button").trigger("click");
+    await flushPromises();
+    for (const input of passwordRow(wrapper).findAll('input[type="password"]')) {
+      await input.setValue("battery staple");
+    }
+    await passwordRow(wrapper).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(passwordRow(wrapper).find('[role="status"]').text()).toBe(
+      "Password changed successfully. The change to new@example.com was cancelled, so its code no longer works: get a new one with Change e-mail."
+    );
+    expect(emailRow(wrapper).text()).not.toContain("Waiting for confirmation");
+    expect(emailRow(wrapper).find('input[autocomplete="one-time-code"]').exists()).toBe(false);
+    expect(sessionStorage.getItem("email-change-cooldown")).toBeNull();
+    await changeKey().trigger("click");
+    await flushPromises();
+    expect(emailRow(wrapper).find('button[type="submit"]').text()).toBe("Send code");
     wrapper.unmount();
   });
 
@@ -452,7 +506,10 @@ describe("AccountPanel", () => {
       .mockResolvedValueOnce(
         jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
       )
-      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }));
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { email: "vb@example.com", githubId: "583231", hasPassword: true })
+      );
     for (const input of wrapper.findAll('input[type="password"]')) {
       await input.setValue("correct horse");
     }

@@ -286,6 +286,33 @@ describe("ChangeEmail", () => {
     });
   });
 
+  it("says nothing was sent when the password changed meanwhile, and keeps what was typed", async () => {
+    pendingEmail.value = "new@example.com";
+    await flushPromises();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: "You must be logged in to perform this action." })
+      )
+      // The client's recheck: still logged in, and the password change dropped the waiting change.
+      .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+    await button("Change e-mail").trigger("click");
+    await flushPromises();
+    await fill("other@example.com", "old-password");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password."
+    );
+    expect(inputs().map((input) => (input.element as HTMLInputElement).value)).toEqual([
+      "other@example.com",
+      "old-password"
+    ]);
+    expect(wrapper.text()).not.toContain("Waiting for confirmation");
+    expect(button("Send code").attributes("disabled")).toBeUndefined();
+  });
+
   it("brings focus back into the form after a clicked save fails, so Escape still works", async () => {
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));

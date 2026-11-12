@@ -640,7 +640,7 @@ test("the name of an account nobody is logged in to is taken too", async ({ page
 });
 
 const USERNAME_INVALID =
-  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+  "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
 
 test("a username with an invisible character or a tab is refused while it's typed, without asking the API", async ({
   page,
@@ -651,7 +651,8 @@ test("a username with an invisible character or a tab is refused while it's type
   const username = page.getByLabel("Username");
   const registerKey = page.getByRole("button", { name: "Register", exact: true });
 
-  for (const name of ["anna\u200bb", "anna\tb"]) {
+  // A zero-width joiner between letters and a stray tag too: they only pass in emoji.
+  for (const name of ["anna\u200bb", "anna\tb", "an\u200dna", "anna\u{E0067}"]) {
     await username.fill(name);
     await page.clock.runFor(500);
     await expect(username).toHaveAccessibleDescription(USERNAME_INVALID);
@@ -665,6 +666,33 @@ test("a username with an invisible character or a tab is refused while it's type
   await expect(username).not.toHaveAttribute("aria-invalid", "true");
   await expect.poll(() => api.usernameChecks).toBe(1);
 });
+
+// The API takes emoji that a zero-width joiner makes one (vb2007/vb2007.hu-api#470) and
+// subdivision flags, whose tags are invisible (#478): the form and the double let both register.
+for (const [kind, name] of [
+  ["joined emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab"],
+  // England's flag: 14 UTF-16 units, so 2 more characters fit.
+  ["a subdivision flag", "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}ab"]
+]) {
+  test(`a username with ${kind} registers through the form`, async ({ page, api }) => {
+    await page.goto("/register");
+    await page.getByLabel("E-mail").fill("new@example.com");
+    const username = page.getByLabel("Username");
+    await username.fill(name);
+    await page.getByLabel("Password", { exact: true }).fill("correct horse");
+    await page.getByLabel("Confirm password").fill("correct horse");
+    await expect.poll(() => api.usernameChecks).toBe(1);
+    await expect(username).not.toHaveAttribute("aria-invalid", "true");
+
+    await page.getByRole("button", { name: "Register", exact: true }).click();
+    await expect(page.getByRole("status")).toHaveText(
+      `A 6-digit code is on its way to new@example.com. Enter it to register as ${name}; it works for 15 minutes.`
+    );
+    await page.getByLabel("Confirmation code").fill(REGISTRATION_CODE);
+    await page.getByRole("button", { name: "Confirm code" }).click();
+    await expect(page.getByText("Registration successful!")).toBeVisible();
+  });
+}
 
 test("the double refuses a username with an invisible character like the API", async ({
   page,
