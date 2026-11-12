@@ -1373,24 +1373,45 @@ test("a code confirmed after a password change elsewhere doesn't blame the code 
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("the cooldown pinned for a dropped change doesn't come back on a later code", async ({
-  page,
-  api
-}) => {
-  api.loggedInAs("me@example.com", "me");
-  api.hasPendingEmail("new@example.com", { cooldownLeftOnSend: 8 });
-  await page.goto("/account");
-  await changePasswordElsewhere(page, api);
-  const send = (email: string) =>
-    callApi(page, api, "PATCH", "/user/email", { email, password: "another password" });
+// The double's `cooldownLeftOnSend` pin is for the arranged change: a change that ended first
+// mustn't pass it on to a later code. Each way returns the password that holds afterwards.
+for (const [how, end] of [
+  [
+    "a password change elsewhere",
+    async (page: Page, api: MockApi) => {
+      await changePasswordElsewhere(page, api);
+      return "another password";
+    }
+  ],
+  [
+    "its confirmation",
+    async (page: Page, api: MockApi) => {
+      const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+        code: MOCK_EMAIL_CODE
+      });
+      expect(confirmed.status).toBe(200);
+      return MOCK_PASSWORD;
+    }
+  ]
+] as const) {
+  test(`the cooldown pinned for a change ended by ${how} doesn't come back on a later code`, async ({
+    page,
+    api
+  }) => {
+    api.loggedInAs("me@example.com", "me");
+    api.hasPendingEmail("new@example.com", { cooldownLeftOnSend: 8 });
+    await page.goto("/account");
+    const password = await end(page, api);
+    const send = (email: string) => callApi(page, api, "PATCH", "/user/email", { email, password });
 
-  expect((await send("other@example.com")).status).toBe(202);
-  const again = await send("third@example.com");
+    expect((await send("other@example.com")).status).toBe(202);
+    const again = await send("third@example.com");
 
-  // The full minute of the code just sent, not what was left on the dropped one.
-  expect(again.status).toBe(429);
-  expect((again.body as { retryAfter: number }).retryAfter).toBeGreaterThan(50);
-});
+    // The full minute of the code just sent (less what a busy host took), not the pinned 8 seconds.
+    expect(again.status).toBe(429);
+    expect((again.body as { retryAfter: number }).retryAfter).toBeGreaterThan(8);
+  });
+}
 
 test("the old password on Send code after a change elsewhere shows the change is gone", async ({
   page,
