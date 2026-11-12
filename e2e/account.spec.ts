@@ -1365,6 +1365,31 @@ test("a code confirmed after a password change elsewhere doesn't blame the code 
     "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
   );
   await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+
+  // A new password here doesn't leave that refusal under its own success, as if it caused it.
+  await changePassword(page, "another password");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("the cooldown pinned for a dropped change doesn't come back on a later code", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com", { cooldownLeftOnSend: 8 });
+  await page.goto("/account");
+  await changePasswordElsewhere(page, api);
+  const send = (email: string) =>
+    callApi(page, api, "PATCH", "/user/email", { email, password: "another password" });
+
+  expect((await send("other@example.com")).status).toBe(202);
+  const again = await send("third@example.com");
+
+  // The full minute of the code just sent, not what was left on the dropped one.
+  expect(again.status).toBe(429);
+  expect((again.body as { retryAfter: number }).retryAfter).toBeGreaterThan(50);
 });
 
 test("the old password on Send code after a change elsewhere shows the change is gone", async ({
@@ -1398,6 +1423,7 @@ test("coming back to the tab drops a change another tab's password change took a
   await details.getByLabel("Current password").fill(MOCK_PASSWORD);
   await details.getByRole("button", { name: "Send code" }).click();
   await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(details.getByLabel("Confirmation code")).toBeFocused();
   await changePasswordElsewhere(page, api);
 
   // The browser says so when the user switches back from the other tab.
@@ -1405,6 +1431,8 @@ test("coming back to the tab drops a change another tab's password change took a
 
   await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
   await expect(details.getByLabel("Confirmation code")).toHaveCount(0);
+  // The focus was in the code form that went, so it moves to the key rather than to the page.
+  await expect(details.getByRole("button", { name: "Change e-mail" })).toBeFocused();
   await details.getByRole("button", { name: "Change e-mail" }).click();
   const send = details.getByRole("button", { name: "Send code", exact: true });
   await expect(send).toHaveText("Send code");

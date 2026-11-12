@@ -558,7 +558,10 @@ export class MockApi {
    * what a password reset drops: `GET /user`, the confirm and the `PATCH` cooldown still use the one slot whoever is logged in.
    */
   private emailChangeOwnerId: string | null = null;
-  /** Seconds of cooldown the next `PATCH /user/email` finds left, whenever it arrives (see `hasPendingEmail`). */
+  /**
+   * Seconds of cooldown the next `PATCH /user/email` that gets as far as the cooldown finds left on the change
+   * `hasPendingEmail` arranged, however long it took to arrive. That request uses it up, whether the change still waits or not.
+   */
   private emailCooldownOnSend: number | null = null;
   private shortCode = "e2e123";
   /** Short code -> link, oldest first, filled by shortening and by `hasShortLink`; `addedBy` is a username. */
@@ -933,11 +936,7 @@ export class MockApi {
     for (const id of [userId, account?._id, ...rowIds]) {
       if (id) this.userPendingEmails.delete(id);
     }
-    if (account && this.ownsEmailChange(account)) {
-      this.emailChange = null;
-      // The cooldown pinned for that change's next send goes with it.
-      this.emailCooldownOnSend = null;
-    }
+    if (account && this.ownsEmailChange(account)) this.emailChange = null;
   }
 
   /** Voids the reset links of the accounts `matches` picks, as resetting or changing the password or address does. */
@@ -1697,9 +1696,12 @@ export class MockApi {
     }
     const refusal = domainError(normalized);
     if (refusal) return { status: 400, body: { error: refusal } };
-    if (this.emailChange && this.emailCooldownOnSend !== null) {
-      this.emailChange.sentAt = this.now() - (60 - this.emailCooldownOnSend) * 1000;
-      this.emailCooldownOnSend = null;
+    // The pin is for the change `hasPendingEmail` arranged: this request uses it up, also when that
+    // change has gone meanwhile (confirmed, dropped by a password change or reset, deleted).
+    const cooldownLeft = this.emailCooldownOnSend;
+    this.emailCooldownOnSend = null;
+    if (this.emailChange && cooldownLeft !== null) {
+      this.emailChange.sentAt = this.now() - (60 - cooldownLeft) * 1000;
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
