@@ -34,7 +34,7 @@ export interface AdminUserDetails extends AdminUser {
   /** False for an account that only logs in with GitHub. */
   hasPassword: boolean;
   emailVerified: boolean;
-  /** The new address while an unexpired change waits for its code. */
+  /** The new address while a change waits for its code: null once it expired or its tries ran out. */
   pendingEmail: string | null;
   /** The linked GitHub account's login. */
   githubLogin: string | null;

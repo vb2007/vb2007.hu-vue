@@ -336,9 +336,12 @@ export class Messages {
     static readonly deleteFailed: string = "Failed to delete the account";
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
     static readonly githubLinkFailed: string = "Failed to start linking GitHub";
-    /** A 400 that took the waiting change away: its code expired. */
-    static codeExpired(address: string): string {
-      return `${address} wasn't confirmed: its code expired. Send a new one with Change e-mail.`;
+    /**
+     * A 400 that took the waiting change away: the code expired, or its tries ran out (since
+     * vb2007/vb2007.hu-api#463 the API drops the change then, and the refresh can't tell which).
+     */
+    static codeExpiredOrUsedUp(address: string): string {
+      return `${address} wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail.`;
     }
     /** Any other refusal that took the waiting change away. */
     static notConfirmed(address: string, error: string): string {

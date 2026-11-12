@@ -441,6 +441,9 @@ describe("useChangeEmail", () => {
       expect(pendingEmail.value).toBe("new@example.com");
     });
 
+    const expiredOrUsedUp =
+      "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail.";
+
     it("names the address when the code had expired, and the change with it", async () => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse(400, { error: wrongCode }))
@@ -452,9 +455,51 @@ describe("useChangeEmail", () => {
       expect(pendingEmail.value).toBe("");
       expect(email.codeError.value).toBe("");
       // Without the field, the API's "check it" no longer fits.
-      expect(email.confirmError.value).toBe(
-        "new@example.com wasn't confirmed: its code expired. Send a new one with Change e-mail."
-      );
+      expect(email.confirmError.value).toBe(expiredOrUsedUp);
+    });
+
+    it("takes the code step away with the last wrong code, whose tries ran out", async () => {
+      // The first four leave the change waiting; the fifth uses up its tries, so GET /user drops it.
+      for (let wrong = 1; wrong < 5; wrong++) {
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(400, { error: wrongCode }))
+          .mockResolvedValueOnce(jsonResponse(200, waitingUser));
+      }
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error: wrongCode }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+      const email = useEmail();
+      email.cooldown.start(60, "old@example.com");
+
+      for (let wrong = 1; wrong < 5; wrong++) {
+        expect(await email.confirm("000000")).toBe(false);
+        expect(email.codeError.value).toBe(wrongCode);
+        expect(email.confirmError.value).toBe("");
+        expect(pendingEmail.value).toBe("new@example.com");
+      }
+      expect(await email.confirm("000000")).toBe(false);
+
+      expect(pendingEmail.value).toBe("");
+      expect(email.codeError.value).toBe("");
+      expect(email.confirmError.value).toBe(expiredOrUsedUp);
+      expect(email.cooldown.active.value).toBe(false);
+      expect(savedCooldown()).toBeNull();
+    });
+
+    it("does the same for the right code once the tries are used up", async () => {
+      // The API refuses even the right code with the same 400 and no longer lists the change.
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error: wrongCode }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+      const email = useEmail();
+      email.cooldown.start(60, "old@example.com");
+
+      expect(await email.confirm("123456")).toBe(false);
+
+      expect(pendingEmail.value).toBe("");
+      expect(email.confirmError.value).toBe(expiredOrUsedUp);
+      expect(email.cooldown.active.value).toBe(false);
+      expect(savedCooldown()).toBeNull();
     });
 
     it.each([
