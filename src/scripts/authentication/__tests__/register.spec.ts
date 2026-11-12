@@ -144,7 +144,7 @@ describe("the username checks", () => {
     ["a lone supplementary CJK character", "\u{20000}"],
     // A flag's tags don't count toward the minimum, nor does a presentation selector after it.
     ["a lone subdivision flag", subdivisionFlag("gbeng")],
-    ["a lone subdivision flag and a presentation selector", `${subdivisionFlag("gbeng")}️`]
+    ["a lone subdivision flag and a presentation selector", `${subdivisionFlag("gbeng")}\ufe0f`]
   ])("call %s too short, only once it's left", (_case, username) => {
     expect(usernameError(username)).toBe(USERNAME_TOO_SHORT);
     expect(usernameEarlyError(username)).toBe("");
@@ -155,7 +155,7 @@ describe("the username checks", () => {
     // The maximum counts UTF-16 units, like the API: 9 emoji are 18.
     ["9 emoji", "\u{1F600}".repeat(9)],
     // Joiners and tags count too: a family emoji is 8 units, a flag with a 5 tag run 14.
-    ["a family emoji and 9 letters", `\u{1F468}‍\u{1F469}‍\u{1F467}${"v".repeat(9)}`],
+    ["a family emoji and 9 letters", `\u{1F468}\u200d\u{1F469}\u200d\u{1F467}${"v".repeat(9)}`],
     ["a flag with a 5 tag run and 3 more characters", `${subdivisionFlag("gbeng")}abc`],
     // The maximum comes first, before the invalid characters.
     ["17 characters with a tab inside", `v\t${"v".repeat(15)}`]

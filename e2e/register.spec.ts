@@ -627,7 +627,7 @@ test("a username with an invisible character or a tab is refused while it's type
 // The API takes emoji that a zero-width joiner makes one (vb2007/vb2007.hu-api#470) and
 // subdivision flags, whose tags are invisible (#478): the form and the double let both register.
 for (const [kind, name] of [
-  ["joined emoji", "\u{1F468}‍\u{1F469}‍\u{1F467}ab"],
+  ["joined emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab"],
   // England's flag: 14 UTF-16 units, so 2 more characters fit.
   ["a subdivision flag", "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}ab"]
 ]) {
