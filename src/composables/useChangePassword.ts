@@ -5,9 +5,15 @@ import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
-import { passwordChanges, pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
 import { normalizeEmail } from "@/scripts/authentication/register";
 import { fetchUserDetails } from "@/scripts/authentication/user";
+
+/**
+ * Counts the password changes made on this page, so the e-mail form can drop outcomes a new
+ * password made obsolete (vb2007/vb2007.hu-api#474). Only its changes matter, not its value.
+ */
+export const passwordChanges = ref(0);
 
 /**
  * Changes the logged-in user's password (vb2007/vb2007.hu-api#161); the API renews the session

@@ -419,14 +419,47 @@ describe("ChangeEmail", () => {
       await remount();
       const outside = document.createElement("button");
       document.body.append(outside);
-      outside.focus();
+      try {
+        outside.focus();
 
-      pendingEmail.value = "";
-      await flushPromises();
+        pendingEmail.value = "";
+        await flushPromises();
 
-      expect(document.activeElement).toBe(outside);
-      outside.remove();
+        expect(document.activeElement).toBe(outside);
+      } finally {
+        outside.remove();
+      }
     });
+
+    it.each([
+      [
+        "a 409",
+        jsonResponse(409, { error: "An account with this E-mail address already exists." })
+      ],
+      ["a 200", jsonResponse(200, { message: "E-mail address updated successfully." })]
+    ])(
+      "focuses only where the confirm leads when it drops the change itself after %s",
+      async (_, answer) => {
+        await remount();
+        // The refresh fails, so the confirm empties the waiting address itself.
+        fetchMock.mockResolvedValueOnce(answer).mockResolvedValueOnce(jsonResponse(500));
+        await codeInput().setValue("123456");
+        (codeInput().element as HTMLInputElement).focus();
+        const focused: Element[] = [];
+        const track = (event: FocusEvent) => focused.push(event.target as Element);
+        document.addEventListener("focusin", track);
+        try {
+          await button("Confirm code").trigger("click");
+          await flushPromises();
+        } finally {
+          document.removeEventListener("focusin", track);
+        }
+
+        // Straight to the message or the key: the key isn't announced on the way.
+        const target = answer.status === 409 ? wrapper.find(".change__dropped") : key();
+        expect(focused).toEqual([target.element]);
+      }
+    );
 
     it("confirms the code without its spaces, then shows the new address's message", async () => {
       await remount();

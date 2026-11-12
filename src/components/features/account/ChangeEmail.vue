@@ -170,13 +170,19 @@ const confirmCode = async () => {
 /**
  * A change that goes outside `confirmCode` (e.g. the refresh on coming back to the tab) takes the
  * code form away under the focus, which would fall to the page: it moves to the key instead, as
- * after a confirmation. This runs before the form leaves the page, so it still knows the focus.
+ * after a confirmation. It decides synchronously, as the address is set: the form is still on the
+ * page with the focus, and a `confirm` that set the address itself is still running (its own
+ * focus handling follows, e.g. to the message of a refusal).
  */
-watch(pendingEmail, async (waiting) => {
-  if (waiting || isConfirming.value || !codeForm.value?.contains(document.activeElement)) return;
-  await nextTick();
-  key.value?.$el.focus();
-});
+watch(
+  pendingEmail,
+  async (waiting) => {
+    if (waiting || isConfirming.value || !codeForm.value?.contains(document.activeElement)) return;
+    await nextTick();
+    key.value?.$el.focus();
+  },
+  { flush: "sync" }
+);
 </script>
 
 <template>

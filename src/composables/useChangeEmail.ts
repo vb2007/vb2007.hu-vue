@@ -4,12 +4,12 @@ import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { codeCooldownOf, retryAfterFrom, useCountdown } from "@/composables/useCountdown";
+import { passwordChanges } from "@/composables/useChangePassword";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest, isLoggedOutAnswer } from "@/scripts/api/client";
 import {
   emailVerified,
   isLoggedIn,
-  passwordChanges,
   pendingEmail,
   userEmail
 } from "@/scripts/authentication/authState";

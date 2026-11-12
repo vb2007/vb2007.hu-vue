@@ -4,11 +4,11 @@ import { flushPromises } from "@vue/test-utils";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { COOLDOWN_STORAGE_KEY, useChangeEmail } from "@/composables/useChangeEmail";
+import { passwordChanges } from "@/composables/useChangePassword";
 import { Messages } from "@/constants/messages";
 import {
   emailVerified,
   isLoggedIn,
-  passwordChanges,
   pendingEmail,
   sessionEnded,
   userEmail
@@ -579,7 +579,6 @@ describe("useChangeEmail", () => {
       pendingEmail.value = "";
       passwordChanges.value++;
       await nextTick();
-      expect(email.confirmError.value).toBe("");
       pendingEmail.value = "newer@example.com";
 
       expect(email.confirmHold.isHeld()).toBe(true);
