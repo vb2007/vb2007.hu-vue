@@ -33,18 +33,22 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Like the API's domain checks (vb2007/vb2007.hu-api#217), the mock refuses addresses on `DISPOSABLE_DOMAINS` and
  * `UNDELIVERABLE_DOMAINS`, for a new address and for registering. `api.failsNextMail()` fails the next code mail that is
  * actually sent, like a mail server that's down (vb2007/vb2007.hu-api#294): `PATCH /user/email` and `POST /auth/register` answer
- * the API's 503 and keep the change or registration that waited before (a new one isn't kept); `POST /auth/register/resend` and
+ * the API's 503 without a `reason` (`MAIL_FAILED_ERROR`) and keep the change or registration that waited before (a new one isn't kept); `POST /auth/register/resend` and
  * `POST /auth/password-reset` answer 200 as ever and keep the code sent before. A request that sends no mail (a cooldown's 429 or,
  * for a resend, its silent 200, an address nobody waits on) leaves it for the next one.
  * The day's mails are counted like the API's (`api.sentMailToday(n)` sets the count, `GET /admin/mail-budget` reports it): every
  * mail the mock sends adds one (the codes, and the notices after an e-mail change or a password reset, which the budget can refuse
  * unseen), a failed code mail gives its count back, and each resend reserves one before it looks at the address, kept whatever
- * becomes of it. At `n` 200 of 250 or more registering fails the same way (503), and a resend answers the 503 the API gives
- * before it touches the code; from 225 a password reset mails nothing (still 200, keeping the code from before); at 250 every
- * mail is refused, `PATCH /user/email` too (503). Addresses on the reserved top-level domains (`.test`, `.example`, `.invalid`,
- * `.localhost`) are neither counted nor refused.
+ * becomes of it. At `n` 200 of 250 or more registering answers the API's budget 503 (vb2007/vb2007.hu-api#468), `{ error, reason:
+ * "mailBudget", retryAfter }` with `REGISTRATION_BUDGET_ERROR` and the whole seconds (at least 1) from the mock's clock to the next
+ * UTC midnight, keeping the registration that waited before, and a resend answers the same before it touches the code; from 225 a
+ * password reset mails nothing (still 200, keeping the code from before); at 250 every mail is refused, and `PATCH /user/email`
+ * answers that 503 too with `ACCOUNT_BUDGET_ERROR` (vb2007/vb2007.hu-api#476), keeping the change that waited before. Addresses on
+ * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
+ * resend's check, which comes before it looks at the address.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
- * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out.
+ * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out, and `api.clockAtMiddayUtc()`
+ * sets it to 12:00 UTC today (for `page.clock.install({ time })` too), so the budget's wait is about 12 hours whenever the test runs.
  * `api.capsCodeChecks()` refuses every code check (register verify, password reset confirm, e-mail confirm), even the right code,
  * for 23 hr 45 min like the daily cap; `api.limitsUsernameChecks()` refuses `GET /auth/username-available` for 42 seconds, and
  * `api.usernameChecks` counts how often it was asked.
@@ -78,8 +82,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * with that many seconds as `retryAfter` (`null` sends `retryAfter: null`); `locksLogins(retryAfter, email)` locks only that address, like the
  * API's limiters that count the address (`loginPerEmail`, and `loginPerAccount` with the IP), whatever its case.
  * Every account the login knows counts as taken, whether or not anyone is logged in to it, like the API's stored users: its address for
- * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and whatever its case, for
- * `GET /auth/username-available` and registering (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
+ * `POST /auth/register/verify`, `POST /user/email/confirm` and the password reset's code, and its name, trimmed and compared like the API's collation
+ * (`sameAccountName`: case, emoji joiners and a flag's tags don't count), for `GET /auth/username-available` and registering
+ * (vb2007/vb2007.hu-api#233). So `MOCK_EMAIL` and "e2e" are taken from the start.
  * `GET /auth/username-available`, registering, confirming the code and `PATCH /admin/users/:id` answer 400 first for a name the API's rule refuses (`usernameRefusal`).
  * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s login's when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
@@ -339,6 +344,17 @@ export const PASSWORD_RESET_SENT =
 
 /** The API's `Responses.EmailCodes.mailFailed`: a code that couldn't be mailed. */
 export const MAIL_FAILED_ERROR = "The e-mail couldn't be sent: please try again later.";
+/** The API's `Responses.EmailCodes.mailBudgetUsedUp`: registering or its resend over the registration share. */
+export const REGISTRATION_BUDGET_ERROR =
+  "No more registration e-mails can be sent today: please try again after the daily limit resets.";
+/** The API's `Responses.EmailCodes.mailBudgetUsedUpForAccounts`: an e-mail change over the whole limit. */
+export const ACCOUNT_BUDGET_ERROR =
+  "No more e-mails can be sent today: please try again after the daily limit resets.";
+/**
+ * A key's label as it waits for the day's mail to start over, from about 12:00 UTC (see `clockAtMiddayUtc`): "12 hr", or
+ * "11 hr 59 min" once a minute of the test has passed.
+ */
+export const BUDGET_WAIT = /(12 hr|11 hr \d+ min)$/;
 
 /** The code the mock "mails" after `POST /auth/register` (vb2007/vb2007.hu-api#28). */
 export const REGISTRATION_CODE = "123456";
@@ -350,8 +366,9 @@ export const UNDELIVERABLE_DOMAINS = ["no-mail.invalid"];
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 /**
- * Whether two usernames name the same account, whatever their case, like the API's collation. Pastes, short links and
- * uploads are kept by their owner's name here (the API keys them by id), so this is how they find their account.
+ * Whether two usernames name the same account here, whatever their case: lower-casing only, not the API's collation
+ * (`sameAccountName` stands in for that). Pastes, short links and uploads are kept by their owner's name here (the API
+ * keys them by id), so this is how they find their account.
  */
 const sameUsername = (one: string, other: string) => one.toLowerCase() === other.toLowerCase();
 
@@ -396,13 +413,24 @@ const isFilledString = (value: unknown): value is string => typeof value === "st
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 
 /**
+ * Whether a username takes another's place, like the API's `isUsernameTaken`: its `en` collation
+ * at strength 2 ignores case and the characters it ignores, e.g. emoji joiners and a flag's tags,
+ * so the Wales flag + x is the England flag + x (vb2007/vb2007.hu-api#478). Accents count. The
+ * taken checks trim both names, like `isUsernameTaken`; `GET /pastes/:username` looks the name up
+ * as sent (`trim: false`), like the API's `getUserByUsername` there. What an account owns is found
+ * with `sameUsername`.
+ */
+const sameAccountName = (one: string, other: string, { trim = true } = {}) =>
+  USERNAME_COLLATOR.compare(trim ? one.trim() : one, trim ? other.trim() : other) === 0;
+
+/**
  * The API's 400 for a username (its `usernameFormatError`, vb2007/vb2007.hu-api#319), if any. On
  * the trimmed name: over 16 UTF-16 units, then invisible, control or collation-ignored characters
  * and whitespace other than spaces, then fewer than 2 characters other than combining marks and
  * a flag's tags. Before the characters are checked, these go, in this order: U+200D between emoji
  * (after one, its U+FE0F or a skin tone, before one; vb2007/vb2007.hu-api#470), a subdivision
- * flag's run of 3 to 5 lowercase or digit tags and the cancel tag right after U+1F3F4 (#478), and
- * U+FE0E/U+FE0F after an emoji.
+ * flag's run of 3 to 5 lowercase or digit tags and the cancel tag right after U+1F3F4
+ * (vb2007/vb2007.hu-api#478), and U+FE0E/U+FE0F after an emoji.
  */
 const usernameRefusal = (username: string): MockResponse | undefined => {
   const refuse = (error: string) => ({ status: 400, body: { error } });
@@ -971,6 +999,17 @@ export class MockApi {
     return this.mailSentToday >= stopsAt;
   }
 
+  /**
+   * The API's `answerMailBudgetUsedUp`: nothing was sent, and `retryAfter` is the whole seconds (at least 1) to the next
+   * UTC midnight on the mock's clock, when the count starts again.
+   */
+  private mailBudgetUsedUp(error: string): MockResponse {
+    const now = new Date(this.now());
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    const retryAfter = Math.max(1, Math.ceil((midnight - now.getTime()) / 1000));
+    return { status: 503, body: { error, reason: "mailBudget", retryAfter } };
+  }
+
   /** Whether the API counts a mail to `address` against the day's budget: not for the reserved top-level domains. */
   private countsMail(address: string) {
     return !RESERVED_TLDS.includes(normalizeEmail(address).split("@").pop()!.split(".").pop()!);
@@ -998,6 +1037,18 @@ export class MockApi {
   /** Moves the mock's clock on, e.g. along with `page.clock.runFor(ms)`, which only moves the page's. */
   clockRunsFor(ms: number) {
     this.clockOffset += ms;
+  }
+
+  /**
+   * Sets the mock's clock to 12:00 UTC today and returns that time for `page.clock.install({ time })`, so the day's mail
+   * budget waits about 12 hours whenever the test runs, and no hold can end mid-test at midnight. It assigns the offset
+   * rather than adding to it, so call it before any `clockRunsFor(ms)`.
+   */
+  clockAtMiddayUtc() {
+    const today = new Date();
+    const midday = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 12);
+    this.clockOffset = midday - Date.now();
+    return new Date(midday);
   }
 
   private now() {
@@ -1593,7 +1644,10 @@ export class MockApi {
     // Over an expired leftover it starts afresh: a new code, no old cooldown.
     const tooSoon = this.resendTooSoon(this.waitingRegistration(email)?.sentAt);
     if (tooSoon) return tooSoon;
-    // A code that couldn't be mailed leaves the registration that waited before (if any) as it was.
+    // A code the budget refused or that couldn't be mailed leaves the registration that waited before (if any) as it was.
+    if (this.countsMail(email) && this.mailRefused("registration")) {
+      return this.mailBudgetUsedUp(REGISTRATION_BUDGET_ERROR);
+    }
     if (!this.sendsMail("registration", email)) return MAIL_FAILED;
     this.pendingRegistrations.set(email, {
       ...this.newCode(15),
@@ -1619,7 +1673,7 @@ export class MockApi {
     if (!email) {
       return { status: 400, body: { error: "You must provide an E-mail address." } };
     }
-    if (this.mailRefused("registration")) return MAIL_FAILED;
+    if (this.mailRefused("registration")) return this.mailBudgetUsedUp(REGISTRATION_BUDGET_ERROR);
     if (this.countsMail(email)) this.mailSentToday++;
     const pending = this.waitingRegistration(email);
     // A code that couldn't be mailed is only logged: the answer stays 200, the code sent before still works, and the
@@ -1705,10 +1759,11 @@ export class MockApi {
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
-    if (!this.sendsMail("account", normalized)) {
-      // Like the API, the change that waited before (if any) stays, so a new code may go at once.
-      return MAIL_FAILED;
+    // Like the API, a refusal keeps the change that waited before (if any): after a failed send a new code may go at once.
+    if (this.countsMail(normalized) && this.mailRefused("account")) {
+      return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
     }
+    if (!this.sendsMail("account", normalized)) return MAIL_FAILED;
     this.emailChange = { email: normalized, ...this.newCode(15) };
     this.emailChangeOwnerId = this.user?._id ?? null;
     return {
@@ -1720,12 +1775,13 @@ export class MockApi {
   }
 
   /**
-   * Whether an account has `username`, trimmed and whatever its case, like the API's `isUsernameTaken`
-   * (its collation ignores case). The logged-in user's own name counts too.
+   * Whether an account has `username`, trimmed and as the API's collation compares it
+   * (`sameAccountName`), like the API's `isUsernameTaken`. The logged-in user's own name counts too.
    */
   private isUsernameTaken(username?: string) {
-    const name = username?.trim().toLowerCase();
-    return this.storedAccounts().some((account) => account.username.toLowerCase() === name);
+    return this.storedAccounts().some((account) =>
+      sameAccountName(account.username, username ?? "")
+    );
   }
 
   /**
@@ -2445,7 +2501,8 @@ export class MockApi {
 
   /**
    * `PATCH /admin/users/:id` (vb2007/vb2007.hu-api#274): the name is kept trimmed, and another
-   * account's, in any case, is taken. What they own goes along, as it's kept by name here.
+   * account's, as the API's collation compares it (`sameAccountName`), is taken. What they own
+   * goes along, as it's kept by name here.
    */
   private renameUser(id: string, username: unknown): MockResponse {
     const target = this.adminTarget(id);
@@ -2458,8 +2515,7 @@ export class MockApi {
     const name = username.trim();
     const account = this.accountOf(target);
     const taken = [...this.users, ...this.accounts].some(
-      (other) =>
-        other !== target && other !== account && other.username.toLowerCase() === name.toLowerCase()
+      (other) => other !== target && other !== account && sameAccountName(other.username, name)
     );
     if (taken) return { status: 409, body: { error: "This username is already taken." } };
 
@@ -2945,7 +3001,11 @@ export class MockApi {
     return { status: 200, body: { message: "Shortened URL deleted successfully." } };
   }
 
-  /** Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). */
+  /**
+   * Validates the query before it looks the user up, like the API (vb2007/vb2007.hu-api#241). The
+   * lookup compares like the API's collation (`sameAccountName`), so the Wales flag + x lists the
+   * England flag + x's pastes; the pastes are then that account's.
+   */
   private listPastes(username: string, query: URLSearchParams) {
     if (!this.user) {
       return NOT_LOGGED_IN;
@@ -2959,14 +3019,15 @@ export class MockApi {
       ...this.users.map((user) => user.username),
       ...this.pastes.map((paste) => paste.addedBy)
     ];
-    if (!known.some((name) => sameUsername(name, username))) {
+    const owner = known.find((name) => sameAccountName(name, username, { trim: false }));
+    if (owner === undefined) {
       return { status: 404, body: { error: "There is no such user with that username." } };
     }
 
     const limit = Number(query.get("limit") ?? 10);
     const page = Number(query.get("page") ?? 1);
     const sortOrder = query.get("sortOrder") ?? "desc";
-    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, username));
+    const owned = this.pastes.filter((paste) => sameUsername(paste.addedBy, owner));
     const sorted = sortOrder === "asc" ? owned : [...owned].reverse();
     return {
       status: 200,

@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test";
 import {
+  ACCOUNT_BUDGET_ERROR,
+  BUDGET_WAIT,
   callApi,
   expect,
   getFromApi,
-  MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   MOCK_EMAIL_CODE,
   MOCK_PASSWORD,
@@ -1070,6 +1071,49 @@ test("a code whose mail failed keeps the change that waited, and another goes at
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
 });
 
+for (const waiting of [false, true]) {
+  test(`once the day's mails are used up, Send code waits for them to start over${waiting ? ", keeping the waiting change" : ""}`, async ({
+    page,
+    api
+  }) => {
+    await page.clock.install({ time: api.clockAtMiddayUtc() });
+    api.loggedInAs("me@example.com", "me");
+    if (waiting) api.hasPendingEmail("old@example.com", { sentSecondsAgo: 120 });
+    api.sentMailToday(250);
+    await page.goto("/account");
+
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await page.getByLabel("New e-mail").fill("new@example.com");
+    await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Send code" }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(ACCOUNT_BUDGET_ERROR);
+    const key = page.getByRole("button", { name: /^Send code/ });
+    await expect(key).toHaveText(new RegExp(`^Send code in ${BUDGET_WAIT.source}`));
+    await expect(key).toBeDisabled();
+    await expect(key).toHaveAccessibleDescription(ACCOUNT_BUDGET_ERROR);
+    // The API keeps the change that waited before, if any.
+    await expect(page.getByText("Waiting for confirmation: old@example.com")).toHaveCount(
+      waiting ? 1 : 0
+    );
+    // No hint offers a new code while none can go out.
+    await expect(page.getByLabel("New e-mail")).toHaveAccessibleDescription("");
+    if (waiting) {
+      await page.getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByLabel("Confirmation code")).toHaveAccessibleDescription(
+        /Nothing yet\? Check your spam folder\.$/
+      );
+    }
+
+    // Kept for the session, so a reload doesn't offer a key the API would refuse.
+    await page.reload();
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await expect(page.getByRole("alert")).toHaveText(ACCOUNT_BUDGET_ERROR);
+    await expect(key).toHaveText(new RegExp(`^Send code in ${BUDGET_WAIT.source}`));
+    await expect(key).toBeDisabled();
+  });
+}
+
 // The day's mails are used up at 250: unlike sign-up (200) and reset codes (225), a change's code goes until then.
 test("a change's code goes until the day's 250 mails are used up, then is refused", async ({
   page,
@@ -1086,7 +1130,7 @@ test("a change's code goes until the day's 250 mails are used up, then is refuse
   api.clockRunsFor(60_000);
   expect(await change("newer@example.com")).toEqual({
     status: 503,
-    body: { error: MAIL_FAILED_ERROR }
+    body: { error: ACCOUNT_BUDGET_ERROR, reason: "mailBudget", retryAfter: expect.any(Number) }
   });
 
   // The change that waited before stays, so the code for it still works.
@@ -1110,7 +1154,11 @@ test("a change's code that couldn't be mailed gives its mail of the day back", a
       password: MOCK_PASSWORD
     });
 
-  expect((await change()).status).toBe(503);
+  // A failed send, not the budget: it has no `reason`.
+  expect(await change()).toEqual({
+    status: 503,
+    body: { error: "The e-mail couldn't be sent: please try again later." }
+  });
 
   // Kept, the failed one would have been the 250th and this code refused.
   expect((await change()).status).toBe(202);
@@ -1132,7 +1180,10 @@ test("the notice after a change counts against the day's mails", async ({ page, 
     callApi(page, api, "PATCH", "/user/email", { email, password: MOCK_PASSWORD });
   expect((await change("newer@example.com")).status).toBe(202);
   api.clockRunsFor(60_000);
-  expect((await change("newest@example.com")).status).toBe(503);
+  expect(await change("newest@example.com")).toMatchObject({
+    status: 503,
+    body: { reason: "mailBudget" }
+  });
 });
 
 test("accounts that can't change their e-mail say why", async ({ page, api }) => {

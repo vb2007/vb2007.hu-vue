@@ -3,9 +3,11 @@ import {
   callApi,
   expect,
   getFromApi,
+  BUDGET_WAIT,
   MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   type MockApi,
+  REGISTRATION_BUDGET_ERROR,
   REGISTRATION_CODE,
   test
 } from "./fixtures";
@@ -96,11 +98,11 @@ test("a new code can be sent once a minute", async ({ page, api }) => {
   await expect(resend).toBeDisabled();
 });
 
-test("a resend once the day's registration mail is used up keeps the code sent before", async ({
+test("a resend once the day's registration mail is used up holds the key and keeps the code sent before", async ({
   page,
   api
 }) => {
-  await page.clock.install();
+  await page.clock.install({ time: api.clockAtMiddayUtc() });
   await fillForm(page);
   const code = page.getByLabel("Confirmation code");
   await code.fill(REGISTRATION_CODE);
@@ -112,19 +114,71 @@ test("a resend once the day's registration mail is used up keeps the code sent b
   const resend = page.getByRole("button", { name: /^Resend/ });
   await resend.click();
 
-  await expect(page.getByRole("alert")).toHaveText(MAIL_FAILED_ERROR);
+  await expect(page.getByRole("alert")).toHaveText(REGISTRATION_BUDGET_ERROR);
   await expect(page.getByRole("status")).toHaveText(
     "Nothing new was sent to new@example.com. If a code reached it in the last 15 minutes, the latest one still works: enter it to register as newbie."
   );
-  // Nothing replaced the typed code, and the 503 names no wait, so nothing is held.
+  // Every resend gets the same 503 until the day's mail starts over, so the key waits for it.
+  await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
+  await expect(resend).toBeDisabled();
+  await expect(resend).toHaveAccessibleDescription(REGISTRATION_BUDGET_ERROR);
+  // Nothing replaced the typed code, and the hint offers no resend while the key waits.
   await expect(code).toHaveValue(REGISTRATION_CODE);
   await expect(code).toBeFocused();
   await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
-  await expect(resend).toHaveText("Resend code");
-  await expect(resend).toBeEnabled();
 
+  // A reload doesn't make the key usable: the wait and why are kept for the session, for every address.
+  await page.reload();
+  await fillFields(page);
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByRole("alert")).toHaveText(REGISTRATION_BUDGET_ERROR);
+  await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
+  await expect(resend).toBeDisabled();
+  // The notice is the one for an earlier code now, but the hint still offers no resend.
+  await expect(code).toHaveAccessibleDescription(/Nothing yet\? Check your spam folder\.$/);
+
+  // The budget is the same for every address, so Register waits for it too.
+  await page.getByRole("button", { name: "Change address" }).click();
+  await expect(
+    page.locator("form").getByRole("button", { name: /^(Register|Try again)/ })
+  ).toHaveText(new RegExp(`^Try again in ${BUDGET_WAIT.source}`));
+  await page.getByRole("button", { name: "Enter it" }).click();
+
+  await code.fill(REGISTRATION_CODE);
   await page.getByRole("button", { name: "Confirm code" }).click();
   await expect(page.getByText("Registration successful!")).toBeVisible();
+});
+
+test("registering once the day's registration mail is used up holds Register and points to GitHub", async ({
+  page,
+  api
+}) => {
+  await page.clock.install({ time: api.clockAtMiddayUtc() });
+  api.sentMailToday(200);
+  await fillForm(page);
+
+  await expect(page.getByRole("alert")).toHaveText(
+    new RegExp(
+      `^${REGISTRATION_BUDGET_ERROR} Registering with GitHub below sends no e-mail, so it works now\\. Try again in (12 hours|11 hours \\d+ minutes?)\\.$`
+    )
+  );
+  await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
+  // The budget is the same for every address, so Register waits it out whatever is typed.
+  const key = page.locator("form").getByRole("button", { name: /^(Register|Try again)/ });
+  await expect(key).toHaveText(new RegExp(`^Try again in ${BUDGET_WAIT.source}`));
+  await expect(key).toBeDisabled();
+  await expect(key).not.toHaveClass(/btn--error/);
+  await expect(page.getByLabel("E-mail")).toBeFocused();
+  await expect(page.getByRole("link", { name: "Register with GitHub" })).toBeVisible();
+  await page.getByLabel("E-mail").fill("other@example.com");
+  await expect(key).toBeDisabled();
+
+  // A code that already arrived needs no mail, so it can still be entered; Resend waits too.
+  await page.getByRole("button", { name: "Enter it" }).click();
+  await expect(page.getByLabel("Confirmation code")).toBeFocused();
+  const resend = page.getByRole("button", { name: /^Resend/ });
+  await expect(resend).toHaveText(new RegExp(`^Resend in ${BUDGET_WAIT.source}`));
+  await expect(resend).toBeDisabled();
 });
 
 test("a resend over the mail limit shows the API's message and counts its wait in minutes", async ({
@@ -625,7 +679,8 @@ test("a username with an invisible character or a tab is refused while it's type
 });
 
 // The API takes emoji that a zero-width joiner makes one (vb2007/vb2007.hu-api#470) and
-// subdivision flags, whose tags are invisible (#478): the form and the double let both register.
+// subdivision flags, whose tags are invisible (vb2007/vb2007.hu-api#478): the form and the double
+// let both register.
 for (const [kind, name] of [
   ["joined emoji", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab"],
   // England's flag: 14 UTF-16 units, so 2 more characters fit.
@@ -697,6 +752,107 @@ test("the double refuses a username with an invisible character like the API", a
   });
 });
 
+/** Tag characters spelling `text`, as in a subdivision flag. */
+const emojiTags = (text: string) =>
+  [...text].map((character) => String.fromCodePoint(0xe0000 + character.charCodeAt(0))).join("");
+const subdivisionFlag = (code: string) => `\u{1F3F4}${emojiTags(code)}\u{E007F}`;
+const usernameAvailable = (page: Page, api: MockApi, name: string) =>
+  getFromApi(page, api, `/auth/username-available?username=${encodeURIComponent(name)}`);
+
+// The double's own copy of the rule for emoji joiners (vb2007/vb2007.hu-api#470) and flag tags
+// (vb2007/vb2007.hu-api#478), asked directly: the form never sends what it refuses.
+test("the double judges emoji joiners and flag tags like the API", async ({ page, api }) => {
+  await page.goto("/register");
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  const invalid = { status: 400, body: { error: USERNAME_INVALID } };
+  const tooShort = {
+    status: 400,
+    body: { error: "The username's too short: it must be between 2 and 16 characters." }
+  };
+
+  const refusals = [
+    // A joiner with an emoji on one side only.
+    ["a\u200d\u{1F469}", invalid],
+    ["\u{1F468}\u200da", invalid],
+    // A joiner between letters, a stray tag, a joiner after a flag's cancel tag.
+    ["a\u200db", invalid],
+    ["ab\u{E0067}", invalid],
+    [`${subdivisionFlag("gbe")}\u200d\u{1F469}`, invalid],
+    // A whole run with its cancel tag, but not after the black flag.
+    [`ab${emojiTags("gbeng")}\u{E007F}cd`, invalid],
+    // Runs of 2 and of 6 tags: a flag's is 3 to 5.
+    [`\u{1F3F4}${emojiTags("gb")}\u{E007F}ab`, invalid],
+    [`\u{1F3F4}${emojiTags("gbengl")}\u{E007F}`, invalid],
+    // A flag's tags don't count toward the minimum.
+    [subdivisionFlag("gbeng"), tooShort]
+  ] as const;
+  for (const [index, [name, refused]] of refusals.entries()) {
+    expect(await usernameAvailable(page, api, name)).toEqual(refused);
+    expect(
+      await callApi(page, api, "POST", "/auth/register", {
+        ...REGISTRATION,
+        email: `refused${index}@example.com`,
+        username: name
+      })
+    ).toEqual(refused);
+  }
+
+  for (const [index, name] of [
+    "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}ab",
+    `${subdivisionFlag("gbeng")}ab`,
+    // Digit tags pass too.
+    `${subdivisionFlag("us06")}ab`
+  ].entries()) {
+    expect(await usernameAvailable(page, api, name)).toEqual({
+      status: 200,
+      body: { available: true }
+    });
+    const registered = await callApi(page, api, "POST", "/auth/register", {
+      ...REGISTRATION,
+      email: `free${index}@example.com`,
+      username: name
+    });
+    expect(registered.status).toBe(202);
+  }
+});
+
+test("a name that differs only by what the API's collation ignores is taken", async ({
+  page,
+  api
+}) => {
+  api.hasUser(`${subdivisionFlag("gbeng")}x`);
+  api.hasUser("\u{1F468}\u200d\u{1F469}ab");
+  await page.goto("/register");
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  const taken = { status: 409, body: { error: "This username is already taken." } };
+
+  // The tags of another flag, the plain black flag, no joiner, another case: the same name.
+  for (const name of [
+    `${subdivisionFlag("gbwls")}x`,
+    "\u{1F3F4}x",
+    "\u{1F468}\u{1F469}ab",
+    "\u{1F468}\u200d\u{1F469}AB"
+  ]) {
+    expect(await usernameAvailable(page, api, name)).toEqual({
+      status: 200,
+      body: { available: false }
+    });
+    expect(
+      await callApi(page, api, "POST", "/auth/register", { ...REGISTRATION, username: name })
+    ).toEqual(taken);
+  }
+  // Accents count, like the API's strength 2.
+  expect(await usernameAvailable(page, api, "\u{1F468}\u200d\u{1F469}\u00e1b")).toEqual({
+    status: 200,
+    body: { available: true }
+  });
+
+  // The form says so while it's typed.
+  const username = page.getByLabel("Username");
+  await username.fill(`${subdivisionFlag("gbsct")}x`);
+  await expect(username).toHaveAccessibleDescription("That username is taken: pick another one.");
+});
+
 // The double's mail failures, checked through the page's own calls: the form can't wait out the API's
 // minute between a registration and its failed re-registration, but the double's clock can.
 
@@ -706,6 +862,11 @@ const WRONG_CODE = {
   body: { error: "The code is wrong, expired or already used: check it or request a new one." }
 };
 const MAIL_FAILED = { status: 503, body: { error: MAIL_FAILED_ERROR } };
+/** The day's registration mail used up (vb2007/vb2007.hu-api#468): unlike a failed send, it names its reason and wait. */
+const MAIL_BUDGET = {
+  status: 503,
+  body: { error: REGISTRATION_BUDGET_ERROR, reason: "mailBudget", retryAfter: expect.any(Number) }
+};
 const REGISTERED = {
   status: 201,
   body: { message: "User newbie registered successfully." }
@@ -811,7 +972,7 @@ test("once the day's registration mails are used up, a resend answers 503 before
     email: "other@example.com"
   });
 
-  expect([waiting, unknown, registering]).toEqual([MAIL_FAILED, MAIL_FAILED, MAIL_FAILED]);
+  expect([waiting, unknown, registering]).toEqual([MAIL_BUDGET, MAIL_BUDGET, MAIL_BUDGET]);
   // The code sent before is untouched.
   expect(await verify(page, api)).toEqual(REGISTERED);
 });
@@ -826,6 +987,22 @@ test("a sign-up code still goes out one mail short of the registration share", a
   const registered = await callApi(page, api, "POST", "/auth/register", REGISTRATION);
 
   expect(registered.status).toBe(202);
+});
+
+test("a registration share's 503 tells its wait: the seconds to the next UTC midnight", async ({
+  page,
+  api
+}) => {
+  await page.goto("/register");
+  api.sentMailToday(200);
+
+  const { body } = (await callApi(page, api, "POST", "/auth/register", REGISTRATION)) as {
+    body: { retryAfter: number };
+  };
+
+  expect(Number.isInteger(body.retryAfter)).toBe(true);
+  expect(body.retryAfter).toBeGreaterThanOrEqual(1);
+  expect(body.retryAfter).toBeLessThanOrEqual(24 * 60 * 60);
 });
 
 const RESENT = {
@@ -866,7 +1043,7 @@ test("a resend without an address answers 400 before anything else", async ({ pa
   expect(await resend(page, api, { email: "  " })).toEqual(missing);
   expect(await resend(page, api, { email: 42 })).toEqual(missing);
   // With an address, the used-up budget answers.
-  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+  expect(await resend(page, api)).toEqual(MAIL_BUDGET);
 });
 
 test("a resend with only whitespace answers 400 and uses up no mail of the day", async ({
@@ -883,7 +1060,7 @@ test("a resend with only whitespace answers 400 and uses up no mail of the day",
 
   // Counted, the blanks would have used the 200th mail up: this resend is still the one that takes it.
   expect(await resend(page, api)).toEqual(RESENT);
-  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+  expect(await resend(page, api)).toEqual(MAIL_BUDGET);
 });
 
 test("a resend with spaces around the address is decided on the trimmed one", async ({
@@ -920,8 +1097,8 @@ test("every resend uses up a mail of the day, whatever the address or the answer
     ...REGISTRATION,
     email: "other@example.com"
   });
-  expect(other).toEqual(MAIL_FAILED);
-  expect(await resend(page, api)).toEqual(MAIL_FAILED);
+  expect(other).toEqual(MAIL_BUDGET);
+  expect(await resend(page, api)).toEqual(MAIL_BUDGET);
 });
 
 test("mail to a reserved top-level domain is neither counted nor failed", async ({ page, api }) => {
@@ -952,7 +1129,7 @@ test("a registration code counts against the day's mails", async ({ page, api })
     expect(sent.status).toBe(202);
   }
 
-  expect(await callApi(page, api, "POST", "/auth/register", REGISTRATION)).toEqual(MAIL_FAILED);
+  expect(await callApi(page, api, "POST", "/auth/register", REGISTRATION)).toEqual(MAIL_BUDGET);
 });
 
 test("a registration code that couldn't be mailed gives its mail of the day back", async ({
@@ -973,7 +1150,7 @@ test("a registration code that couldn't be mailed gives its mail of the day back
     ...REGISTRATION,
     email: "other@example.com"
   });
-  expect(other).toEqual(MAIL_FAILED);
+  expect(other).toEqual(MAIL_BUDGET);
 });
 
 // A sign-up waiting for its code lives 24 hours (vb2007/vb2007.hu-api#459): past that it's gone for every route.
