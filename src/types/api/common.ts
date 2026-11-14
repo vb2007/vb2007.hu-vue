@@ -13,7 +13,10 @@ export interface MessageResponse {
  */
 export interface ApiErrorBody {
   error?: string;
-  /** Seconds before trying again, on any 429: the code cooldown's or a rate limiter's. */
+  /**
+   * Seconds before trying again: on any 429 (the code cooldown's or a rate limiter's), and on the
+   * 503 for the day's used-up mail limit (`ErrorReason.MailBudget`).
+   */
   retryAfter?: number;
   /** Which kind of failure this is, when the message shouldn't decide (see `ErrorReason`). */
   reason?: string;

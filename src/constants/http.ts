@@ -31,6 +31,12 @@ export class ErrorReason {
    * `PATCH /user/email`. A rate limiter's 429 has no `reason`.
    */
   static readonly ResendCooldown = "resendCooldown";
+  /**
+   * The day's mail limit is used up, so nothing was sent: the 503 of `POST /auth/register`, its
+   * resend and `PATCH /user/email`, with `retryAfter` up to the next UTC midnight (an upper bound,
+   * since an API restart starts the count again). A 503 there without it is a failed send.
+   */
+  static readonly MailBudget = "mailBudget";
 }
 
 export class Header {
