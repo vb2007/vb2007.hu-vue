@@ -114,8 +114,7 @@ defineExpose({ refresh });
       Try again
     </BaseButton>
     <StatusMessage v-if="unlistedError" tone="error">
-      <span class="error-code">{{ deleteError.code }}</span
-      >: {{ deleteError.message }}
+      <span class="error-code">{{ deleteError.code }}</span>: {{ deleteError.message }}
     </StatusMessage>
 
     <p v-if="isLoading && !pagination" class="note">Loading your links…</p>

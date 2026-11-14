@@ -200,9 +200,8 @@ const onDelete = () => confirmDelete.press(props.upload.id, () => props.remove(p
             >
             <span v-else class="row__fact">Deleted account</span>&nbsp;·
           </template>
-          <span class="row__fact">{{ formatBytes(upload.fileSize) }}</span
-          >&nbsp;· <span class="row__fact">{{ typeLabel(upload.extension) }}</span
-          >&nbsp;·
+          <span class="row__fact">{{ formatBytes(upload.fileSize) }}</span>&nbsp;·
+          <span class="row__fact">{{ typeLabel(upload.extension) }}</span>&nbsp;·
           <time class="row__fact" :datetime="upload.uploadedOn">{{
             formatDateTime(upload.uploadedOn)
           }}</time>

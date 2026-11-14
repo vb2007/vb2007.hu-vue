@@ -16,8 +16,7 @@ const path = computed(() => readableAddress("/" + [route.params.pathMatch].flat(
 <template>
   <NotFoundPage title="Page not found">
     <p>
-      There's no page at <code class="path">{{ path }}</code
-      >. The link may be old or mistyped.
+      There's no page at <code class="path">{{ path }}</code>. The link may be old or mistyped.
     </p>
   </NotFoundPage>
 </template>

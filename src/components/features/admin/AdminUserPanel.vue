@@ -114,8 +114,8 @@ const password = computed(() => {
         <div v-if="user.suspendedAt" class="fact fact--suspended">
           <dt>Suspended</dt>
           <dd>
-            Since <time :datetime="user.suspendedAt">{{ formatDateTime(user.suspendedAt) }}</time
-            >: they can't log in.
+            Since <time :datetime="user.suspendedAt">{{ formatDateTime(user.suspendedAt) }}</time>:
+            they can't log in.
           </dd>
         </div>
         <div class="fact">

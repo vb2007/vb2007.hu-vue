@@ -35,8 +35,8 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
     <template v-if="usage">
       <div class="gauge">
         <p class="gauge__figure">
-          <span class="gauge__used">{{ formatBytes(usage.usedBytes) }}</span
-          >{{ " " }}<span class="gauge__of">of {{ formatBytes(usage.quotaBytes) }} used</span>
+          <span class="gauge__used">{{ formatBytes(usage.usedBytes) }}</span>{{ " "
+          }}<span class="gauge__of">of {{ formatBytes(usage.quotaBytes) }} used</span>
         </p>
         <div
           class="gauge__line"
