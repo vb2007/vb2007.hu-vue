@@ -1,4 +1,4 @@
-import { computed, ref, watch } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
@@ -9,6 +9,7 @@ import {
   retryAfterFrom,
   useCountdown
 } from "@/composables/useCountdown";
+import { passwordChanges } from "@/composables/useChangePassword";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiErrorOf, apiRequest, isLoggedOutAnswer } from "@/scripts/api/client";
 import {
@@ -87,6 +88,39 @@ export const useChangeEmail = () => {
     { immediate: true }
   );
 
+  /** Errors about a code that no longer works, shown with the code step or in its place. */
+  const clearCodeErrors = () => {
+    codeError.value = "";
+    confirmError.value = "";
+  };
+
+  /**
+   * A change that goes or is replaced (a password change, a refresh that no longer finds it, or a
+   * new one from another tab) takes the errors of its code step with it. This runs synchronously,
+   * as the address is set: `confirm` sets its own outcome only after its refresh, so it stays.
+   */
+  watch(pendingEmail, clearCodeErrors, { flush: "sync" });
+
+  /**
+   * A new password also drops a refusal that already took the change away (e.g. its tries ran out
+   * here, or another tab's password change left this tab's code unusable): shown under the new
+   * password's success, it would read as caused by it.
+   */
+  watch(passwordChanges, clearCodeErrors);
+
+  /**
+   * Coming back to the tab while a change waits looks the account up again: another tab may have
+   * confirmed the change or dropped it with a new password, and this tab's countdown is its own
+   * (sessionStorage). One lookup per return, and only while there's a change to check.
+   */
+  const onReturn = () => {
+    if (document.hidden || !isLoggedIn.value || !pendingEmail.value) return;
+    if (isChanging.value || isConfirming.value) return;
+    void fetchUserDetails();
+  };
+  document.addEventListener("visibilitychange", onReturn);
+  onScopeDispose(() => document.removeEventListener("visibilitychange", onReturn));
+
   /**
    * After the code checks' 429 (too many wrong codes, or the daily cap, where even the right code
    * is refused), Confirm code waits; Change e-mail has limits of its own, so it doesn't.
@@ -162,9 +196,16 @@ export const useChangeEmail = () => {
       // work on the next try.
       const budgetWait = mailBudgetOf(result);
       if (budgetWait !== undefined) budget.start(budgetWait, ACCOUNT_BUDGET_ID, changeError.value);
-      // Either way, the API restores the change that waited before, if any (`restoreEmailChange`,
-      // vb2007/vb2007.hu-api#294), so show what it has now.
-      if (result.status === HttpStatus.ServiceUnavailable) await fetchUserDetails();
+      // When its mail fails, the API restores the change that waited before, if any
+      // (`restoreEmailChange`, vb2007/vb2007.hu-api#294), so show what it has now. A wrong
+      // password may be one changed elsewhere, which dropped the waiting change
+      // (vb2007/vb2007.hu-api#474), so that refreshes too.
+      if (
+        result.status === HttpStatus.ServiceUnavailable ||
+        result.status === HttpStatus.Forbidden
+      ) {
+        await fetchUserDetails();
+      }
     }
     isChanging.value = false;
 
@@ -231,12 +272,12 @@ export const useChangeEmail = () => {
         changed = true;
       } else if (!pendingEmail.value) {
         // Its code step is gone with it, so the message names the address it was about. A 400
-        // means the code expired or ran out of tries (the refresh can't tell which), and the API's
-        // "check it" no longer fits without the field.
+        // means the code expired, ran out of tries or was dropped by a password change elsewhere
+        // (the refresh can't tell which), and the API's "check it" no longer fits without the field.
         endCooldown();
         confirmError.value =
           result.status === HttpStatus.BadRequest
-            ? Messages.Account.codeExpiredOrUsedUp(address)
+            ? Messages.Account.codeNoLongerWorks(address)
             : Messages.Account.notConfirmed(address, result.error);
       } else if (result.status === HttpStatus.BadRequest) {
         codeError.value = result.error;

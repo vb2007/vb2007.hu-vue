@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
 import { useChangePassword } from "@/composables/useChangePassword";
-import { isLoggedIn, pendingEmail } from "@/scripts/authentication/authState";
+import { isLoggedIn, pendingEmail, userEmail } from "@/scripts/authentication/authState";
 
 /** `GET /user` after a password change: the API dropped any waiting e-mail change. */
 const USER = { email: "vb@example.com", username: "vb", hasPassword: true, pendingEmail: null };
@@ -71,6 +71,23 @@ describe("useChangePassword", () => {
     expect(isLoggedIn.value).toBe(true);
     expect(pendingEmail.value).toBe("");
     expect(password.changed.value).toBe(CANCELLED);
+  });
+
+  it("says nothing was cancelled when the change was confirmed elsewhere first", async () => {
+    isLoggedIn.value = true;
+    userEmail.value = "vb@example.com";
+    pendingEmail.value = "new@example.com";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { ...USER, email: "new@example.com", emailVerified: true })
+      );
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("old-password", "new-password")).toBe(true);
+
+    expect(userEmail.value).toBe("new@example.com");
+    expect(password.changed.value).toBe("Password changed successfully.");
   });
 
   it("says nothing was cancelled when a change waits again by the refresh", async () => {
