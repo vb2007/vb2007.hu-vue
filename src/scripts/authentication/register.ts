@@ -27,7 +27,8 @@ const hasEmailFormat = (email: string) => EMAIL_PATTERN.test(normalizeEmail(emai
  * The API's username rule (its `usernameFormatError`, vb2007/vb2007.hu-api#319), on the trimmed
  * name. U+FE0E and U+FE0F only pass right after an emoji, whose presentation they pick. U+200D
  * only passes between emoji, which it joins (vb2007/vb2007.hu-api#470), and tag characters only
- * as a subdivision flag's run after the black flag U+1F3F4, e.g. England's (#478).
+ * as a subdivision flag's run after the black flag U+1F3F4, e.g. England's
+ * (vb2007/vb2007.hu-api#478).
  */
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 /** After an emoji, its presentation selector or a skin tone; before an emoji, not a digit or #. */

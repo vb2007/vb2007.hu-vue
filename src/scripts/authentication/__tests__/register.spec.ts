@@ -36,8 +36,8 @@ const emojiTags = (text: string) =>
   [...text].map((character) => String.fromCodePoint(0xe0000 + character.charCodeAt(0))).join("");
 const subdivisionFlag = (code: string) => `\u{1F3F4}${emojiTags(code)}\u{E007F}`;
 
-// The API's own cases (vb2007/vb2007.hu-api#319, #470, #478), with fixed names in place of its
-// random ones.
+// The API's own cases (vb2007/vb2007.hu-api#319, vb2007/vb2007.hu-api#470,
+// vb2007/vb2007.hu-api#478), with fixed names in place of its random ones.
 describe("the username checks", () => {
   it.each([
     ["2 characters", "vb"],
@@ -68,6 +68,9 @@ describe("the username checks", () => {
     ["a presentation selector after the Scotland flag", `${subdivisionFlag("gbsct")}\ufe0f\u4e00`],
     // The tags count toward the maximum: a 5 tag run makes a flag 14 units, so 2 more fit.
     ["a flag with a 5 tag run and 2 more characters", `${subdivisionFlag("gbeng")}ab`],
+    // The shortest run, and digit tags, which subdivision codes can have.
+    ["a flag with a 3 tag run", `${subdivisionFlag("abc")}ab`],
+    ["a flag with digit tags", `${subdivisionFlag("us06")}ab`],
     // Trimmed first, like the API: only whitespace inside the name counts.
     ["a tab and non-breaking spaces at the ends", "\u00a0\tRv\u00a0"],
     ["a byte order mark at the start", "\ufeffRv"]

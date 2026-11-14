@@ -754,6 +754,26 @@ test("a GitHub login into a suspended account is explained", async ({ page }) =>
   await expect(page).toHaveURL("/login");
 });
 
+// The API's collation ignores a flag's tags (vb2007/vb2007.hu-api#478), so another flag is the
+// same name.
+test("a rename to another account's name with another flag's tags is taken", async ({
+  page,
+  api
+}) => {
+  const englandX = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}x";
+  const walesX = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}x";
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const anna = api.hasUser("anna");
+  api.hasUser(englandX);
+
+  await page.goto(`/admin/users/${anna.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
+  expect(
+    await callApi(page, api, "PATCH", `/admin/users/${anna.id}`, { username: walesX })
+  ).toEqual({ status: 409, body: { error: "This username is already taken." } });
+  expect(anna.username).toBe("anna");
+});
+
 test("the superuser renames a user and logs them out everywhere", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   const anna = api.hasUser("anna");
