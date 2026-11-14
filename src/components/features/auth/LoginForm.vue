@@ -196,8 +196,8 @@ watch(isLoggedIn, (loggedIn) => {
     <div v-else-if="resetNotice" class="done">
       <StatusMessage tone="success">{{ resetNotice }}</StatusMessage>
       <p>
-        You're still logged in as <strong class="who">{{ userEmail }}</strong
-        >. Log out to log in with the new password.
+        You're still logged in as <strong class="who">{{ userEmail }}</strong>. Log out to log in
+        with the new password.
       </p>
       <BaseButton @click="logout">Log out</BaseButton>
     </div>

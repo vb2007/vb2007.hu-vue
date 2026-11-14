@@ -561,8 +561,7 @@ watch(isLoggedIn, (newVal) => {
             {{ Messages.Auth.accountExistsMiddle }}
             <RouterLink :to="prefilledPage(AuthPaths.ResetPassword)">{{
               Messages.Auth.accountExistsReset
-            }}</RouterLink
-            >.</template
+            }}</RouterLink>.</template
           >
         </BaseInput>
         <BaseInput
