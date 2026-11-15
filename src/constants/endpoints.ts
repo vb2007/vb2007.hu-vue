@@ -40,9 +40,12 @@ import type {
   MfaLinkBody,
   MfaMethodsResponse,
   MfaPasswordBody,
+  MfaRecoveryCodesResponse,
   MfaRequiredResponse,
   MfaTurnOnResponse,
-  MfaVerifyBody
+  MfaVerifyBody,
+  TotpConfirmBody,
+  TotpSetupResponse
 } from "@/types/api/mfa";
 import type {
   CreatePasteBody,
@@ -297,6 +300,31 @@ export class Endpoints {
     static readonly mfaEmailOff = defineEndpoint<MfaPasswordBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/user/mfa/email",
+      credentials: true
+    });
+    /**
+     * An authenticator app (vb2007/vb2007.hu-api#447): a new secret, which works once its first code
+     * is confirmed (with TOTP on, the old one works until then); the first method brings recovery codes.
+     */
+    static readonly mfaTotpSetup = defineEndpoint<MfaPasswordBody, TotpSetupResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/totp",
+      credentials: true
+    });
+    static readonly mfaTotpConfirm = defineEndpoint<TotpConfirmBody, MfaTurnOnResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/totp/confirm",
+      credentials: true
+    });
+    static readonly mfaTotpOff = defineEndpoint<MfaPasswordBody, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/user/mfa/totp",
+      credentials: true
+    });
+    /** A new set of recovery codes (vb2007/vb2007.hu-api#482), `409` without an MFA method on. */
+    static readonly mfaRecoveryCodes = defineEndpoint<MfaPasswordBody, MfaRecoveryCodesResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/recovery-codes",
       credentials: true
     });
     /** The account's passkeys (vb2007/vb2007.hu-api#446). */

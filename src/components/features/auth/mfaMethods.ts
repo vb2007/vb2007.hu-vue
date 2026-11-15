@@ -1,6 +1,8 @@
 import type { Component } from "vue";
 import MfaEmail from "@/components/features/auth/MfaEmail.vue";
 import MfaPasskey from "@/components/features/auth/MfaPasskey.vue";
+import MfaRecovery from "@/components/features/auth/MfaRecovery.vue";
+import MfaTotp from "@/components/features/auth/MfaTotp.vue";
 import { passkeysSupported } from "@/scripts/authentication/webauthn";
 import type { MfaMethod } from "@/types/api/mfa";
 
@@ -20,6 +22,12 @@ export interface MfaMethodEntry {
  * step. One the API offers that isn't here isn't offered yet.
  */
 export const MFA_METHODS: MfaMethodEntry[] = [
+  {
+    method: "totp",
+    title: "Authenticator app",
+    switchLabel: "Use your authenticator app",
+    component: MfaTotp
+  },
   // Only where the browser can run the prompt: the API lists it next to another method anyway.
   ...(passkeysSupported()
     ? [
@@ -31,5 +39,11 @@ export const MFA_METHODS: MfaMethodEntry[] = [
         } satisfies MfaMethodEntry
       ]
     : []),
-  { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail }
+  { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail },
+  {
+    method: "recovery",
+    title: "Recovery code",
+    switchLabel: "Use a recovery code",
+    component: MfaRecovery
+  }
 ];

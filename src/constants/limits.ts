@@ -87,6 +87,8 @@ export class Limits {
     /** A TOTP setup waits this long and this many tries for its first code. */
     static readonly totpSetupMinutes: number = 10;
     static readonly totpSetupAttempts: number = 5;
+    /** An authenticator app shows a new code this often. */
+    static readonly totpPeriodSeconds: number = 30;
     static readonly recoveryCodes: number = 10;
     /** Security notice e-mails to one account a day. */
     static readonly securityNoticesPerDay: number = 10;

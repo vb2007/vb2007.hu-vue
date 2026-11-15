@@ -412,6 +412,47 @@ export class Messages {
       "E-mail codes are off: logins no longer ask for a mailed code.";
     static readonly emailOnFailed: string = "Failed to turn on e-mail codes";
     static readonly emailOffFailed: string = "Failed to turn off e-mail codes";
+    /** An authenticator app (vb2007/vb2007.hu-api#447): its codes, at login and to confirm the setup. */
+    static totpCodeInvalid(digits: number): string {
+      return `Enter the ${digits}-digit code from your authenticator app.`;
+    }
+    /** At login. A code works once, so one just used (e.g. at the setup) is refused like a wrong one. */
+    static totpHint(digits: number, seconds: number): string {
+      return `Enter the ${digits}-digit code your authenticator app shows for vb2007.hu. It changes every ${seconds} seconds, and each works once: if it was just used, wait for the next.`;
+    }
+    static totpSetupHint(digits: number, minutes: number, tries: number): string {
+      return `Enter the ${digits}-digit code your app shows for vb2007.hu. This setup works for ${minutes} minutes, with ${tries} tries.`;
+    }
+    /**
+     * The confirm's 400 is the same for a wrong code and a setup that's gone, so it's counted here:
+     * once the setup's time or tries are used up, it has to start again.
+     */
+    static totpSetupRanOut(minutes: number, tries: number): string {
+      return `This setup has run out: it works for ${minutes} minutes, with ${tries} tries. Start again for a new QR code, and replace what your app added from this one.`;
+    }
+    /**
+     * In place of the API's wrong-code 400 ("…request a new one"), at login and at the setup: an
+     * app's code can't be requested, but the next one comes on its own.
+     */
+    static readonly totpCodeRefused: string =
+      "That code didn't work: check it, or wait for the next one.";
+    /** The code checks' 429 holds longer than the setup lives. */
+    static readonly totpSetupHeldOut: string =
+      "Too many wrong codes for now, and the wait outlasts this setup. Once it's over, start again for a new QR code, and replace what your app added from this one.";
+    /** The section's own words, rather than the API's "TOTP MFA turned on". */
+    static readonly totpOn: string =
+      "Authenticator app is on: each login can now take a code from it.";
+    static readonly totpMoved: string =
+      "Moved to your new authenticator app: the old one's codes no longer work.";
+    static readonly totpOff: string = "Authenticator app is off: logins no longer take its codes.";
+    static readonly totpSetupFailed: string = "Failed to start the authenticator app setup";
+    static readonly totpOffFailed: string = "Failed to turn off the authenticator app";
+    /** Only an empty one is refused here: the API checks the code's shape (a wrong one uses a try). */
+    static readonly recoveryCodeMissing: string = "Enter one of your recovery codes.";
+    /** In place of the API's wrong-code 400, whose "request a new one" can't be done at login. */
+    static readonly recoveryCodeRefused: string =
+      "That code didn't work, or it was already used: each code works once.";
+    static readonly recoveryCodesFailed: string = "Failed to make new recovery codes";
   };
 
   /** Passkeys (vb2007/vb2007.hu-api#446, #484): managing them, and logging in with one. */

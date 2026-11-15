@@ -1,24 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h } from "vue";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import MfaStep from "@/components/features/auth/MfaStep.vue";
-
-// A second method, standing in for the ones still to come, so switching can be checked.
-vi.mock("@/components/features/auth/mfaMethods", async (importOriginal) => {
-  const { MFA_METHODS } =
-    await importOriginal<typeof import("@/components/features/auth/mfaMethods")>();
-  const Totp = defineComponent({
-    props: { verifier: { type: Object, required: true } },
-    setup: () => () => h("p", { class: "totp" }, "App code")
-  });
-  return {
-    MFA_METHODS: [
-      { method: "totp", title: "Authenticator app", switchLabel: "Use your app", component: Totp },
-      ...MFA_METHODS
-    ]
-  };
-});
 
 let wrapper: VueWrapper | undefined;
 afterEach(() => wrapper?.unmount());
@@ -35,9 +18,9 @@ describe("MfaStep with several methods", () => {
     await wrapper.find(".mfa__others button").trigger("click");
 
     expect(wrapper.find("h2").text()).toBe("E-mail code");
-    expect(wrapper.find(".totp").exists()).toBe(false);
+    expect(wrapper.find("input").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find(".mfa__lead").element);
-    expect(wrapper.find(".mfa__others button").text()).toBe("Use your app");
+    expect(wrapper.find(".mfa__others button").text()).toBe("Use your authenticator app");
   });
 
   it("keeps a method's state across a switch away and back, e.g. the mailed code and its countdown", async () => {
@@ -50,7 +33,7 @@ describe("MfaStep with several methods", () => {
     await wrapper.find("input").setValue("12");
 
     await wrapper.find(".mfa__others button").trigger("click");
-    expect(wrapper.find(".totp").exists()).toBe(true);
+    expect(wrapper.find("h2").text()).toBe("Authenticator app");
     await wrapper.find(".mfa__others button").trigger("click");
 
     expect((wrapper.find("input").element as HTMLInputElement).value).toBe("12");
@@ -60,7 +43,7 @@ describe("MfaStep with several methods", () => {
   });
 
   it("offers only the methods the API lists", () => {
-    wrapper = mount(MfaStep, { props: { methods: ["email", "recovery"] } });
+    wrapper = mount(MfaStep, { props: { methods: ["email"] } });
 
     expect(wrapper.find("h2").text()).toBe("E-mail code");
     expect(wrapper.find(".mfa__others").exists()).toBe(false);

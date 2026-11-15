@@ -38,6 +38,7 @@ describe("MfaLink", () => {
   it("drops the token from the address before sending it once, and logs in", async () => {
     let pathWhenSent = "";
     fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
       .mockImplementationOnce(async () => {
         pathWhenSent = router.currentRoute.value.fullPath;
         return jsonResponse(200, { message: "Login successful with user me." });
@@ -49,8 +50,8 @@ describe("MfaLink", () => {
 
     expect(pathWhenSent).toBe("/login/mfa");
     expect(router.currentRoute.value.fullPath).toBe("/login/mfa");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ token: "s3cret" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[1][1]!.body as string)).toEqual({ token: "s3cret" });
     expect(isLoggedIn.value).toBe(true);
     const outcome = wrapper!.find(".link__outcome");
     expect(outcome.text()).toBe("Login successful!");
@@ -60,8 +61,8 @@ describe("MfaLink", () => {
 
   it("says why a refused link didn't log in, with the way back to Log in", async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK }))
-      .mockResolvedValueOnce(LOGGED_OUT());
+      .mockResolvedValueOnce(LOGGED_OUT())
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK }));
     await open("/login/mfa#token=s3cret");
     await flushPromises();
 
@@ -72,47 +73,46 @@ describe("MfaLink", () => {
     expect(wrapper!.find("a").attributes("href")).toBe("/login");
   });
 
-  it("says this browser is logged in already when the link was used up", async () => {
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK }))
-      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+  it("says this browser is logged in already, without sending a link opened again", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     await open("/login/mfa#token=s3cret");
     await flushPromises();
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(wrapper!.find(".link__outcome").text()).toBe("You're already logged in.");
     expect(wrapper!.find("a").attributes("href")).toBe("/shorten");
   });
 
   it("takes the login on when the step was passed in another tab meanwhile", async () => {
     fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
       .mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }))
       .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     await open("/login/mfa#token=s3cret");
     await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(wrapper!.find(".link__outcome").text()).toBe("Login successful!");
   });
 
   it("says the step expired, with the way back, when nothing logged this browser in", async () => {
     fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
       .mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }))
       .mockResolvedValueOnce(LOGGED_OUT());
     await open("/login/mfa#token=s3cret");
     await flushPromises();
 
-    // One lookup, by the 403's own check.
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(wrapper!.find(".link__outcome").text()).toBe(EXPIRED);
     expect(wrapper!.find("a").text()).toBe("Log in again");
   });
 
   it("says so when the browser didn't keep the session", async () => {
     fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
       .mockResolvedValueOnce(jsonResponse(200, { message: "Login successful with user me." }))
-      .mockResolvedValueOnce(
-        jsonResponse(403, { error: "You must be logged in to perform this action." })
-      );
+      .mockResolvedValueOnce(LOGGED_OUT());
     await open("/login/mfa#token=s3cret");
     await flushPromises();
 

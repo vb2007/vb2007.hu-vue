@@ -154,15 +154,18 @@ const CODE_MESSAGE = Messages.EmailCode.invalid(Limits.Code.digits);
 /** The API ignores spaces in a code. */
 const withoutSpaces = (code: string) => code.replace(/\s/g, "");
 
-/** The mailed codes are `Limits.Code.digits` digits. */
-export const confirmationCodeError = (code: string) => {
+/**
+ * The mailed codes and an authenticator app's are `Limits.Code.digits` digits; `message` says
+ * where the code comes from (the e-mail by default).
+ */
+export const confirmationCodeError = (code: string, message = CODE_MESSAGE) => {
   const digits = withoutSpaces(code);
-  return /^\d+$/.test(digits) && digits.length === Limits.Code.digits ? "" : CODE_MESSAGE;
+  return /^\d+$/.test(digits) && digits.length === Limits.Code.digits ? "" : message;
 };
 
 /** Anything but digits and spaces, or too many digits, which shows while typing. */
-export const confirmationCodeEarlyError = (code: string) =>
-  /[^\d\s]/.test(code) || withoutSpaces(code).length > Limits.Code.digits ? CODE_MESSAGE : "";
+export const confirmationCodeEarlyError = (code: string, message = CODE_MESSAGE) =>
+  /[^\d\s]/.test(code) || withoutSpaces(code).length > Limits.Code.digits ? message : "";
 
 /** The register form's fields, for an error about one of them. */
 export type RegisterField = "email" | "username" | "password" | "confirmPassword";

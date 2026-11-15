@@ -1,23 +1,130 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   expect,
   MFA_EXPIRED_ERROR,
   MOCK_EMAIL,
   MOCK_MFA_CODE,
   MOCK_MFA_LINK_TOKEN,
+  MOCK_NEW_RECOVERY_CODES,
   MOCK_PASSWORD,
   MOCK_RECOVERY_CODES,
+  MOCK_TOTP_CODE,
+  MOCK_TOTP_SECRET,
   test
 } from "./fixtures";
 
-/** Logs in with the password of `MOCK_EMAIL`, whose account has e-mail MFA on. */
-async function passPassword(page: Page) {
+/** Logs in with the password of `MOCK_EMAIL`, whose account has MFA on, until `method`'s step shows. */
+async function passPassword(page: Page, method = "E-mail code") {
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "E-mail code" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: method })).toBeVisible();
 }
+
+/** The E-mail codes row of the account's Two-step login section, with its own On/Off badge. */
+const emailRow = (section: Locator) =>
+  section.locator(".login").filter({ hasText: "E-mail codes" });
+
+/** Opens the authenticator app's setup on the account page, past the password. */
+async function startTotpSetup(page: Page) {
+  await page.goto("/account");
+  const section = page.getByRole("region", { name: "Two-step login" });
+  await section.getByRole("button", { name: "Set up authenticator app" }).click();
+  await section.getByLabel("Password").fill(MOCK_PASSWORD);
+  await section.getByRole("button", { name: "Continue" }).click();
+  return section;
+}
+
+test("an authenticator app's code logs in, before any mail", async ({ page, api }) => {
+  api.hasMfaEmail();
+  api.hasMfaTotp();
+  await passPassword(page, "Authenticator app");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("button", { name: "Use an e-mail code" })).toBeVisible();
+  const code = main.getByLabel("Code from your authenticator app");
+
+  await code.fill("000000");
+  await main.getByRole("button", { name: "Log in", exact: true }).click();
+  // The field's error, in the site's words, which the step also reads out.
+  await expect(code).toHaveAccessibleDescription(
+    /That code didn't work: check it, or wait for the next one\./
+  );
+  await expect(code).toBeFocused();
+
+  await code.fill(MOCK_TOTP_CODE);
+  await main.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(main.getByText("Login successful!")).toBeVisible();
+});
+
+test("an authenticator app is set up with its QR code and first code, showing the recovery codes once", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  const section = await startTotpSetup(page);
+
+  const setup = section.getByRole("group", { name: "Scan the QR code" });
+  await expect(setup.getByRole("heading")).toBeFocused();
+  await expect(
+    setup.getByRole("img", { name: "QR code for your authenticator app" })
+  ).toBeVisible();
+  await expect(setup.getByText(MOCK_TOTP_SECRET.match(/.{4}/g)!.join(" "))).toBeVisible();
+
+  const code = setup.getByLabel("Code from your app");
+  await code.fill("000000");
+  await setup.getByRole("button", { name: "Turn on", exact: true }).click();
+  await expect(
+    setup.getByText("That code didn't work: check it, or wait for the next one.")
+  ).toBeVisible();
+  await expect(code).toBeFocused();
+
+  await code.fill(MOCK_TOTP_CODE);
+  await setup.getByRole("button", { name: "Turn on", exact: true }).click();
+  const codes = section.getByRole("region", { name: "Your recovery codes" });
+  await expect(codes.getByRole("heading")).toBeFocused();
+  await expect(codes.getByRole("listitem")).toHaveText(MOCK_RECOVERY_CODES);
+  await expect(
+    page.getByText("Authenticator app is on: each login can now take a code from it.")
+  ).toBeVisible();
+  await expect(setup).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Move to a new app" })).toBeVisible();
+});
+
+test("a setup whose tries ran out offers to start again", async ({ page, api }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  const section = await startTotpSetup(page);
+  const code = section.getByLabel("Code from your app");
+  for (let tries = 0; tries < 5; tries++) {
+    await code.fill(`00000${tries}`);
+    await section.getByRole("button", { name: "Turn on", exact: true }).click();
+    if (tries < 4) await expect(code).toBeFocused();
+  }
+
+  await expect(
+    section.getByRole("status").filter({ hasText: "This setup has run out" })
+  ).toBeFocused();
+  await expect(section.getByRole("img")).toHaveCount(0);
+  await section.getByRole("button", { name: "Start again" }).click();
+  await expect(section.getByLabel("Password")).toBeFocused();
+});
+
+test("an authenticator app turns off with the password", async ({ page, api }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasMfaTotp();
+  await page.goto("/account");
+  const section = page.getByRole("region", { name: "Two-step login" });
+  await section.getByRole("button", { name: "Turn off authenticator app" }).click();
+  await section.getByLabel("Password").fill(MOCK_PASSWORD);
+  await section.getByRole("button", { name: "Turn off", exact: true }).click();
+
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Authenticator app is off: logins no longer take its codes." })
+  ).toBeFocused();
+  await expect(section.getByRole("button", { name: "Set up authenticator app" })).toBeVisible();
+});
 
 test("a password login asks for the mailed code, which logs in", async ({ page, api }) => {
   api.hasMfaEmail();
@@ -55,9 +162,13 @@ test("the mailed link logs in, and leaves the address bar", async ({ page, api }
   expect(new URL(page.url()).hash).toBe("");
   await expect(page).toHaveTitle(/^Log in/);
 
-  // Opened again, the used-up link finds this browser logged in.
+  // Opened again from the mail (a page load of its own, not a fragment change on this page), the
+  // used-up link finds this browser logged in and sends nothing.
+  await page.goto("/");
   await page.goto(`/login/mfa#token=${MOCK_MFA_LINK_TOKEN}`);
-  await expect(page.getByText("Login successful!")).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "You're already logged in." })
+  ).toBeFocused();
   await expect(page.getByRole("link", { name: "Log in again" })).toHaveCount(0);
 });
 
@@ -189,7 +300,7 @@ test("e-mail codes turn on with the password, showing the recovery codes once, a
     "vb2007.hu-recovery-codes.txt"
   );
   await expect(page.getByText("E-mail codes are on")).toBeVisible();
-  await expect(section.getByText("On", { exact: true })).toBeVisible();
+  await expect(emailRow(section).getByText("On", { exact: true })).toBeVisible();
 
   await codes.getByRole("button", { name: "I've saved them" }).click();
   await expect(codes).toHaveCount(0);
@@ -199,7 +310,70 @@ test("e-mail codes turn on with the password, showing the recovery codes once, a
   await section.getByLabel("Password").fill(MOCK_PASSWORD);
   await section.getByRole("button", { name: "Turn off", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "E-mail codes are off" })).toBeFocused();
-  await expect(section.getByText("Off", { exact: true })).toBeVisible();
+  await expect(emailRow(section).getByText("Off", { exact: true })).toBeVisible();
+});
+
+/** Sends a recovery code from the step's open recovery form; `passes` says whether the API took it. */
+async function sendRecoveryCode(page: Page, code: string, passes: boolean) {
+  const main = page.getByRole("main");
+  await main.getByLabel("Recovery code").fill(code);
+  await main.getByRole("button", { name: "Log in", exact: true }).click();
+  if (passes) await expect(main.getByText("Login successful!")).toBeVisible();
+  else
+    await expect(main.getByLabel("Recovery code")).toHaveAccessibleDescription(
+      /That code didn't work, or it was already used/
+    );
+}
+
+test("a recovery code logs in once, in any case and with spaces", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.hasMfaEmail();
+  await passPassword(page);
+  await expect(page.getByText("Lost every way in?")).toContainText(
+    "A password reset doesn't turn this step off"
+  );
+  await page.getByRole("button", { name: "Use a recovery code" }).click();
+  await expect(page.getByRole("heading", { name: "Recovery code" })).toBeVisible();
+
+  await sendRecoveryCode(page, ` ${MOCK_RECOVERY_CODES[0].toUpperCase()} `, true);
+  await page.goto("/account");
+  await expect(page.getByText("9 of 10 left.")).toBeVisible();
+
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await passPassword(page);
+  await page.getByRole("button", { name: "Use a recovery code" }).click();
+  await sendRecoveryCode(page, MOCK_RECOVERY_CODES[0], false);
+  await expect(page.getByLabel("Recovery code")).toBeFocused();
+});
+
+test("new recovery codes show once and replace the old ones", async ({ page, api, isMobile }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
+  api.hasMfaEmail();
+  await page.goto("/account");
+  const section = page.getByRole("region", { name: "Two-step login" });
+  await expect(section.getByText("10 of 10 left.")).toBeVisible();
+
+  await section.getByRole("button", { name: "Generate new codes" }).click();
+  await expect(section.getByText("Your current codes stop working")).toBeVisible();
+  await section.getByLabel("Password").fill(MOCK_PASSWORD);
+  await section.getByRole("button", { name: "Generate", exact: true }).click();
+
+  const codes = section.getByRole("region", { name: "Your recovery codes" });
+  await expect(codes.getByRole("heading")).toBeFocused();
+  await expect(codes.getByRole("listitem")).toHaveText(MOCK_NEW_RECOVERY_CODES);
+  await expect(page.getByText("the earlier ones no longer work")).toBeVisible();
+  await codes.getByRole("button", { name: "I've saved them" }).click();
+
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await passPassword(page);
+  await page.getByRole("button", { name: "Use a recovery code" }).click();
+  await sendRecoveryCode(page, MOCK_RECOVERY_CODES[1], false);
+  await sendRecoveryCode(page, MOCK_NEW_RECOVERY_CODES[1], true);
 });
 
 test("a wrong password doesn't turn e-mail codes on", async ({ page, api }) => {
@@ -212,7 +386,7 @@ test("a wrong password doesn't turn e-mail codes on", async ({ page, api }) => {
 
   await expect(section.getByRole("alert")).toHaveText("The provided password is incorrect.");
   await expect(section.getByLabel("Password")).toBeFocused();
-  await expect(section.getByText("Off", { exact: true })).toBeVisible();
+  await expect(emailRow(section).getByText("Off", { exact: true })).toBeVisible();
 });
 
 test("the admin's MFA reset turns the account's second step off, from one store", async ({
