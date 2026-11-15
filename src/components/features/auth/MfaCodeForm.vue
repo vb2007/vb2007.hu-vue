@@ -25,6 +25,8 @@ const props = defineProps<{
   early?: (code: string) => string;
   /** Ids of messages above that also describe the field, e.g. where the code went. */
   describedby?: string;
+  /** Holds Log in, e.g. while a new code is being mailed, which would void the one typed. */
+  busy?: boolean;
 }>();
 
 const code = ref("");
@@ -53,7 +55,7 @@ const restart = () => {
 };
 
 const submit = async () => {
-  if (isHeld.value || !(await validate(form.value))) return;
+  if (isHeld.value || props.busy || !(await validate(form.value))) return;
   const passed = await props.verifier.verify({
     method: props.method,
     code: code.value.replace(/\s/g, "")
@@ -79,6 +81,8 @@ defineExpose({ focusField, restart });
       required
       @blur="leave('code')"
     />
+    <!-- The field keeps the cursor after a wrong code, so its error isn't read out by itself. -->
+    <p class="visually-hidden" aria-live="assertive">{{ refusal }}</p>
     <StatusMessage v-if="shownError" :id="errorId" tone="error" :spoken="hold.spokenFor()">{{
       shownError
     }}</StatusMessage>
@@ -86,7 +90,7 @@ defineExpose({ focusField, restart });
       type="submit"
       block
       :loading="isVerifying"
-      :disabled="isHeld"
+      :disabled="isHeld || busy"
       :aria-label="isHeld ? hold.name.value : undefined"
       :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
       :blocked="!isValid"

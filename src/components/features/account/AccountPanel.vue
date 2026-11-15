@@ -83,10 +83,20 @@ const onMfaChanged = (message: string, codes?: string[]) => {
   notice.value = message;
   recoveryCodes.value = codes;
 };
+// Codes the account no longer has (its last method turned off, here or elsewhere) aren't worth
+// saving any more.
+watch(
+  () => mfa.value.recoveryCodesLeft,
+  (left) => {
+    if (!left) recoveryCodes.value = [];
+  }
+);
+const mfaSection = useTemplateRef("mfaSection");
+/** Saved: the panel goes, and the focus stays in the section, on its first row's key. */
 const onRecoveryCodesSaved = async () => {
   recoveryCodes.value = [];
   await nextTick();
-  noticeMessage.value?.$el.focus();
+  mfaSection.value?.querySelector<HTMLElement>(".login button")?.focus();
 };
 </script>
 
@@ -152,7 +162,7 @@ const onRecoveryCodesSaved = async () => {
 
     <!-- Each method is a row like the logins above (vb2007/vb2007.hu-api#448); any answer with
          fresh recovery codes shows them in the panel at the top, once. -->
-    <section class="logins" aria-labelledby="mfa-title">
+    <section ref="mfaSection" class="logins" aria-labelledby="mfa-title">
       <h2 id="mfa-title" class="logins__title">Two-step login</h2>
       <p class="logins__note">
         A second step after your password or GitHub, so a stolen password alone can't log in.

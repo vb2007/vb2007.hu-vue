@@ -5,6 +5,7 @@
  */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { mfa } from "@/scripts/authentication/authState";
@@ -26,9 +27,17 @@ const turningOn = ref(false);
 const opener = useTemplateRef<InstanceType<typeof BaseButton>>("opener");
 
 const turnOn = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaEmailOn, { body, failure: Messages.Mfa.emailOnFailed });
+  apiRequest(Endpoints.User.mfaEmailOn, {
+    body,
+    failure: Messages.Mfa.emailOnFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 const turnOff = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaEmailOff, { body, failure: Messages.Mfa.emailOffFailed });
+  apiRequest(Endpoints.User.mfaEmailOff, {
+    body,
+    failure: Messages.Mfa.emailOffFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 
 const open = () => {
   turningOn.value = !mfa.value.email;
@@ -45,7 +54,8 @@ const close = async () => {
 const onDone = async (data: MfaTurnOnResponse) => {
   confirming.value = false;
   await fetchUserDetails();
-  emit("done", data.message, data.recoveryCodes);
+  // The section's own words, rather than the API's "E-mail MFA turned on".
+  emit("done", turningOn.value ? Messages.Mfa.emailOn : Messages.Mfa.emailOff, data.recoveryCodes);
 };
 </script>
 

@@ -388,16 +388,16 @@ export class Messages {
     static readonly linkFailed: string = "Failed to log in with the link";
     /**
      * In place of the cooldown 429's own message (`ErrorReason.ResendCooldown`), which names its
-     * seconds. The cooldown is the account's, so the code may be an earlier login's, which no
-     * longer works.
+     * seconds. The cooldown is the account's, so the code went out for an earlier login (a new login
+     * voids it), and nothing was sent for this one.
      */
     static readonly emailCooldown: string =
-      "A login code was sent less than a minute ago, for this login or an earlier one. You can send a new one once the countdown ends.";
+      "A login code went out less than a minute ago for an earlier login, and it doesn't work for this one. You can send a new code once the countdown ends.";
     static readonly emailSent: string =
       "A code and a link are on their way to your account's e-mail address. Enter the code, or open the link in this browser: it doesn't work in another one.";
     /** The step's limits, shared by every code, link and method. */
     static stepLimits(minutes: number, tries: number): string {
-      return `This step works for ${minutes} minutes after you logged in, with ${tries} tries in all.`;
+      return `This step works for ${minutes} minutes after your password or GitHub login, with ${tries} tries in all.`;
     }
     /** None of the methods the API offers is built here yet. */
     static readonly noMethod: string =
@@ -405,6 +405,11 @@ export class Messages {
     /** `/login/mfa` opened without a token in its fragment. */
     static readonly linkIncomplete: string =
       "This login link isn't complete: open it again from the e-mail, or log in again.";
+    /** In place of the API's "E-mail MFA turned on/off", in the account page's own words. */
+    static readonly emailOn: string =
+      "E-mail codes are on: each login now also takes a code or link from your inbox.";
+    static readonly emailOff: string =
+      "E-mail codes are off: logins no longer ask for a mailed code.";
     static readonly emailOnFailed: string = "Failed to turn on e-mail codes";
     static readonly emailOffFailed: string = "Failed to turn off e-mail codes";
   };

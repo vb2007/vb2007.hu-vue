@@ -4,7 +4,7 @@ import MfaStep from "@/components/features/auth/MfaStep.vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { clearSession, forgetLogin, loginStatus, startMfa } from "@/scripts/authentication/user";
 import { descriptionOf } from "@/__tests__/helpers/description";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import type { MfaMethod } from "@/types/api/mfa";
 
 const SENT = "A code and a login link were sent to the account's e-mail address.";
@@ -75,7 +75,7 @@ describe("MfaStep", () => {
       "A code and a link are on their way to your account's e-mail address."
     );
     expect(descriptionOf(field)).toContain(
-      "This step works for 10 minutes after you logged in, with 5 tries in all."
+      "This step works for 10 minutes after your password or GitHub login, with 5 tries in all."
     );
     expect(field.attributes("autocomplete")).toBe("one-time-code");
     const sendKey = step.find(".email__send button");
@@ -130,8 +130,32 @@ describe("MfaStep", () => {
 
     expect(step.find(".field__error").text()).toBe(WRONG_CODE);
     expect(document.activeElement).toBe(step.find("input").element);
+    // Read out, since the cursor stayed in the field.
+    expect(step.find('[aria-live="assertive"]').text()).toBe(WRONG_CODE);
     await step.find("input").setValue("000001");
     expect(step.find(".field__error").exists()).toBe(false);
+    expect(step.find('[aria-live="assertive"]').text()).toBe("");
+  });
+
+  it("holds Log in while a new code is being mailed, which voids the one typed", async () => {
+    vi.useFakeTimers();
+    const step = mountStep();
+    await sendCode(step);
+    await step.find("input").setValue("123456");
+    vi.advanceTimersByTime(60_000);
+    await flushPromises();
+    const mail = deferResponse(fetchMock);
+
+    await keyNamed(step, "Send a new code").trigger("click");
+    const logIn = step.find('button[type="submit"]');
+    expect(logIn.attributes("disabled")).toBeDefined();
+    await step.find("form").trigger("submit");
+    await flushPromises();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    mail.respond(jsonResponse(202, { message: SENT }));
+    await flushPromises();
+    expect(step.find('button[type="submit"]').attributes("disabled")).toBeUndefined();
   });
 
   it("holds Log in after the daily limit's 429, counting its wait down", async () => {

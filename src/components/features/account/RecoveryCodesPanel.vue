@@ -5,7 +5,6 @@
  * answer that brings `recoveryCodes` shows here: the first method turned on, or new codes.
  */
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
-import { Limits } from "@/constants/limits";
 import { username } from "@/scripts/authentication/authState";
 import { useClipboard } from "@/composables/useClipboard";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -48,7 +47,7 @@ onMounted(() => title.value?.focus());
       If you can't do your second step, each code logs you in once instead. Save them somewhere
       safe, like a password manager: they're shown only now.
     </p>
-    <ol class="codes__list" :aria-label="`${Limits.Mfa.recoveryCodes} recovery codes`">
+    <ol class="codes__list" :aria-label="`${codes.length} recovery codes`">
       <li v-for="code in codes" :key="code" class="codes__code">{{ code }}</li>
     </ol>
     <div class="codes__actions">

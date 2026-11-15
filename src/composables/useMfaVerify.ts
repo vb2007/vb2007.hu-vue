@@ -1,8 +1,9 @@
-import { ref } from "vue";
+import { onScopeDispose, ref } from "vue";
 import { HttpStatus } from "@/constants/http";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { verifyMfa } from "@/scripts/authentication/mfa";
+import { currentLogin, finishedElsewhere } from "@/scripts/authentication/user";
 import type { MfaVerifyBody } from "@/types/api/mfa";
 
 /**
@@ -37,6 +38,17 @@ export const useMfaVerify = () => {
     }
     return false;
   };
+
+  /**
+   * Coming back to the tab looks the session up: the mailed link, which mail apps open in a new
+   * tab, may have finished this login there. One lookup per return, not while an answer is out.
+   */
+  const onReturn = () => {
+    if (document.hidden || isVerifying.value) return;
+    void finishedElsewhere(currentLogin());
+  };
+  document.addEventListener("visibilitychange", onReturn);
+  onScopeDispose(() => document.removeEventListener("visibilitychange", onReturn));
 
   return { isVerifying, refusal, error, hold, verify };
 };
