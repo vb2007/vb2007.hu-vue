@@ -1742,14 +1742,15 @@ export class MockApi {
     if (!this.user!.mfaEmail) {
       return {
         status: 409,
-        body: { error: "Turn on an MFA method first: recovery codes only work next to one." }
+        body: { error: "Turn on an MFA method first: recovery codes only work alongside one." }
       };
     }
     this.setRecoveryCodes(this.user!, MOCK_NEW_RECOVERY_CODES);
     return {
       status: 200,
       body: {
-        message: "New recovery codes made: the earlier ones no longer work.",
+        message:
+          "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.",
         recoveryCodes: MOCK_NEW_RECOVERY_CODES
       }
     };

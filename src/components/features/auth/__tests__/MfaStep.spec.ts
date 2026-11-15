@@ -227,6 +227,10 @@ describe("MfaStep", () => {
     const field = step.find("input");
     expect(field.attributes("inputmode")).toBe("text");
     expect(field.attributes("autocomplete")).toBe("off");
+    expect(step.find("form").attributes()).toMatchObject({
+      autocorrect: "off",
+      spellcheck: "false"
+    });
     expect(descriptionOf(field)).toContain("like abcde-fghij. Each works once.");
 
     await field.setValue(" - ");

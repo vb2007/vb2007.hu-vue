@@ -144,7 +144,8 @@ describe("AccountPanel's two-step login", () => {
   });
 
   describe("recovery codes", () => {
-    const REPLACED = "New recovery codes made: the earlier ones no longer work.";
+    const REPLACED =
+      "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
     const NEW_CODES = CODES.map((code) => code.toUpperCase());
     const codesRow = (panel: VueWrapper) =>
       panel.findAll('[aria-labelledby="mfa-title"] .login')[1];

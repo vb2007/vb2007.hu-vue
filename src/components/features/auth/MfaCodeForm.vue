@@ -68,7 +68,16 @@ defineExpose({ focusField, restart });
 </script>
 
 <template>
-  <form ref="form" class="code" novalidate @submit.prevent="submit">
+  <!-- A letter code mustn't be "corrected" into another word: that would only waste a try. The
+       field inherits these from its form. -->
+  <form
+    ref="form"
+    class="code"
+    novalidate
+    :autocorrect="text ? 'off' : undefined"
+    :spellcheck="text ? false : undefined"
+    @submit.prevent="submit"
+  >
     <BaseInput
       v-model="code"
       :label="label"
