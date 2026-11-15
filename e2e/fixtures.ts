@@ -71,6 +71,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
  * Suspending it through the admin route, or lifting a suspension, voids its waiting reset code, reset links and e-mail change, like the API's `setUserSuspension`.
+ * `hasUser(..., { mfa })` arranges what `GET /admin/users/:id` answers in `mfa` (all off by default), which only that answer carries;
+ * `DELETE /admin/users/:id/mfa` turns its methods and recovery codes off, keeps the passkeys and logs the account out like the admin's
+ * logout, refusing the superuser's address with 409 (vb2007/vb2007.hu-api#483).
  * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
  * Where the API populates the owner (`GET /paste/:id`, `GET /pastes/:username`, `GET /shortenUrl/:code`), it's named by its account's
  * current name, or the name it was filed under when no account has it.
@@ -138,6 +141,14 @@ export interface MockUpload {
   url: string;
   uploadedOn: string;
   updatedOn: string;
+}
+
+/** `mfa` in `GET /admin/users/:id` (vb2007/vb2007.hu-api#483). */
+export interface MockMfaStatus {
+  email: boolean;
+  totp: boolean;
+  passkeys: number;
+  recoveryCodesLeft: number;
 }
 
 /** A user as the admin list returns them (vb2007/vb2007.hu-api#120). */
@@ -616,6 +627,8 @@ export class MockApi {
   readonly loggedOutUsers: string[] = [];
   /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
   private readonly userPendingEmails = new Map<string, string>();
+  /** Admin-listed account id -> its MFA, when `hasUser` arranged any (see `mfaOf`). */
+  private readonly userMfa = new Map<string, MockMfaStatus>();
   /** Sign-ups the admin's System page lists (see `hasPendingRegistration`). */
   readonly adminPendingRegistrations: { id: string; email: string; expiresAt: string }[] = [];
   /** Rate limiters counting for a key (see `countsRateLimit`). */
@@ -755,7 +768,8 @@ export class MockApi {
       password = true,
       superuser = false,
       emailVerified = false,
-      pendingEmail
+      pendingEmail,
+      mfa
     }: {
       usedBytes?: number;
       count?: number;
@@ -766,6 +780,7 @@ export class MockApi {
       superuser?: boolean;
       emailVerified?: boolean;
       pendingEmail?: string;
+      mfa?: Partial<MockMfaStatus>;
     } = {}
   ) {
     const email = normalizeEmail(`${username}@example.com`);
@@ -788,6 +803,7 @@ export class MockApi {
       this.arrangedUploadUsage.set(user, { usedBytes: usedBytes ?? 0, count: count ?? 0 });
     }
     if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
+    if (mfa) this.userMfa.set(user.id, { ...this.mfaOf(user.id), ...mfa });
     this.knowsListedAccount(user, { password, emailVerified, githubLogin });
     return user;
   }
@@ -1340,6 +1356,10 @@ export class MockApi {
       if (adminUserRoute[1] === "PATCH") return this.renameUser(id, body?.username);
       if (adminUserRoute[1] === "DELETE") return this.deleteUser(id);
       return this.adminUser(id);
+    }
+    const mfaResetRoute = endpoint.match(/^DELETE \/admin\/users\/([^/]+)\/mfa$/);
+    if (mfaResetRoute) {
+      return this.resetUserMfa(decodeURIComponent(mfaResetRoute[1]));
     }
     const logoutRoute = endpoint.match(/^POST \/admin\/users\/([^/]+)\/logout$/);
     if (logoutRoute) {
@@ -2285,6 +2305,7 @@ export class MockApi {
           emailVerified: account?.emailVerified ?? false,
           githubLogin: account?.githubLogin ?? null,
           pendingEmail: this.userPendingEmails.get(user.id) ?? null,
+          mfa: this.mfaOf(user.id),
           counts: {
             pastes: this.pastes.filter((paste) => owns(paste.addedBy)).length,
             shortUrls: [...this.shortLinks.values()].filter((link) => owns(link.addedBy)).length,
@@ -2554,6 +2575,39 @@ export class MockApi {
       body: {
         message: "User logged out successfully.",
         user: { id: target.id, username: target.username }
+      }
+    };
+  }
+
+  /** What `GET /admin/users/:id` answers in `mfa`: all off unless `hasUser` arranged it. */
+  private mfaOf(id: string): MockMfaStatus {
+    return this.userMfa.get(id) ?? { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 };
+  }
+
+  /**
+   * `DELETE /admin/users/:id/mfa` (vb2007/vb2007.hu-api#483), in the API's order: 400, 404, then 409 for the
+   * superuser's address. Every method and recovery code goes off, the passkeys stay, and the session ends like
+   * `logoutUser`'s. It answers 200 as well when nothing was on.
+   */
+  private resetUserMfa(id: string): MockResponse {
+    const target = this.adminTarget(id);
+    if ("status" in target) return target;
+    if (this.isSuperuserEmail(target.email)) {
+      return {
+        status: 409,
+        body: {
+          error:
+            "The superuser's own MFA can't be reset here: turn its methods off from the account."
+        }
+      };
+    }
+    const { passkeys } = this.mfaOf(id);
+    this.userMfa.set(id, { email: false, totp: false, passkeys, recoveryCodesLeft: 0 });
+    this.loggedOutUsers.push(id);
+    return {
+      status: 200,
+      body: {
+        message: "User's MFA reset successfully: every method is off and their session was ended."
       }
     };
   }

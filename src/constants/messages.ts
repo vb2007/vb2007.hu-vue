@@ -430,6 +430,10 @@ export class Messages {
     static userDeleted(name: string): string {
       return `${name}'s account is deleted, with its pastes, short links and uploads.`;
     }
+    static readonly mfaResetFailed: string = "Failed to reset the account's MFA";
+    static mfaReset(name: string): string {
+      return `${name}'s MFA is off and their session ended. They log in with their password or GitHub alone now.`;
+    }
     static readonly suspendFailed: string = "Failed to suspend the account";
     static readonly unsuspendFailed: string = "Failed to lift the suspension";
     /** Why the superuser's own page has no Suspend key: the API answers it with 409. */

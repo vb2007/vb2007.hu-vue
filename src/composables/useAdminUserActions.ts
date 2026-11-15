@@ -129,3 +129,26 @@ export const useAdminDelete = () => {
 
   return { isDeleting, deleteError, remove };
 };
+
+/** Turns off every MFA method of an account that lost its second factor (vb2007/vb2007.hu-api#483). */
+export const useAdminMfaReset = () => {
+  const isResetting = ref(false);
+  const resetError = ref("");
+
+  /** Returns whether it worked. */
+  const reset = async (id: string) => {
+    isResetting.value = true;
+    resetError.value = "";
+
+    const result = await apiRequest(Endpoints.Admin.resetUserMfa, {
+      params: { id },
+      failure: Messages.Admin.mfaResetFailed
+    });
+
+    if (!result.ok) resetError.value = result.error;
+    isResetting.value = false;
+    return result.ok;
+  };
+
+  return { isResetting, resetError, reset };
+};

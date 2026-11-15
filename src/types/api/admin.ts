@@ -8,6 +8,7 @@ import type {
 import type { PasteSortBy } from "@/types/api/pastebin";
 import type { OwnShortUrl, ShortUrlSortBy } from "@/types/api/shortener";
 import type { Upload, UploadOwner, UploadSortBy } from "@/types/api/uploads";
+import type { MfaStatus } from "@/types/api/user";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -38,6 +39,8 @@ export interface AdminUserDetails extends AdminUser {
   pendingEmail: string | null;
   /** The linked GitHub account's login. */
   githubLogin: string | null;
+  /** Which MFA methods are on, like `GET /user`'s (vb2007/vb2007.hu-api#483). */
+  mfa: MfaStatus;
   /** How much the user owns; `uploads` is the same as `uploads.count`. */
   counts: { pastes: number; shortUrls: number; uploads: number };
 }
