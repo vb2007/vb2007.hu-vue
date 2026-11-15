@@ -77,8 +77,10 @@ const saveRename = async () => {
     quietStatuses: [HttpStatus.BadRequest, HttpStatus.NotFound]
   });
   isRenaming.value = false;
-  if (result.ok) emit("done", result.data.message, false);
-  else if (result.status === HttpStatus.NotFound) emit("done", result.error, true);
+  if (result.ok) {
+    open.value = "";
+    emit("done", result.data.message, false);
+  } else if (result.status === HttpStatus.NotFound) emit("done", result.error, true);
   else {
     setError("name", result.error);
     renameForm.value?.querySelector("input")?.focus();
@@ -91,12 +93,20 @@ const startDelete = () => {
   emit("start");
 };
 
-const remove = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.removePasskey, {
+const remove = async (body: MfaPasswordBody) => {
+  const result = await apiRequest(Endpoints.User.removePasskey, {
     params: { id: props.passkey.id },
     body,
-    failure: Messages.Passkeys.deleteFailed
+    failure: Messages.Passkeys.deleteFailed,
+    quietStatuses: [HttpStatus.NotFound]
   });
+  // Deleted elsewhere already: the form closes and the row goes, like after a delete.
+  if (!result.ok && result.status === HttpStatus.NotFound) {
+    open.value = "";
+    emit("done", result.error, true);
+  }
+  return result;
+};
 
 const onDeleted = (data: MessageResponse) => emit("done", data.message, true);
 </script>

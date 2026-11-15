@@ -113,6 +113,8 @@ describe("passkeyLogin", () => {
       .mockResolvedValueOnce(jsonResponse(403, { error: "You must be logged in." }));
 
     expect(await passkeyLogin()).toEqual({ error: Messages.Auth.sessionNotKept });
+    // Said by the passkey's key alone, not as the password form's outcome too.
+    expect(loginStatus.value).toBe("");
   });
 
   it("reports nothing once a newer login came while the options loaded", async () => {

@@ -306,6 +306,8 @@ describe("AccountPanel's passkeys", () => {
       });
       expect(notice(panel).text()).toBe("Passkey renamed successfully.");
       expect(section(panel).find("li h3").text()).toBe("Old laptop");
+      expect(section(panel).find("input").exists()).toBe(false);
+      expect(keyNamed(panel, "Rename Old laptop").exists()).toBe(true);
     });
 
     it("closes without asking for the same name, and puts the focus back", async () => {
@@ -381,6 +383,24 @@ describe("AccountPanel's passkeys", () => {
           .findAll("li h3")
           .map((name) => name.text())
       ).toEqual(["Phone"]);
+    });
+
+    it("drops a passkey deleted elsewhere meanwhile", async () => {
+      const panel = await mountPanel(LAPTOP);
+      await keyNamed(panel, "Delete Laptop").trigger("click");
+      await flushPromises();
+      await section(panel).find('input[type="password"]').setValue("secret");
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(404, { error: NOT_FOUND }))
+        .mockResolvedValueOnce(user(0));
+
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+
+      expect(notice(panel).text()).toBe(NOT_FOUND);
+      expect(document.activeElement).toBe(notice(panel).element);
+      expect(section(panel).find("ul").exists()).toBe(false);
+      expect(console.error).not.toHaveBeenCalled();
     });
 
     it("goes back to its keys on Cancel", async () => {

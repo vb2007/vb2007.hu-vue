@@ -76,6 +76,7 @@ test("a passkey is added on the account page, renamed, and logs in", async ({ pa
     page.getByRole("status").filter({ hasText: "Passkey renamed successfully." })
   ).toBeFocused();
   await expect(passkeys.getByRole("heading", { name: "Work laptop" })).toBeVisible();
+  await expect(passkeys.getByLabel("New name")).toHaveCount(0);
 
   // Logged out on the API; the next page load finds out.
   api.loggedOut();

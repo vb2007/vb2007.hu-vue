@@ -381,7 +381,7 @@ test("a GitHub link visit from a session replaced elsewhere asks to log in again
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
 
   // A login on another device replaces this session, so the API sends the visit back as logged out.
@@ -1203,7 +1203,7 @@ test("the password changes in place and the session carries on", async ({ page, 
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   const sessionCookie = async () =>
     (await page.context().cookies()).find((cookie) => cookie.name === "__Host-VB-AUTH")?.value;

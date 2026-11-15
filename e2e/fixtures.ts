@@ -1794,7 +1794,7 @@ export class MockApi {
 
   /**
    * Gives the logged-in account (else `MOCK_EMAIL`'s) a passkey named `name`, e.g. with the `id` of one a test's
-   * virtual authenticator made, so it logs in.
+   * virtual authenticator made, so it logs in. Arrange it after `loggedInAs`, which may replace the account it went to.
    */
   hasPasskey(
     name: string,

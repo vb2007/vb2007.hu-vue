@@ -72,8 +72,11 @@ export const passkeyLogin = async (): Promise<PasskeyLoginFailure | undefined> =
   if (!result.ok) return isCurrentLogin(attempt) ? failureOf(result) : undefined;
 
   await finishLogin(attempt);
-  // The browser may not have kept the session cookie.
+  // The browser may not have kept the session cookie. It's said by the passkey's key alone, not
+  // as the password form's outcome too.
   if (isCurrentLogin(attempt) && loginStatus.value !== LoginStatus.Success) {
-    return { error: loginStatus.value };
+    const error = loginStatus.value;
+    loginStatus.value = "";
+    return { error };
   }
 };
