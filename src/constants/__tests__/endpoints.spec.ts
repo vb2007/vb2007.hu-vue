@@ -33,6 +33,7 @@ describe("Endpoints", () => {
     [Endpoints.User.confirmEmail, "POST", "/user/email/confirm", true],
     [Endpoints.User.mfaEmailOn, "PUT", "/user/mfa/email", true],
     [Endpoints.User.mfaEmailOff, "DELETE", "/user/mfa/email", true],
+    [Endpoints.User.mfaRecoveryCodes, "POST", "/user/mfa/recovery-codes", true],
     [Endpoints.ShortUrl.redirect, "GET", "/r/:shortenedUrl", false],
     [Endpoints.ShortUrl.lookup, "GET", "/shortenUrl/:shortenedUrl", false],
     [Endpoints.ShortUrl.create, "POST", "/shortenUrl", true],

@@ -214,6 +214,9 @@ for (const [name, fontSize, width] of [
     await page.getByRole("button", { name: "E-mail me a code" }).click();
     await expect(page.getByLabel("Code from the e-mail")).toBeVisible();
     await expectReflow(page);
+    await page.getByRole("button", { name: "Use a recovery code" }).click();
+    await expect(page.getByLabel("Recovery code")).toBeVisible();
+    await expectReflow(page);
 
     api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
     await page.goto("/account");
@@ -221,6 +224,9 @@ for (const [name, fontSize, width] of [
     await page.getByLabel("Password").fill(MOCK_PASSWORD);
     await page.getByRole("button", { name: "Turn on", exact: true }).click();
     await expect(page.getByRole("button", { name: "I've saved them" })).toBeVisible();
+    await expectReflow(page);
+    await page.getByRole("button", { name: "Generate new codes" }).click();
+    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeVisible();
     await expectReflow(page);
   });
 }
