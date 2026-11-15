@@ -669,6 +669,8 @@ export class MockApi {
   private githubConfirmed = false;
   /** The waiting second step, one at a time like the browser's one cookie (see `hasMfaEmail`). */
   private mfaChallenge: MockMfaChallenge | null = null;
+  /** When each account (by id) was last mailed a login code, for the one-a-minute cooldown. */
+  private readonly mfaMailSentAt = new Map<string, number>();
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
   private resetLinksLimited = false;
@@ -1420,6 +1422,20 @@ export class MockApi {
       case "POST /auth/mfa/email": {
         const challenge = this.liveMfaChallenge();
         if (!challenge) return MFA_EXPIRED;
+        // One mail a minute per account, kept across logins like the API's.
+        const lastSent = this.mfaMailSentAt.get(challenge.account._id) ?? 0;
+        const wait = Math.ceil((lastSent + 60_000 - this.now()) / 1000);
+        if (wait > 0) {
+          return {
+            status: 429,
+            body: {
+              error: `A login code was sent less than a minute ago: wait ${wait} seconds.`,
+              reason: "resendCooldown",
+              retryAfter: wait
+            }
+          };
+        }
+        this.mfaMailSentAt.set(challenge.account._id, this.now());
         challenge.mailed = true;
         return { status: 202, body: { message: "A code and a login link were sent." } };
       }
@@ -1645,6 +1661,17 @@ export class MockApi {
   /** The waiting second step runs out of time, like after its 10 minutes. */
   expiresMfaChallenge() {
     this.mfaChallenge = null;
+  }
+
+  /**
+   * A GitHub login of the account with `email` (e-mail MFA on), which the API answers with the step's cookie and a
+   * redirect to `/login?mfa=required`: the test then opens that page.
+   */
+  waitsForGithubMfa(email = MOCK_EMAIL) {
+    const account = this.accounts.find(
+      (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
+    )!;
+    this.mfaChallenge = { account, expiresAt: this.now() + 10 * 60_000, tries: 0, mailed: false };
   }
 
   private mfaMethodsOf(account: MockUser) {
