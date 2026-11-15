@@ -5,8 +5,20 @@ import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
+import { pendingEmail, userEmail } from "@/scripts/authentication/authState";
+import { normalizeEmail } from "@/scripts/authentication/register";
+import { fetchUserDetails } from "@/scripts/authentication/user";
 
-/** Changes the logged-in user's password (vb2007/vb2007.hu-api#161); the API renews the session cookie. */
+/**
+ * Counts the password changes made on this page, so the e-mail form can drop outcomes a new
+ * password made obsolete (vb2007/vb2007.hu-api#474). Only its changes matter, not its value.
+ */
+export const passwordChanges = ref(0);
+
+/**
+ * Changes the logged-in user's password (vb2007/vb2007.hu-api#161); the API renews the session
+ * cookie, and drops a waiting e-mail change (vb2007/vb2007.hu-api#474), which `changed` then names.
+ */
 export const useChangePassword = () => {
   const isChanging = ref(false);
   const changeError = ref("");
@@ -19,6 +31,7 @@ export const useChangePassword = () => {
     isChanging.value = true;
     changeError.value = "";
     changed.value = "";
+    const waiting = pendingEmail.value;
 
     const result = await apiRequest(Endpoints.User.changePassword, {
       body: { currentPassword, newPassword },
@@ -26,7 +39,20 @@ export const useChangePassword = () => {
     });
 
     if (result.ok) {
-      changed.value = result.data.message;
+      // The API drops a waiting e-mail change with the old password (vb2007/vb2007.hu-api#474), so
+      // the refresh takes its code step away; without one, it's dropped here as well.
+      if (!(await fetchUserDetails())) pendingEmail.value = "";
+      // A refresh that finds the account on the waiting address means it was confirmed elsewhere
+      // (another tab or device) first, so nothing was cancelled. One whose code had expired is
+      // unset with the password all the same, so its code needs replacing either way.
+      const cancelled =
+        waiting &&
+        !pendingEmail.value &&
+        normalizeEmail(userEmail.value) !== normalizeEmail(waiting);
+      changed.value = cancelled
+        ? `${result.data.message} ${Messages.Account.emailChangeCancelled(waiting)}`
+        : result.data.message;
+      passwordChanges.value++;
     } else {
       changeError.value = result.error;
       if (result.status === HttpStatus.TooManyRequests) hold.start(retryAfterFrom(result.body));

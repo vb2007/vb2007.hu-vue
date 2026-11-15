@@ -13,8 +13,9 @@ export class Limits {
   };
 
   /**
-   * Counted after trimming: the maximum in UTF-16 units (JS `.length`), the minimum in characters
-   * (code points) other than combining marks (`\p{M}`), like the API's `usernameFormatError`.
+   * Counted after trimming: the maximum in UTF-16 units (JS `.length`, emoji joiners and a
+   * subdivision flag's tags included), the minimum in characters (code points) other than
+   * combining marks (`\p{M}`) and a flag's tags, like the API's `usernameFormatError`.
    */
   static readonly Username = class {
     static readonly minLength: number = 2;
@@ -32,6 +33,15 @@ export class Limits {
     static readonly maxLength: number = 254;
     /** The part before the @. */
     static readonly localPartMaxLength: number = 64;
+  };
+
+  /** What the API's 503 for its used-up daily mail limit promises (vb2007/vb2007.hu-api#468). */
+  static readonly Mail = class {
+    /**
+     * The longest wait its 503 can name: `retryAfter` is the seconds until the next UTC midnight,
+     * so never more than a day.
+     */
+    static readonly budgetMaxWaitSeconds: number = 24 * 60 * 60;
   };
 
   /** The codes the API mails to confirm an address or reset a password. */

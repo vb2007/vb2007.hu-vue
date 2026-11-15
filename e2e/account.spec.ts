@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test";
 import {
+  ACCOUNT_BUDGET_ERROR,
+  BUDGET_WAIT,
   callApi,
   expect,
   getFromApi,
-  MAIL_FAILED_ERROR,
   MOCK_EMAIL,
   MOCK_EMAIL_CODE,
   MOCK_PASSWORD,
@@ -828,7 +829,7 @@ test("a code that expired with the page open takes the waiting change away", asy
   await page.getByRole("button", { name: "Confirm code" }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
-    "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+    "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expectAlertFocusedBelowNavbar(page);
@@ -859,7 +860,7 @@ test("a code whose tries ran out takes the waiting change away, also after a rel
   await page.mouse.wheel(0, 100_000);
   await confirm.click();
   await expect(page.getByRole("alert")).toHaveText(
-    "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+    "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
   );
   await expect(page.getByLabel("Confirmation code")).toHaveCount(0);
   await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
@@ -1070,6 +1071,49 @@ test("a code whose mail failed keeps the change that waited, and another goes at
   await expect(page.getByLabel("Confirmation code")).toBeFocused();
 });
 
+for (const waiting of [false, true]) {
+  test(`once the day's mails are used up, Send code waits for them to start over${waiting ? ", keeping the waiting change" : ""}`, async ({
+    page,
+    api
+  }) => {
+    await page.clock.install({ time: api.clockAtMiddayUtc() });
+    api.loggedInAs("me@example.com", "me");
+    if (waiting) api.hasPendingEmail("old@example.com", { sentSecondsAgo: 120 });
+    api.sentMailToday(250);
+    await page.goto("/account");
+
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await page.getByLabel("New e-mail").fill("new@example.com");
+    await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Send code" }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(ACCOUNT_BUDGET_ERROR);
+    const key = page.getByRole("button", { name: /^Send code/ });
+    await expect(key).toHaveText(new RegExp(`^Send code in ${BUDGET_WAIT.source}`));
+    await expect(key).toBeDisabled();
+    await expect(key).toHaveAccessibleDescription(ACCOUNT_BUDGET_ERROR);
+    // The API keeps the change that waited before, if any.
+    await expect(page.getByText("Waiting for confirmation: old@example.com")).toHaveCount(
+      waiting ? 1 : 0
+    );
+    // No hint offers a new code while none can go out.
+    await expect(page.getByLabel("New e-mail")).toHaveAccessibleDescription("");
+    if (waiting) {
+      await page.getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByLabel("Confirmation code")).toHaveAccessibleDescription(
+        /Nothing yet\? Check your spam folder\.$/
+      );
+    }
+
+    // Kept for the session, so a reload doesn't offer a key the API would refuse.
+    await page.reload();
+    await page.getByRole("button", { name: "Change e-mail" }).click();
+    await expect(page.getByRole("alert")).toHaveText(ACCOUNT_BUDGET_ERROR);
+    await expect(key).toHaveText(new RegExp(`^Send code in ${BUDGET_WAIT.source}`));
+    await expect(key).toBeDisabled();
+  });
+}
+
 // The day's mails are used up at 250: unlike sign-up (200) and reset codes (225), a change's code goes until then.
 test("a change's code goes until the day's 250 mails are used up, then is refused", async ({
   page,
@@ -1086,7 +1130,7 @@ test("a change's code goes until the day's 250 mails are used up, then is refuse
   api.clockRunsFor(60_000);
   expect(await change("newer@example.com")).toEqual({
     status: 503,
-    body: { error: MAIL_FAILED_ERROR }
+    body: { error: ACCOUNT_BUDGET_ERROR, reason: "mailBudget", retryAfter: expect.any(Number) }
   });
 
   // The change that waited before stays, so the code for it still works.
@@ -1110,7 +1154,11 @@ test("a change's code that couldn't be mailed gives its mail of the day back", a
       password: MOCK_PASSWORD
     });
 
-  expect((await change()).status).toBe(503);
+  // A failed send, not the budget: it has no `reason`.
+  expect(await change()).toEqual({
+    status: 503,
+    body: { error: "The e-mail couldn't be sent: please try again later." }
+  });
 
   // Kept, the failed one would have been the 250th and this code refused.
   expect((await change()).status).toBe(202);
@@ -1132,7 +1180,10 @@ test("the notice after a change counts against the day's mails", async ({ page, 
     callApi(page, api, "PATCH", "/user/email", { email, password: MOCK_PASSWORD });
   expect((await change("newer@example.com")).status).toBe(202);
   api.clockRunsFor(60_000);
-  expect((await change("newest@example.com")).status).toBe(503);
+  expect(await change("newest@example.com")).toMatchObject({
+    status: 503,
+    body: { reason: "mailBudget" }
+  });
 });
 
 test("accounts that can't change their e-mail say why", async ({ page, api }) => {
@@ -1197,6 +1248,288 @@ test("a wrong current password is refused and the form keeps its values", async 
   await page.keyboard.press("Escape");
   await expect(details.getByRole("button", { name: "Change password" })).toBeFocused();
   await expect(details.getByRole("alert")).toHaveCount(0);
+});
+
+// Since vb2007/vb2007.hu-api#474 a password change also drops the waiting e-mail change.
+
+/** Fills in and saves the password form of the log-in details. */
+async function changePassword(page: Page, currentPassword: string) {
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change password" }).click();
+  await details.getByLabel("Current password").fill(currentPassword);
+  await details.getByLabel("New password", { exact: true }).fill("a-new-password");
+  await details.getByLabel("Confirm new password").fill("a-new-password");
+  await details.getByRole("button", { name: "Save password" }).click();
+}
+
+test("changing the password drops the waiting e-mail change and its countdown", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("New e-mail").fill("new@example.com");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await details.getByRole("button", { name: "Send code" }).click();
+  await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await expect(details.getByRole("button", { name: /^Send code in \d+ seconds?$/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await changePassword(page, MOCK_PASSWORD);
+
+  await expect(details.getByRole("status")).toHaveText(
+    "Password changed successfully. The change to new@example.com was cancelled, so its code no longer works: get a new one with Change e-mail."
+  );
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(details.getByLabel("Confirmation code")).toHaveCount(0);
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  // No count holds the key: it's only blocked until the form is filled in.
+  const send = details.getByRole("button", { name: "Send code", exact: true });
+  await expect(send).toHaveText("Send code");
+  await expect(send).not.toHaveAttribute("disabled");
+  await page.keyboard.press("Escape");
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({ pendingEmail: null });
+  // The code mailed earlier is refused like any wrong one, and doesn't switch the address.
+  const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+  expect(confirmed.status).toBe(400);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({ email: "me@example.com" });
+
+  // Nothing comes back with a reload either.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Change e-mail" })).toBeVisible();
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+});
+
+test("a wrong current password keeps the waiting e-mail change", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+
+  await changePassword(page, "not-my-password");
+
+  await expect(details.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  expect(api.password).toBe(MOCK_PASSWORD);
+  expect((await getFromApi(page, api, "/user")).body).toMatchObject({
+    pendingEmail: "new@example.com"
+  });
+});
+
+test("a code asked for as the password changes elsewhere says nothing was sent", async ({
+  page,
+  api,
+  baseURL
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("New e-mail").fill("other@example.com");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+
+  // Another tab of this browser changes the password, so this one shares the new session, and the
+  // waiting change goes.
+  const changed = await callApi(page, api, "PATCH", "/user/password", {
+    currentPassword: MOCK_PASSWORD,
+    newPassword: "another password"
+  });
+  expect(changed.status).toBe(200);
+  // The API checked the old password before that and stored nothing after it
+  // (vb2007/vb2007.hu-api#466): a race the mock doesn't play, so this one answer stands in for it.
+  // Registered after the API mock, so it wins; the CORS preflight still goes to the mock.
+  await page.route("**/user/email", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    return route.fulfill({
+      status: 403,
+      headers: {
+        "Access-Control-Allow-Origin": new URL(baseURL!).origin,
+        "Access-Control-Allow-Credentials": "true"
+      },
+      json: { error: "You must be logged in to perform this action." }
+    });
+  });
+  await details.getByRole("button", { name: "Send code" }).click();
+
+  await expect(details.getByRole("alert")).toHaveText(
+    "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password."
+  );
+  await expect(details.getByLabel("New e-mail")).toHaveValue("other@example.com");
+  await expect(details.getByLabel("Current password")).toHaveValue(MOCK_PASSWORD);
+  // The session's recheck found the account still logged in, without the dropped change.
+  await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(page.getByText(/Your session ended/)).toHaveCount(0);
+});
+
+// This tab still shows a change that another tab of the same browser dealt with.
+
+/** Changes the password from the page, as another tab of the same browser would. */
+async function changePasswordElsewhere(page: Page, api: MockApi) {
+  const changed = await callApi(page, api, "PATCH", "/user/password", {
+    currentPassword: MOCK_PASSWORD,
+    newPassword: "another password"
+  });
+  expect(changed.status).toBe(200);
+}
+
+test("a change confirmed in another tab isn't called cancelled by the password change", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+    code: MOCK_EMAIL_CODE
+  });
+  expect(confirmed.status).toBe(200);
+
+  await changePassword(page, MOCK_PASSWORD);
+
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(page.getByRole("definition")).toHaveText(["me", "new@example.com"]);
+});
+
+test("a code confirmed after a password change elsewhere doesn't blame the code alone", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  await changePasswordElsewhere(page, api);
+
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
+  );
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+
+  // A new password here doesn't leave that refusal under its own success, as if it caused it.
+  await changePassword(page, "another password");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+// The double's `cooldownLeftOnSend` pin is for the arranged change: a change that ended first
+// mustn't pass it on to a later code. Each way returns the password that holds afterwards.
+for (const [how, end] of [
+  [
+    "a password change elsewhere",
+    async (page: Page, api: MockApi) => {
+      await changePasswordElsewhere(page, api);
+      return "another password";
+    }
+  ],
+  [
+    "its confirmation",
+    async (page: Page, api: MockApi) => {
+      const confirmed = await callApi(page, api, "POST", "/user/email/confirm", {
+        code: MOCK_EMAIL_CODE
+      });
+      expect(confirmed.status).toBe(200);
+      return MOCK_PASSWORD;
+    }
+  ]
+] as const) {
+  test(`the cooldown pinned for a change ended by ${how} doesn't come back on a later code`, async ({
+    page,
+    api
+  }) => {
+    api.loggedInAs("me@example.com", "me");
+    api.hasPendingEmail("new@example.com", { cooldownLeftOnSend: 8 });
+    await page.goto("/account");
+    const password = await end(page, api);
+    const send = (email: string) => callApi(page, api, "PATCH", "/user/email", { email, password });
+
+    expect((await send("other@example.com")).status).toBe(202);
+    const again = await send("third@example.com");
+
+    // The full minute of the code just sent (less what a busy host took), not the pinned 8 seconds.
+    expect(again.status).toBe(429);
+    expect((again.body as { retryAfter: number }).retryAfter).toBeGreaterThan(8);
+  });
+}
+
+test("the old password on Send code after a change elsewhere shows the change is gone", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await changePasswordElsewhere(page, api);
+
+  await details.getByRole("button", { name: "Send code" }).click();
+
+  await expect(details.getByRole("alert")).toHaveText("The provided password is incorrect.");
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(details.getByLabel("New e-mail")).toHaveValue("new@example.com");
+});
+
+test("coming back to the tab drops a change another tab's password change took away", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("New e-mail").fill("new@example.com");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await details.getByRole("button", { name: "Send code" }).click();
+  await expect(details.getByText("Waiting for confirmation: new@example.com")).toBeVisible();
+  await expect(details.getByLabel("Confirmation code")).toBeFocused();
+  await changePasswordElsewhere(page, api);
+
+  // The browser says so when the user switches back from the other tab.
+  await page.evaluate('document.dispatchEvent(new Event("visibilitychange"))');
+
+  await expect(details.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await expect(details.getByLabel("Confirmation code")).toHaveCount(0);
+  // The focus was in the code form that went, so it moves to the key rather than to the page.
+  await expect(details.getByRole("button", { name: "Change e-mail" })).toBeFocused();
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  const send = details.getByRole("button", { name: "Send code", exact: true });
+  await expect(send).toHaveText("Send code");
+  await expect(send).not.toHaveAttribute("disabled");
+});
+
+test("a session that ended elsewhere logs the page out when a code is asked for", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  await details.getByRole("button", { name: "Change e-mail" }).click();
+  await details.getByLabel("New e-mail").fill("new@example.com");
+  await details.getByLabel("Current password").fill(MOCK_PASSWORD);
+
+  // A login on another device (or a password reset) ends this one: the API keeps one session.
+  api.loggedOut();
+  await details.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText(/^Your session ended, so you're logged out/);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("New e-mail")).toHaveCount(0);
 });
 
 test("a session that ended elsewhere logs the page out when the password is changed", async ({

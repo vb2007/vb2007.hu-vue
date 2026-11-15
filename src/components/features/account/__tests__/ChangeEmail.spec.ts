@@ -188,7 +188,7 @@ describe("ChangeEmail", () => {
   ])("shows the API's %i and keeps what was typed", async (status, error) => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(status, { error }))
-      // A 503 looks the account up again, which fails too.
+      // A 403 or 503 looks the account up again, which fails too.
       .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
@@ -204,11 +204,129 @@ describe("ChangeEmail", () => {
     ]);
     expect(document.activeElement).toBe(inputs()[1].element);
     expect(userEmail.value).toBe("old@example.com");
+    // None of them holds the key: a failed send (a 503 without the budget's reason) may work at once.
+    expect(button("Send code").attributes("disabled")).toBeUndefined();
+  });
+
+  describe("once the day's mail is used up", () => {
+    const error =
+      "No more e-mails can be sent today: please try again after the daily limit resets.";
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const sendRefused = async (user: object) => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(503, { error, reason: "mailBudget", retryAfter: 51234 })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, user));
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await fill("newer@example.com", "secret-password");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+    };
+
+    it("holds Send code until it starts over, in hours and minutes, with nothing waiting", async () => {
+      await sendRefused({ ...refreshedUser, email: "old@example.com" });
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      const held = button("Send code in 14 hr 14 min");
+      expect(held.attributes("disabled")).toBeDefined();
+      // "14 hours" doesn't contain "14 hr", so the visible label names the key.
+      expect(held.attributes("aria-label")).toBeUndefined();
+      expect(descriptionOf(held)).toBe(error);
+      expect(wrapper.find(".change__pending").exists()).toBe(false);
+
+      // Kept for the account: a reload still holds it, and the form says why again.
+      wrapper.unmount();
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      await flushPromises();
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Send code in 14 hr 14 min").attributes("disabled")).toBeDefined();
+
+      vi.advanceTimersByTime(51_234_000);
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(button("Send code").attributes("disabled")).toBeUndefined();
+    });
+
+    it("keeps the change that waited, and holds Send code after it's confirmed", async () => {
+      wrapper.unmount();
+      pendingEmail.value = "new@example.com";
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      await flushPromises();
+
+      await sendRefused(waitingUser);
+      await button("Cancel").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find(".change__pending").text()).toContain("new@example.com");
+      // No new code can go out before the day's mail starts over, so the hint offers none.
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder."
+      );
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".field__hint").exists()).toBe(false);
+      await button("Cancel").trigger("click");
+      await flushPromises();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated." }))
+        .mockResolvedValueOnce(jsonResponse(200, refreshedUser));
+      await wrapper.find('input[autocomplete="one-time-code"]').setValue("123456");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      expect(userEmail.value).toBe("new@example.com");
+
+      // The day's mail hasn't started over, though the cooldown ended with the change.
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(error);
+      expect(button("Send code in 14 hr 14 min").attributes("disabled")).toBeDefined();
+    });
+  });
+
+  it("says nothing was sent when the password changed meanwhile, and keeps what was typed", async () => {
+    pendingEmail.value = "new@example.com";
+    await flushPromises();
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: "You must be logged in to perform this action." })
+      )
+      // The client's recheck: still logged in, and the password change dropped the waiting change.
+      .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+    await button("Change e-mail").trigger("click");
+    await flushPromises();
+    await fill("other@example.com", "old-password");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(
+      "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password."
+    );
+    expect(inputs().map((input) => (input.element as HTMLInputElement).value)).toEqual([
+      "other@example.com",
+      "old-password"
+    ]);
+    expect(wrapper.text()).not.toContain("Waiting for confirmation");
+    expect(button("Send code").attributes("disabled")).toBeUndefined();
   });
 
   it("brings focus back into the form after a clicked save fails, so Escape still works", async () => {
     let answer!: (response: Response) => void;
-    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    fetchMock
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
 
@@ -262,9 +380,9 @@ describe("ChangeEmail", () => {
     ["the Cancel key", () => button("Cancel").trigger("click")],
     ["Escape", () => wrapper.find("form").trigger("keydown", { key: "Escape" })]
   ])("%s clears the form and focuses the key", async (_how, cancel) => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(403, { error: "The provided password is incorrect." })
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { error: "The provided password is incorrect." }))
+      .mockResolvedValueOnce(jsonResponse(500));
     await openForm();
     await fill("new@example.com", "wrong-password");
     await wrapper.find("form").trigger("submit");
@@ -373,6 +491,64 @@ describe("ChangeEmail", () => {
         "Change e-mail"
       ]);
     });
+
+    it("moves the focus to the key when the change goes from under the code field", async () => {
+      await remount();
+      (codeInput().element as HTMLInputElement).focus();
+
+      // E.g. the refresh on coming back to the tab, after another tab's password change.
+      pendingEmail.value = "";
+      await flushPromises();
+
+      expect(codeInput().exists()).toBe(false);
+      expect(document.activeElement).toBe(key().element);
+    });
+
+    it("leaves the focus where it is when it wasn't in the code form", async () => {
+      await remount();
+      const outside = document.createElement("button");
+      document.body.append(outside);
+      try {
+        outside.focus();
+
+        pendingEmail.value = "";
+        await flushPromises();
+
+        expect(document.activeElement).toBe(outside);
+      } finally {
+        outside.remove();
+      }
+    });
+
+    it.each([
+      [
+        "a 409",
+        jsonResponse(409, { error: "An account with this E-mail address already exists." })
+      ],
+      ["a 200", jsonResponse(200, { message: "E-mail address updated successfully." })]
+    ])(
+      "focuses only where the confirm leads when it drops the change itself after %s",
+      async (_, answer) => {
+        await remount();
+        // The refresh fails, so the confirm empties the waiting address itself.
+        fetchMock.mockResolvedValueOnce(answer).mockResolvedValueOnce(jsonResponse(500));
+        await codeInput().setValue("123456");
+        (codeInput().element as HTMLInputElement).focus();
+        const focused: Element[] = [];
+        const track = (event: FocusEvent) => focused.push(event.target as Element);
+        document.addEventListener("focusin", track);
+        try {
+          await button("Confirm code").trigger("click");
+          await flushPromises();
+        } finally {
+          document.removeEventListener("focusin", track);
+        }
+
+        // Straight to the message or the key: the key isn't announced on the way.
+        const target = answer.status === 409 ? wrapper.find(".change__dropped") : key();
+        expect(focused).toEqual([target.element]);
+      }
+    );
 
     it("confirms the code without its spaces, then shows the new address's message", async () => {
       await remount();
@@ -611,7 +787,7 @@ describe("ChangeEmail", () => {
 
       expect(codeInput().exists()).toBe(false);
       expect(wrapper.find('[role="alert"]').text()).toBe(
-        "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail."
+        "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail."
       );
       expect(document.activeElement).toBe(wrapper.find('[role="alert"]').element);
     });

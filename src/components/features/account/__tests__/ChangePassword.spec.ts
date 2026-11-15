@@ -6,6 +6,8 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { userEmail } from "@/scripts/authentication/authState";
 
 const TOO_SHORT = "The password's too short: it must be between 8 and 128 characters.";
+/** `GET /user` after a password change, which leaves no e-mail change waiting. */
+const USER = { email: "vb@example.com", username: "vb", hasPassword: true, pendingEmail: null };
 
 describe("ChangePassword", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
@@ -131,6 +133,7 @@ describe("ChangePassword", () => {
   it("saves the new password, closes the form and shows the API's message", async () => {
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, USER));
     await open();
     await fill("old-password", "new-password");
 
@@ -231,6 +234,8 @@ describe("ChangePassword", () => {
   ])("doesn't throw when it's gone before a %i answer arrives", async (status, body) => {
     let answer!: (response: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    // After a 200, the refresh.
+    if (status === 200) fetchMock.mockResolvedValueOnce(jsonResponse(200, USER));
     await open();
     await fill("old-password", "new-password");
     await wrapper.find("form").trigger("submit");

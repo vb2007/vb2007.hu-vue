@@ -1,8 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
+import { flushPromises } from "@vue/test-utils";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountComposable } from "@/__tests__/helpers/host";
-import { COOLDOWN_STORAGE_KEY, useChangeEmail } from "@/composables/useChangeEmail";
+import {
+  COOLDOWN_STORAGE_KEY,
+  ACCOUNT_BUDGET_ID,
+  ACCOUNT_BUDGET_STORAGE_KEY,
+  useChangeEmail
+} from "@/composables/useChangeEmail";
+import { passwordChanges } from "@/composables/useChangePassword";
 import { Messages } from "@/constants/messages";
 import {
   emailVerified,
@@ -21,8 +28,15 @@ const waitingUser = {
   pendingEmail: "new@example.com"
 };
 
+/** What each test mounted, unmounted after it, as the account page does when it's left. */
+let hosts: { unmount: () => void }[] = [];
+
 /** Mounted, since its countdown stops with the component. */
-const useEmail = () => mountComposable(useChangeEmail).api;
+const useEmail = () => {
+  const { wrapper, api } = mountComposable(useChangeEmail);
+  hosts.push(wrapper);
+  return api;
+};
 
 describe("useChangeEmail", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
@@ -32,6 +46,12 @@ describe("useChangeEmail", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     userEmail.value = "old@example.com";
     sessionStorage.clear();
+  });
+
+  // A form left mounted would still watch the waiting change, and end its count in a later test.
+  afterEach(() => {
+    for (const host of hosts) host.unmount();
+    hosts = [];
   });
 
   /** The countdown kept for after a reload, if any. */
@@ -164,12 +184,15 @@ describe("useChangeEmail", () => {
       [403, "The provided password is incorrect."],
       [409, "This account has no password: set one before changing the e-mail address."]
     ])("shows the API's %i and keeps the address", async (status, error) => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(status, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
       const email = useEmail();
 
       expect(await email.change("new@example.com", "secret-password")).toBe(false);
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Only a 403 looks the account up again (see below).
+      expect(fetchMock).toHaveBeenCalledTimes(status === 403 ? 2 : 1);
       expect(email.changeError.value).toBe(error);
       expect(email.changeMessage.value).toBe("");
       expect(userEmail.value).toBe("old@example.com");
@@ -196,6 +219,106 @@ describe("useChangeEmail", () => {
       expect(email.changeError.value).toBe(error);
       expect(pendingEmail.value).toBe("earlier@example.com");
       expect(email.cooldown.active.value).toBe(false);
+      // A failed send may work on the next try, so nothing waits.
+      expect(email.sendWait.active.value).toBe(false);
+    });
+
+    describe("once the day's mail is used up", () => {
+      const budget =
+        "No more e-mails can be sent today: please try again after the daily limit resets.";
+      const budgetUsedUp = () =>
+        jsonResponse(503, { error: budget, reason: "mailBudget", retryAfter: 51234 });
+
+      it("holds Send code until it starts over, kept apart from the cooldown", async () => {
+        vi.useFakeTimers();
+        fetchMock
+          .mockResolvedValueOnce(budgetUsedUp())
+          .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+        const email = useEmail();
+
+        expect(await email.change("new@example.com", "secret-password")).toBe(false);
+
+        // The API restores the change that waited before (none here), so it's asked what it has.
+        expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+          method: "GET",
+          credentials: "include"
+        });
+        expect(pendingEmail.value).toBe("");
+        expect(email.changeError.value).toBe(budget);
+        expect(email.sendWait.active.value).toBe(true);
+        expect(email.sendWait.remaining.value).toBe(51234);
+        expect(email.sendWait.note.value).toBe(budget);
+        expect(email.cooldown.active.value).toBe(false);
+        expect(savedCooldown()).toBeNull();
+        expect(JSON.parse(sessionStorage.getItem(ACCOUNT_BUDGET_STORAGE_KEY)!)).toEqual({
+          id: ACCOUNT_BUDGET_ID,
+          deadline: Date.now() + 51234 * 1000,
+          note: budget
+        });
+        expect(console.error).toHaveBeenCalledWith("Failed to change e-mail: ", 503);
+
+        // A reload picks the wait up for the account, and opening the form says why again.
+        const reloaded = useEmail();
+        expect(reloaded.sendWait.remaining.value).toBe(51234);
+        reloaded.showWait();
+        expect(reloaded.changeError.value).toBe(budget);
+
+        vi.advanceTimersByTime(51234 * 1000);
+        await nextTick();
+        expect(email.sendWait.active.value).toBe(false);
+        expect(email.changeError.value).toBe("");
+        vi.useRealTimers();
+      });
+
+      it("keeps waiting when a change confirmed meanwhile ends the cooldown", async () => {
+        vi.useFakeTimers();
+        pendingEmail.value = "earlier@example.com";
+        fetchMock
+          .mockResolvedValueOnce(budgetUsedUp())
+          .mockResolvedValueOnce(
+            jsonResponse(200, { ...waitingUser, pendingEmail: "earlier@example.com" })
+          )
+          .mockResolvedValueOnce(jsonResponse(200, { message: "E-mail address updated." }))
+          .mockResolvedValueOnce(
+            jsonResponse(200, {
+              ...waitingUser,
+              email: "earlier@example.com",
+              emailVerified: true,
+              pendingEmail: null
+            })
+          );
+        const email = useEmail();
+        await email.change("new@example.com", "secret-password");
+        // The code for the waiting change went out moments ago.
+        email.cooldown.start(42, "old@example.com");
+        expect(email.cooldown.active.value).toBe(true);
+
+        expect(await email.confirm("123456")).toBe(true);
+
+        // The cooldown ends with the change; the day's mail hasn't started over, and the wait
+        // stays for the confirmed address too, since it isn't kept for one.
+        expect(email.cooldown.active.value).toBe(false);
+        expect(email.sendWait.active.value).toBe(true);
+        expect(email.sendWait.note.value).toBe(budget);
+        const reloaded = useEmail();
+        expect(reloaded.sendWait.active.value).toBe(true);
+        vi.useRealTimers();
+      });
+
+      it("shows the longer of the two waits", async () => {
+        vi.useFakeTimers();
+        const email = useEmail();
+        email.cooldown.start(60, "old@example.com", "A code was sent just now.");
+        expect(email.sendWait.remaining.value).toBe(60);
+        expect(email.sendWait.note.value).toBe("A code was sent just now.");
+
+        email.budget.start(51234, "old@example.com", budget);
+        expect(email.sendWait.remaining.value).toBe(51234);
+        expect(email.sendWait.note.value).toBe(budget);
+        email.showWait();
+        expect(email.changeError.value).toBe(budget);
+        vi.useRealTimers();
+      });
     });
 
     it("counts down the API's retryAfter after a 429, with a message that has no number", async () => {
@@ -340,6 +463,306 @@ describe("useChangeEmail", () => {
       expect(userEmail.value).toBe("old@example.com");
       expect(email.isChanging.value).toBe(false);
     });
+
+    // The password or session stopped holding between the API's check and its store, e.g. the
+    // password changed in another tab (vb2007/vb2007.hu-api#466): nothing was kept or mailed.
+    describe("after the API's logged-out 403", () => {
+      const notLoggedIn = { error: Messages.Auth.notLoggedIn };
+
+      beforeEach(() => {
+        isLoggedIn.value = true;
+        pendingEmail.value = "new@example.com";
+      });
+
+      it("says nothing was sent and shows the account as the session's recheck found it", async () => {
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(403, notLoggedIn))
+          .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+        const email = useEmail();
+        email.cooldown.start(30, "old@example.com");
+
+        expect(await email.change("other@example.com", "old-password")).toBe(false);
+
+        // The client's recheck is the refresh: the password change took the waiting change away.
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+          method: "GET",
+          credentials: "include"
+        });
+        expect(isLoggedIn.value).toBe(true);
+        expect(pendingEmail.value).toBe("");
+        expect(email.changeError.value).toBe(Messages.Account.emailChangeInterrupted);
+        expect(email.changeMessage.value).toBe("");
+        expect(email.cooldown.active.value).toBe(false);
+        expect(email.isChanging.value).toBe(false);
+        // An expected answer, not a fault.
+        expect(console.error).not.toHaveBeenCalled();
+      });
+
+      it("keeps a change the recheck still finds waiting", async () => {
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(403, notLoggedIn))
+          .mockResolvedValueOnce(jsonResponse(200, waitingUser));
+        const email = useEmail();
+
+        expect(await email.change("other@example.com", "old-password")).toBe(false);
+
+        expect(pendingEmail.value).toBe("new@example.com");
+        expect(email.changeError.value).toBe(Messages.Account.emailChangeInterrupted);
+      });
+
+      it("says nothing of the change when the session has ended", async () => {
+        fetchMock
+          .mockResolvedValueOnce(jsonResponse(403, notLoggedIn))
+          .mockResolvedValueOnce(jsonResponse(403, notLoggedIn));
+        const email = useEmail();
+
+        expect(await email.change("other@example.com", "old-password")).toBe(false);
+
+        // The account page says why instead.
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(isLoggedIn.value).toBe(false);
+        expect(sessionEnded.value).toBe(true);
+        expect(email.changeError.value).toBe("");
+        expect(email.isChanging.value).toBe(false);
+      });
+    });
+  });
+
+  // The API keeps no cooldown once the change it was for is gone (vb2007/vb2007.hu-api#474), but a
+  // rate limiter's wait (or any other hold with a note of its own) doesn't depend on a change.
+  describe("the code's cooldown", () => {
+    beforeEach(() => {
+      isLoggedIn.value = true;
+      pendingEmail.value = "new@example.com";
+    });
+
+    it.each([
+      ["a sent code's count", ""],
+      ["the cooldown's 429", Messages.EmailCode.cooldown]
+    ])("ends %s once the waiting change is gone", async (_, note) => {
+      const email = useEmail();
+      email.cooldown.start(30, "old@example.com", note);
+      expect(savedCooldown()).not.toBeNull();
+
+      pendingEmail.value = "";
+      await nextTick();
+
+      expect(email.cooldown.active.value).toBe(false);
+      expect(savedCooldown()).toBeNull();
+    });
+
+    it("keeps a rate limiter's wait, which isn't about the change", async () => {
+      const error = "Too many e-mails requested: try again later.";
+      const email = useEmail();
+      email.cooldown.start(3600, "old@example.com", error);
+
+      pendingEmail.value = "";
+      await nextTick();
+
+      expect(email.cooldown.active.value).toBe(true);
+      expect(savedCooldown()).toMatchObject({ id: "old@example.com", note: error });
+    });
+
+    it("ends a kept code count as the form mounts without a waiting change", () => {
+      useEmail().cooldown.start(30, "old@example.com");
+      // E.g. a password reset dropped the change and logged out; this is the next login.
+      pendingEmail.value = "";
+
+      const email = useEmail();
+
+      expect(email.cooldown.active.value).toBe(false);
+      expect(savedCooldown()).toBeNull();
+    });
+
+    it("resumes a kept rate limiter's wait without a waiting change", () => {
+      const error = "Too many failed attempts: try again later.";
+      useEmail().cooldown.start(900, "old@example.com", error);
+      pendingEmail.value = "";
+
+      const email = useEmail();
+
+      expect(email.cooldown.active.value).toBe(true);
+      expect(email.cooldown.note.value).toBe(error);
+    });
+
+    it("keeps the count when logging out takes the waiting change from the page", async () => {
+      const email = useEmail();
+      email.cooldown.start(30, "old@example.com");
+
+      isLoggedIn.value = false;
+      pendingEmail.value = "";
+      await nextTick();
+
+      expect(email.cooldown.active.value).toBe(true);
+      expect(savedCooldown()).not.toBeNull();
+    });
+
+    it("leaves another account's count alone, which this one never resumed", async () => {
+      const email = useEmail();
+      sessionStorage.setItem(
+        COOLDOWN_STORAGE_KEY,
+        JSON.stringify({ id: "someone@example.com", deadline: Date.now() + 30_000 })
+      );
+
+      pendingEmail.value = "";
+      await nextTick();
+
+      expect(email.cooldown.active.value).toBe(false);
+      expect(savedCooldown()).toMatchObject({ id: "someone@example.com" });
+    });
+  });
+
+  // A password change (here or in another tab) drops the waiting change outside `confirm`.
+  describe("a change that goes outside confirm", () => {
+    beforeEach(() => {
+      isLoggedIn.value = true;
+      pendingEmail.value = "new@example.com";
+    });
+
+    it("takes the code step's errors with it", async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const email = useEmail();
+      await email.confirm("123456");
+      email.codeError.value = "The code is wrong.";
+      expect(email.confirmError.value).toBe("Error connecting to server");
+
+      pendingEmail.value = "";
+
+      expect(email.confirmError.value).toBe("");
+      expect(email.codeError.value).toBe("");
+    });
+
+    it("takes them with a change another one replaced, e.g. from another tab", () => {
+      const email = useEmail();
+      email.confirmError.value = "Error connecting to server";
+      email.codeError.value = "The code is wrong.";
+
+      pendingEmail.value = "newer@example.com";
+
+      expect(email.confirmError.value).toBe("");
+      expect(email.codeError.value).toBe("");
+    });
+
+    it("keeps them while a refresh finds the same change waiting", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, waitingUser));
+      const email = useEmail();
+      email.confirmError.value = "Error connecting to server";
+      email.codeError.value = "The code is wrong.";
+
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(email.confirmError.value).toBe("Error connecting to server");
+      expect(email.codeError.value).toBe("The code is wrong.");
+    });
+
+    it("drops a refusal that already took the change away once the password changes", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(400, { error: "The code is wrong." }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+      const email = useEmail();
+      await email.confirm("123456");
+      expect(email.confirmError.value).toBe(Messages.Account.codeNoLongerWorks("new@example.com"));
+
+      passwordChanges.value++;
+      await nextTick();
+
+      expect(email.confirmError.value).toBe("");
+    });
+
+    it("keeps a held Confirm code, with its reason, for the next code", async () => {
+      vi.useFakeTimers();
+      const error = "Too many failed attempts: try again later.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 86_400 }));
+      const email = useEmail();
+      await email.confirm("123456");
+      expect(email.confirmHold.isHeld()).toBe(true);
+
+      // The API counts code checks per account, so the cap outlasts the change it was met on.
+      pendingEmail.value = "";
+      passwordChanges.value++;
+      await nextTick();
+      pendingEmail.value = "newer@example.com";
+
+      expect(email.confirmHold.isHeld()).toBe(true);
+      expect(email.confirmHold.shown()).toBe(error);
+    });
+
+    it("refreshes the account after a wrong password, which may have dropped the change", async () => {
+      const error = "The provided password is incorrect.";
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(403, { error }))
+        .mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+      const email = useEmail();
+      email.cooldown.start(30, "old@example.com");
+
+      expect(await email.change("new@example.com", "old-password")).toBe(false);
+
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+        method: "GET",
+        credentials: "include"
+      });
+      expect(email.changeError.value).toBe(error);
+      expect(pendingEmail.value).toBe("");
+      expect(email.cooldown.active.value).toBe(false);
+    });
+
+    describe("coming back to the tab", () => {
+      const comeBack = () => document.dispatchEvent(new Event("visibilitychange"));
+
+      it("looks the account up again while a change waits, and drops one that's gone", async () => {
+        fetchMock.mockResolvedValueOnce(jsonResponse(200, { ...waitingUser, pendingEmail: null }));
+        const email = useEmail();
+        email.cooldown.start(30, "old@example.com");
+
+        comeBack();
+        await flushPromises();
+
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledWith("https://api.test/user", {
+          method: "GET",
+          credentials: "include"
+        });
+        expect(pendingEmail.value).toBe("");
+        expect(email.cooldown.active.value).toBe(false);
+      });
+
+      it("asks nothing while hidden, without a waiting change, logged out or busy", async () => {
+        const email = useEmail();
+        const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+        comeBack();
+        hidden.mockReturnValue(false);
+
+        email.isConfirming.value = true;
+        comeBack();
+        email.isConfirming.value = false;
+        email.isChanging.value = true;
+        comeBack();
+        email.isChanging.value = false;
+
+        isLoggedIn.value = false;
+        comeBack();
+        isLoggedIn.value = true;
+        pendingEmail.value = "";
+        comeBack();
+        await flushPromises();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it("stops listening once the form is gone", async () => {
+        useEmail();
+        for (const host of hosts) host.unmount();
+        hosts = [];
+
+        comeBack();
+        await flushPromises();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("confirm", () => {
@@ -443,7 +866,7 @@ describe("useChangeEmail", () => {
     });
 
     const expiredOrUsedUp =
-      "new@example.com wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail.";
+      "new@example.com wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail.";
 
     it("names the address when the code had expired, and the change with it", async () => {
       fetchMock

@@ -115,6 +115,12 @@ export class Messages {
     static readonly registerFailed: string = "Failed to register";
     /** Shown when registering fails without the API's message. */
     static readonly registerUnknownError: string = "Registration failed. Please try again.";
+    /**
+     * Under the 503 for the day's used-up registration mail (`ErrorReason.MailBudget`): a GitHub
+     * login makes the account without mailing a code, so it still works.
+     */
+    static readonly registerWithGithubInstead: string =
+      "Registering with GitHub below sends no e-mail, so it works now.";
     static readonly usernameCheckFailed: string = "Failed to check the username";
     /** `GET /auth/username-available` said the typed name is taken. */
     static readonly usernameTaken: string = "That username is taken: pick another one.";
@@ -246,9 +252,12 @@ export class Messages {
     static usernameTooLong(min: number, max: number): string {
       return `The username's too long: it must be between ${min} and ${max} characters.`;
     }
-    /** The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319). */
+    /**
+     * The API's `usernameInvalidCharacters` (vb2007/vb2007.hu-api#319,
+     * vb2007/vb2007.hu-api#470).
+     */
     static readonly usernameInvalidCharacters: string =
-      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces.";
+      "The username has invalid characters: it can't contain invisible or control characters, or whitespace other than spaces. If you pasted it, type it again by hand: a pasted space can be a no-break space.";
     /** The hint under every new-password field, and the admin's new username field. */
     static lengthHint(min: number, max: number): string {
       return `${min} to ${max} characters.`;
@@ -287,9 +296,15 @@ export class Messages {
     static resendIn(seconds: number, units: WaitUnits = "short"): string {
       return `Resend in ${formatWait(seconds, SITE_LOCALE, units)}`;
     }
+    /** The change e-mail form's key. */
+    static readonly sendCode: string = "Send code";
+    /** What follows `sendCode` while the key waits ("in 57 min"), which may wrap under it. */
+    static waitIn(seconds: number, units: WaitUnits = "short"): string {
+      return `in ${formatWait(seconds, SITE_LOCALE, units)}`;
+    }
     /** The change e-mail form's key while it waits. */
     static sendCodeIn(seconds: number, units: WaitUnits = "short"): string {
-      return `Send code in ${formatWait(seconds, SITE_LOCALE, units)}`;
+      return `${this.sendCode} ${this.waitIn(seconds, units)}`;
     }
     /** The password reset's resend key while it waits. */
     static sendAgainIn(seconds: number, units: WaitUnits = "short"): string {
@@ -335,16 +350,31 @@ export class Messages {
     static readonly githubUnlinkFailed: string = "Failed to unlink GitHub";
     static readonly githubLinkFailed: string = "Failed to start linking GitHub";
     /**
-     * A 400 that took the waiting change away: the code expired, or its tries ran out (since
-     * vb2007/vb2007.hu-api#463 the API drops the change then, and the refresh can't tell which).
+     * A 400 that took the waiting change away: the code expired, its tries ran out (since
+     * vb2007/vb2007.hu-api#463 the API drops the change then), or a password change elsewhere
+     * dropped it (vb2007/vb2007.hu-api#474). The refresh can't tell which, so it names them all.
      */
-    static codeExpiredOrUsedUp(address: string): string {
-      return `${address} wasn't confirmed: its code expired or ran out of tries. Send a new one with Change e-mail.`;
+    static codeNoLongerWorks(address: string): string {
+      return `${address} wasn't confirmed: its code expired or ran out of tries, or a password change cancelled it. Send a new one with Change e-mail.`;
     }
     /** Any other refusal that took the waiting change away. */
     static notConfirmed(address: string, error: string): string {
       return `${address} wasn't confirmed. ${error}`;
     }
+    /**
+     * After the API's own "password changed" message, when a change waited: changing the password
+     * drops it, and its code with it (vb2007/vb2007.hu-api#474).
+     */
+    static emailChangeCancelled(address: string): string {
+      return `The change to ${address} was cancelled, so its code no longer works: get a new one with Change e-mail.`;
+    }
+    /**
+     * `PATCH /user/email`'s logged-out 403 while the page is still logged in: the password or the
+     * session changed between the API's check and its store (e.g. in another tab), so nothing was
+     * kept or mailed (vb2007/vb2007.hu-api#466). The password typed may be the old one now.
+     */
+    static readonly emailChangeInterrupted: string =
+      "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password.";
   };
 
   static readonly Uploads = class {

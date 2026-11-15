@@ -95,8 +95,8 @@ const change = async (suspended: boolean) => {
         @keydown.esc="cancel"
       >
         <p class="confirm__text">
-          Suspend <strong>{{ user.username }}</strong
-          >? They're logged out at once, and can't log in again until you lift the suspension.
+          Suspend <strong>{{ user.username }}</strong>? They're logged out at once, and can't log in
+          again until you lift the suspension.
         </p>
         <StatusMessage v-if="error" :id="errorId" tone="error">{{ error }}</StatusMessage>
         <div class="confirm__actions">

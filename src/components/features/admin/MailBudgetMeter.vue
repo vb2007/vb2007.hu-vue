@@ -44,8 +44,8 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
 <template>
   <div class="mail" :class="{ 'mail--full': line.isFull }">
     <p class="mail__figure">
-      <span class="mail__sent">{{ sent }}</span
-      >{{ " " }}<span class="mail__of">of {{ limit }} sent</span>
+      <span class="mail__sent">{{ sent }}</span>{{ " "
+      }}<span class="mail__of">of {{ limit }} sent</span>
     </p>
 
     <!-- Departure ring at 0, the run to today's count, a ring at each stop on the way, the terminus at the limit. -->
@@ -87,8 +87,8 @@ const resetsAt = computed(() => formatTime(props.budget.resetsAt));
         :class="[`stops__row--${stop.kind}`, { 'stops__row--reached': stop.reached }]"
       >
         <span class="stops__ring" aria-hidden="true" />
-        <span class="stops__count">{{ stop.at.toLocaleString() }}</span
-        >{{ " " }}<span class="stops__what">{{ STOP_LABELS[stop.kind] }}</span
+        <span class="stops__count">{{ stop.at.toLocaleString() }}</span>{{ " "
+        }}<span class="stops__what">{{ STOP_LABELS[stop.kind] }}</span
         ><template v-if="stop.reached"
           >{{ " " }}<span class="stops__reached">Reached</span></template
         >
