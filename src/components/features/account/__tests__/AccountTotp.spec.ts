@@ -167,6 +167,20 @@ describe("AccountPanel's authenticator app", () => {
     expect(document.activeElement).toBe(panel.find("#codes-title").element);
   });
 
+  it("keeps an open setup when the account is looked up again meanwhile", async () => {
+    const panel = await mountPanel();
+    await openSetup(panel);
+    await codeField(panel).setValue("12");
+
+    mfa.value = { ...NO_MFA, email: true, recoveryCodesLeft: 10 };
+    await flushPromises();
+
+    expect(row(panel).find(".setup__secret").text()).toBe(
+      "JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP"
+    );
+    expect((codeField(panel).element as HTMLInputElement).value).toBe("12");
+  });
+
   it("copies the key as the API sent it, or says to select it", async () => {
     const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error());
     vi.stubGlobal("navigator", { clipboard: { writeText } });
@@ -235,6 +249,7 @@ describe("AccountPanel's authenticator app", () => {
       "This setup has run out: it works for 10 minutes, with 5 tries. Start again for a new QR code, and replace what your app added from this one."
     );
     expect(document.activeElement).toBe(ranOut.element);
+    expect(row(panel).find("h4").text()).toBe("Setup ran out");
     expect(row(panel).find("svg[role=img]").exists()).toBe(false);
 
     await keyNamed(row(panel), "Start again").trigger("click");

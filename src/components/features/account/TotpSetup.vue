@@ -127,7 +127,7 @@ onMounted(() => title.value?.focus());
 <template>
   <div class="setup" role="group" :aria-labelledby="titleId" @keydown.esc="cancel">
     <h4 :id="titleId" ref="title" class="setup__title" tabindex="-1">
-      {{ moving ? "Scan with your new app" : "Scan the QR code" }}
+      {{ ranOut ? "Setup ran out" : moving ? "Scan with your new app" : "Scan the QR code" }}
     </h4>
 
     <template v-if="ranOut">
