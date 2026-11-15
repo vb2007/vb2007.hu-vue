@@ -250,7 +250,11 @@ describe("AccountPanel's passkeys", () => {
       // Run at once this time, so it was a cancel: nothing to say.
       expect(section(panel).find('[role="alert"]').exists()).toBe(false);
       expect(fetchMock).toHaveBeenCalledOnce();
-      expect(createPasskey).toHaveBeenNthCalledWith(2, OPTIONS);
+      // The kept options, with what their challenge has left, less 10 s for the answer.
+      const [, [kept]] = vi.mocked(createPasskey).mock.calls;
+      expect(kept).toMatchObject({ challenge: OPTIONS.challenge });
+      expect(kept.timeout).toBeLessThanOrEqual(OPTIONS.timeout - 10_000);
+      expect(kept.timeout).toBeGreaterThan(OPTIONS.timeout - 20_000);
 
       fetchMock
         .mockResolvedValueOnce(

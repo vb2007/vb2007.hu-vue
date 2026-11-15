@@ -14,6 +14,7 @@ import { useFormValidation } from "@/composables/useFormValidation";
 import { apiRequest, type ApiAbortedFailure, type ApiResult } from "@/scripts/api/client";
 import { mfa } from "@/scripts/authentication/authState";
 import {
+  forPrompt,
   optionsUsableUntil,
   passkeyNameEarlyError,
   passkeyNameError
@@ -84,7 +85,8 @@ const back = () => {
  * challenge waits in the registration cookie until their `timeout`, so until shortly before that
  * (`optionsUsableUntil`) the next click runs the prompt at once, without asking the API again.
  */
-let unused: { options: PublicKeyCredentialCreationOptionsJSON; until: number } | undefined;
+let unused:
+  { options: PublicKeyCredentialCreationOptionsJSON; sentAt: number; until: number } | undefined;
 
 /**
  * A prompt that made no passkey, shaped as `ApiResult`'s aborted failure (nothing logged) so
@@ -111,9 +113,10 @@ const add = async (body: MfaPasswordBody): Promise<ApiResult<PasskeyAddedRespons
       quietStatuses: REAUTH_QUIET_STATUSES
     });
     if (!result.ok) return result;
-    ready = { options: result.data, until: optionsUsableUntil(sentAt, result.data) };
+    ready = { options: result.data, sentAt, until: optionsUsableUntil(sentAt, result.data) };
   }
-  const passkey = await createPasskey(ready.options);
+  // Kept options get only the time their challenge has left.
+  const passkey = await createPasskey(kept ? forPrompt(kept.sentAt, kept.options) : ready.options);
   if (!passkey.ok) {
     unused = ready;
     // A prompt that may not have shown is no failure: a hint beside the form, not its error.

@@ -69,7 +69,13 @@ export const optionsAhead = <T extends { timeout?: number }>(
     const entry = isUsable() ? ahead! : undefined;
     ahead = undefined;
     // One still on its way is waited for, failure or not, and counts as a wait.
-    if (entry?.result) return { result: entry.result, fetched: false };
+    // A set got ahead goes to the prompt with only the time its challenge has left.
+    if (entry?.result?.ok) {
+      return {
+        result: { ...entry.result, data: forPrompt(entry.sentAt, entry.result.data) },
+        fetched: false
+      };
+    }
     if (entry) return { result: await entry.pending, fetched: true };
     return { result: await fetch(), fetched: true };
   };
@@ -87,6 +93,21 @@ const OPTIONS_REUSE_MARGIN_MS = 60_000;
 /** Until when options asked for at `sentAt` may still be used: their `timeout`, less the margin. */
 export const optionsUsableUntil = (sentAt: number, options: { timeout?: number }) =>
   sentAt + (options.timeout ?? 0) - OPTIONS_REUSE_MARGIN_MS;
+
+/** Time kept for the answer to reach the API before the challenge ends. */
+const ANSWER_ALLOWANCE_MS = 10_000;
+
+/**
+ * Options asked for at `sentAt`, for a prompt opening now: the browser counts their `timeout` from
+ * the prompt, so it gets only what the API's challenge has left, less the answer's way there.
+ */
+export const forPrompt = <T extends { timeout?: number }>(sentAt: number, options: T): T =>
+  options.timeout === undefined
+    ? options
+    : {
+        ...options,
+        timeout: Math.max(0, sentAt + options.timeout - Date.now() - ANSWER_ALLOWANCE_MS)
+      };
 
 const loginOptions = optionsAhead(() =>
   apiRequest(Endpoints.Auth.passkeyOptions, { failure: Messages.Passkeys.optionsFailed })

@@ -5,6 +5,7 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { isLoggedIn, NO_MFA } from "@/scripts/authentication/authState";
 import type { ApiResult } from "@/scripts/api/client";
 import {
+  forPrompt,
   optionsAhead,
   passkeyLogin,
   passkeyNameEarlyError,
@@ -88,6 +89,8 @@ describe("optionsAhead", () => {
     return fetch;
   };
 
+  // The clock stands still unless a test moves it.
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
   afterEach(() => vi.useRealTimers());
 
   it("asks now, and waits, without options got ready ahead", async () => {
@@ -104,7 +107,8 @@ describe("optionsAhead", () => {
     ahead.prefetch();
     await flushPromises();
 
-    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: false });
+    // Handed on with what its challenge has left, less 10 s for the answer.
+    expect(await ahead.take()).toEqual({ result: ok("a", TIMEOUT - 10_000), fetched: false });
     expect(fetch).toHaveBeenCalledOnce();
     expect(await ahead.take()).toEqual({ result: ok("b"), fetched: true });
   });
@@ -126,12 +130,24 @@ describe("optionsAhead", () => {
     ahead.prefetch();
     await flushPromises();
     vi.setSystemTime(start + TIMEOUT - 60_001);
-    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: false });
+    // 60 001 ms were left: the prompt gets 50 001.
+    expect(await ahead.take()).toEqual({ result: ok("a", 50_001), fetched: false });
 
     ahead.prefetch();
     await flushPromises();
     vi.setSystemTime(start + 2 * TIMEOUT - 60_000);
     expect(await ahead.take()).toEqual({ result: ok("c"), fetched: true });
+  });
+
+  it("gives a prompt only what the challenge has left, never below nothing", () => {
+    const sentAt = Date.now() - 230_000;
+
+    expect(forPrompt(sentAt, { challenge: "a", timeout: TIMEOUT })).toEqual({
+      challenge: "a",
+      timeout: 60_000
+    });
+    expect(forPrompt(sentAt - TIMEOUT, { challenge: "a", timeout: TIMEOUT }).timeout).toBe(0);
+    expect(forPrompt<Options>(sentAt, { challenge: "a" })).toEqual({ challenge: "a" });
   });
 
   it("never reuses a set that names no timeout", async () => {
@@ -155,7 +171,7 @@ describe("optionsAhead", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(await ahead.take()).toEqual({ result: ok("b"), fetched: false });
+    expect(await ahead.take()).toEqual({ result: ok("b", TIMEOUT - 10_000), fetched: false });
   });
 
   it("replaces a failure got ahead, and asks again rather than hand it on", async () => {
@@ -165,7 +181,7 @@ describe("optionsAhead", () => {
     await flushPromises();
     ahead.prefetch();
     await flushPromises();
-    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: false });
+    expect(await ahead.take()).toEqual({ result: ok("a", TIMEOUT - 10_000), fetched: false });
 
     ahead.prefetch();
     await flushPromises();
@@ -245,7 +261,11 @@ describe("passkeyLogin", () => {
 
     expect(await passkeyLogin()).toEqual({ error: "" });
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(getPasskey).toHaveBeenCalledWith(OPTIONS);
+    // With the time its challenge has left, less the answer's way.
+    const [[given]] = vi.mocked(getPasskey).mock.calls;
+    expect(given).toMatchObject({ challenge: OPTIONS.challenge });
+    expect(given.timeout).toBeLessThanOrEqual(OPTIONS.timeout - 10_000);
+    expect(given.timeout).toBeGreaterThan(OPTIONS.timeout - 20_000);
   });
 
   it("says so when the browser didn't keep the session", async () => {

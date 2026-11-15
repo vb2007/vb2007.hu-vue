@@ -98,7 +98,7 @@ describe("MfaStep's passkey", () => {
     await flushPromises();
 
     expect(getPasskey).toHaveBeenCalledOnce();
-    expect(getPasskey).toHaveBeenCalledWith(OPTIONS);
+    expect(getPasskey).toHaveBeenCalledWith({ ...OPTIONS, timeout: expect.any(Number) });
     expect(optionsRequests()).toBe(1);
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/auth/mfa/verify", {
       method: "POST",
@@ -125,7 +125,7 @@ describe("MfaStep's passkey", () => {
     vi.mocked(getPasskey).mockResolvedValueOnce({ ok: false, error: "" });
     fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
     await click(step);
-    expect(getPasskey).toHaveBeenLastCalledWith(NEXT_OPTIONS);
+    expect(getPasskey).toHaveBeenLastCalledWith({ ...NEXT_OPTIONS, timeout: expect.any(Number) });
   });
 
   it("says nothing for a cancelled prompt whose options were ready", async () => {

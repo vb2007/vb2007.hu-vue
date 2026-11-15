@@ -38,17 +38,22 @@ const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 
 const options = optionsAhead(loadMfaPasskeyOptions);
+/**
+ * This panel's try, from the click to the API's answer. The verifier's `isVerifying` is any
+ * method's, e.g. an e-mail code being checked, which doesn't touch this panel's challenge.
+ */
+let trying = false;
 // On every opening (`MfaStep` keeps the panel alive while another method is open), but not while
-// a try runs: new options would replace the challenge of the prompt on show.
+// its try runs: new options would replace the challenge of the prompt on show.
 onActivated(() => {
-  if (!isAsking.value && !isVerifying.value) options.prefetch();
+  if (!trying) options.prefetch();
 });
 let open = true;
 onBeforeUnmount(() => (open = false));
 
 const use = async () => {
   if (isAsking.value) return;
-  isAsking.value = true;
+  isAsking.value = trying = true;
   error.value = refusal.value = "";
   const { result, fetched } = await options.take();
   // A 403 ended the step: the password form is back.
@@ -67,6 +72,7 @@ const use = async () => {
     (await props.verifier.verify({ method: "passkey", response: passkey.response }))
   )
     return;
+  trying = false;
   await nextTick();
   // The next try's options, while the step is still on and nothing holds the key.
   if (open && !heldBy.value) options.prefetch();
