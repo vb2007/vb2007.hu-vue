@@ -89,6 +89,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.mailsResetLink()` returns a reset link's token for the logged-in account (with its id, e.g. `MOCK_USER_ID` for `loggedInAs`), or `MOCK_EMAIL`'s login's when logged out, or another one, which `POST /auth/password-reset/confirm-link` takes once; resetting, setting or changing an account's password or address voids its links
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
+ * `api.hasMfaEmail()` turns e-mail MFA on for `MOCK_EMAIL` (vb2007/vb2007.hu-api#448): its right password then answers 202 with `methods`, `POST /auth/mfa/email` "mails"
+ * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all (`api.expiresMfaChallenge()` ends the step, so every
+ * `/auth/mfa` endpoint answers 403). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
@@ -201,7 +204,9 @@ const PUBLIC_ROUTES = [
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
   /^GET \/auth\/(username-available|github\/link)$/,
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
-  /^GET \/e2e-github\/authorize$/
+  /^GET \/e2e-github\/authorize$/,
+  // The second step reads its own cookie, not the session's.
+  /^(GET \/auth\/mfa|POST \/auth\/mfa\/(email|verify|verify-link))$/
 ];
 
 /** The API's `PASTE_LANGUAGE_MIN_LENGTH` and `PASTE_LANGUAGE_MAX_LENGTH`, and its `pasteLanguagePattern`. */
@@ -317,6 +322,18 @@ export const MOCK_EMAIL = "me@example.com";
 export const MOCK_USER_ID = "e2e0e2e0e2e0e2e0e2e0e2e0";
 /** The code `PATCH /user/email` "mails" to the new address. */
 export const MOCK_EMAIL_CODE = "246810";
+/** The code `POST /auth/mfa/email` "mails" for a login's second step, and its link's token (vb2007/vb2007.hu-api#448). */
+export const MOCK_MFA_CODE = "135790";
+export const MOCK_MFA_LINK_TOKEN = "e2e-mfa-link-token";
+/** The recovery codes the first MFA method turned on brings, shown once. */
+export const MOCK_RECOVERY_CODES = Array.from(
+  { length: 10 },
+  (_, i) => `${"abcdefghij"[i]}2345-${"abcdefghij"[i]}6723`
+);
+/** The 403 of every `/auth/mfa` endpoint once the second step expired, used up its tries or was replaced. */
+export const MFA_EXPIRED_ERROR =
+  "The login's second step expired, used up its tries or was never started: log in again.";
+const MFA_EXPIRED: MockResponse = { status: 403, body: { error: MFA_EXPIRED_ERROR } };
 /**
  * The API's `SUPERUSER_EMAIL` until an account is arranged with `superuser: true`, whose address then takes its place
  * (there's only ever one: arranging a second throws). `POST /user/email/confirm` keeps it from other accounts.
@@ -559,6 +576,18 @@ interface MockUser {
   emailVerified: boolean;
   githubId?: string;
   githubLogin?: string;
+  /** E-mail MFA (vb2007/vb2007.hu-api#448): a right password then answers 202 and waits for the mailed code. */
+  mfaEmail?: boolean;
+  recoveryCodesLeft?: number;
+}
+
+/** A login's second step waiting in the browser's `__Host-VB-MFA` cookie, which the mock stands in for. */
+interface MockMfaChallenge {
+  account: MockUser;
+  expiresAt: number;
+  tries: number;
+  /** Whether `POST /auth/mfa/email` mailed `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN` for it. */
+  mailed: boolean;
 }
 
 export class MockApi {
@@ -638,6 +667,8 @@ export class MockApi {
   private appOrigin = "";
   /** A fresh GitHub login or relink, which `POST /user/password` needs (vb2007/vb2007.hu-api#183). */
   private githubConfirmed = false;
+  /** The waiting second step, one at a time like the browser's one cookie (see `hasMfaEmail`). */
+  private mfaChallenge: MockMfaChallenge | null = null;
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
   private resetLinksLimited = false;
@@ -1197,7 +1228,7 @@ export class MockApi {
       "Access-Control-Allow-Origin": appOrigin,
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS"
+      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     };
     if (request.method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers });
@@ -1276,6 +1307,7 @@ export class MockApi {
       newPassword?: string;
       username?: string;
       token?: string;
+      method?: string;
       suspended?: unknown;
       ip?: unknown;
     } | null,
@@ -1379,12 +1411,38 @@ export class MockApi {
         return this.listAllUploads(query);
       case "GET /uploads/usage":
         return this.usage();
+      case "GET /auth/mfa": {
+        const challenge = this.liveMfaChallenge();
+        return challenge
+          ? { status: 200, body: { methods: this.mfaMethodsOf(challenge.account) } }
+          : MFA_EXPIRED;
+      }
+      case "POST /auth/mfa/email": {
+        const challenge = this.liveMfaChallenge();
+        if (!challenge) return MFA_EXPIRED;
+        challenge.mailed = true;
+        return { status: 202, body: { message: "A code and a login link were sent." } };
+      }
+      case "POST /auth/mfa/verify":
+        return this.passMfa(body?.method === "email" ? body.code : undefined, MOCK_MFA_CODE);
+      case "POST /auth/mfa/verify-link":
+        return this.passMfa(body?.token, MOCK_MFA_LINK_TOKEN);
+      case "PUT /user/mfa/email":
+        return this.setMfaEmail(true, body?.password);
+      case "DELETE /user/mfa/email":
+        return this.setMfaEmail(false, body?.password);
       case "GET /user":
         return this.user
           ? {
               status: 200,
               body: {
                 ...this.user,
+                mfa: {
+                  email: this.user.mfaEmail === true,
+                  totp: false,
+                  passkeys: 0,
+                  recoveryCodesLeft: this.user.recoveryCodesLeft ?? 0
+                },
                 // Like the API's `getUser`, from the address.
                 isSuperuser: this.isSuperuserEmail(this.user.email),
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
@@ -1565,8 +1623,112 @@ export class MockApi {
       };
     }
     if (this.verifiedAddresses.has(normalizeEmail(email))) account.emailVerified = true;
+    if (account.mfaEmail) {
+      // A new login replaces a waiting step, and its mailed code with it.
+      this.mfaChallenge = { account, expiresAt: this.now() + 10 * 60_000, tries: 0, mailed: false };
+      return { status: 202, body: { mfaRequired: true, methods: this.mfaMethodsOf(account) } };
+    }
     this.user = account;
     return { status: 200, newSession: true };
+  }
+
+  /** Turns e-mail MFA on for the account with `email` (any the login knows), with its 10 recovery codes left. */
+  hasMfaEmail(email = MOCK_EMAIL) {
+    const account = this.accounts.find(
+      (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
+    )!;
+    account.mfaEmail = true;
+    account.recoveryCodesLeft = 10;
+    account.emailVerified = true;
+  }
+
+  /** The waiting second step runs out of time, like after its 10 minutes. */
+  expiresMfaChallenge() {
+    this.mfaChallenge = null;
+  }
+
+  private mfaMethodsOf(account: MockUser) {
+    return account.recoveryCodesLeft ? ["email", "recovery"] : ["email"];
+  }
+
+  /** The waiting step, while it has time and tries left. */
+  private liveMfaChallenge() {
+    const challenge = this.mfaChallenge;
+    if (!challenge || challenge.expiresAt <= this.now() || challenge.tries >= 5) return null;
+    return challenge;
+  }
+
+  /** A try at the second step: `answer` passes when it's `expected` and the code was mailed. */
+  private passMfa(answer: string | undefined, expected: string): MockResponse {
+    const challenge = this.liveMfaChallenge();
+    if (!challenge) return MFA_EXPIRED;
+    if (!answer)
+      return { status: 400, body: { error: "You must provide the login link's token." } };
+    challenge.tries++;
+    if (!challenge.mailed || answer !== expected) {
+      return {
+        status: 400,
+        body: {
+          error:
+            expected === MOCK_MFA_CODE
+              ? "The code is wrong, expired or already used: check it or request a new one."
+              : "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again."
+        }
+      };
+    }
+    this.mfaChallenge = null;
+    this.user = challenge.account;
+    return {
+      status: 200,
+      body: { message: `Login successful with user ${challenge.account.username}.` },
+      newSession: true
+    };
+  }
+
+  /** `PUT` and `DELETE /user/mfa/email`, confirmed like the API's `rejectFailedMfaReauth`. */
+  private setMfaEmail(on: boolean, password?: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
+    if (this.user.hasPassword) {
+      if (!password) {
+        return {
+          status: 400,
+          body: { error: "You must provide your password to change MFA settings." }
+        };
+      }
+      if (password !== this.password) {
+        return { status: 403, body: { error: "The provided password is incorrect." } };
+      }
+    } else if (!this.githubConfirmed) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within 10 minutes."
+        }
+      };
+    }
+    if (!on) {
+      // With no other method on, the recovery codes go too.
+      this.user.mfaEmail = false;
+      this.user.recoveryCodesLeft = 0;
+      return { status: 200, body: { message: "E-mail MFA turned off." } };
+    }
+    if (!this.user.emailVerified) {
+      return {
+        status: 409,
+        body: {
+          error:
+            "Confirm the account's e-mail address first (a password reset or an e-mail change confirms it), then turn on e-mail MFA."
+        }
+      };
+    }
+    this.user.mfaEmail = true;
+    const message =
+      "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
+    if (this.user.recoveryCodesLeft) return { status: 200, body: { message } };
+    this.user.recoveryCodesLeft = 10;
+    return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
   }
 
   /** Links @e2e-octocat and comes back to the account page, which also confirms the user. */
