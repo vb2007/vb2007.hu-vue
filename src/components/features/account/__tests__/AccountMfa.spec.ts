@@ -11,7 +11,7 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 const CODES = Array.from({ length: 10 }, (_, i) => `abcd${i}-efgh${i}`);
@@ -113,6 +113,45 @@ describe("AccountPanel's two-step login", () => {
     expect(panel.find(".codes").exists()).toBe(false);
     // The focus stays in the section, on the row's key.
     expect(document.activeElement).toBe(mfaRow(panel).find("button").element);
+  });
+
+  it("keeps the new codes on show when the session ends right after turning on", async () => {
+    const panel = await mountPanel();
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }))
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: "You must be logged in to perform this action." })
+      );
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    // Logged out by the refresh, the page shows the gate, with the codes still above it.
+    expect(isLoggedIn.value).toBe(false);
+    expect(panel.find("h1").text()).toBe("Account");
+    expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(CODES);
+    expect(document.activeElement).toBe(panel.find("#codes-title").element);
+
+    await keyNamed(panel, "I've saved them").trigger("click");
+    await flushPromises();
+    expect(panel.find(".codes").exists()).toBe(false);
+    expect(panel.find(".gate").exists()).toBe(true);
+  });
+
+  it("shows the codes before the refresh answers", async () => {
+    const panel = await mountPanel();
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }));
+    const refresh = deferResponse(fetchMock);
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(panel.findAll(".codes__code")).toHaveLength(10);
+    refresh.respond(user(true, 10));
+    await flushPromises();
+    expect(panel.findAll(".codes__code")).toHaveLength(10);
   });
 
   it("drops unsaved codes once the method that made them is off again", async () => {

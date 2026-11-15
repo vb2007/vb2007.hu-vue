@@ -51,11 +51,16 @@ const close = async () => {
   opener.value?.$el.focus();
 };
 
-const onDone = async (data: MfaTurnOnResponse) => {
+/**
+ * The outcome, with any recovery codes, goes out first: they exist only in this answer, so a slow
+ * or failed refresh (the session ended meanwhile, say) mustn't hold them back. The refresh then
+ * brings the badge and `mfa` up to date.
+ */
+const onDone = (data: MfaTurnOnResponse) => {
   confirming.value = false;
-  await fetchUserDetails();
   // The section's own words, rather than the API's "E-mail MFA turned on".
   emit("done", turningOn.value ? Messages.Mfa.emailOn : Messages.Mfa.emailOff, data.recoveryCodes);
+  void fetchUserDetails();
 };
 </script>
 

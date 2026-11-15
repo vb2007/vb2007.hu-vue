@@ -66,16 +66,20 @@ const announce = async (message: string) => {
 };
 // The key that was pressed went with the account board, so focus moves to why it went.
 const endedMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("endedMessage");
+/**
+ * Fresh recovery codes, shown once; kept here, above the rows the account's refresh redraws and
+ * the logged-in gate, until they're saved.
+ */
+const recoveryCodes = ref<string[]>([]);
 watch(sessionEnded, async (ended) => {
-  if (!ended) return;
+  // Recovery codes still on show keep the focus their panel took: they matter more.
+  if (!ended || recoveryCodes.value.length) return;
   await nextTick();
   endedMessage.value?.$el.focus();
 });
 const onPasswordSet = () => announce(Messages.Account.passwordSet);
 const onUnlinked = () => announce(Messages.Account.githubUnlinked);
 
-/** Fresh recovery codes, shown once; kept here, above the rows the account's refresh redraws. */
-const recoveryCodes = ref<string[]>([]);
 /** An MFA setting changed: its message at the top, and its codes, if any, which take the focus. */
 const onMfaChanged = (message: string, codes?: string[]) => {
   if (!codes?.length) return announce(message);
@@ -84,11 +88,12 @@ const onMfaChanged = (message: string, codes?: string[]) => {
   recoveryCodes.value = codes;
 };
 // Codes the account no longer has (its last method turned off, here or elsewhere) aren't worth
-// saving any more.
+// saving any more. A session that ended meanwhile says nothing about them: they stay on show,
+// above the logged-out gate, until they're saved.
 watch(
   () => mfa.value.recoveryCodesLeft,
   (left) => {
-    if (!left) recoveryCodes.value = [];
+    if (!left && isLoggedIn.value) recoveryCodes.value = [];
   }
 );
 const mfaSection = useTemplateRef("mfaSection");
@@ -240,6 +245,12 @@ const onRecoveryCodesSaved = async () => {
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
+    <!-- Codes shown once stay until they're saved, even when the session ended meanwhile. -->
+    <RecoveryCodesPanel
+      v-if="recoveryCodes.length"
+      :codes="recoveryCodes"
+      @done="onRecoveryCodesSaved"
+    />
     <div class="gate">
       <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
       <StatusMessage
