@@ -407,6 +407,26 @@ export class Messages {
       "This login link isn't complete: open it again from the e-mail, or log in again.";
     static readonly emailOnFailed: string = "Failed to turn on e-mail codes";
     static readonly emailOffFailed: string = "Failed to turn off e-mail codes";
+    /** An authenticator app (vb2007/vb2007.hu-api#447): its codes, at login and to confirm the setup. */
+    static totpCodeInvalid(digits: number): string {
+      return `Enter the ${digits}-digit code from your authenticator app.`;
+    }
+    /** At login. A code works once, so one just used (e.g. at the setup) is refused like a wrong one. */
+    static totpHint(digits: number, seconds: number): string {
+      return `Enter the ${digits}-digit code your authenticator app shows for vb2007.hu. It changes every ${seconds} seconds, and each works once: if it was just used, wait for the next.`;
+    }
+    static totpSetupHint(digits: number, minutes: number, tries: number): string {
+      return `Enter the ${digits}-digit code your app shows for vb2007.hu. This setup works for ${minutes} minutes, with ${tries} tries.`;
+    }
+    /**
+     * The confirm's 400 is the same for a wrong code and a setup that's gone, so it's counted here:
+     * once the setup's time or tries are used up, it has to start again.
+     */
+    static totpSetupRanOut(minutes: number, tries: number): string {
+      return `This setup has run out: it works for ${minutes} minutes, with ${tries} tries. Start again for a new QR code, and replace what your app added from this one.`;
+    }
+    static readonly totpSetupFailed: string = "Failed to start the authenticator app setup";
+    static readonly totpOffFailed: string = "Failed to turn off the authenticator app";
   };
 
   static readonly Uploads = class {

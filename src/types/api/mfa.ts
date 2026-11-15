@@ -24,7 +24,7 @@ export interface MfaRequiredResponse extends MfaMethodsResponse {
  * `POST /auth/mfa/verify`, one member per method: `totp` and `recovery` send a `code` too,
  * `passkey` the `response` of `navigator.credentials.get()`.
  */
-export type MfaVerifyBody = { method: "email"; code: string };
+export type MfaVerifyBody = { method: "email"; code: string } | { method: "totp"; code: string };
 
 /** `POST /auth/mfa/verify-link`: the token of the mailed `/login/mfa#token=…` link. */
 export interface MfaLinkBody {
@@ -45,4 +45,20 @@ export interface MfaPasswordBody {
  */
 export interface MfaTurnOnResponse extends MessageResponse {
   recoveryCodes?: string[];
+}
+
+/**
+ * `POST /user/mfa/totp` (vb2007/vb2007.hu-api#447): a new authenticator app secret, waiting for its
+ * first code. It's never sent again, so it's only kept while the setup is on screen.
+ */
+export interface TotpSetupResponse {
+  /** Base32, without padding, for typing into the app. */
+  secret: string;
+  /** `otpauth://totp/…`, for the QR code. */
+  otpauthUrl: string;
+}
+
+/** `POST /user/mfa/totp/confirm`: the app's code, which turns the waiting secret on. */
+export interface TotpConfirmBody {
+  code: string;
 }

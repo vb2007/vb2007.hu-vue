@@ -27,6 +27,7 @@ import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import GithubLink from "@/components/features/account/GithubLink.vue";
 import MfaEmailToggle from "@/components/features/account/MfaEmailToggle.vue";
+import MfaTotpToggle from "@/components/features/account/MfaTotpToggle.vue";
 import RecoveryCodesPanel from "@/components/features/account/RecoveryCodesPanel.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -189,6 +190,27 @@ const onRecoveryCodesSaved = async () => {
             @start="clearNotice"
             @done="onMfaChanged"
           />
+        </div>
+      </div>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="phone" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">Authenticator app</h3>
+            <span class="badge" :class="mfa.totp ? 'badge--on' : 'badge--off'">
+              <AppIcon :name="mfa.totp ? 'check' : 'close'" :size="14" />
+              {{ mfa.totp ? "On" : "Off" }}
+            </span>
+          </div>
+          <p class="login__note">
+            <template v-if="mfa.totp"
+              >Each login can take a code from your authenticator app.</template
+            >
+            <template v-else
+              >Use a code from an app on your phone at each login, even offline.</template
+            >
+          </p>
+          <MfaTotpToggle @start="clearNotice" @done="onMfaChanged" />
         </div>
       </div>
     </section>
