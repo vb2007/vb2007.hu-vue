@@ -59,7 +59,7 @@ const { errors, isValid, leave, validate } = useFormValidation({
 
 /** The field, or without one the first key: where the cursor goes. */
 const focusFirst = () =>
-  form.value?.querySelector<HTMLElement>("input, button:not(:disabled), a")?.focus();
+  form.value?.querySelector<HTMLElement>("input[type=password], button:not(:disabled)")?.focus();
 
 const submit = async () => {
   if (isHeld.value || isSending.value || !(await validate(form.value))) return;

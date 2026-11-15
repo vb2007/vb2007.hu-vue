@@ -6,7 +6,16 @@ import { AuthPaths } from "@/constants/auth";
 import { Messages } from "@/constants/messages";
 import { isLoggedIn, userEmail } from "@/scripts/authentication/authState";
 import { passwordResetNotice } from "@/scripts/authentication/passwordReset";
-import { login, loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
+import {
+  endMfa,
+  forgetLogin,
+  login,
+  loginStatus,
+  logout,
+  restoreSession,
+  startMfa
+} from "@/scripts/authentication/user";
+import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { descriptionOf } from "@/__tests__/helpers/description";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -634,5 +643,85 @@ describe("LoginForm", () => {
     await flushPromises();
 
     expect(loginStatus.value).toBe("success");
+  });
+
+  describe("second step", () => {
+    const EXPIRED =
+      "The login's second step expired, used up its tries or was never started: log in again.";
+
+    afterEach(() => {
+      forgetLogin();
+      vi.unstubAllGlobals();
+    });
+
+    /** Logs in with the right password for an account with e-mail MFA. */
+    const passPassword = async (wrapper: VueWrapper) => {
+      vi.mocked(login).mockImplementationOnce(async () => startMfa(["email", "recovery"]));
+      const [email, password] = wrapper.findAll("input");
+      await email.setValue("me@example.com");
+      await password.setValue("secret");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+    };
+
+    it("swaps the form for the second step, and back with the address kept", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+
+      await passPassword(wrapper);
+
+      expect(wrapper.find(".mfa").exists()).toBe(true);
+      expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain("Log in with GitHub");
+
+      await wrapper
+        .findAll("button")
+        .find((key) => key.text() === "Log in again")!
+        .trigger("click");
+      await flushPromises();
+
+      const [email, password] = wrapper.findAll("input");
+      expect((email.element as HTMLInputElement).value).toBe("me@example.com");
+      expect((password.element as HTMLInputElement).value).toBe("");
+      expect(document.activeElement).toBe(password.element);
+      wrapper.unmount();
+    });
+
+    it("goes back to the password with the API's message once the step expired", async () => {
+      const { wrapper } = await mountWithRouter(LoginForm, { attachTo: document.body });
+      await passPassword(wrapper);
+
+      endMfa(EXPIRED);
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(EXPIRED);
+      expect(document.activeElement).toBe(wrapper.find('input[type="password"]').element);
+      wrapper.unmount();
+    });
+
+    it("asks for the methods after a GitHub login with ?mfa=required, and drops it from the URL", async () => {
+      const fetchMock = mockFetch();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { methods: ["email"] }));
+
+      const { wrapper, router } = await mountWithRouter(LoginForm, {}, "/login?mfa=required");
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/mfa", {
+        method: "GET",
+        credentials: "include"
+      });
+      expect(router.currentRoute.value.fullPath).toBe("/login");
+      expect(wrapper.find(".mfa").exists()).toBe(true);
+    });
+
+    it("shows why a GitHub login's second step can't go on", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockFetch().mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }));
+
+      const { wrapper } = await mountWithRouter(LoginForm, {}, "/login?mfa=required");
+      await flushPromises();
+
+      expect(wrapper.find(".mfa").exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').text()).toBe(EXPIRED);
+    });
   });
 });

@@ -121,6 +121,24 @@ describe("restoreSession", () => {
     expect(fresh.emailVerified.value).toBe(false);
   });
 
+  it("knows the account's MFA methods, all off when the answer has none", async () => {
+    const mfa = { email: true, totp: false, passkeys: 2, recoveryCodesLeft: 9 };
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com", mfa }));
+    const loaded = await load();
+    await loaded.restoreSession();
+    expect(loaded.mfa.value).toEqual(mfa);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const fresh = await load();
+    await fresh.restoreSession();
+    expect(fresh.mfa.value).toEqual({
+      email: false,
+      totp: false,
+      passkeys: 0,
+      recoveryCodesLeft: 0
+    });
+  });
+
   it("leaves the username empty when the API doesn't send one", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     const { restoreSession, isLoggedIn, username } = await load();
@@ -613,6 +631,66 @@ describe("login", () => {
     // The session is real, whatever the form shows.
     expect(isLoggedIn.value).toBe(true);
     expect(loginStatus.value).toBe("");
+  });
+
+  it("waits for the second step after the API's 202, without a session", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(202, { mfaRequired: true, methods: ["email", "recovery"] })
+    );
+    const { login, loginStatus, mfaMethods, isLoggedIn } = await load();
+
+    await expect(login("me@example.com", "secret")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(loginStatus.value).toBe("mfa-required");
+    expect(mfaMethods.value).toEqual(["email", "recovery"]);
+    expect(isLoggedIn.value).toBe(false);
+  });
+
+  it("drops a second step whose login was forgotten on the way", async () => {
+    const response = deferResponse(fetchMock);
+    const { forgetLogin, login, loginStatus, mfaMethods } = await load();
+
+    const pending = login("me@example.com", "secret");
+    forgetLogin();
+    response.respond(jsonResponse(202, { mfaRequired: true, methods: ["email"] }));
+    await pending;
+
+    expect(loginStatus.value).toBe("");
+    expect(mfaMethods.value).toEqual([]);
+  });
+
+  it("forgets the second step with the login", async () => {
+    const { forgetLogin, startMfa, endMfa, loginStatus, mfaMethods } = await load();
+
+    startMfa(["email"]);
+    forgetLogin();
+    expect(mfaMethods.value).toEqual([]);
+    expect(loginStatus.value).toBe("");
+
+    startMfa(["email"]);
+    endMfa("The login's second step expired.");
+    expect(mfaMethods.value).toEqual([]);
+    expect(loginStatus.value).toBe("The login's second step expired.");
+  });
+
+  it("finishes a second step like a login, unless it was left on the way", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    const { finishLogin, currentLogin, startMfa, forgetLogin, loginStatus, mfaMethods } =
+      await load();
+    startMfa(["email"]);
+
+    await finishLogin(currentLogin());
+    expect(loginStatus.value).toBe("success");
+    expect(mfaMethods.value).toEqual([]);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    startMfa(["email"]);
+    const attempt = currentLogin();
+    forgetLogin();
+    startMfa(["email"]);
+    await finishLogin(attempt);
+    expect(loginStatus.value).toBe("mfa-required");
   });
 });
 

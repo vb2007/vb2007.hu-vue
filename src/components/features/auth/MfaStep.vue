@@ -4,10 +4,10 @@
  * form. It opens the first method in `MFA_METHODS` the API offers and lists the others under it,
  * each a key that switches to it. Every method is a component that takes the shared `verifier`.
  */
-import { computed, onMounted, ref, useTemplateRef, type Component } from "vue";
+import { computed, onMounted, ref, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";
 import { useMfaVerify } from "@/composables/useMfaVerify";
-import MfaEmail from "@/components/features/auth/MfaEmail.vue";
+import { MFA_METHODS } from "@/components/features/auth/mfaMethods";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { MfaMethod } from "@/types/api/mfa";
@@ -18,19 +18,6 @@ const props = defineProps<{
 }>();
 /** "Log in again": back to the password form, forgetting this step. */
 const emit = defineEmits<{ back: [] }>();
-
-/**
- * The methods this site can do, in the order it prefers them: the first the API offers opens the
- * step. A method the API offers that isn't here isn't offered yet.
- */
-const MFA_METHODS: {
-  method: MfaMethod;
-  title: string;
-  switchLabel: string;
-  component: Component;
-}[] = [
-  { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail }
-];
 
 const offered = computed(() => MFA_METHODS.filter((entry) => props.methods.includes(entry.method)));
 const chosen = ref(offered.value[0]?.method);
