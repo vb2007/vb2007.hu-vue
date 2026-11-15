@@ -27,6 +27,8 @@ const props = defineProps<{
   describedby?: string;
   /** Letters too (a recovery code): a text keyboard, and no one-time-code autofill offering a mailed code. */
   text?: boolean;
+  /** The site's words for the API's 400 (a wrong code), when its own don't fit the method. */
+  refused?: string;
 }>();
 
 const code = ref("");
@@ -87,7 +89,7 @@ defineExpose({ focusField, restart });
       :autocapitalize="text ? 'none' : undefined"
       mono
       :describedby="describedby"
-      :error="refusal || errors.code"
+      :error="(refusal && (refused || refusal)) || errors.code"
       required
       @blur="leave('code')"
     />

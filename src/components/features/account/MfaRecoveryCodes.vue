@@ -37,10 +37,15 @@ const close = async () => {
   opener.value?.$el.focus();
 };
 
-const onDone = async (data: MfaRecoveryCodesResponse) => {
+/**
+ * The codes go up first: they exist only in this answer and the old ones are already dead, so a
+ * slow or failed refresh (the session ended meanwhile, say) mustn't hold them back. The refresh
+ * then brings the count up to date.
+ */
+const onDone = (data: MfaRecoveryCodesResponse) => {
   confirming.value = false;
-  await fetchUserDetails();
   emit("done", data.message, data.recoveryCodes);
+  void fetchUserDetails();
 };
 </script>
 

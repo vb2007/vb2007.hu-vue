@@ -131,7 +131,7 @@ async function sendRecoveryCode(page: Page, code: string, passes: boolean) {
   await expect(
     passes
       ? main.getByText("Login successful!")
-      : main.getByText("The code is wrong, expired or already used")
+      : main.getByText("That code didn't work, or it was already used")
   ).toBeVisible();
 }
 

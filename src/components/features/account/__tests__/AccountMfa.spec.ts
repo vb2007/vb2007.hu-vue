@@ -165,9 +165,17 @@ describe("AccountPanel's two-step login", () => {
       );
       expect(codesRow(panel).find(".pill").exists()).toBe(false);
 
+      mfa.value = { ...NO_MFA, email: true, recoveryCodesLeft: 4 };
+      await flushPromises();
+      expect(codesRow(panel).find(".pill").exists()).toBe(false);
+      expect(codesRow(panel).find(".login__note").text()).not.toContain("run out");
+
       mfa.value = { ...NO_MFA, email: true, recoveryCodesLeft: 3 };
       await flushPromises();
       expect(codesRow(panel).find(".pill").text()).toBe("Few left");
+      expect(codesRow(panel).find(".login__note").text()).toMatch(
+        /^3 of 10 left\. Each logs in once if you can't do your second step\.\s+Generate new ones before they run out\.$/
+      );
 
       mfa.value = { ...NO_MFA, email: true, recoveryCodesLeft: 0 };
       await flushPromises();
@@ -200,6 +208,23 @@ describe("AccountPanel's two-step login", () => {
       expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(NEW_CODES);
       expect(document.activeElement).toBe(panel.find("#codes-title").element);
       expect(codesRow(panel).find(".login__note").text()).toMatch(/^10 of 10 left/);
+    });
+
+    it("shows the new codes without waiting for the account's refresh", async () => {
+      mfa.value = { ...NO_MFA, email: true, recoveryCodesLeft: 2 };
+      const panel = await mountPanel();
+      await keyNamed(panel, "Generate new codes").trigger("click");
+
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { message: REPLACED, recoveryCodes: NEW_CODES }))
+        .mockReturnValueOnce(new Promise(() => {}));
+      await codesRow(panel).find('input[type="password"]').setValue("hunter22");
+      await codesRow(panel).find("form").trigger("submit");
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/user", expect.anything());
+      expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(NEW_CODES);
+      expect(document.activeElement).toBe(panel.find("#codes-title").element);
     });
 
     it("closes the form with Cancel, back on its key", async () => {

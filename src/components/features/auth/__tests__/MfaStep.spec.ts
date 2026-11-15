@@ -252,4 +252,19 @@ describe("MfaStep", () => {
     });
     expect(isLoggedIn.value).toBe(true);
   });
+
+  it("puts a refused recovery code in the site's words, since no new one can be asked for", async () => {
+    const step = mountStep();
+    await keyNamed(step, "Use a recovery code").trigger("click");
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE }));
+
+    await step.find("input").setValue("abcde-fghij");
+    await step.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(step.find(".field__error").text()).toBe(
+      "That code didn't work, or it was already used: each code works once."
+    );
+    expect(document.activeElement).toBe(step.find("input").element);
+  });
 });

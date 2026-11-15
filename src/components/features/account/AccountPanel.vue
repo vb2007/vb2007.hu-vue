@@ -85,8 +85,9 @@ const onMfaChanged = (message: string, codes?: string[]) => {
   notice.value = message;
   recoveryCodes.value = codes;
 };
-/** A warning on the Recovery codes row: few left to log in with, or none. */
-const recoveryCodesLow = computed(() => mfa.value.recoveryCodesLeft <= 3);
+/** At most this many recovery codes left, the row warns: few left to log in with, or none. */
+const FEW_RECOVERY_CODES = 3;
+const recoveryCodesLow = computed(() => mfa.value.recoveryCodesLeft <= FEW_RECOVERY_CODES);
 const onRecoveryCodesSaved = async () => {
   recoveryCodes.value = [];
   await nextTick();
@@ -210,7 +211,9 @@ const onRecoveryCodesSaved = async () => {
           <p class="login__note">
             <template v-if="mfa.recoveryCodesLeft"
               >{{ mfa.recoveryCodesLeft }} of {{ Limits.Mfa.recoveryCodes }} left. Each logs in once
-              if you can't do your second step.</template
+              if you can't do your second step.<template v-if="recoveryCodesLow">
+                Generate new ones before they run out.</template
+              ></template
             >
             <template v-else
               >All used. Generate new ones to still log in if you can't do your second

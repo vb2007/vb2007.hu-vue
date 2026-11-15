@@ -10,7 +10,7 @@ import MfaCodeForm from "@/components/features/auth/MfaCodeForm.vue";
 
 defineProps<{ verifier: MfaVerifier }>();
 
-const hint = `One of the codes you saved when you turned the second step on, like abcde-fghij. Each works once. ${Messages.Mfa.stepLimits(Limits.Mfa.challengeMinutes, Limits.Mfa.challengeAttempts)}`;
+const hint = `One of the recovery codes you saved, like abcde-fghij. Each works once. ${Messages.Mfa.stepLimits(Limits.Mfa.challengeMinutes, Limits.Mfa.challengeAttempts)}`;
 const check = (code: string) =>
   code.replace(/[\s-]/g, "") ? "" : Messages.Mfa.recoveryCodeMissing;
 </script>
@@ -22,6 +22,7 @@ const check = (code: string) =>
     label="Recovery code"
     :hint="hint"
     :check="check"
+    :refused="Messages.Mfa.recoveryCodeRefused"
     text
   />
 </template>

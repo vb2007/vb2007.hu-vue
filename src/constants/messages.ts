@@ -409,6 +409,9 @@ export class Messages {
     static readonly emailOffFailed: string = "Failed to turn off e-mail codes";
     /** Only an empty one is refused here: the API checks the code's shape (a wrong one uses a try). */
     static readonly recoveryCodeMissing: string = "Enter one of your recovery codes.";
+    /** In place of the API's wrong-code 400, whose "request a new one" can't be done at login. */
+    static readonly recoveryCodeRefused: string =
+      "That code didn't work, or it was already used: each code works once.";
     static readonly recoveryCodesFailed: string = "Failed to make new recovery codes";
   };
 
