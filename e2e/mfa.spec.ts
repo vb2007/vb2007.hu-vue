@@ -138,7 +138,7 @@ test("a password login asks for the mailed code, which logs in", async ({ page, 
 
   await code.fill("000000");
   await main.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(main.getByText("The code is wrong, expired or already used")).toBeVisible();
+  await expect(code).toHaveAccessibleDescription(/The code is wrong, expired or already used/);
   await expect(code).toBeFocused();
 
   await code.fill(MOCK_MFA_CODE);
@@ -159,6 +159,85 @@ test("the mailed link logs in, and leaves the address bar", async ({ page, api }
   await expect(page.getByRole("status").filter({ hasText: "Login successful!" })).toBeFocused();
   expect(new URL(page.url()).hash).toBe("");
   await expect(page).toHaveTitle(/^Log in/);
+
+  // Opened again, the used-up link finds this browser logged in.
+  await page.goto(`/login/mfa#token=${MOCK_MFA_LINK_TOKEN}`);
+  await expect(page.getByText("Login successful!")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Log in again" })).toHaveCount(0);
+});
+
+test("the link opened in another tab logs the step's tab in once it's back", async ({
+  isMobile,
+  page,
+  api
+}) => {
+  api.hasMfaEmail();
+  await passPassword(page);
+  await page.getByRole("button", { name: "E-mail me a code" }).click();
+  await expect(page.getByLabel("Code from the e-mail")).toBeFocused();
+
+  // Like a mail app opening the link in a new tab of the same browser.
+  const appOrigin = new URL(page.url()).origin;
+  const mailTab = await page.context().newPage();
+  await mailTab.route(
+    (url) => url.origin !== appOrigin,
+    (route) => api.handle(route, appOrigin)
+  );
+  await mailTab.goto(`/login/mfa#token=${MOCK_MFA_LINK_TOKEN}`);
+  await expect(mailTab.getByText("Login successful!")).toBeVisible();
+
+  await page.bringToFront();
+  await page.evaluate("document.dispatchEvent(new Event('visibilitychange'))");
+  await expect(page.getByText("Login successful!")).toBeVisible();
+
+  // The step is gone for good: logging out brings back the password form.
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "E-mail code" })).toHaveCount(0);
+});
+
+test("a new login within the minute says the earlier code doesn't work, and offers no field", async ({
+  page,
+  api
+}) => {
+  api.hasMfaEmail();
+  await passPassword(page);
+  await page.getByRole("button", { name: "E-mail me a code" }).click();
+  await expect(page.getByLabel("Code from the e-mail")).toBeVisible();
+  await page.getByRole("button", { name: "Log in again" }).click();
+
+  await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await page.getByRole("button", { name: "E-mail me a code" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "for an earlier login, and it doesn't work for this one"
+  );
+  await expect(page.getByRole("alert")).toBeFocused();
+  await expect(page.getByLabel("Code from the e-mail")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Send again in/ })).toBeDisabled();
+});
+
+test("back from GitHub with ?mfa=required, the step opens with its methods", async ({
+  page,
+  api
+}) => {
+  api.hasMfaEmail();
+  api.waitsForGithubMfa();
+
+  await page.goto("/login?mfa=required");
+
+  await expect(page.getByRole("heading", { name: "E-mail code" })).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+});
+
+test("back from GitHub after the step expired, its message takes the focus", async ({ page }) => {
+  await page.goto("/login?mfa=required");
+
+  const message = page.getByRole("alert");
+  await expect(message).toHaveText(MFA_EXPIRED_ERROR);
+  await expect(message).toBeFocused();
 });
 
 test("a refused link says so, with the way back to Log in", async ({ page, api }) => {
@@ -192,6 +271,8 @@ test("Log in again leaves the step for the password form", async ({ page, api })
 
   await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
   await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
+  // A fresh form: nothing flagged until the next try.
+  await expect(page.getByText("Enter your password.")).toHaveCount(0);
 });
 
 test("e-mail codes turn on with the password, showing the recovery codes once, and off again", async ({
@@ -212,18 +293,17 @@ test("e-mail codes turn on with the password, showing the recovery codes once, a
     "download",
     "vb2007.hu-recovery-codes.txt"
   );
-  await expect(page.getByText("E-mail MFA turned on")).toBeVisible();
+  await expect(page.getByText("E-mail codes are on")).toBeVisible();
   await expect(emailRow(section).getByText("On", { exact: true })).toBeVisible();
 
   await codes.getByRole("button", { name: "I've saved them" }).click();
   await expect(codes).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Turn off e-mail codes" })).toBeFocused();
 
   await section.getByRole("button", { name: "Turn off e-mail codes" }).click();
   await section.getByLabel("Password").fill(MOCK_PASSWORD);
   await section.getByRole("button", { name: "Turn off", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "E-mail MFA turned off." })
-  ).toBeFocused();
+  await expect(page.getByRole("status").filter({ hasText: "E-mail codes are off" })).toBeFocused();
   await expect(emailRow(section).getByText("Off", { exact: true })).toBeVisible();
 });
 
@@ -238,4 +318,33 @@ test("a wrong password doesn't turn e-mail codes on", async ({ page, api }) => {
   await expect(section.getByRole("alert")).toHaveText("The provided password is incorrect.");
   await expect(section.getByLabel("Password")).toBeFocused();
   await expect(emailRow(section).getByText("Off", { exact: true })).toBeVisible();
+});
+
+test("the admin's MFA reset turns the account's second step off, from one store", async ({
+  page,
+  api
+}) => {
+  const anna = api.hasUser("anna", {
+    emailVerified: true,
+    mfa: { email: true, recoveryCodesLeft: 10 }
+  });
+  const logInAsAnna = async () => {
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill("anna@example.com");
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+  };
+  await logInAsAnna();
+  await expect(page.getByRole("heading", { name: "E-mail code" })).toBeVisible();
+
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  await page.goto(`/admin/users/${anna.id}`);
+  const row = page.locator(".action").filter({ hasText: "Reset MFA" });
+  await row.getByRole("button", { name: "Reset MFA" }).click();
+  await page.getByRole("button", { name: "Reset anna's MFA" }).click();
+  await expect(row.getByRole("status")).toBeVisible();
+  api.loggedOut();
+
+  await logInAsAnna();
+  await expect(page.getByText("Login successful!")).toBeVisible();
 });

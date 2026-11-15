@@ -36,7 +36,7 @@ describe("MfaStep's authenticator app", () => {
     expect(step.find("label").text()).toBe("Code from your authenticator app");
     expect(field.attributes("inputmode")).toBe("numeric");
     expect(descriptionOf(field)).toBe(
-      "Enter the 6-digit code your authenticator app shows for vb2007.hu. It changes every 30 seconds, and each works once: if it was just used, wait for the next. This step works for 10 minutes after you logged in, with 5 tries in all."
+      "Enter the 6-digit code your authenticator app shows for vb2007.hu. It changes every 30 seconds, and each works once: if it was just used, wait for the next. This step works for 10 minutes after your password or GitHub login, with 5 tries in all."
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });

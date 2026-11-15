@@ -71,6 +71,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
  * Suspending it through the admin route, or lifting a suspension, voids its waiting reset code, reset links and e-mail change, like the API's `setUserSuspension`.
+ * `hasUser(..., { mfa })` arranges the account's MFA (all off by default), one store with `api.hasMfaEmail()`: `GET /admin/users/:id` and `GET /user` answer it in `mfa`, and with `email` on its login takes the second step;
+ * `DELETE /admin/users/:id/mfa` turns its methods and recovery codes off, keeps the passkeys and logs the account out like the admin's
+ * logout, refusing the superuser's address with 409 (vb2007/vb2007.hu-api#483).
  * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
  * Where the API populates the owner (`GET /paste/:id`, `GET /pastes/:username`, `GET /shortenUrl/:code`), it's named by its account's
  * current name, or the name it was filed under when no account has it.
@@ -111,9 +114,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given, answers their names in the API's order
  * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
- * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily wrong-code caps
+ * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily caps on wrong codes and e-mails
  * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
- * `registrationCodeFailures`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
+ * `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
@@ -144,6 +147,19 @@ export interface MockUpload {
   uploadedOn: string;
   updatedOn: string;
 }
+
+/**
+ * An account's MFA, the one store `GET /user` and `GET /admin/users/:id` answer in `mfa`, the login's second step reads,
+ * the account's own settings and the admin's reset change (vb2007/vb2007.hu-api#448, #483).
+ */
+export interface MockMfaStatus {
+  email: boolean;
+  totp: boolean;
+  passkeys: number;
+  recoveryCodesLeft: number;
+}
+
+const NO_MFA: MockMfaStatus = { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 };
 
 /** A user as the admin list returns them (vb2007/vb2007.hu-api#120). */
 export interface MockAdminUser {
@@ -408,9 +424,14 @@ const RATE_LIMITERS = {
   accountCodeChecksPerAccount: ["email"],
   passwordChecksPerIp: ["ip"],
   passwordChecksPerAccount: ["email"],
+  passkeyOptionsPerIp: ["ip"],
+  passkeyLoginsPerIp: ["ip"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
-  registrationCodeFailures: ["email"]
+  registrationCodeFailures: ["email"],
+  mfaCodeFailures: ["email"],
+  mfaEmailSends: ["email"],
+  securityNotices: ["email"]
 } as const;
 export type MockRateLimiter = keyof typeof RATE_LIMITERS;
 type RateLimitKey = { email?: string; ip?: string };
@@ -581,12 +602,10 @@ interface MockUser {
   emailVerified: boolean;
   githubId?: string;
   githubLogin?: string;
-  /** E-mail MFA (vb2007/vb2007.hu-api#448): a right password then answers 202 and waits for the mailed code. */
-  mfaEmail?: boolean;
-  /** An authenticator app (vb2007/vb2007.hu-api#447), and a setup waiting for its first code, with the tries it used. */
-  mfaTotp?: boolean;
+  /** All off when unset. With e-mail MFA or TOTP on, a right password answers 202 and waits for the second step. */
+  mfa?: MockMfaStatus;
+  /** A TOTP setup waiting for its first code (vb2007/vb2007.hu-api#447), with the tries it used. */
   totpSetupTries?: number;
-  recoveryCodesLeft?: number;
 }
 
 /** A login's second step waiting in the browser's `__Host-VB-MFA` cookie, which the mock stands in for. */
@@ -677,6 +696,8 @@ export class MockApi {
   private githubConfirmed = false;
   /** The waiting second step, one at a time like the browser's one cookie (see `hasMfaEmail`). */
   private mfaChallenge: MockMfaChallenge | null = null;
+  /** When each account (by id) was last mailed a login code, for the one-a-minute cooldown. */
+  private readonly mfaMailSentAt = new Map<string, number>();
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
   private resetLinksLimited = false;
@@ -794,7 +815,8 @@ export class MockApi {
       password = true,
       superuser = false,
       emailVerified = false,
-      pendingEmail
+      pendingEmail,
+      mfa
     }: {
       usedBytes?: number;
       count?: number;
@@ -805,6 +827,7 @@ export class MockApi {
       superuser?: boolean;
       emailVerified?: boolean;
       pendingEmail?: string;
+      mfa?: Partial<MockMfaStatus>;
     } = {}
   ) {
     const email = normalizeEmail(`${username}@example.com`);
@@ -828,6 +851,15 @@ export class MockApi {
     }
     if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
     this.knowsListedAccount(user, { password, emailVerified, githubLogin });
+    if (mfa) {
+      // On the login's account, so a login with this address takes the second step too.
+      const account =
+        this.accounts.find((candidate) => candidate._id === user.id) ??
+        this.accounts.find(
+          (candidate) => normalizeEmail(candidate.email) === normalizeEmail(user.email)
+        )!;
+      account.mfa = { ...this.mfaOf(user.id), ...mfa };
+    }
     return user;
   }
 
@@ -1381,6 +1413,10 @@ export class MockApi {
       if (adminUserRoute[1] === "DELETE") return this.deleteUser(id);
       return this.adminUser(id);
     }
+    const mfaResetRoute = endpoint.match(/^DELETE \/admin\/users\/([^/]+)\/mfa$/);
+    if (mfaResetRoute) {
+      return this.resetUserMfa(decodeURIComponent(mfaResetRoute[1]));
+    }
     const logoutRoute = endpoint.match(/^POST \/admin\/users\/([^/]+)\/logout$/);
     if (logoutRoute) {
       return this.logoutUser(decodeURIComponent(logoutRoute[1]));
@@ -1428,6 +1464,20 @@ export class MockApi {
       case "POST /auth/mfa/email": {
         const challenge = this.liveMfaChallenge();
         if (!challenge) return MFA_EXPIRED;
+        // One mail a minute per account, kept across logins like the API's.
+        const lastSent = this.mfaMailSentAt.get(challenge.account._id) ?? 0;
+        const wait = Math.ceil((lastSent + 60_000 - this.now()) / 1000);
+        if (wait > 0) {
+          return {
+            status: 429,
+            body: {
+              error: `A login code was sent less than a minute ago: wait ${wait} seconds.`,
+              reason: "resendCooldown",
+              retryAfter: wait
+            }
+          };
+        }
+        this.mfaMailSentAt.set(challenge.account._id, this.now());
         challenge.mailed = true;
         return { status: 202, body: { message: "A code and a login link were sent." } };
       }
@@ -1453,12 +1503,7 @@ export class MockApi {
               status: 200,
               body: {
                 ...this.user,
-                mfa: {
-                  email: this.user.mfaEmail === true,
-                  totp: this.user.mfaTotp === true,
-                  passkeys: 0,
-                  recoveryCodesLeft: this.user.recoveryCodesLeft ?? 0
-                },
+                mfa: this.user.mfa ?? NO_MFA,
                 // Like the API's `getUser`, from the address.
                 isSuperuser: this.isSuperuserEmail(this.user.email),
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
@@ -1639,7 +1684,7 @@ export class MockApi {
       };
     }
     if (this.verifiedAddresses.has(normalizeEmail(email))) account.emailVerified = true;
-    if (account.mfaEmail || account.mfaTotp) {
+    if (account.mfa?.email || account.mfa?.totp) {
       // A new login replaces a waiting step, and its mailed code with it.
       this.mfaChallenge = { account, expiresAt: this.now() + 10 * 60_000, tries: 0, mailed: false };
       return { status: 202, body: { mfaRequired: true, methods: this.mfaMethodsOf(account) } };
@@ -1653,8 +1698,7 @@ export class MockApi {
     const account = this.accounts.find(
       (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
     )!;
-    account.mfaEmail = true;
-    account.recoveryCodesLeft = 10;
+    account.mfa = { ...(account.mfa ?? NO_MFA), email: true, recoveryCodesLeft: 10 };
     account.emailVerified = true;
   }
 
@@ -1663,8 +1707,7 @@ export class MockApi {
     const account = this.accounts.find(
       (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
     )!;
-    account.mfaTotp = true;
-    account.recoveryCodesLeft = 10;
+    account.mfa = { ...(account.mfa ?? NO_MFA), totp: true, recoveryCodesLeft: 10 };
   }
 
   /** The waiting second step runs out of time, like after its 10 minutes. */
@@ -1672,11 +1715,23 @@ export class MockApi {
     this.mfaChallenge = null;
   }
 
+  /**
+   * A GitHub login of the account with `email` (e-mail MFA on), which the API answers with the step's cookie and a
+   * redirect to `/login?mfa=required`: the test then opens that page.
+   */
+  waitsForGithubMfa(email = MOCK_EMAIL) {
+    const account = this.accounts.find(
+      (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
+    )!;
+    this.mfaChallenge = { account, expiresAt: this.now() + 10 * 60_000, tries: 0, mailed: false };
+  }
+
   private mfaMethodsOf(account: MockUser) {
+    const mfa = account.mfa ?? NO_MFA;
     return [
-      ...(account.mfaEmail ? ["email"] : []),
-      ...(account.mfaTotp ? ["totp"] : []),
-      ...(account.recoveryCodesLeft ? ["recovery"] : [])
+      ...(mfa.email ? ["email"] : []),
+      ...(mfa.totp ? ["totp"] : []),
+      ...(mfa.recoveryCodesLeft ? ["recovery"] : [])
     ];
   }
 
@@ -1745,10 +1800,14 @@ export class MockApi {
     if (!this.user) return NOT_LOGGED_IN;
     const refused = this.refuseMfaReauth(this.user, password);
     if (refused) return refused;
+    const current = this.user.mfa ?? NO_MFA;
     if (!on) {
       // With no other method on, the recovery codes go too.
-      this.user.mfaEmail = false;
-      if (!this.user.mfaTotp) this.user.recoveryCodesLeft = 0;
+      this.user.mfa = {
+        ...current,
+        email: false,
+        recoveryCodesLeft: current.totp ? current.recoveryCodesLeft : 0
+      };
       return { status: 200, body: { message: "E-mail MFA turned off." } };
     }
     if (!this.user.emailVerified) {
@@ -1760,11 +1819,13 @@ export class MockApi {
         }
       };
     }
-    this.user.mfaEmail = true;
     const message =
       "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
-    if (this.user.recoveryCodesLeft) return { status: 200, body: { message } };
-    this.user.recoveryCodesLeft = 10;
+    if (current.recoveryCodesLeft) {
+      this.user.mfa = { ...current, email: true };
+      return { status: 200, body: { message } };
+    }
+    this.user.mfa = { ...current, email: true, recoveryCodesLeft: 10 };
     return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
   }
 
@@ -1801,10 +1862,13 @@ export class MockApi {
       };
     }
     delete this.user.totpSetupTries;
-    this.user.mfaTotp = true;
+    const current = this.user.mfa ?? NO_MFA;
     const message = "TOTP MFA turned on: logins now also need a code from the authenticator app.";
-    if (this.user.recoveryCodesLeft) return { status: 200, body: { message } };
-    this.user.recoveryCodesLeft = 10;
+    if (current.recoveryCodesLeft) {
+      this.user.mfa = { ...current, totp: true };
+      return { status: 200, body: { message } };
+    }
+    this.user.mfa = { ...current, totp: true, recoveryCodesLeft: 10 };
     return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
   }
 
@@ -1813,9 +1877,14 @@ export class MockApi {
     if (!this.user) return NOT_LOGGED_IN;
     const refused = this.refuseMfaReauth(this.user, password);
     if (refused) return refused;
-    this.user.mfaTotp = false;
+    const current = this.user.mfa ?? NO_MFA;
     delete this.user.totpSetupTries;
-    if (!this.user.mfaEmail) this.user.recoveryCodesLeft = 0;
+    // With no other method on, the recovery codes go too.
+    this.user.mfa = {
+      ...current,
+      totp: false,
+      recoveryCodesLeft: current.email ? current.recoveryCodesLeft : 0
+    };
     return { status: 200, body: { message: "TOTP MFA turned off." } };
   }
 
@@ -2535,6 +2604,7 @@ export class MockApi {
           emailVerified: account?.emailVerified ?? false,
           githubLogin: account?.githubLogin ?? null,
           pendingEmail: this.userPendingEmails.get(user.id) ?? null,
+          mfa: this.mfaOf(user.id),
           counts: {
             pastes: this.pastes.filter((paste) => owns(paste.addedBy)).length,
             shortUrls: [...this.shortLinks.values()].filter((link) => owns(link.addedBy)).length,
@@ -2804,6 +2874,44 @@ export class MockApi {
       body: {
         message: "User logged out successfully.",
         user: { id: target.id, username: target.username }
+      }
+    };
+  }
+
+  /** The MFA of the account with this id: all off unless arranged or turned on. */
+  private mfaOf(id: string): MockMfaStatus {
+    return this.accounts.find((account) => account._id === id)?.mfa ?? NO_MFA;
+  }
+
+  /**
+   * `DELETE /admin/users/:id/mfa` (vb2007/vb2007.hu-api#483), in the API's order: 400, 404, then 409 for the
+   * superuser's address. Every method and recovery code goes off, the passkeys stay, and the session ends like
+   * `logoutUser`'s. It answers 200 as well when nothing was on.
+   */
+  private resetUserMfa(id: string): MockResponse {
+    const target = this.adminTarget(id);
+    if ("status" in target) return target;
+    if (this.isSuperuserEmail(target.email)) {
+      return {
+        status: 409,
+        body: {
+          error:
+            "The superuser's own MFA can't be reset here: turn its methods off from the account."
+        }
+      };
+    }
+    const account = this.accounts.find((candidate) => candidate._id === id);
+    if (account) {
+      account.mfa = { ...NO_MFA, passkeys: this.mfaOf(id).passkeys };
+      delete account.totpSetupTries;
+      // Its waiting second step goes too: the next login takes no second step.
+      if (this.mfaChallenge?.account === account) this.mfaChallenge = null;
+    }
+    this.loggedOutUsers.push(id);
+    return {
+      status: 200,
+      body: {
+        message: "User's MFA reset successfully: every method is off and their session was ended."
       }
     };
   }

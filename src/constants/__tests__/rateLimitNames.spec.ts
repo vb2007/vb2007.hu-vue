@@ -3,7 +3,9 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import type { RateLimitName } from "@/types/api/admin";
 
-// The API's limiters in the order `DELETE /admin/rate-limits` lists them (vb2007/vb2007.hu-api#384).
+// The API's limiters in the order `DELETE /admin/rate-limits` lists them (vb2007/vb2007.hu-api#384):
+// its `namedLimiters` (src/middlewares/rateLimit.ts), then `clearCodeFailuresOf`'s stored counts
+// (src/helpers/admin.ts), with the passkey and MFA ones of vb2007/vb2007.hu-api#493.
 const API_ORDER: RateLimitName[] = [
   "loginPerIp",
   "loginPerAccount",
@@ -17,9 +19,14 @@ const API_ORDER: RateLimitName[] = [
   "accountCodeChecksPerAccount",
   "passwordChecksPerIp",
   "passwordChecksPerAccount",
+  "passkeyOptionsPerIp",
+  "passkeyLoginsPerIp",
   "passwordResetCodeFailures",
   "emailChangeCodeFailures",
-  "registrationCodeFailures"
+  "registrationCodeFailures",
+  "mfaCodeFailures",
+  "mfaEmailSends",
+  "securityNotices"
 ];
 
 describe("Messages.Admin.rateLimitNames", () => {
@@ -35,14 +42,25 @@ describe("Messages.Admin.rateLimitNames", () => {
     for (const name of [
       "passwordResetCodeFailures",
       "emailChangeCodeFailures",
-      "registrationCodeFailures"
+      "registrationCodeFailures",
+      "mfaCodeFailures"
     ] as const) {
       expect(Messages.Admin.rateLimitNames[name]).toContain(
-        `${Limits.Code.failedChecksPerDay} a day`
+        `${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`
       );
     }
     expect(Limits.Code.failedChecksPerDay).toBe(20);
-    expect(Messages.Admin.rateLimitNames.accountCodeChecksPerAccount).toContain("10 in 15 min");
+    // The API's MFA_EMAILS_PER_DAY and SECURITY_NOTICES_PER_DAY.
+    expect(Messages.Admin.rateLimitNames.mfaEmailSends).toContain(
+      `${Limits.Mfa.emailsPerDay}\u00a0a\u00a0day`
+    );
+    expect(Messages.Admin.rateLimitNames.securityNotices).toContain(
+      `${Limits.Mfa.securityNoticesPerDay}\u00a0a\u00a0day`
+    );
+    expect([Limits.Mfa.emailsPerDay, Limits.Mfa.securityNoticesPerDay]).toEqual([10, 10]);
+    expect(Messages.Admin.rateLimitNames.accountCodeChecksPerAccount).toContain(
+      "10\u00a0in\u00a015\u00a0min"
+    );
   });
 
   it("keeps the API's own name for a limiter added later", () => {

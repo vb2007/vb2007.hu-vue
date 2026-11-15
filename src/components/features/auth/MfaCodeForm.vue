@@ -25,6 +25,8 @@ const props = defineProps<{
   early?: (code: string) => string;
   /** Ids of messages above that also describe the field, e.g. where the code went. */
   describedby?: string;
+  /** Holds Log in, e.g. while a new code is being mailed, which would void the one typed. */
+  busy?: boolean;
   /** Shown in place of the API's wrong-answer text, where that doesn't fit the method. */
   refused?: string;
 }>();
@@ -33,6 +35,7 @@ const code = ref("");
 const form = useTemplateRef("form");
 const errorId = useId();
 const { isVerifying, refusal, hold } = props.verifier;
+const shownRefusal = computed(() => refusal.value && (props.refused || refusal.value));
 const isHeld = computed(() => hold.isHeld());
 const shownError = computed(() => hold.shown());
 const { errors, isValid, leave, validate, reset } = useFormValidation({
@@ -55,7 +58,7 @@ const restart = () => {
 };
 
 const submit = async () => {
-  if (isHeld.value || !(await validate(form.value))) return;
+  if (isHeld.value || props.busy || !(await validate(form.value))) return;
   const passed = await props.verifier.verify({
     method: props.method,
     code: code.value.replace(/\s/g, "")
@@ -77,10 +80,12 @@ defineExpose({ focusField, restart });
       autocomplete="one-time-code"
       mono
       :describedby="describedby"
-      :error="(refusal && (refused || refusal)) || errors.code"
+      :error="shownRefusal || errors.code"
       required
       @blur="leave('code')"
     />
+    <!-- The field keeps the cursor after a wrong code, so its error isn't read out by itself. -->
+    <p class="visually-hidden" aria-live="assertive">{{ shownRefusal }}</p>
     <StatusMessage v-if="shownError" :id="errorId" tone="error" :spoken="hold.spokenFor()">{{
       shownError
     }}</StatusMessage>
@@ -88,7 +93,7 @@ defineExpose({ focusField, restart });
       type="submit"
       block
       :loading="isVerifying"
-      :disabled="isHeld"
+      :disabled="isHeld || busy"
       :aria-label="isHeld ? hold.name.value : undefined"
       :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
       :blocked="!isValid"

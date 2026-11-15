@@ -638,6 +638,7 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
     "Uploads",
     "Rename",
     "Log out everywhere",
+    "Reset MFA",
     "Suspend account",
     "Delete account"
   ]);
@@ -678,6 +679,71 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await page.goto(`/admin/users/${admin.id}`);
   await expect(page.getByText("The admin's own account can't be suspended.")).toBeVisible();
   await expect(page.locator(".actions").getByRole("button", { name: /Suspend/ })).toHaveCount(0);
+});
+
+test("the superuser resets a user's MFA after confirming, keeping their passkeys", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const admin = api.hasUser("vb2007", {
+    superuser: true,
+    mfa: { totp: true, recoveryCodesLeft: 10 }
+  });
+  const anna = api.hasUser("anna", {
+    mfa: { email: true, totp: true, passkeys: 2, recoveryCodesLeft: 8 }
+  });
+
+  await page.goto(`/admin/users/${anna.id}`);
+  const mfa = page
+    .locator(".fact")
+    .filter({ has: page.locator("dt").getByText("MFA", { exact: true }) })
+    .locator("dd");
+  await expect(mfa).toHaveText("E-mail and authenticator app · 8 recovery codes left · 2 passkeys");
+  const row = page.locator(".action").filter({ hasText: "Reset MFA" });
+  await expect(row.locator(".action__note")).toHaveText(
+    "For when anna lost their second factor: turns off every MFA method and recovery code, and ends their session. Their passkeys stay."
+  );
+
+  // It asks first, and backing out sends nothing.
+  await row.getByRole("button", { name: "Reset MFA" }).click();
+  await expect(page.getByText("Reset anna's MFA? Every method and recovery code")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset anna's MFA" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(row.getByRole("button", { name: "Reset MFA" })).toBeFocused();
+  expect(api.loggedOutUsers).toEqual([]);
+
+  await row.getByRole("button", { name: "Reset MFA" }).click();
+  await page.getByRole("button", { name: "Reset anna's MFA" }).click();
+  const done = row.getByRole("status");
+  await expect(done).toHaveText(
+    "anna's MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
+  );
+  await expect(done).toBeFocused();
+  await expect(mfa).toHaveText("Off · 2 passkeys");
+  await expect(row.locator(".action__note")).toHaveText(
+    "anna has no MFA method on, so there's nothing to reset."
+  );
+  await expect(row.getByRole("button")).toHaveCount(0);
+  expect(api.loggedOutUsers).toEqual([anna.id]);
+
+  // The API keeps it so: a reload reads the same.
+  await page.reload();
+  await expect(mfa).toHaveText("Off · 2 passkeys");
+
+  // The admin's own MFA is managed from their Account page: the API refuses it here, so the row has no key.
+  await page.goto(`/admin/users/${admin.id}`);
+  await expect(mfa).toHaveText("Authenticator app · 10 recovery codes left");
+  await expect(row.locator(".action__note")).toHaveText(
+    "Your own MFA is managed from your Account page."
+  );
+  await expect(row.getByRole("button")).toHaveCount(0);
+  expect.soft(await callApi(page, api, "DELETE", `/admin/users/${admin.id}/mfa`, {})).toEqual({
+    status: 409,
+    body: {
+      error: "The superuser's own MFA can't be reset here: turn its methods off from the account."
+    }
+  });
 });
 
 test("suspending an account voids its waiting reset code, reset links and e-mail change", async ({
@@ -786,6 +852,7 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
     "Uploads",
     "Rename",
     "Log out everywhere",
+    "Reset MFA",
     "Suspend account",
     "Delete account"
   ]);
@@ -1638,6 +1705,9 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     api.countsRateLimit("passwordResetCodeFailures", { email });
     api.countsRateLimit("passwordChecksPerAccount", { email });
     api.countsRateLimit("accountCodeChecksPerAccount", { email });
+    api.countsRateLimit("securityNotices", { email });
+    api.countsRateLimit("mfaEmailSends", { email });
+    api.countsRateLimit("mfaCodeFailures", { email });
   };
   arrange("anna@example.com");
   api.countsRateLimit("passwordResetCodeFailures", { email: "milo@example.com" });
@@ -1655,24 +1725,29 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   await clear.click();
   await expect(notice).toContainText("Cleared for 203.0.113.7:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes from the IP.",
+    "Wrong e-mail change and authenticator setup codes from the IP.",
     "Wrong passwords on the account page from the IP."
   ]);
 
   // With both, each limiter keyed by the IP or the e-mail goes, in the API's order.
+  api.countsRateLimit("passkeyLoginsPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("accountCodeChecksPerIp", { ip: "203.0.113.7" });
   await email.fill("Anna@example.com");
   await clear.click();
   await expect(notice).toContainText("Cleared for Anna@example.com and 203.0.113.7:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes from the IP.",
-    "Wrong e-mail change codes for the account, 10 in 15 min.",
+    "Wrong e-mail change and authenticator setup codes from the IP.",
+    "Wrong e-mail change and authenticator setup codes for the account, 10 in 15 min.",
     "Wrong passwords on the account page from the IP.",
     "Wrong passwords on the account page, per account.",
+    "Failed passkey log-ins from the IP.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
-    "Wrong sign-up codes for the waiting registration, 20 a day."
+    "Wrong sign-up codes for the waiting registration, 20 a day.",
+    "Wrong MFA codes, links and passkeys for the account, 20 a day.",
+    "MFA log-in e-mails to the account, 10 a day.",
+    "Security notice e-mails to the account, 10 a day."
   ]);
 
   // The e-mail alone does the same for an account whose caps are all counting, and spares other addresses.
@@ -1681,11 +1756,14 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   await clear.click();
   await expect(notice).toContainText("Cleared for Anna@example.com:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes for the account, 10 in 15 min.",
+    "Wrong e-mail change and authenticator setup codes for the account, 10 in 15 min.",
     "Wrong passwords on the account page, per account.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
-    "Wrong sign-up codes for the waiting registration, 20 a day."
+    "Wrong sign-up codes for the waiting registration, 20 a day.",
+    "Wrong MFA codes, links and passkeys for the account, 20 a day.",
+    "MFA log-in e-mails to the account, 10 a day.",
+    "Security notice e-mails to the account, 10 a day."
   ]);
 
   await email.fill("milo@example.com");

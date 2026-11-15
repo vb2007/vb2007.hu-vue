@@ -5,6 +5,7 @@
  */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { mfa } from "@/scripts/authentication/authState";
@@ -26,9 +27,17 @@ const turningOn = ref(false);
 const opener = useTemplateRef<InstanceType<typeof BaseButton>>("opener");
 
 const turnOn = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaEmailOn, { body, failure: Messages.Mfa.emailOnFailed });
+  apiRequest(Endpoints.User.mfaEmailOn, {
+    body,
+    failure: Messages.Mfa.emailOnFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 const turnOff = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaEmailOff, { body, failure: Messages.Mfa.emailOffFailed });
+  apiRequest(Endpoints.User.mfaEmailOff, {
+    body,
+    failure: Messages.Mfa.emailOffFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 
 const open = () => {
   turningOn.value = !mfa.value.email;
@@ -42,10 +51,16 @@ const close = async () => {
   opener.value?.$el.focus();
 };
 
-const onDone = async (data: MfaTurnOnResponse) => {
+/**
+ * The outcome, with any recovery codes, goes out first: they exist only in this answer, so a slow
+ * or failed refresh (the session ended meanwhile, say) mustn't hold them back. The refresh then
+ * brings the badge and `mfa` up to date.
+ */
+const onDone = (data: MfaTurnOnResponse) => {
   confirming.value = false;
-  await fetchUserDetails();
-  emit("done", data.message, data.recoveryCodes);
+  // The section's own words, rather than the API's "E-mail MFA turned on".
+  emit("done", turningOn.value ? Messages.Mfa.emailOn : Messages.Mfa.emailOff, data.recoveryCodes);
+  void fetchUserDetails();
 };
 </script>
 

@@ -6,6 +6,7 @@
  */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { mfa } from "@/scripts/authentication/authState";
@@ -32,9 +33,17 @@ const setupKey = useTemplateRef<InstanceType<typeof BaseButton>>("setupKey");
 const offKey = useTemplateRef<InstanceType<typeof BaseButton>>("offKey");
 
 const startSetup = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaTotpSetup, { body, failure: Messages.Mfa.totpSetupFailed });
+  apiRequest(Endpoints.User.mfaTotpSetup, {
+    body,
+    failure: Messages.Mfa.totpSetupFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 const turnOff = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaTotpOff, { body, failure: Messages.Mfa.totpOffFailed });
+  apiRequest(Endpoints.User.mfaTotpOff, {
+    body,
+    failure: Messages.Mfa.totpOffFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 
 const open = (kind: "setup" | "off") => {
   moving.value = kind === "setup" && mfa.value.totp;
