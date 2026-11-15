@@ -132,7 +132,7 @@ describe("AccountPanel's authenticator app", () => {
     // 4 modules of quiet zone around it, and its finder pattern's corner right after.
     expect(setup.find("svg path").attributes("d")).toMatch(/^M4 4h7v1H4z/);
     expect(setup.find(".setup__secret").text()).toBe("JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP");
-    expect(setup.find("a").text()).toBe("Open in your authenticator app");
+    expect(setup.find("a").text()).toBe("Open in app");
     expect(setup.find("a").attributes("href")).toBe(SETUP.otpauthUrl);
     expect(codeField(panel).attributes("autocomplete")).toBe("one-time-code");
 
@@ -332,6 +332,31 @@ describe("AccountPanel's authenticator app", () => {
     await keyNamed(row(panel), "Cancel").trigger("click");
     await flushPromises();
     expect(row(panel).find(".setup").exists()).toBe(false);
+  });
+
+  it("lets a code sent as the minutes end finish, with its recovery codes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const panel = await mountPanel();
+      await openSetup(panel);
+      const answer = deferResponse(fetchMock);
+      await codeField(panel).setValue("123456");
+      await row(panel).find(".setup form").trigger("submit");
+      await flushPromises();
+
+      vi.advanceTimersByTime(10 * 60_000);
+      await flushPromises();
+      expect(row(panel).find(".setup__ran-out").exists()).toBe(false);
+
+      fetchMock.mockResolvedValueOnce(user(true, 10));
+      answer.respond(jsonResponse(200, { message: ON, recoveryCodes: CODES }));
+      await flushPromises();
+
+      expect(panel.find(".notice").text()).toBe(SAID_ON);
+      expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(CODES);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("runs out on screen at the end of its minutes, and drops the secret", async () => {

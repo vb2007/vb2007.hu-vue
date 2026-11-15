@@ -151,8 +151,12 @@ const runOut = async (focus = panel.value?.contains(document.activeElement)) => 
   if (focus) ranOutMessage.value?.$el.focus();
 };
 
-// Left open, the setup runs out on screen too, so a QR code scanned later isn't a dead one.
-const timer = setTimeout(runOut, deadline - Date.now());
+// Left open, the setup runs out on screen too, so a QR code scanned later isn't a dead one. A code
+// on its way may still turn it on (and bring the only copy of the recovery codes), so its answer
+// decides: a refusal past the deadline runs the setup out then.
+const timer = setTimeout(() => {
+  if (!isConfirming.value) void runOut();
+}, deadline - Date.now());
 onBeforeUnmount(() => clearTimeout(timer));
 
 const cancel = () => {
@@ -178,7 +182,7 @@ onMounted(() => title.value?.focus());
       <div class="setup__actions">
         <BaseButton
           size="sm"
-          :disabled="isHeld"
+          :disabled="isHeld || isConfirming"
           :aria-label="isHeld ? hold.name.value : undefined"
           @click="emit('restart')"
         >
@@ -215,7 +219,7 @@ onMounted(() => title.value?.focus());
             <!-- On the phone the app is on, the link adds it there, with nothing to scan. -->
             <BaseButton size="sm" variant="secondary" :href="setup.otpauthUrl">
               <AppIcon name="phone" :size="16" />
-              Open in your authenticator app
+              Open in app
             </BaseButton>
           </div>
           <p class="visually-hidden" role="status">

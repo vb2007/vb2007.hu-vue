@@ -71,7 +71,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * A suspended `hasUser(...)` account (`suspendedAt`, or suspended through `PATCH /admin/users/:id/suspension`) gets the API's
  * suspension 403 instead, but only after the right password, and its session answers as logged out (vb2007/vb2007.hu-api#273).
  * Suspending it through the admin route, or lifting a suspension, voids its waiting reset code, reset links and e-mail change, like the API's `setUserSuspension`.
- * `hasUser(..., { mfa })` arranges the account's MFA (all off by default), one store with `api.hasMfaEmail()`: `GET /admin/users/:id` and `GET /user` answer it in `mfa`, and with `email` on its login takes the second step;
+ * `hasUser(..., { mfa })` arranges the account's MFA (all off by default), one store with `api.hasMfaEmail()` and `api.hasMfaTotp()`: `GET /admin/users/:id` and `GET /user` answer it in `mfa`, and with `email` or `totp` on its login takes the second step;
  * `DELETE /admin/users/:id/mfa` turns its methods and recovery codes off, keeps the passkeys and logs the account out like the admin's
  * logout, refusing the superuser's address with 409 (vb2007/vb2007.hu-api#483).
  * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
