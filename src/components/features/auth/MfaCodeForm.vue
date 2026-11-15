@@ -25,6 +25,8 @@ const props = defineProps<{
   early?: (code: string) => string;
   /** Ids of messages above that also describe the field, e.g. where the code went. */
   describedby?: string;
+  /** Letters too (a recovery code): a text keyboard, and no one-time-code autofill offering a mailed code. */
+  text?: boolean;
 }>();
 
 const code = ref("");
@@ -71,8 +73,9 @@ defineExpose({ focusField, restart });
       v-model="code"
       :label="label"
       :hint="hint"
-      inputmode="numeric"
-      autocomplete="one-time-code"
+      :inputmode="text ? 'text' : 'numeric'"
+      :autocomplete="text ? 'off' : 'one-time-code'"
+      :autocapitalize="text ? 'none' : undefined"
       mono
       :describedby="describedby"
       :error="refusal || errors.code"

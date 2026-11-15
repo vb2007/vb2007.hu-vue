@@ -24,7 +24,10 @@ export interface MfaRequiredResponse extends MfaMethodsResponse {
  * `POST /auth/mfa/verify`, one member per method: `totp` and `recovery` send a `code` too,
  * `passkey` the `response` of `navigator.credentials.get()`.
  */
-export type MfaVerifyBody = { method: "email"; code: string };
+export type MfaVerifyBody =
+  | { method: "email"; code: string }
+  /** A saved recovery code; case, spaces and dashes don't matter. */
+  | { method: "recovery"; code: string };
 
 /** `POST /auth/mfa/verify-link`: the token of the mailed `/login/mfa#token=…` link. */
 export interface MfaLinkBody {
@@ -45,4 +48,9 @@ export interface MfaPasswordBody {
  */
 export interface MfaTurnOnResponse extends MessageResponse {
   recoveryCodes?: string[];
+}
+
+/** `POST /user/mfa/recovery-codes`: a fresh set, shown only in this answer; the old one stops working. */
+export interface MfaRecoveryCodesResponse extends MessageResponse {
+  recoveryCodes: string[];
 }

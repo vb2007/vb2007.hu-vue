@@ -407,6 +407,9 @@ export class Messages {
       "This login link isn't complete: open it again from the e-mail, or log in again.";
     static readonly emailOnFailed: string = "Failed to turn on e-mail codes";
     static readonly emailOffFailed: string = "Failed to turn off e-mail codes";
+    /** Only an empty one is refused here: the API checks the code's shape (a wrong one uses a try). */
+    static readonly recoveryCodeMissing: string = "Enter one of your recovery codes.";
+    static readonly recoveryCodesFailed: string = "Failed to make new recovery codes";
   };
 
   static readonly Uploads = class {
