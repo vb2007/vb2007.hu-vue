@@ -656,7 +656,10 @@ describe("LoginForm", () => {
 
     /** Logs in with the right password for an account with e-mail MFA. */
     const passPassword = async (wrapper: VueWrapper) => {
-      vi.mocked(login).mockImplementationOnce(async () => startMfa(["email", "recovery"]));
+      vi.mocked(login).mockImplementationOnce(async () => {
+        startMfa(["email", "recovery"]);
+        return undefined;
+      });
       const [email, password] = wrapper.findAll("input");
       await email.setValue("me@example.com");
       await password.setValue("secret");
