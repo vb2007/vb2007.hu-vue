@@ -208,11 +208,11 @@ async function sendRecoveryCode(page: Page, code: string, passes: boolean) {
   const main = page.getByRole("main");
   await main.getByLabel("Recovery code").fill(code);
   await main.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(
-    passes
-      ? main.getByText("Login successful!")
-      : main.getByText("That code didn't work, or it was already used")
-  ).toBeVisible();
+  if (passes) await expect(main.getByText("Login successful!")).toBeVisible();
+  else
+    await expect(main.getByLabel("Recovery code")).toHaveAccessibleDescription(
+      /That code didn't work, or it was already used/
+    );
 }
 
 test("a recovery code logs in once, in any case and with spaces", async ({
