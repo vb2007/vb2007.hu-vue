@@ -60,8 +60,12 @@ const report = async (text: string, tone: "success" | "info", refresh: () => Pro
 /** `changed`: the account's passkeys changed, not only a name. */
 const onDone = (message: string, changed: boolean) =>
   report(message, "success", changed ? fetchUserDetails : load);
-/** Gone already (deleted elsewhere): not a success of this page's. */
-const onMissing = (message: string) => report(message, "info", fetchUserDetails);
+/**
+ * Gone already (deleted elsewhere): not a success of this page's. The list reloads itself too, as
+ * the count may be unchanged if a passkey was added elsewhere meanwhile.
+ */
+const onMissing = (message: string) =>
+  report(message, "info", () => Promise.all([fetchUserDetails(), load()]));
 </script>
 
 <template>

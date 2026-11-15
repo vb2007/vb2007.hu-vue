@@ -13,12 +13,17 @@ import { Messages } from "@/constants/messages";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { apiRequest, type ApiAbortedFailure, type ApiResult } from "@/scripts/api/client";
 import { mfa } from "@/scripts/authentication/authState";
-import { passkeyNameEarlyError, passkeyNameError } from "@/scripts/authentication/passkeys";
+import {
+  optionsUsableUntil,
+  passkeyNameEarlyError,
+  passkeyNameError
+} from "@/scripts/authentication/passkeys";
 import { createPasskey, passkeysSupported } from "@/scripts/authentication/webauthn";
 import ReauthForm from "@/components/features/account/ReauthForm.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
+import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { MfaPasswordBody } from "@/types/api/mfa";
 import type { PasskeyAddedResponse } from "@/types/api/passkeys";
 
@@ -31,6 +36,8 @@ const emit = defineEmits<{
 const supported = passkeysSupported();
 const step = ref<"" | "name" | "confirm">("");
 const name = ref("");
+/** "If no prompt appeared, try again.": beside the confirmation, as information, not its error. */
+const hint = ref("");
 const opener = useTemplateRef<InstanceType<typeof BaseButton>>("opener");
 const nameForm = useTemplateRef("nameForm");
 const { errors, isValid, leave, validate, reset } = useFormValidation({
@@ -56,6 +63,7 @@ const open = () => {
 
 const close = async () => {
   unused = undefined;
+  hint.value = "";
   step.value = "";
   await nextTick();
   opener.value?.$el.focus();
@@ -66,14 +74,15 @@ const toConfirm = async () => {
 };
 
 const back = () => {
+  hint.value = "";
   step.value = "name";
   return focusName();
 };
 
 /**
  * Options a failed prompt left unused (Safari may refuse one that waited for the request): their
- * challenge waits in the registration cookie until their `timeout`, so the next click runs the
- * prompt at once, without asking the API again.
+ * challenge waits in the registration cookie until their `timeout`, so until shortly before that
+ * (`optionsUsableUntil`) the next click runs the prompt at once, without asking the API again.
  */
 let unused: { options: PublicKeyCredentialCreationOptionsJSON; until: number } | undefined;
 
@@ -89,6 +98,7 @@ const promptFailed = (error: string): ApiAbortedFailure => ({
 });
 
 const add = async (body: MfaPasswordBody): Promise<ApiResult<PasskeyAddedResponse>> => {
+  hint.value = "";
   const kept = unused && unused.until > Date.now() ? unused : undefined;
   unused = undefined;
   let ready = kept;
@@ -101,12 +111,14 @@ const add = async (body: MfaPasswordBody): Promise<ApiResult<PasskeyAddedRespons
       quietStatuses: REAUTH_QUIET_STATUSES
     });
     if (!result.ok) return result;
-    ready = { options: result.data, until: sentAt + (result.data.timeout ?? 0) };
+    ready = { options: result.data, until: optionsUsableUntil(sentAt, result.data) };
   }
   const passkey = await createPasskey(ready.options);
   if (!passkey.ok) {
     unused = ready;
-    return promptFailed(passkey.error || (kept ? "" : Messages.Passkeys.noPrompt));
+    // A prompt that may not have shown is no failure: a hint beside the form, not its error.
+    if (!passkey.error && !kept) hint.value = Messages.Passkeys.noPrompt;
+    return promptFailed(passkey.error);
   }
   return apiRequest(Endpoints.User.addPasskey, {
     body: { name: name.value.trim(), response: passkey.response },
@@ -148,15 +160,17 @@ const onAdded = (data: PasskeyAddedResponse) => {
       <BaseButton size="sm" variant="ghost" @click="close">Cancel</BaseButton>
     </div>
   </form>
-  <ReauthForm
-    v-else-if="step === 'confirm'"
-    :send="add"
-    submit-label="Add passkey"
-    busy-label="Adding"
-    :hint="`Confirms it's you. Your browser then asks you to make the passkey “${name.trim()}”.`"
-    @done="onAdded"
-    @cancel="back"
-  />
+  <template v-else-if="step === 'confirm'">
+    <StatusMessage v-if="hint" tone="info">{{ hint }}</StatusMessage>
+    <ReauthForm
+      :send="add"
+      submit-label="Add passkey"
+      busy-label="Adding"
+      :hint="`Confirms it's you. Your browser then asks you to make the passkey “${name.trim()}”.`"
+      @done="onAdded"
+      @cancel="back"
+    />
+  </template>
   <BaseButton v-else ref="opener" class="add__open" size="sm" @click="open">
     <AppIcon name="passkey" :size="16" /> Add a passkey
   </BaseButton>

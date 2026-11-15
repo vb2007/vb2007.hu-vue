@@ -38,8 +38,11 @@ const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 
 const options = optionsAhead(loadMfaPasskeyOptions);
-// On every opening: `MfaStep` keeps the panel alive while another method is open.
-onActivated(options.prefetch);
+// On every opening (`MfaStep` keeps the panel alive while another method is open), but not while
+// a try runs: new options would replace the challenge of the prompt on show.
+onActivated(() => {
+  if (!isAsking.value && !isVerifying.value) options.prefetch();
+});
 let open = true;
 onBeforeUnmount(() => (open = false));
 

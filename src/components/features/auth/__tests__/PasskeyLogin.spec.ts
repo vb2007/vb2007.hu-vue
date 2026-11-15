@@ -124,6 +124,31 @@ describe("LoginForm's passkey", () => {
     expect(prefetchPasskeyLogin).toHaveBeenCalledTimes(2);
   });
 
+  it("asks for none while a try runs, and for the next try's after a refusal", async () => {
+    let finish!: (failure: { error: string; wait?: number }) => void;
+    vi.mocked(passkeyLogin).mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const form = await mountForm();
+    await passkeyKey(form).trigger("click");
+
+    // Chromium sends pointer events to the busy, disabled key too.
+    await passkeyKey(form).trigger("pointerenter");
+    expect(prefetchPasskeyLogin).not.toHaveBeenCalled();
+
+    finish({ error: INVALID });
+    await flushPromises();
+    expect(prefetchPasskeyLogin).toHaveBeenCalled();
+  });
+
+  it("asks for nothing more after a 429", async () => {
+    vi.mocked(passkeyLogin).mockResolvedValueOnce({ error: LIMITED, wait: 42 });
+    const form = await mountForm();
+
+    await passkeyKey(form).trigger("click");
+    await flushPromises();
+
+    expect(prefetchPasskeyLogin).not.toHaveBeenCalled();
+  });
+
   it("drops its refusal once a password login starts", async () => {
     vi.mocked(passkeyLogin).mockResolvedValueOnce({ error: INVALID });
     vi.mocked(login).mockResolvedValueOnce(undefined);

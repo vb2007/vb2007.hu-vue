@@ -49,30 +49,44 @@ export const passkeyNameError = (name: string) => {
 export const optionsAhead = <T extends { timeout?: number }>(
   fetch: () => Promise<ApiResult<T>>
 ) => {
-  let ahead: { pending: Promise<ApiResult<T>>; settled: boolean; sentAt: number } | undefined;
+  let ahead: { pending: Promise<ApiResult<T>>; result?: ApiResult<T>; sentAt: number } | undefined;
 
-  /** Asks for the next click's options, unless some are on their way or waiting. */
+  /** Whether the set fetched ahead is on its way, or came and can still be used. */
+  const isUsable = () =>
+    !!ahead &&
+    (!ahead.result ||
+      (ahead.result.ok && optionsUsableUntil(ahead.sentAt, ahead.result.data) > Date.now()));
+
+  /** Asks for the next click's options, unless a usable set is on its way or waiting. */
   const prefetch = () => {
-    if (ahead) return;
-    const entry = { pending: fetch(), settled: false, sentAt: Date.now() };
-    void entry.pending.then(() => (entry.settled = true));
+    if (isUsable()) return;
+    const entry: NonNullable<typeof ahead> = { pending: fetch(), sentAt: Date.now() };
+    void entry.pending.then((result) => (entry.result = result));
     ahead = entry;
   };
 
   const take = async (): Promise<{ result: ApiResult<T>; fetched: boolean }> => {
-    const entry = ahead;
+    const entry = isUsable() ? ahead! : undefined;
     ahead = undefined;
-    if (entry) {
-      const settled = entry.settled;
-      const result = await entry.pending;
-      const live = !result.ok || entry.sentAt + (result.data.timeout ?? 0) > Date.now();
-      if (live) return { result, fetched: !settled };
-    }
+    // One still on its way is waited for, failure or not, and counts as a wait.
+    if (entry?.result) return { result: entry.result, fetched: false };
+    if (entry) return { result: await entry.pending, fetched: true };
     return { result: await fetch(), fetched: true };
   };
 
   return { prefetch, take };
 };
+
+/**
+ * How long before the API's challenge ends a set of options stops being reused: a prompt can stay
+ * open a while, and an answer to an ended challenge wastes the try (or, for a new passkey, leaves
+ * it on the device).
+ */
+const OPTIONS_REUSE_MARGIN_MS = 60_000;
+
+/** Until when options asked for at `sentAt` may still be used: their `timeout`, less the margin. */
+export const optionsUsableUntil = (sentAt: number, options: { timeout?: number }) =>
+  sentAt + (options.timeout ?? 0) - OPTIONS_REUSE_MARGIN_MS;
 
 const loginOptions = optionsAhead(() =>
   apiRequest(Endpoints.Auth.passkeyOptions, { failure: Messages.Passkeys.optionsFailed })

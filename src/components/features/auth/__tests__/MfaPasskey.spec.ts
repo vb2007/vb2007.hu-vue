@@ -158,8 +158,10 @@ describe("MfaStep's passkey", () => {
 
   it("shows why the browser couldn't, or the options failed", async () => {
     const step = await mountStep(jsonResponse(500));
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
-    // The failed options are taken as they are, and the next try's asked for.
+    // A failure got ahead isn't handed on: the click asks again, and the next try's asked for after.
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(500))
+      .mockResolvedValueOnce(jsonResponse(200, OPTIONS));
     await click(step);
     expect(message(step).text()).toBe(`${Messages.Passkeys.optionsFailed}: 500`);
     expect(getPasskey).not.toHaveBeenCalled();
@@ -182,7 +184,9 @@ describe("MfaStep's passkey", () => {
   });
 
   it("holds the key after the options' 429, asking nothing more meanwhile", async () => {
-    const step = await mountStep(jsonResponse(429, { error: OPTIONS_LIMITED, retryAfter: 42 }));
+    const limited = () => jsonResponse(429, { error: OPTIONS_LIMITED, retryAfter: 42 });
+    const step = await mountStep(limited());
+    fetchMock.mockResolvedValueOnce(limited());
 
     await click(step);
 
@@ -190,7 +194,69 @@ describe("MfaStep's passkey", () => {
     expect(passkeyKey(step).text()).toBe("Try again in 42 sec");
     expect(passkeyKey(step).attributes("disabled")).toBeDefined();
     expect(document.activeElement).toBe(message(step).element);
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gets options again when it comes back, unless a usable set waits", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const step = await mountStep();
+    const switchTo = async (label: string) => {
+      await step
+        .findAll("button")
+        .find((button) => button.text() === label)!
+        .trigger("click");
+      await flushPromises();
+    };
+
+    // Back with the set from the opening still usable: nothing asked.
+    await switchTo("Use an e-mail code");
+    await switchTo("Use a passkey");
+    expect(optionsRequests()).toBe(1);
+
+    // Back after it was used up: a new set.
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(400, { error: INVALID }))
+      .mockResolvedValueOnce(jsonResponse(200, NEXT_OPTIONS));
+    await click(step);
+    expect(optionsRequests()).toBe(2);
+    await switchTo("Use an e-mail code");
+    await switchTo("Use a passkey");
+    expect(optionsRequests()).toBe(2);
+
+    // Back once the waiting set is past its margin: a new set as it opens.
+    vi.setSystemTime(Date.now() + OPTIONS.timeout);
+    await switchTo("Use an e-mail code");
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
+    await switchTo("Use a passkey");
+    expect(optionsRequests()).toBe(3);
+  });
+
+  it("asks for none while a try runs, when it comes back meanwhile", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const step = await mountStep();
+    // The set from the opening outlives its margin meanwhile, so a prefetch would ask again.
+    vi.setSystemTime(Date.now() + OPTIONS.timeout);
+    let answer!: (result: { ok: false; error: string }) => void;
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, NEXT_OPTIONS));
+    vi.mocked(getPasskey).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    await passkeyKey(step).trigger("click");
+    await flushPromises();
+    expect(optionsRequests()).toBe(2);
+
+    const others = () => step.findAll(".mfa__others button");
+    await others()[0].trigger("click");
+    await flushPromises();
+    await others()
+      .find((button) => button.text() === "Use a passkey")!
+      .trigger("click");
+    await flushPromises();
+    expect(optionsRequests()).toBe(2);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
+    answer({ ok: false, error: "" });
+    await flushPromises();
+    // Done, it gets the next try's.
+    expect(optionsRequests()).toBe(3);
   });
 
   it("holds the key after the day's 429, its message taking the focus", async () => {

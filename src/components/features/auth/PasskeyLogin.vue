@@ -26,6 +26,14 @@ const errorId = useId();
 const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 
+/**
+ * Asks for the options ahead, but not while a try runs: new ones would replace the challenge of the
+ * prompt on show (Chromium fires pointer events on the busy, disabled key too).
+ */
+const getReady = () => {
+  if (!isBusy.value) prefetchPasskeyLogin();
+};
+
 const logIn = async () => {
   if (isBusy.value) return;
   isBusy.value = true;
@@ -36,6 +44,8 @@ const logIn = async () => {
   if (!failure) return;
   error.value = failure.error;
   if (failure.wait) hold.start(failure.wait);
+  // The next try's options; the focus may never have left the key, so no focus event asks.
+  else prefetchPasskeyLogin();
   await nextTick();
   if (isHeld.value) errorMessage.value?.$el.focus();
   else key.value?.$el.focus();
@@ -66,8 +76,8 @@ defineExpose({ clear });
       :disabled="isHeld"
       :aria-label="isHeld ? hold.name.value : undefined"
       :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
-      @pointerenter="prefetchPasskeyLogin"
-      @focus="prefetchPasskeyLogin"
+      @pointerenter="getReady"
+      @focus="getReady"
       @click="logIn"
     >
       <AppIcon name="passkey" :size="20" />

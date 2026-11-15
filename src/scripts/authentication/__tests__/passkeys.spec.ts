@@ -74,68 +74,102 @@ describe("passkeyNameError", () => {
 
 describe("optionsAhead", () => {
   type Options = { challenge: string; timeout?: number };
-  const ok = (challenge: string, timeout?: number): ApiResult<Options> => ({
+  /** The API's challenge lifetime, which its options name as their `timeout`. */
+  const TIMEOUT = 300_000;
+  const ok = (challenge: string, timeout: number | null = TIMEOUT): ApiResult<Options> => ({
     ok: true,
     status: 200,
-    data: { challenge, timeout }
+    data: { challenge, timeout: timeout ?? undefined }
   });
+  const failure: ApiResult<Options> = { ok: false, kind: "network", status: 0, error: "Down" };
+  const fetchOf = (...results: ApiResult<Options>[]) => {
+    const fetch = vi.fn<() => Promise<ApiResult<Options>>>();
+    for (const result of results) fetch.mockResolvedValueOnce(result);
+    return fetch;
+  };
 
   afterEach(() => vi.useRealTimers());
 
   it("asks now, and waits, without options got ready ahead", async () => {
-    const fetch = vi.fn(async () => ok("a", 1000));
-
-    expect(await optionsAhead(fetch).take()).toEqual({ result: ok("a", 1000), fetched: true });
+    expect(await optionsAhead(fetchOf(ok("a"))).take()).toEqual({
+      result: ok("a"),
+      fetched: true
+    });
   });
 
-  it("hands on live options ready ahead without asking again, once", async () => {
-    const fetch = vi.fn(async () => ok("a", 1000));
+  it("hands on a usable set ready ahead without asking again, once", async () => {
+    const fetch = fetchOf(ok("a"), ok("b"));
     const ahead = optionsAhead(fetch);
     ahead.prefetch();
     ahead.prefetch();
     await flushPromises();
 
-    expect(await ahead.take()).toEqual({ result: ok("a", 1000), fetched: false });
+    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: false });
     expect(fetch).toHaveBeenCalledOnce();
-    fetch.mockResolvedValueOnce(ok("b", 1000));
-    expect((await ahead.take()).result).toEqual(ok("b", 1000));
+    expect(await ahead.take()).toEqual({ result: ok("b"), fetched: true });
   });
 
-  it("counts options still on their way as a wait", async () => {
-    const ahead = optionsAhead(async () => ok("a", 1000));
+  it("waits for a set still on its way, failure or not, as a wait", async () => {
+    const ahead = optionsAhead(fetchOf(ok("a"), failure));
     ahead.prefetch();
+    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: true });
 
-    expect(await ahead.take()).toEqual({ result: ok("a", 1000), fetched: true });
+    ahead.prefetch();
+    expect(await ahead.take()).toEqual({ result: failure, fetched: true });
   });
 
-  it("asks again once the options outlived their timeout, or never said one", async () => {
+  it("reuses a set only while a minute of its timeout is left", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    const fetch = vi
-      .fn<() => Promise<ApiResult<Options>>>()
-      .mockResolvedValueOnce(ok("a", 1000))
-      .mockResolvedValueOnce(ok("b", 1000))
-      .mockResolvedValueOnce(ok("c"))
-      .mockResolvedValueOnce(ok("d"));
+    const start = Date.now();
+    const fetch = fetchOf(ok("a"), ok("b"), ok("c"));
     const ahead = optionsAhead(fetch);
     ahead.prefetch();
     await flushPromises();
-    vi.setSystemTime(Date.now() + 1001);
+    vi.setSystemTime(start + TIMEOUT - 60_001);
+    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: false });
 
-    expect(await ahead.take()).toEqual({ result: ok("b", 1000), fetched: true });
     ahead.prefetch();
     await flushPromises();
-    expect((await ahead.take()).result).toEqual(ok("d"));
+    vi.setSystemTime(start + 2 * TIMEOUT - 60_000);
+    expect(await ahead.take()).toEqual({ result: ok("c"), fetched: true });
   });
 
-  it("hands on a failure got ahead as it is", async () => {
-    const failure: ApiResult<Options> = { ok: false, kind: "network", status: 0, error: "Down" };
-    const fetch = vi.fn(async () => failure);
+  it("never reuses a set that names no timeout", async () => {
+    const fetch = fetchOf(ok("a", null), ok("b"));
     const ahead = optionsAhead(fetch);
     ahead.prefetch();
     await flushPromises();
 
-    expect(await ahead.take()).toEqual({ result: failure, fetched: false });
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(await ahead.take()).toEqual({ result: ok("b"), fetched: true });
+  });
+
+  it("replaces a set got ahead once it's past its margin", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fetch = fetchOf(ok("a"), ok("b"));
+    const ahead = optionsAhead(fetch);
+    ahead.prefetch();
+    await flushPromises();
+    vi.setSystemTime(Date.now() + TIMEOUT);
+
+    ahead.prefetch();
+    await flushPromises();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(await ahead.take()).toEqual({ result: ok("b"), fetched: false });
+  });
+
+  it("replaces a failure got ahead, and asks again rather than hand it on", async () => {
+    const fetch = fetchOf(failure, ok("a"), failure, ok("b"));
+    const ahead = optionsAhead(fetch);
+    ahead.prefetch();
+    await flushPromises();
+    ahead.prefetch();
+    await flushPromises();
+    expect(await ahead.take()).toEqual({ result: ok("a"), fetched: false });
+
+    ahead.prefetch();
+    await flushPromises();
+    expect(await ahead.take()).toEqual({ result: ok("b"), fetched: true });
   });
 });
 

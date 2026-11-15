@@ -240,7 +240,8 @@ describe("AccountPanel's passkeys", () => {
 
       await submit(panel);
       // The prompt followed a request: it may not have shown at all.
-      expect(section(panel).text()).toContain(Messages.Passkeys.noPrompt);
+      expect(section(panel).find("[role=status]").text()).toBe(Messages.Passkeys.noPrompt);
+      expect(section(panel).find("[role=alert]").exists()).toBe(false);
       expect(keyNamed(panel, "Add passkey").exists()).toBe(true);
       expect(fetchMock).toHaveBeenCalledOnce();
 
@@ -263,14 +264,15 @@ describe("AccountPanel's passkeys", () => {
       expect(notice(panel).text()).toBe("Passkey added successfully.");
     });
 
-    it("asks again once the kept options outlived their timeout", async () => {
+    it("asks again once the kept options are within a minute of their timeout", async () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const panel = await mountPanel();
       await toConfirmation(panel);
       fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
       vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
       await submit(panel);
-      vi.setSystemTime(Date.now() + OPTIONS.timeout + 1);
+      // A minute before the challenge ends is too late: the prompt could outlast it.
+      vi.setSystemTime(Date.now() + OPTIONS.timeout - 60_000);
 
       fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
       vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
@@ -448,13 +450,19 @@ describe("AccountPanel's passkeys", () => {
       await field.setValue("Old laptop");
       fetchMock
         .mockResolvedValueOnce(jsonResponse(404, { error: NOT_FOUND }))
-        .mockResolvedValueOnce(user(0));
+        // Another passkey came meanwhile: the count is the same, the list isn't.
+        .mockResolvedValueOnce(user(1))
+        .mockResolvedValueOnce(list(PHONE));
 
       await section(panel).find("form").trigger("submit");
       await flushPromises();
 
       expect(notice(panel).text()).toBe(NOT_FOUND);
-      expect(section(panel).find("ul").exists()).toBe(false);
+      expect(
+        section(panel)
+          .findAll("li h3")
+          .map((name) => name.text())
+      ).toEqual(["Phone"]);
     });
   });
 
@@ -522,7 +530,8 @@ describe("AccountPanel's passkeys", () => {
       await section(panel).find('input[type="password"]').setValue("secret");
       fetchMock
         .mockResolvedValueOnce(jsonResponse(404, { error: NOT_FOUND }))
-        .mockResolvedValueOnce(user(0));
+        .mockResolvedValueOnce(user(0))
+        .mockResolvedValueOnce(list());
 
       await section(panel).find("form").trigger("submit");
       await flushPromises();
