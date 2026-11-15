@@ -2,8 +2,8 @@
 /**
  * The account page's Reset MFA row, for a user who lost their second factor. The reset turns
  * every method and recovery code off and ends their session, so it asks first, in place, like
- * Suspend. With nothing on there's nothing to reset, and the row only says so. The page leaves
- * it out on the superuser's own account, which the API refuses (409).
+ * Suspend. With nothing on there's nothing to reset, and the row only says so. On the superuser's
+ * own account, which the API refuses (409), the row only says where that MFA is managed.
  */
 import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";
@@ -24,6 +24,7 @@ const hasMfa = computed(() => {
   const { email, totp, recoveryCodesLeft } = props.user.mfa;
   return email || totp || recoveryCodesLeft > 0;
 });
+const canReset = computed(() => !props.user.isSuperuser && hasMfa.value);
 const confirming = ref(false);
 const done = ref("");
 const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
@@ -65,7 +66,8 @@ const confirm = async () => {
 
 <template>
   <AdminUserAction title="Reset MFA" icon="shield">
-    <template v-if="hasMfa">
+    <template v-if="user.isSuperuser">{{ Messages.Admin.superuserMfaNotResettable }}</template>
+    <template v-else-if="hasMfa">
       For when {{ user.username }} lost their second factor: turns off every MFA method and recovery
       code, and ends their session. Their passkeys stay.
     </template>
@@ -73,7 +75,7 @@ const confirm = async () => {
       >{{ user.username }} has no MFA method on, so there's nothing to reset.</template
     >
 
-    <template v-if="hasMfa && !confirming" #key>
+    <template v-if="canReset && !confirming" #key>
       <BaseButton ref="key" size="sm" variant="secondary" @click="open">
         <AppIcon name="shield" :size="16" />
         Reset MFA
@@ -90,8 +92,8 @@ const confirm = async () => {
       >
         <p class="confirm__text">
           Reset <strong>{{ user.username }}</strong>'s MFA? Every method and recovery code is turned
-          off and they're logged out at once. They log in with their password or GitHub alone, and
-          can turn MFA on again.
+          off, and they're logged out at once and mailed a security notice. They log in without a
+          second step (password, GitHub or a passkey) and can turn MFA on again.
         </p>
         <StatusMessage v-if="resetError" :id="errorId" tone="error">{{ resetError }}</StatusMessage>
         <div class="confirm__actions">

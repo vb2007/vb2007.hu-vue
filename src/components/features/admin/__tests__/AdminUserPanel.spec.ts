@@ -117,7 +117,7 @@ describe("AdminUserPanel", () => {
     expect(reset.find(".status--success").text()).toBe(Messages.Admin.mfaReset("user-a"));
   });
 
-  it("leaves Reset MFA out on the admin's own account", async () => {
+  it("has no Reset MFA key on the admin's own account", async () => {
     const wrapper = await mountPanel(
       anAdminUserDetails("a", {
         isSuperuser: true,
@@ -126,7 +126,9 @@ describe("AdminUserPanel", () => {
     );
     await flushPromises();
 
-    expect(wrapper.findComponent(AdminResetMfa).exists()).toBe(false);
+    const reset = wrapper.findComponent(AdminResetMfa);
+    expect(reset.find(".action__note").text()).toBe(Messages.Admin.superuserMfaNotResettable);
+    expect(reset.find("button").exists()).toBe(false);
   });
 
   it("names a pending address, GitHub and a GitHub-only account", async () => {

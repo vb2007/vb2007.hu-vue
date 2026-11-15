@@ -60,6 +60,16 @@ describe("AdminResetMfa", () => {
     expect(wrapper.find("button").exists()).toBe(false);
   });
 
+  it("has no key on the admin's own account, and says where its MFA is managed", () => {
+    const wrapper = mountRow({
+      ...withMfa({ totp: true, recoveryCodesLeft: 10 }),
+      isSuperuser: true
+    });
+
+    expect(note(wrapper)).toBe(Messages.Admin.superuserMfaNotResettable);
+    expect(wrapper.find("button").exists()).toBe(false);
+  });
+
   it("offers a reset while recovery codes are left, even with no method on", () => {
     expect(keys(mountRow(withMfa({ recoveryCodesLeft: 3 })))).toEqual(["Reset MFA"]);
   });
@@ -69,7 +79,7 @@ describe("AdminResetMfa", () => {
 
     await wrapper.find("button").trigger("click");
     expect(wrapper.find(".confirm__text").text().replace(/\s+/g, " ")).toBe(
-      "Reset user-a's MFA? Every method and recovery code is turned off and they're logged out at once. They log in with their password or GitHub alone, and can turn MFA on again."
+      "Reset user-a's MFA? Every method and recovery code is turned off, and they're logged out at once and mailed a security notice. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
     );
     expect(keys(wrapper)).toEqual(["Reset user-a's MFA", "Cancel"]);
     expect(document.activeElement?.textContent?.trim()).toBe("Reset user-a's MFA");

@@ -57,7 +57,10 @@ const password = computed(() => {
   return user.value!.githubLogin ? "None: logs in with GitHub only" : "None";
 });
 
-/** The methods that are on, then the recovery codes (only alongside one) and the passkeys. */
+/**
+ * The methods that are on, then the recovery codes left (while a method is on or codes remain, so
+ * none left reads "0") and the passkeys (while there are any).
+ */
 const mfa = computed(() => {
   const { email, totp, passkeys, recoveryCodesLeft } = user.value!.mfa;
   const methods =
@@ -184,7 +187,7 @@ const mfa = computed(() => {
       <!--
         One AdminUserAction per thing the admin can do to the account, each with its key and any
         form it opens in place (#panel), in this order: Uploads, Rename, Log out everywhere,
-        Reset MFA (not on the superuser's own account, which the API refuses), Suspend, then
+        Reset MFA, Suspend, then
         Delete account last.
       -->
       <section class="part" :aria-labelledby="actionsTitle">
@@ -213,7 +216,7 @@ const mfa = computed(() => {
           </AdminUserAction>
           <AdminRenameUser :user="user" @updated="applyUser" />
           <AdminLogoutUser :user="user" />
-          <AdminResetMfa v-if="!user.isSuperuser" :user="user" @updated="applyUser" />
+          <AdminResetMfa :user="user" @updated="applyUser" />
           <AdminUserSuspension :user="user" @updated="applyUser" />
           <AdminDeleteUser :user="user" />
         </div>

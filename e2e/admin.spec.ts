@@ -717,7 +717,7 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
   await page.getByRole("button", { name: "Reset anna's MFA" }).click();
   const done = row.getByRole("status");
   await expect(done).toHaveText(
-    "anna's MFA is off and their session ended. They log in with their password or GitHub alone now."
+    "anna's MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
   );
   await expect(done).toBeFocused();
   await expect(mfa).toHaveText("Off · 2 passkeys");
@@ -731,16 +731,13 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
   await page.reload();
   await expect(mfa).toHaveText("Off · 2 passkeys");
 
-  // The admin's own MFA is turned off from their Account page: the API refuses it here.
+  // The admin's own MFA is managed from their Account page: the API refuses it here, so the row has no key.
   await page.goto(`/admin/users/${admin.id}`);
   await expect(mfa).toHaveText("Authenticator app · 10 recovery codes left");
-  await expect(page.locator(".action h3")).toHaveText([
-    "Uploads",
-    "Rename",
-    "Log out everywhere",
-    "Suspend account",
-    "Delete account"
-  ]);
+  await expect(row.locator(".action__note")).toHaveText(
+    "Your own MFA is managed from your Account page."
+  );
+  await expect(row.getByRole("button")).toHaveCount(0);
   expect.soft(await callApi(page, api, "DELETE", `/admin/users/${admin.id}/mfa`, {})).toEqual({
     status: 409,
     body: {

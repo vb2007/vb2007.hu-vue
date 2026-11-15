@@ -432,8 +432,11 @@ export class Messages {
     }
     static readonly mfaResetFailed: string = "Failed to reset the account's MFA";
     static mfaReset(name: string): string {
-      return `${name}'s MFA is off and their session ended. They log in with their password or GitHub alone now.`;
+      return `${name}'s MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
     }
+    /** Why the superuser's own page has no Reset MFA key: the API answers it with 409. */
+    static readonly superuserMfaNotResettable: string =
+      "Your own MFA is managed from your Account page.";
     static readonly suspendFailed: string = "Failed to suspend the account";
     static readonly unsuspendFailed: string = "Failed to lift the suspension";
     /** Why the superuser's own page has no Suspend key: the API answers it with 409. */
