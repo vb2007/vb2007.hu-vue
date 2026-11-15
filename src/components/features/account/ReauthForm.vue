@@ -3,8 +3,9 @@
  * Confirms it's the user before an MFA setting changes (vb2007/vb2007.hu-api#448): the password,
  * or for an account made with GitHub nothing to type, as a GitHub login or relink in the last
  * minutes confirms it (else the API's 403 offers "Confirm with GitHub"). `send` makes the request
- * with that body and `done` hands on its answer. Every MFA setting takes the same check: turning a
- * method on or off, new recovery codes, adding or deleting a passkey.
+ * with that body (and `quietStatuses: REAUTH_QUIET_STATUSES`) and `done` hands on its answer.
+ * Every MFA setting takes the same check: turning a method on or off, new recovery codes, adding
+ * or deleting a passkey.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
  * The second step with a passkey (vb2007/vb2007.hu-api#484): the API's options for this login, the
- * browser's prompt, then the step's `verifier`. The options are asked for as the panel opens, and
- * again after each try, so the click runs the prompt at once (Safari may refuse one that waits for
- * a request); a newer set only replaces the challenge. A cancelled prompt says nothing, unless it
- * followed a wait for the options; the key takes the focus back, or while it's held, the message.
+ * browser's prompt, then the step's `verifier`. The options are asked for as the panel opens (or
+ * comes back), and again after each try, so the click runs the prompt at once (Safari may refuse
+ * one that waits for a request); a newer set only replaces the challenge. A cancelled prompt says
+ * nothing, unless it followed a wait for the options; the key takes the focus back, or while it's
+ * held, the message.
  */
-import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
@@ -37,7 +38,8 @@ const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 
 const options = optionsAhead(loadMfaPasskeyOptions);
-options.prefetch();
+// On every opening: `MfaStep` keeps the panel alive while another method is open.
+onActivated(options.prefetch);
 let open = true;
 onBeforeUnmount(() => (open = false));
 

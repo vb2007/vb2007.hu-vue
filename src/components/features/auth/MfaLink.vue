@@ -7,10 +7,11 @@
 import { nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AuthPaths, LoginStatus } from "@/constants/auth";
+import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { verifyMfaLink } from "@/scripts/authentication/mfa";
 import { resetLinkTokenFrom } from "@/scripts/authentication/passwordReset";
-import { loginStatus } from "@/scripts/authentication/user";
+import { fetchUserDetails, loginStatus } from "@/scripts/authentication/user";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
@@ -18,19 +19,28 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 const route = useRoute();
 const router = useRouter();
 const token = resetLinkTokenFrom(route.hash);
-if (token !== null) void router.replace({ query: route.query, hash: "" });
 
 /** Empty while it's checked. */
 const failure = ref(token ? "" : Messages.Mfa.linkIncomplete);
-const isDone = ref(false);
+/** The success to show: logged in by this link, or already before it. */
+const done = ref("");
 const outcome = useTemplateRef<InstanceType<typeof StatusMessage>>("outcome");
 
 onMounted(async () => {
   if (token) {
+    // Out of the address bar and the history entry before it's sent.
+    await router.replace({ query: route.query, hash: "" });
     const refused = await verifyMfaLink(token);
-    if (refused) failure.value = refused.error;
-    else if (loginStatus.value === LoginStatus.Success) isDone.value = true;
-    else failure.value = loginStatus.value;
+    if (!refused) {
+      if (loginStatus.value === LoginStatus.Success) done.value = "Login successful!";
+      else failure.value = loginStatus.value;
+    } else {
+      // A link opened again, or after the code was entered: this browser may be logged in already
+      // (a 403 was looked up already, by `verifyMfaLink`).
+      const loggedIn = refused.status !== HttpStatus.Forbidden && (await fetchUserDetails());
+      if (loggedIn) done.value = "You're already logged in.";
+      else failure.value = refused.error;
+    }
   }
   await nextTick();
   outcome.value?.$el.focus();
@@ -46,10 +56,10 @@ onMounted(async () => {
         }}</StatusMessage>
         <BaseButton :to="AuthPaths.Login">Log in again</BaseButton>
       </template>
-      <template v-else-if="isDone">
-        <StatusMessage ref="outcome" class="link__outcome" tone="success" tabindex="-1"
-          >Login successful!</StatusMessage
-        >
+      <template v-else-if="done">
+        <StatusMessage ref="outcome" class="link__outcome" tone="success" tabindex="-1">{{
+          done
+        }}</StatusMessage>
         <BaseButton to="/shorten">Go to Shorten</BaseButton>
       </template>
       <p v-else role="status">Logging you in…</p>

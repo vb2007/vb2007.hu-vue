@@ -5,7 +5,7 @@
  */
 import { computed, nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpStatus } from "@/constants/http";
+import { HttpStatus, REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { apiRequest } from "@/scripts/api/client";
@@ -103,7 +103,7 @@ const remove = async (body: MfaPasswordBody) => {
     body,
     failure: Messages.Passkeys.deleteFailed,
     // A wrong or missing password, GitHub to confirm, a passkey gone: answers, not faults.
-    quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.NotFound]
+    quietStatuses: [...REAUTH_QUIET_STATUSES, HttpStatus.NotFound]
   });
   // Deleted elsewhere already: the form closes and the row goes, like after a delete.
   if (!result.ok && result.status === HttpStatus.NotFound) {

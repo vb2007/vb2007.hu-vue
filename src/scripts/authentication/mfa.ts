@@ -6,6 +6,7 @@ import { apiErrorOf, apiRequest, type ApiFailure, type ApiResult } from "@/scrip
 import {
   currentLogin,
   endMfa,
+  finishedElsewhere,
   finishLogin,
   isCurrentLogin,
   loginStatus,
@@ -46,7 +47,11 @@ const passMfa = async (
     await finishLogin(attempt);
     return;
   }
-  if (result.status === HttpStatus.Forbidden && isCurrentLogin(attempt)) endMfa(result.error);
+  if (result.status === HttpStatus.Forbidden) {
+    // The step is gone once another tab passed it (its mailed link, say): then this one's logged in.
+    if (await finishedElsewhere(attempt)) return;
+    if (isCurrentLogin(attempt)) endMfa(result.error);
+  }
   return result;
 };
 
@@ -56,8 +61,8 @@ export const verifyMfa = (body: MfaVerifyBody) =>
     apiRequest(Endpoints.Auth.mfaVerify, {
       body,
       failure: Messages.Mfa.verifyFailed,
-      // A wrong code is the user's typo, and an expired step an expected end, not faults.
-      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden]
+      // A wrong code, an expired step and the daily limit are answers, not faults.
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.TooManyRequests]
     })
   );
 
@@ -83,6 +88,6 @@ export const verifyMfaLink = (token: string) =>
     apiRequest(Endpoints.Auth.mfaVerifyLink, {
       body: { token },
       failure: Messages.Mfa.linkFailed,
-      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden]
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.TooManyRequests]
     })
   );

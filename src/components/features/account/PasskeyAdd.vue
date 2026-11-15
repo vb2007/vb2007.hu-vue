@@ -7,7 +7,7 @@
  */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpStatus } from "@/constants/http";
+import { HttpStatus, REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useFormValidation } from "@/composables/useFormValidation";
@@ -98,7 +98,7 @@ const add = async (body: MfaPasswordBody): Promise<ApiResult<PasskeyAddedRespons
       body,
       failure: Messages.Passkeys.optionsFailed,
       // A wrong or missing password, GitHub to confirm, the cap: the form's answers, not faults.
-      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.Conflict]
+      quietStatuses: REAUTH_QUIET_STATUSES
     });
     if (!result.ok) return result;
     ready = { options: result.data, until: sentAt + (result.data.timeout ?? 0) };

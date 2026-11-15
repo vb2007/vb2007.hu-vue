@@ -15,7 +15,7 @@ import {
   restoreSession,
   startMfa
 } from "@/scripts/authentication/user";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { descriptionOf } from "@/__tests__/helpers/description";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -686,6 +686,8 @@ describe("LoginForm", () => {
       expect((email.element as HTMLInputElement).value).toBe("me@example.com");
       expect((password.element as HTMLInputElement).value).toBe("");
       expect(document.activeElement).toBe(password.element);
+      // A fresh form: the emptied password isn't flagged until the next submit.
+      expect(wrapper.find(".field__error").exists()).toBe(false);
       wrapper.unmount();
     });
 
@@ -697,6 +699,7 @@ describe("LoginForm", () => {
       await flushPromises();
 
       expect(wrapper.find('[role="alert"]').text()).toBe(EXPIRED);
+      expect(wrapper.find(".field__error").exists()).toBe(false);
       expect(document.activeElement).toBe(wrapper.find('input[type="password"]').element);
       wrapper.unmount();
     });
@@ -714,6 +717,29 @@ describe("LoginForm", () => {
       });
       expect(router.currentRoute.value.fullPath).toBe("/login");
       expect(wrapper.find(".mfa").exists()).toBe(true);
+    });
+
+    it("waits, then shows why the second step can't go on, over a filled-in address", async () => {
+      window.history.replaceState({ prefillEmail: "me@example.com" }, "");
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetchMock = mockFetch();
+      const answer = deferResponse(fetchMock);
+
+      const { wrapper } = await mountWithRouter(
+        LoginForm,
+        { attachTo: document.body },
+        "/login?mfa=required"
+      );
+      expect(wrapper.find('[role="status"]').text()).toBe("Loading the second step…");
+      expect(wrapper.find("form").exists()).toBe(false);
+      answer.respond(jsonResponse(403, { error: EXPIRED }));
+      await flushPromises();
+
+      const message = wrapper.find(".failure");
+      expect(message.text()).toBe(EXPIRED);
+      expect(document.activeElement).toBe(message.element);
+      window.history.replaceState(null, "");
+      wrapper.unmount();
     });
 
     it("shows why a GitHub login's second step can't go on", async () => {

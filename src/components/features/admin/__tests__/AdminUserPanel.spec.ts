@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import AdminUserAction from "@/components/features/admin/AdminUserAction.vue";
 import AdminQuotaEditor from "@/components/features/admin/AdminQuotaEditor.vue";
+import AdminResetMfa from "@/components/features/admin/AdminResetMfa.vue";
 import AdminUserSuspension from "@/components/features/admin/AdminUserSuspension.vue";
 import { Messages } from "@/constants/messages";
 import { QUOTA_UNITS } from "@/scripts/admin/adminUser";
@@ -67,9 +68,67 @@ describe("AdminUserPanel", () => {
       "E-mail": "a@example.com Confirmed",
       Password: "Set",
       GitHub: "Not linked",
+      MFA: "Off",
       Owns: "3 pastes · 1 short link · 12 uploads",
       ID: "a"
     });
+  });
+
+  it.each([
+    [{ email: true, recoveryCodesLeft: 10 }, "E-mail · 10 recovery codes left"],
+    [{ totp: true, passkeys: 1 }, "Authenticator app · 0 recovery codes left · 1 passkey"],
+    [
+      { email: true, totp: true, passkeys: 2, recoveryCodesLeft: 1 },
+      "E-mail and authenticator app · 1 recovery code left · 2 passkeys"
+    ],
+    // Passkeys alone ask for no second step, but they're still the account's.
+    [{ passkeys: 3 }, "Off · 3 passkeys"]
+  ])("names the MFA that's on: %o", async (mfa, shown) => {
+    const wrapper = await mountPanel(
+      anAdminUserDetails("a", {
+        mfa: { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0, ...mfa }
+      })
+    );
+    await flushPromises();
+
+    expect(facts(wrapper).MFA).toBe(shown);
+  });
+
+  it("shows the MFA as the reset left it, keeping the passkeys", async () => {
+    const wrapper = await mountPanel(
+      anAdminUserDetails("a", {
+        mfa: { email: true, totp: true, passkeys: 2, recoveryCodesLeft: 9 }
+      })
+    );
+    await flushPromises();
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        message: "User's MFA reset successfully: every method is off and their session was ended."
+      })
+    );
+    const reset = wrapper.findComponent(AdminResetMfa);
+    await reset.find(".action__keys button").trigger("click");
+    await reset.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(String(fetchMock.mock.calls[1][0])).toBe("https://api.test/admin/users/a/mfa");
+    expect(facts(wrapper).MFA).toBe("Off · 2 passkeys");
+    expect(reset.find(".status--success").text()).toBe(Messages.Admin.mfaReset("user-a"));
+  });
+
+  it("has no Reset MFA key on the admin's own account", async () => {
+    const wrapper = await mountPanel(
+      anAdminUserDetails("a", {
+        isSuperuser: true,
+        mfa: { email: true, totp: false, passkeys: 0, recoveryCodesLeft: 10 }
+      })
+    );
+    await flushPromises();
+
+    const reset = wrapper.findComponent(AdminResetMfa);
+    expect(reset.find(".action__note").text()).toBe(Messages.Admin.superuserMfaNotResettable);
+    expect(reset.find("button").exists()).toBe(false);
   });
 
   it("names a pending address, GitHub and a GitHub-only account", async () => {
@@ -175,6 +234,7 @@ describe("AdminUserPanel", () => {
       "Uploads",
       "Rename",
       "Log out everywhere",
+      "Reset MFA",
       "Suspend account",
       "Delete account"
     ]);

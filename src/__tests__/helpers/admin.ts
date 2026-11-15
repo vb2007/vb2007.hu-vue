@@ -50,7 +50,7 @@ export const anAdminUser = (
 });
 
 /**
- * A user as `GET /admin/users/:id` returns them: a confirmed password account without GitHub, owning
+ * A user as `GET /admin/users/:id` returns them: a confirmed password account without GitHub or MFA, owning
  * a few pastes and a short link besides `anAdminUser`'s uploads.
  */
 export const anAdminUserDetails = (
@@ -71,6 +71,7 @@ export const anAdminUserDetails = (
     emailVerified: true,
     pendingEmail: null,
     githubLogin: null,
+    mfa: { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 },
     counts: { pastes: 3, shortUrls: 1, uploads: user.uploads.count, ...counts },
     ...overrides
   };

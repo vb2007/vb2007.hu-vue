@@ -12,6 +12,9 @@ import { clearSession } from "@/scripts/authentication/user";
 
 const EXPIRED =
   "The login's second step expired, used up its tries or was never started: log in again.";
+/** `GET /user` without a session: the 403 the lookup after an expired step gets. */
+const LOGGED_OUT = () =>
+  jsonResponse(403, { error: "You must be logged in to perform this action." });
 const WRONG_CODE = "The code is wrong, expired or already used: check it or request a new one.";
 
 let fetchMock: ReturnType<typeof mockFetch>;
@@ -100,13 +103,33 @@ describe("verifyMfa", () => {
 
   it("goes back to the password with the API's message once the step expired", async () => {
     startMfa(["email"]);
-    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }));
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }))
+      .mockResolvedValueOnce(LOGGED_OUT());
 
     const failure = await verifyMfa({ method: "email", code: "123456" });
 
+    expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/user", {
+      method: "GET",
+      credentials: "include"
+    });
     expect(failure?.status).toBe(403);
     expect(mfaMethods.value).toEqual([]);
     expect(loginStatus.value).toBe(EXPIRED);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("finishes as logged in when another tab passed the step, e.g. with its link", async () => {
+    startMfa(["email"]);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }))
+      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+
+    await expect(verifyMfa({ method: "email", code: "123456" })).resolves.toBeUndefined();
+
+    expect(isLoggedIn.value).toBe(true);
+    expect(loginStatus.value).toBe("success");
+    expect(mfaMethods.value).toEqual([]);
   });
 
   it("leaves a login started meanwhile alone when an old step's 403 lands", async () => {
@@ -114,9 +137,23 @@ describe("verifyMfa", () => {
     const response = deferResponse(fetchMock);
     const pending = verifyMfa({ method: "email", code: "123456" });
     forgetLogin();
+    fetchMock.mockResolvedValueOnce(LOGGED_OUT());
     response.respond(jsonResponse(403, { error: EXPIRED }));
     await pending;
 
+    expect(loginStatus.value).toBe("");
+  });
+
+  it("logs in, but reports nothing, when another tab passed a step left meanwhile", async () => {
+    startMfa(["email"]);
+    const response = deferResponse(fetchMock);
+    const pending = verifyMfa({ method: "email", code: "123456" });
+    forgetLogin();
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    response.respond(jsonResponse(403, { error: EXPIRED }));
+    await pending;
+
+    expect(isLoggedIn.value).toBe(true);
     expect(loginStatus.value).toBe("");
   });
 });
@@ -143,6 +180,7 @@ describe("verifyMfaLink", () => {
     [403, EXPIRED]
   ])("returns the API's %i without logging it", async (status, error) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(status, { error }));
+    if (status === 403) fetchMock.mockResolvedValueOnce(LOGGED_OUT());
 
     const failure = await verifyMfaLink("s3cret");
 
