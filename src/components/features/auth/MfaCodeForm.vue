@@ -15,7 +15,8 @@ import type { MfaVerifyBody } from "@/types/api/mfa";
 
 const props = defineProps<{
   verifier: MfaVerifier;
-  method: MfaVerifyBody["method"];
+  /** The methods answered with a typed `code` (not the passkey's `response`). */
+  method: Extract<MfaVerifyBody, { code: string }>["method"];
   label: string;
   hint: string;
   /** The problem with a finished code, "" when there's none. */
@@ -32,7 +33,7 @@ const errorId = useId();
 const { isVerifying, refusal, hold } = props.verifier;
 const isHeld = computed(() => hold.isHeld());
 const shownError = computed(() => hold.shown());
-const { errors, isValid, leave, validate } = useFormValidation({
+const { errors, isValid, leave, validate, reset } = useFormValidation({
   code: {
     value: code,
     check: () => props.check(code.value),
@@ -44,6 +45,13 @@ watch(code, () => (refusal.value = ""));
 
 const focusField = () => form.value?.querySelector("input")?.focus();
 
+/** A new code is on its way, which voids the one typed: an empty field, waiting for it. */
+const restart = () => {
+  code.value = "";
+  reset();
+  focusField();
+};
+
 const submit = async () => {
   if (isHeld.value || !(await validate(form.value))) return;
   const passed = await props.verifier.verify({
@@ -54,7 +62,7 @@ const submit = async () => {
   if (!passed) focusField();
 };
 
-defineExpose({ focusField });
+defineExpose({ focusField, restart });
 </script>
 
 <template>

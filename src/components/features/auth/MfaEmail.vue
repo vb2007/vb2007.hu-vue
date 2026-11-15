@@ -25,7 +25,7 @@ const { isSending, sent, error, wait, send } = useMfaEmail();
 const sentId = useId();
 const errorId = useId();
 const codeForm = useTemplateRef("codeForm");
-const sendKey = useTemplateRef<InstanceType<typeof BaseButton>>("sendKey");
+const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 const hint = `${Messages.EmailCode.invalid(Limits.Code.digits)} ${Messages.Mfa.stepLimits(Limits.Mfa.challengeMinutes, Limits.Mfa.challengeAttempts)}`;
 const sendLabel = computed(() => {
   if (isSending.value) return "Sending";
@@ -39,12 +39,13 @@ const sendName = computed(() =>
 );
 
 const onSend = async () => {
-  const wasSent = sent.value;
-  await send();
+  const mailed = await send();
   await nextTick();
-  // The code is what comes next; a refusal keeps the cursor on the key that was pressed.
-  if (sent.value && !wasSent) codeForm.value?.focusField();
-  else sendKey.value?.$el.focus();
+  // The send key waits now, disabled. A new mail voids the code typed before, so the field starts
+  // empty; after a refusal the field, or without one the message, takes the cursor.
+  if (mailed) codeForm.value?.restart();
+  else if (codeForm.value) codeForm.value.focusField();
+  else errorMessage.value?.$el.focus();
 };
 </script>
 
@@ -54,7 +55,15 @@ const onSend = async () => {
     <p v-else class="email__note">
       Get a code and a link at your account's e-mail address. The link only works in this browser.
     </p>
-    <StatusMessage v-if="error" :id="errorId" tone="error">{{ error }}</StatusMessage>
+    <StatusMessage
+      v-if="error"
+      :id="errorId"
+      ref="errorMessage"
+      class="email__error"
+      tone="error"
+      tabindex="-1"
+      >{{ error }}</StatusMessage
+    >
     <MfaCodeForm
       v-if="sent"
       ref="codeForm"
@@ -69,7 +78,6 @@ const onSend = async () => {
     <div class="email__send" :class="{ 'email__send--again': sent }">
       <span v-if="sent" class="email__ask">No code yet?</span>
       <BaseButton
-        ref="sendKey"
         :variant="sent ? 'secondary' : 'primary'"
         :size="sent ? 'sm' : 'md'"
         :block="!sent"
@@ -89,6 +97,10 @@ const onSend = async () => {
 .email {
   display: grid;
   gap: var(--sp-4);
+}
+
+.email__error {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
 }
 
 .email__note {

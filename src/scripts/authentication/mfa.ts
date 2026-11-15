@@ -56,8 +56,8 @@ export const verifyMfa = (body: MfaVerifyBody) =>
     apiRequest(Endpoints.Auth.mfaVerify, {
       body,
       failure: Messages.Mfa.verifyFailed,
-      // A wrong code is the user's typo, not a fault.
-      quietStatuses: [HttpStatus.BadRequest]
+      // A wrong code is the user's typo, and an expired step an expected end, not faults.
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden]
     })
   );
 

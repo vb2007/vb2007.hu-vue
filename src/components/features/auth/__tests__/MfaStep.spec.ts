@@ -108,6 +108,11 @@ describe("MfaStep", () => {
 
     await step.find("input").setValue("12a");
     expect(step.find(".field__error").text()).toBe("Enter the 6-digit code from the e-mail.");
+    // Too short shows once the field is left.
+    await step.find("input").setValue("12");
+    expect(step.find(".field__error").exists()).toBe(false);
+    await step.find("input").trigger("blur");
+    expect(step.find(".field__error").text()).toBe("Enter the 6-digit code from the e-mail.");
     await step.find("form").trigger("submit");
     await flushPromises();
 
@@ -144,7 +149,7 @@ describe("MfaStep", () => {
     expect(step.find('[role="alert"]').text()).toContain(TOO_MANY);
   });
 
-  it("keeps the code field after a failed send, with the API's message on the key it pressed", async () => {
+  it("keeps the code field after a failed send, with the cursor in it", async () => {
     vi.useFakeTimers();
     const step = mountStep();
     await sendCode(step);
@@ -157,7 +162,25 @@ describe("MfaStep", () => {
 
     expect(step.find("input").exists()).toBe(true);
     expect(step.find('[role="alert"]').text()).toBe(MAIL_FAILED);
-    expect(document.activeElement).toBe(keyNamed(step, "Send a new code").element);
+    expect(document.activeElement).toBe(step.find("input").element);
+  });
+
+  it("empties the field for a new code, which voids the one typed", async () => {
+    vi.useFakeTimers();
+    const step = mountStep();
+    await sendCode(step);
+    await step.find("input").setValue("12");
+    vi.advanceTimersByTime(60_000);
+    await flushPromises();
+    fetchMock.mockResolvedValueOnce(jsonResponse(202, { message: SENT }));
+
+    await keyNamed(step, "Send a new code").trigger("click");
+    await flushPromises();
+
+    const field = step.find("input");
+    expect((field.element as HTMLInputElement).value).toBe("");
+    expect(step.find(".field__error").exists()).toBe(false);
+    expect(document.activeElement).toBe(field.element);
   });
 
   it("names a long wait in words for the waiting send key", async () => {
@@ -173,6 +196,8 @@ describe("MfaStep", () => {
     expect(key.text()).toMatch(/^Send again in 30\smin$/);
     expect(key.attributes("aria-label")).toMatch(/^Send again in 30\sminutes$/);
     expect(descriptionOf(key)).toBe("Too many.");
+    // No field yet, so the message takes the cursor the disabled key lost.
+    expect(document.activeElement).toBe(step.find(".email__error").element);
   });
 
   it("leaves with Log in again", async () => {

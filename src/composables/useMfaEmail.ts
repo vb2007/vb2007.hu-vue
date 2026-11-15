@@ -39,7 +39,7 @@ export const useMfaEmail = () => {
     error.value = "";
     const result = await apiRequest(Endpoints.Auth.mfaEmail, {
       failure: Messages.Mfa.emailFailed,
-      quietStatuses: [HttpStatus.TooManyRequests]
+      quietStatuses: [HttpStatus.Forbidden, HttpStatus.TooManyRequests]
     });
     isSending.value = false;
 
