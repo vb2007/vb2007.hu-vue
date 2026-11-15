@@ -25,6 +25,10 @@ const props = defineProps<{
   early?: (code: string) => string;
   /** Ids of messages above that also describe the field, e.g. where the code went. */
   describedby?: string;
+  /** Letters too (a recovery code): a text keyboard, and no one-time-code autofill offering a mailed code. */
+  text?: boolean;
+  /** The site's words for the API's 400 (a wrong code), when its own don't fit the method. */
+  refused?: string;
   /** Holds Log in, e.g. while a new code is being mailed, which would void the one typed. */
   busy?: boolean;
 }>();
@@ -35,6 +39,7 @@ const errorId = useId();
 const { isVerifying, refusal, hold } = props.verifier;
 const isHeld = computed(() => hold.isHeld());
 const shownError = computed(() => hold.shown());
+const shownRefusal = computed(() => refusal.value && (props.refused || refusal.value));
 const { errors, isValid, leave, validate, reset } = useFormValidation({
   code: {
     value: code,
@@ -71,23 +76,33 @@ const submit = async () => {
   if (passed) return;
   // Passed, the board shows the login; refused, the field takes the cursor back.
   focusField();
-  if (fromField) announced.value = refusal.value;
+  if (fromField) announced.value = shownRefusal.value;
 };
 
 defineExpose({ focusField, restart });
 </script>
 
 <template>
-  <form ref="form" class="code" novalidate @submit.prevent="submit">
+  <!-- A letter code mustn't be "corrected" into another word: that would only waste a try. The
+       field inherits these from its form. -->
+  <form
+    ref="form"
+    class="code"
+    novalidate
+    :autocorrect="text ? 'off' : undefined"
+    :spellcheck="text ? false : undefined"
+    @submit.prevent="submit"
+  >
     <BaseInput
       v-model="code"
       :label="label"
       :hint="hint"
-      inputmode="numeric"
-      autocomplete="one-time-code"
+      :inputmode="text ? 'text' : 'numeric'"
+      :autocomplete="text ? 'off' : 'one-time-code'"
+      :autocapitalize="text ? 'none' : undefined"
       mono
       :describedby="describedby"
-      :error="refusal || errors.code"
+      :error="shownRefusal || errors.code"
       required
       @blur="leave('code')"
     />

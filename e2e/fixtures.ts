@@ -95,6 +95,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.hasMfaEmail()` turns e-mail MFA on for `MOCK_EMAIL` (vb2007/vb2007.hu-api#448): its right password then answers 202 with `methods`, `POST /auth/mfa/email` "mails"
  * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all (`api.expiresMfaChallenge()` ends the step, so every
  * `/auth/mfa` endpoint answers 403). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
+ * Each recovery code passes `POST /auth/mfa/verify` with `method: "recovery"` once (case, spaces and dashes ignored); `POST /user/mfa/recovery-codes` replaces them with `MOCK_NEW_RECOVERY_CODES`.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
@@ -345,6 +346,11 @@ export const MOCK_MFA_LINK_TOKEN = "e2e-mfa-link-token";
 export const MOCK_RECOVERY_CODES = Array.from(
   { length: 10 },
   (_, i) => `${"abcdefghij"[i]}2345-${"abcdefghij"[i]}6723`
+);
+/** The set `POST /user/mfa/recovery-codes` replaces them with. */
+export const MOCK_NEW_RECOVERY_CODES = Array.from(
+  { length: 10 },
+  (_, i) => `${"klmnopqrst"[i]}7654-${"klmnopqrst"[i]}3276`
 );
 /** The 403 of every `/auth/mfa` endpoint once the second step expired, used up its tries or was replaced. */
 export const MFA_EXPIRED_ERROR =
@@ -599,6 +605,8 @@ interface MockUser {
   githubLogin?: string;
   /** All off when unset. With e-mail MFA on, a right password answers 202 and waits for the mailed code. */
   mfa?: MockMfaStatus;
+  /** The unused recovery codes, whose count is `mfa.recoveryCodesLeft` (see `setRecoveryCodes`). */
+  recoveryCodes?: string[];
 }
 
 /** A login's second step waiting in the browser's `__Host-VB-MFA` cookie, which the mock stands in for. */
@@ -852,6 +860,10 @@ export class MockApi {
           (candidate) => normalizeEmail(candidate.email) === normalizeEmail(user.email)
         )!;
       account.mfa = { ...this.mfaOf(user.id), ...mfa };
+      // The codes themselves, so a login can use them up.
+      if (mfa.recoveryCodesLeft !== undefined) {
+        this.setRecoveryCodes(account, MOCK_RECOVERY_CODES.slice(0, mfa.recoveryCodesLeft));
+      }
     }
     return user;
   }
@@ -1475,6 +1487,9 @@ export class MockApi {
         return { status: 202, body: { message: "A code and a login link were sent." } };
       }
       case "POST /auth/mfa/verify":
+        if (body?.method === "recovery") {
+          return this.passMfa(body.code, (code, account) => this.spendRecoveryCode(account, code));
+        }
         return this.passMfa(body?.method === "email" ? body.code : undefined, MOCK_MFA_CODE);
       case "POST /auth/mfa/verify-link":
         return this.passMfa(body?.token, MOCK_MFA_LINK_TOKEN);
@@ -1482,6 +1497,8 @@ export class MockApi {
         return this.setMfaEmail(true, body?.password);
       case "DELETE /user/mfa/email":
         return this.setMfaEmail(false, body?.password);
+      case "POST /user/mfa/recovery-codes":
+        return this.replaceRecoveryCodes(body?.password);
       case "GET /user":
         return this.user
           ? {
@@ -1683,7 +1700,8 @@ export class MockApi {
     const account = this.accounts.find(
       (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
     )!;
-    account.mfa = { ...(account.mfa ?? NO_MFA), email: true, recoveryCodesLeft: 10 };
+    account.mfa = { ...(account.mfa ?? NO_MFA), email: true };
+    this.setRecoveryCodes(account, MOCK_RECOVERY_CODES);
     account.emailVerified = true;
   }
 
@@ -1714,21 +1732,31 @@ export class MockApi {
     return challenge;
   }
 
-  /** A try at the second step: `answer` passes when it's `expected` and the code was mailed. */
-  private passMfa(answer: string | undefined, expected: string): MockResponse {
+  /**
+   * A try at the second step: `answer` passes when it's `expected` and the code was mailed, or
+   * when `expected` is a check (a recovery code's) that passes it.
+   */
+  private passMfa(
+    answer: string | undefined,
+    expected: string | ((answer: string, account: MockUser) => boolean)
+  ): MockResponse {
     const challenge = this.liveMfaChallenge();
     if (!challenge) return MFA_EXPIRED;
     if (!answer)
       return { status: 400, body: { error: "You must provide the login link's token." } };
     challenge.tries++;
-    if (!challenge.mailed || answer !== expected) {
+    const passed =
+      typeof expected === "string"
+        ? challenge.mailed && answer === expected
+        : expected(answer, challenge.account);
+    if (!passed) {
       return {
         status: 400,
         body: {
           error:
-            expected === MOCK_MFA_CODE
-              ? "The code is wrong, expired or already used: check it or request a new one."
-              : "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again."
+            expected === MOCK_MFA_LINK_TOKEN
+              ? "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again."
+              : "The code is wrong, expired or already used: check it or request a new one."
         }
       };
     }
@@ -1743,6 +1771,75 @@ export class MockApi {
 
   /** `PUT` and `DELETE /user/mfa/email`, confirmed like the API's `rejectFailedMfaReauth`. */
   private setMfaEmail(on: boolean, password?: string): MockResponse {
+    const refused = this.refuseMfaReauth(password);
+    if (refused) return refused;
+    const current = this.user!.mfa ?? NO_MFA;
+    if (!on) {
+      this.user!.mfa = { ...current, email: false };
+      // With no other method on, the recovery codes go too.
+      if (!current.totp) this.setRecoveryCodes(this.user!, []);
+      return { status: 200, body: { message: "E-mail MFA turned off." } };
+    }
+    if (!this.user!.emailVerified) {
+      return {
+        status: 409,
+        body: {
+          error:
+            "Confirm the account's e-mail address first (a password reset or an e-mail change confirms it), then turn on e-mail MFA."
+        }
+      };
+    }
+    this.user!.mfa = { ...current, email: true };
+    const message =
+      "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
+    if (current.recoveryCodesLeft) return { status: 200, body: { message } };
+    this.setRecoveryCodes(this.user!, MOCK_RECOVERY_CODES);
+    return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
+  }
+
+  /** `POST /user/mfa/recovery-codes`: `MOCK_NEW_RECOVERY_CODES` replace the set, while a method is on. */
+  private replaceRecoveryCodes(password?: string): MockResponse {
+    const refused = this.refuseMfaReauth(password);
+    if (refused) return refused;
+    const { email, totp } = this.user!.mfa ?? NO_MFA;
+    if (!email && !totp) {
+      return {
+        status: 409,
+        body: { error: "Turn on an MFA method first: recovery codes only work alongside one." }
+      };
+    }
+    this.setRecoveryCodes(this.user!, MOCK_NEW_RECOVERY_CODES);
+    return {
+      status: 200,
+      body: {
+        message:
+          "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.",
+        recoveryCodes: MOCK_NEW_RECOVERY_CODES
+      }
+    };
+  }
+
+  /** An account's unused recovery codes, and the count the MFA store shows for them, set together. */
+  private setRecoveryCodes(account: MockUser, codes: string[]) {
+    account.recoveryCodes = [...codes];
+    account.mfa = { ...(account.mfa ?? NO_MFA), recoveryCodesLeft: codes.length };
+  }
+
+  /** Uses up `code` of the account's, ignoring case, spaces and dashes like the API; false when it has none such. */
+  private spendRecoveryCode(account: MockUser, code: string) {
+    const bare = (text: string) => text.toLowerCase().replace(/[\s-]/g, "");
+    const left = account.recoveryCodes ?? [];
+    const index = left.findIndex((candidate) => bare(candidate) === bare(code));
+    if (index < 0) return false;
+    this.setRecoveryCodes(
+      account,
+      left.filter((_, i) => i !== index)
+    );
+    return true;
+  }
+
+  /** The API's `rejectFailedMfaReauth`: the password, or a recent GitHub confirmation without one. */
+  private refuseMfaReauth(password?: string): MockResponse | null {
     if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
     if (this.user.hasPassword) {
@@ -1764,33 +1861,7 @@ export class MockApi {
         }
       };
     }
-    const current = this.user.mfa ?? NO_MFA;
-    if (!on) {
-      // With no other method on, the recovery codes go too.
-      this.user.mfa = {
-        ...current,
-        email: false,
-        recoveryCodesLeft: current.totp ? current.recoveryCodesLeft : 0
-      };
-      return { status: 200, body: { message: "E-mail MFA turned off." } };
-    }
-    if (!this.user.emailVerified) {
-      return {
-        status: 409,
-        body: {
-          error:
-            "Confirm the account's e-mail address first (a password reset or an e-mail change confirms it), then turn on e-mail MFA."
-        }
-      };
-    }
-    const message =
-      "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
-    if (current.recoveryCodesLeft) {
-      this.user.mfa = { ...current, email: true };
-      return { status: 200, body: { message } };
-    }
-    this.user.mfa = { ...current, email: true, recoveryCodesLeft: 10 };
-    return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
+    return null;
   }
 
   /** Links @e2e-octocat and comes back to the account page, which also confirms the user. */
@@ -2808,6 +2879,7 @@ export class MockApi {
     const account = this.accounts.find((candidate) => candidate._id === id);
     if (account) {
       account.mfa = { ...NO_MFA, passkeys: this.mfaOf(id).passkeys };
+      account.recoveryCodes = [];
       // Its waiting second step goes too: the next login takes no second step.
       if (this.mfaChallenge?.account === account) this.mfaChallenge = null;
     }

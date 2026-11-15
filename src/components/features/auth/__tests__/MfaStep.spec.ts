@@ -56,7 +56,7 @@ describe("MfaStep", () => {
   });
 
   it("offers no method it can't do yet, and says so when none is left", () => {
-    const step = mountStep(["totp", "recovery"]);
+    const step = mountStep(["totp"]);
 
     expect(step.find('[role="alert"]').text()).toBe(
       "Your account's second step uses a method this site can't do yet. Ask the site's admin to reset it, then log in again."
@@ -246,5 +246,70 @@ describe("MfaStep", () => {
     await keyNamed(step, "Log in again").trigger("click");
 
     expect(step.emitted("back")).toHaveLength(1);
+  });
+
+  it("tells a user who lost every way in who can reset the step", () => {
+    const step = mountStep();
+
+    const help = step.find(".mfa__help");
+    expect(help.text()).toMatch(/^Lost every way in\? A password reset doesn't turn this step off/);
+    expect(help.findAll("a").map((link) => link.attributes("href"))).toEqual([
+      "mailto:balazs@vb2007.hu",
+      "https://matrix.to/#/@vb2007:vb2007.hu"
+    ]);
+  });
+
+  it("logs in with a recovery code, on a text keyboard, refusing only an empty one", async () => {
+    const step = mountStep();
+    await keyNamed(step, "Use a recovery code").trigger("click");
+
+    expect(step.find("h2").text()).toBe("Recovery code");
+    const field = step.find("input");
+    expect(field.attributes("inputmode")).toBe("text");
+    expect(field.attributes("autocomplete")).toBe("off");
+    expect(step.find("form").attributes()).toMatchObject({
+      autocorrect: "off",
+      spellcheck: "false"
+    });
+    expect(descriptionOf(field)).toContain("like abcde-fghij. Each works once.");
+
+    await field.setValue(" - ");
+    await step.find("form").trigger("submit");
+    await flushPromises();
+    expect(step.find(".field__error").text()).toBe("Enter one of your recovery codes.");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Login successful with user me." }))
+      .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+    await field.setValue("ABCDE-fghij ");
+    await step.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+      method: "recovery",
+      code: "ABCDE-fghij"
+    });
+    expect(isLoggedIn.value).toBe(true);
+  });
+
+  it("puts a refused recovery code in the site's words, since no new one can be asked for", async () => {
+    const step = mountStep();
+    await keyNamed(step, "Use a recovery code").trigger("click");
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE }));
+
+    await step.find("input").setValue("abcde-fghij");
+    // Sent with Enter from the field, which keeps the cursor: the refusal is read out.
+    (step.find("input").element as HTMLInputElement).focus();
+    await step.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(step.find(".field__error").text()).toBe(
+      "That code didn't work, or it was already used: each code works once."
+    );
+    expect(document.activeElement).toBe(step.find("input").element);
+    expect(step.find('[aria-live="assertive"]').text()).toBe(
+      "That code didn't work, or it was already used: each code works once."
+    );
   });
 });
