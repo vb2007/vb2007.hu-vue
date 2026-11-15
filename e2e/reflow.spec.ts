@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { browserFontSize } from "./browser";
-import { expect, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 // WCAG 1.4.10 Reflow: at 320 CSS px (1280 px at 400% zoom), and with a large browser font size,
 // nothing scrolls sideways and nothing is cut off: columns shrink to the window, and keys and long
@@ -198,3 +198,29 @@ test("the uploads filter keeps to its own column, clear of the Sort select", asy
       .toEqual({ pastFieldset: 0, underSort: 0 });
   }
 });
+
+for (const [name, fontSize, width] of [
+  ["a 320 px window", 0, 320],
+  ["a 32 px browser font size", 32, 640]
+] as const) {
+  test(`the login's second step and the recovery codes fit ${name}`, async ({ page, api }) => {
+    if (fontSize) await browserFontSize(page, fontSize);
+    await page.setViewportSize({ width, height: 900 });
+    api.hasMfaEmail();
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await page.getByRole("button", { name: "E-mail me a code" }).click();
+    await expect(page.getByLabel("Code from the e-mail")).toBeVisible();
+    await expectReflow(page);
+
+    api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Turn on e-mail codes" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Turn on", exact: true }).click();
+    await expect(page.getByRole("button", { name: "I've saved them" })).toBeVisible();
+    await expectReflow(page);
+  });
+}

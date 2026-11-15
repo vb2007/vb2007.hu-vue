@@ -11,6 +11,7 @@ import {
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  mfa,
   pendingEmail,
   sessionEnded,
   userEmail,
@@ -25,6 +26,8 @@ import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import GithubLink from "@/components/features/account/GithubLink.vue";
+import MfaEmailToggle from "@/components/features/account/MfaEmailToggle.vue";
+import RecoveryCodesPanel from "@/components/features/account/RecoveryCodesPanel.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -46,9 +49,7 @@ const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
   if (hasPassword.value) return Messages.Account.githubLinked;
   // Back to delete, the delete form says so itself, where the focus lands.
-  return deleteReturned.value
-    ? ""
-    : Messages.Account.passwordGithubConfirmed(Limits.Github.reauthMinutes);
+  return deleteReturned.value ? "" : Messages.Account.githubConfirmed(Limits.Github.reauthMinutes);
 });
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const clearNotice = () => {
@@ -65,13 +66,46 @@ const announce = async (message: string) => {
 };
 // The key that was pressed went with the account board, so focus moves to why it went.
 const endedMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("endedMessage");
+/**
+ * Fresh recovery codes, shown once; kept here, above the rows the account's refresh redraws and
+ * the logged-in gate, until they're saved.
+ */
+const recoveryCodes = ref<string[]>([]);
 watch(sessionEnded, async (ended) => {
-  if (!ended) return;
+  // Recovery codes still on show keep the focus their panel took: they matter more.
+  if (!ended || recoveryCodes.value.length) return;
   await nextTick();
   endedMessage.value?.$el.focus();
 });
 const onPasswordSet = () => announce(Messages.Account.passwordSet);
 const onUnlinked = () => announce(Messages.Account.githubUnlinked);
+
+/** An MFA setting changed: its message at the top, and its codes, if any, which take the focus. */
+const onMfaChanged = (message: string, codes?: string[]) => {
+  if (!codes?.length) return announce(message);
+  clearNotice();
+  notice.value = message;
+  recoveryCodes.value = codes;
+};
+// Codes the account no longer has (its last method turned off, here or elsewhere) aren't worth
+// saving any more. A session that ended meanwhile says nothing about them: they stay on show,
+// above the logged-out gate, until they're saved.
+watch(
+  () => mfa.value.recoveryCodesLeft,
+  (left) => {
+    if (!left && isLoggedIn.value) recoveryCodes.value = [];
+  }
+);
+const mfaSection = useTemplateRef("mfaSection");
+/** Saved: the panel goes, and the focus stays in the section, on its first row's key. */
+const onRecoveryCodesSaved = async () => {
+  recoveryCodes.value = [];
+  await nextTick();
+  // Logged out meanwhile, there's no section: the notice of why takes the focus instead.
+  (
+    mfaSection.value?.querySelector<HTMLElement>(".login button") ?? endedMessage.value?.$el
+  )?.focus();
+};
 </script>
 
 <template>
@@ -134,6 +168,49 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
       </div>
     </section>
 
+    <!-- Each method is a row like the logins above (vb2007/vb2007.hu-api#448); any answer with
+         fresh recovery codes shows them in the panel at the top, once. -->
+    <section ref="mfaSection" class="logins" aria-labelledby="mfa-title">
+      <h2 id="mfa-title" class="logins__title">Two-step login</h2>
+      <p class="logins__note">
+        A second step after your password or GitHub, so a stolen password alone can't log in.
+      </p>
+      <RecoveryCodesPanel
+        v-if="recoveryCodes.length"
+        :codes="recoveryCodes"
+        @done="onRecoveryCodesSaved"
+      />
+      <div class="login">
+        <span class="login__mark"><AppIcon name="mail" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">E-mail codes</h3>
+            <span class="badge" :class="mfa.email ? 'badge--on' : 'badge--off'">
+              <AppIcon :name="mfa.email ? 'check' : 'close'" :size="14" />
+              {{ mfa.email ? "On" : "Off" }}
+            </span>
+          </div>
+          <p class="login__note">
+            <template v-if="mfa.email"
+              >Each login also takes a code or link mailed to your address.</template
+            >
+            <template v-else-if="emailVerified"
+              >Get a code or link by e-mail at each login.</template
+            >
+            <template v-else
+              >Confirm your e-mail address first: a password reset or an e-mail change confirms
+              it.</template
+            >
+          </p>
+          <MfaEmailToggle
+            v-if="mfa.email || emailVerified"
+            @start="clearNotice"
+            @done="onMfaChanged"
+          />
+        </div>
+      </div>
+    </section>
+
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>
       <div class="login">
@@ -171,6 +248,12 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
+    <!-- Codes shown once stay until they're saved, even when the session ended meanwhile. -->
+    <RecoveryCodesPanel
+      v-if="recoveryCodes.length"
+      :codes="recoveryCodes"
+      @done="onRecoveryCodesSaved"
+    />
     <div class="gate">
       <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
       <StatusMessage
@@ -233,6 +316,11 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
+}
+
+.logins__note {
+  font-size: var(--fs-sm);
+  color: var(--c-ink-soft);
 }
 
 .login {

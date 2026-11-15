@@ -12,6 +12,7 @@ const ICONS = {
   close: "M6 6l12 12M18 6L6 18",
   arrow: "M5 12h14M13 6l6 6-6 6",
   upload: "M12 15.5V4M7 9l5-5 5 5M4 15v4.5h16V15",
+  download: "M12 4v11.5M7 10.5l5 5 5-5M4 15v4.5h16V15",
   document: "M14 3H6v18h12V7zM14 3v4h4M9 12.5h6M9 16.5h6",
   image: "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01",
   video: "M4 5h16v14H4zM10 9v6l5-3z",

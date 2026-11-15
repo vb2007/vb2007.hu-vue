@@ -6,6 +6,7 @@ test.describe("page titles", () => {
     ["/shorten", "Shorten · vb2007.hu"],
     ["/pastebin", "Paste · vb2007.hu"],
     ["/login", "Log in · vb2007.hu"],
+    ["/login/mfa", "Log in · vb2007.hu"],
     ["/admin/users", "Users · vb2007.hu"]
   ]) {
     test(`${path} has its own title`, async ({ page }) => {

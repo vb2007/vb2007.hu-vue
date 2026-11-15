@@ -28,6 +28,8 @@ export interface UserDetails {
    */
   pendingEmail: string | null;
   isSuperuser: boolean;
+  /** Which second steps a login needs (vb2007/vb2007.hu-api#448). */
+  mfa: MfaStatus;
 }
 
 /**

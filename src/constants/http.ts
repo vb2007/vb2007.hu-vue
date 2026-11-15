@@ -2,6 +2,7 @@
 export class HttpMethod {
   static readonly Get = "GET";
   static readonly Post = "POST";
+  static readonly Put = "PUT";
   static readonly Patch = "PATCH";
   static readonly Delete = "DELETE";
 }
@@ -37,7 +38,23 @@ export class ErrorReason {
    * since an API restart starts the count again). A 503 there without it is a failed send.
    */
   static readonly MailBudget = "mailBudget";
+  /**
+   * `POST /auth/mfa/email`'s 429 once the account got its login codes of the day
+   * (`Limits.Mfa.emailsPerDay`), with `retryAfter`.
+   */
+  static readonly MfaEmailLimit = "mfaEmailLimit";
 }
+
+/**
+ * What an MFA setting's confirmation (`ReauthForm`) expects back besides a success: a missing (400)
+ * or wrong (403) password, GitHub's reauth (403) and, turning a method on, an unconfirmed address
+ * (409). They're the user's to fix, not faults, so they aren't logged.
+ */
+export const REAUTH_QUIET_STATUSES: readonly number[] = [
+  HttpStatus.BadRequest,
+  HttpStatus.Forbidden,
+  HttpStatus.Conflict
+];
 
 export class Header {
   static readonly ContentType = "Content-Type";

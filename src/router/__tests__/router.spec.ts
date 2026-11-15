@@ -246,12 +246,12 @@ describe("router", () => {
     expect(document.title).toBe("vb2007.hu");
   });
 
-  it("marks only the not-found pages noindex", () => {
+  it("marks only the not-found pages and the mailed MFA link noindex", () => {
     const noindex = flatten(routes)
       .filter(([, route]) => route.meta?.noindex)
       .map(([, route]) => route.name);
 
-    expect(noindex).toEqual(["api-error", "not-found"]);
+    expect(noindex).toEqual(["login-mfa", "api-error", "not-found"]);
   });
 
   it.each(flatten(routes))("loads the component for %s", async (_path, route) => {
