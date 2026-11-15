@@ -16,12 +16,18 @@ import {
   login,
   loginStatus,
   logout,
+  mfaMethods,
   restoreSession
 } from "@/scripts/authentication/user";
+import { loadMfaMethods } from "@/scripts/authentication/mfa";
+import { OauthQuery } from "@/constants/oauth";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useOauthError } from "@/composables/useOauthError";
+import { useQueryNotice } from "@/composables/useQueryNotice";
 import { useRetryHold } from "@/composables/useRetryHold";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
+import MfaStep from "@/components/features/auth/MfaStep.vue";
+import PasskeyLogin from "@/components/features/auth/PasskeyLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -36,6 +42,7 @@ const password = ref("");
 const isLoading = ref(false);
 const isButtonError = ref(false);
 const form = useTemplateRef("form");
+const passkeyKey = useTemplateRef("passkeyKey");
 const { errors, isValid, leave, validate, reset } = useFormValidation({
   email: { value: email, check: () => emailMissingError(email.value) },
   password: {
@@ -57,6 +64,7 @@ passwordResetNotice.value = "";
 // earlier visit, or landing from a login sent then, a lockout would outlive its hold, over a key
 // that no longer waits.
 forgetLogin();
+const inMfa = computed(() => mfaMethods.value.length > 0);
 // The login limiter counts per address, so another address may be tried during the hold.
 const hold = useRetryHold(loginStatus);
 const heldId = computed(() => normalizeEmail(email.value));
@@ -64,6 +72,23 @@ const isHeld = computed(() => hold.isHeld(heldId.value));
 /** The address the last attempt was for, normalized: its outcome says nothing about another. */
 const triedId = ref("");
 const failureId = useId();
+
+/**
+ * A GitHub login whose account has a second step comes back with ?mfa=required
+ * (vb2007/vb2007.hu-api#448): its methods are asked for, after the forgetting above, with a short
+ * wait shown instead of the password form. A refusal is about whatever address is typed, and takes
+ * the focus, as the page has nothing else to focus yet.
+ */
+const isLoadingMfa = ref(useQueryNotice(OauthQuery.mfa) === OauthQuery.mfaRequired);
+if (isLoadingMfa.value) {
+  void loadMfaMethods().then(async () => {
+    isLoadingMfa.value = false;
+    if (inMfa.value) return;
+    triedId.value = heldId.value;
+    await nextTick();
+    form.value?.querySelector<HTMLElement>(".failure")?.focus();
+  });
+}
 
 let flagTimer: ReturnType<typeof setTimeout> | undefined;
 /** Flashes the submit key red for a second. */
@@ -80,6 +105,7 @@ const handleSubmit = async () => {
     return;
   }
   resetNotice.value = "";
+  passkeyKey.value?.clear();
   // The answer is about the address sent, whatever the field reads once it lands.
   const id = (triedId.value = heldId.value);
   isLoading.value = true;
@@ -123,6 +149,26 @@ onMounted(() => {
   if (wasPrefilled) form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
 });
 
+const focusPassword = () =>
+  form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
+
+// The password has done its job once the second step opens. Back from the step (Log in again, or
+// an expired step's message), the form starts fresh, with no field's problem shown until the next
+// submit, and the step's outcome is about the address typed.
+watch(inMfa, async (waiting) => {
+  if (waiting) {
+    password.value = "";
+    return;
+  }
+  reset();
+  triedId.value = heldId.value;
+  await nextTick();
+  focusPassword();
+});
+
+/** "Log in again" leaves the step; the address stays. */
+const leaveMfa = () => forgetLogin();
+
 watch(isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     // The password has done its job: logging out here, maybe on a shared machine, doesn't bring it
@@ -137,7 +183,11 @@ watch(isLoggedIn, (loggedIn) => {
 
 <template>
   <StationBoard title="Log in" as="h1">
-    <template v-if="!isLoggedIn">
+    <MfaStep v-if="!isLoggedIn && inMfa" :methods="mfaMethods" @back="leaveMfa" />
+
+    <p v-else-if="!isLoggedIn && isLoadingMfa" role="status">Loading the second step…</p>
+
+    <template v-else-if="!isLoggedIn">
       <form ref="form" class="form" novalidate @submit.prevent="handleSubmit">
         <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
         <StatusMessage v-if="resetNotice" tone="success">{{ resetNotice }}</StatusMessage>
@@ -165,7 +215,9 @@ watch(isLoggedIn, (loggedIn) => {
         <StatusMessage
           v-if="failure"
           :id="failureId"
+          class="failure"
           tone="error"
+          tabindex="-1"
           :spoken="hold.spokenFor(heldId, status)"
           >{{ failure }}</StatusMessage
         >
@@ -183,6 +235,7 @@ watch(isLoggedIn, (loggedIn) => {
         </BaseButton>
       </form>
       <GithubLogin label="Log in with GitHub" />
+      <PasskeyLogin ref="passkeyKey" />
       <p class="alt">No account yet? <RouterLink to="/register">Register</RouterLink></p>
     </template>
 
@@ -219,6 +272,10 @@ watch(isLoggedIn, (loggedIn) => {
 .password {
   display: grid;
   gap: var(--sp-2);
+}
+
+.failure {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
 }
 
 .forgot {

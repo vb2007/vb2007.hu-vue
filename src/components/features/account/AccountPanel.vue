@@ -11,6 +11,7 @@ import {
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  mfa,
   pendingEmail,
   sessionEnded,
   userEmail,
@@ -25,10 +26,16 @@ import ChangeEmail from "@/components/features/account/ChangeEmail.vue";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import GithubLink from "@/components/features/account/GithubLink.vue";
+import MfaEmailToggle from "@/components/features/account/MfaEmailToggle.vue";
+import MfaTotpToggle from "@/components/features/account/MfaTotpToggle.vue";
+import PasskeyList from "@/components/features/account/PasskeyList.vue";
+import RecoveryCodesPanel from "@/components/features/account/RecoveryCodesPanel.vue";
+import MfaRecoveryCodes from "@/components/features/account/MfaRecoveryCodes.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import StatusPill from "@/components/ui/StatusPill.vue";
 
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
@@ -46,9 +53,7 @@ const shownNotice = computed(() => {
   if (notice.value || !githubReturned.value) return notice.value;
   if (hasPassword.value) return Messages.Account.githubLinked;
   // Back to delete, the delete form says so itself, where the focus lands.
-  return deleteReturned.value
-    ? ""
-    : Messages.Account.passwordGithubConfirmed(Limits.Github.reauthMinutes);
+  return deleteReturned.value ? "" : Messages.Account.githubConfirmed(Limits.Github.reauthMinutes);
 });
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const clearNotice = () => {
@@ -65,13 +70,49 @@ const announce = async (message: string) => {
 };
 // The key that was pressed went with the account board, so focus moves to why it went.
 const endedMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("endedMessage");
+/**
+ * Fresh recovery codes, shown once; kept here, above the rows the account's refresh redraws and
+ * the logged-in gate, until they're saved.
+ */
+const recoveryCodes = ref<string[]>([]);
 watch(sessionEnded, async (ended) => {
-  if (!ended) return;
+  // Recovery codes still on show keep the focus their panel took: they matter more.
+  if (!ended || recoveryCodes.value.length) return;
   await nextTick();
   endedMessage.value?.$el.focus();
 });
 const onPasswordSet = () => announce(Messages.Account.passwordSet);
 const onUnlinked = () => announce(Messages.Account.githubUnlinked);
+
+/** An MFA setting changed: its message at the top, and its codes, if any, which take the focus. */
+const onMfaChanged = (message: string, codes?: string[]) => {
+  if (!codes?.length) return announce(message);
+  clearNotice();
+  notice.value = message;
+  recoveryCodes.value = codes;
+};
+/** At most this many recovery codes left, the row warns: few left to log in with, or none. */
+const FEW_RECOVERY_CODES = 3;
+const recoveryCodesLow = computed(() => mfa.value.recoveryCodesLeft <= FEW_RECOVERY_CODES);
+// Codes the account no longer has (its last method turned off, here or elsewhere) aren't worth
+// saving any more. A session that ended meanwhile says nothing about them: they stay on show,
+// above the logged-out gate, until they're saved.
+watch(
+  () => mfa.value.recoveryCodesLeft,
+  (left) => {
+    if (!left && isLoggedIn.value) recoveryCodes.value = [];
+  }
+);
+const mfaSection = useTemplateRef("mfaSection");
+/** Saved: the panel goes, and the focus stays in the section, on its first row's key. */
+const onRecoveryCodesSaved = async () => {
+  recoveryCodes.value = [];
+  await nextTick();
+  // Logged out meanwhile, there's no section: the notice of why takes the focus instead.
+  (
+    mfaSection.value?.querySelector<HTMLElement>(".login button") ?? endedMessage.value?.$el
+  )?.focus();
+};
 </script>
 
 <template>
@@ -134,6 +175,114 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
       </div>
     </section>
 
+    <!-- Each method is a row like the logins above (vb2007/vb2007.hu-api#448); any answer with
+         fresh recovery codes shows them in the panel at the top, once. -->
+    <section ref="mfaSection" class="logins" aria-labelledby="mfa-title">
+      <h2 id="mfa-title" class="logins__title">Two-step login</h2>
+      <p class="logins__note">
+        A second step after your password or GitHub, so a stolen password alone can't log in.
+      </p>
+      <!-- Keyed by the codes, so a newer set opens afresh and takes the focus. -->
+      <RecoveryCodesPanel
+        v-if="recoveryCodes.length"
+        :key="recoveryCodes.join()"
+        :codes="recoveryCodes"
+        @done="onRecoveryCodesSaved"
+      />
+      <div class="login">
+        <span class="login__mark"><AppIcon name="mail" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">E-mail codes</h3>
+            <span class="badge" :class="mfa.email ? 'badge--on' : 'badge--off'">
+              <AppIcon :name="mfa.email ? 'check' : 'close'" :size="14" />
+              {{ mfa.email ? "On" : "Off" }}
+            </span>
+          </div>
+          <p class="login__note">
+            <template v-if="mfa.email"
+              >Each login also takes a code or link mailed to your address.</template
+            >
+            <template v-else-if="emailVerified"
+              >Get a code or link by e-mail at each login.</template
+            >
+            <template v-else
+              >Confirm your e-mail address first: a password reset or an e-mail change confirms
+              it.</template
+            >
+          </p>
+          <MfaEmailToggle
+            v-if="mfa.email || emailVerified"
+            @start="clearNotice"
+            @done="onMfaChanged"
+          />
+        </div>
+      </div>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="phone" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">Authenticator app</h3>
+            <span class="badge" :class="mfa.totp ? 'badge--on' : 'badge--off'">
+              <AppIcon :name="mfa.totp ? 'check' : 'close'" :size="14" />
+              {{ mfa.totp ? "On" : "Off" }}
+            </span>
+          </div>
+          <p class="login__note">
+            <template v-if="mfa.totp"
+              >Each login can take a code from your authenticator app.</template
+            >
+            <template v-else
+              >Use a code from an app on your phone at each login, even offline.</template
+            >
+          </p>
+          <MfaTotpToggle @start="clearNotice" @done="onMfaChanged" />
+        </div>
+      </div>
+      <!-- Only next to a method that isn't a backup: the API removes the codes with the last one. -->
+      <div v-if="mfa.email || mfa.totp" class="login">
+        <span class="login__mark"><AppIcon name="key" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">Recovery codes</h3>
+            <StatusPill v-if="recoveryCodesLow" tone="danger" icon="alert">{{
+              mfa.recoveryCodesLeft ? "Few left" : "None left"
+            }}</StatusPill>
+          </div>
+          <p class="login__note">
+            <template v-if="mfa.recoveryCodesLeft"
+              >{{ mfa.recoveryCodesLeft }} of {{ Limits.Mfa.recoveryCodes }} left. Each logs in once
+              if you can't do your second step.<template v-if="recoveryCodesLow">
+                Generate new ones before they run out.</template
+              ></template
+            >
+            <template v-else
+              >All used. Generate new ones to still log in if you can't do your second
+              step.</template
+            >
+          </p>
+          <MfaRecoveryCodes @start="clearNotice" @done="onMfaChanged" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Passwordless logins (vb2007/vb2007.hu-api#446), which also answer the second step once a
+         method above is on (vb2007/vb2007.hu-api#484). -->
+    <section class="logins" aria-labelledby="passkeys-title">
+      <h2 id="passkeys-title" class="logins__title">Passkeys</h2>
+      <p class="logins__note">
+        Log in with your fingerprint, face or screen lock, no password needed.
+        <template v-if="mfa.email || mfa.totp"
+          >They also answer two-step login's second step.</template
+        >
+        <template v-else
+          >They don't turn on two-step login, but once it's on, they also answer its second
+          step.</template
+        >
+      </p>
+      <PasskeyList @start="clearNotice" />
+    </section>
+
     <section class="logins" aria-labelledby="logins-title">
       <h2 id="logins-title" class="logins__title">Linked accounts</h2>
       <div class="login">
@@ -171,6 +320,12 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
   </StationBoard>
 
   <StationBoard v-else-if="isSessionChecked" title="Account" as="h1">
+    <!-- Codes shown once stay until they're saved, even when the session ended meanwhile. -->
+    <RecoveryCodesPanel
+      v-if="recoveryCodes.length"
+      :codes="recoveryCodes"
+      @done="onRecoveryCodesSaved"
+    />
     <div class="gate">
       <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
       <StatusMessage
@@ -235,6 +390,11 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
   text-transform: uppercase;
 }
 
+.logins__note {
+  font-size: var(--fs-sm);
+  color: var(--c-ink-soft);
+}
+
 .login {
   display: flex;
   align-items: flex-start;
@@ -277,6 +437,9 @@ const onUnlinked = () => announce(Messages.Account.githubUnlinked);
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
+  /* "Authenticator app" at 320 px with a large font breaks rather than widening the row. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .login__note {

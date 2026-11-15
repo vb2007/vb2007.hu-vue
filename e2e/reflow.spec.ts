@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { browserFontSize } from "./browser";
-import { expect, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 
 // WCAG 1.4.10 Reflow: at 320 CSS px (1280 px at 400% zoom), and with a large browser font size,
 // nothing scrolls sideways and nothing is cut off: columns shrink to the window, and keys and long
@@ -198,3 +198,109 @@ test("the uploads filter keeps to its own column, clear of the Sort select", asy
       .toEqual({ pastFieldset: 0, underSort: 0 });
   }
 });
+
+for (const [name, fontSize, width] of [
+  ["a 320 px window", 0, 320],
+  ["a 32 px browser font size", 32, 640]
+] as const) {
+  test(`the login's second step, the recovery codes and the authenticator setup fit ${name}`, async ({
+    page,
+    api
+  }) => {
+    if (fontSize) await browserFontSize(page, fontSize);
+    await page.setViewportSize({ width, height: 900 });
+    api.hasMfaEmail();
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await page.getByRole("button", { name: "E-mail me a code" }).click();
+    await expect(page.getByLabel("Code from the e-mail")).toBeVisible();
+    await expectReflow(page);
+    await page.getByRole("button", { name: "Use a recovery code" }).click();
+    await expect(page.getByLabel("Recovery code")).toBeVisible();
+    await expectReflow(page);
+
+    api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Turn on e-mail codes" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Turn on", exact: true }).click();
+    await expect(page.getByRole("button", { name: "I've saved them" })).toBeVisible();
+    await expectReflow(page);
+
+    await page.getByRole("button", { name: "I've saved them" }).click();
+    await page.getByRole("button", { name: "Set up authenticator app" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("Code from your app")).toBeVisible();
+    await expectReflow(page);
+    await page.getByRole("button", { name: "Generate new codes" }).click();
+    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeVisible();
+    await expectReflow(page);
+  });
+}
+
+// "Authenticator" is the longest word on these boards: at 320 px with a large font it has to break.
+for (const [name, width] of [
+  ["a 320 px window", 320],
+  ["a 640 px window", 640]
+] as const) {
+  test(`the authenticator app's long name fits ${name} with a 32 px browser font size`, async ({
+    page,
+    api
+  }) => {
+    await browserFontSize(page, 32);
+    await page.setViewportSize({ width, height: 900 });
+    // At 320 px the navbar alone is wider than the window with this font, on every page, so there
+    // only the main content is checked.
+    const fits = async () => {
+      if (width > 320) return expectReflow(page);
+      await page.locator("html").evaluate((html) => html.ownerDocument.fonts.ready);
+      await expect.poll(() => cutOff(page)).toEqual([]);
+    };
+    api.hasMfaEmail();
+    api.hasMfaTotp();
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(page.getByLabel("Code from your authenticator app")).toBeVisible();
+    await fits();
+    // The account page's other rows (Log-in details, Linked accounts) don't fit that yet either.
+    if (width === 320) return;
+
+    api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
+    await page.goto("/account");
+    await expect(page.getByRole("button", { name: "Set up authenticator app" })).toBeVisible();
+    await fits();
+
+    await page.getByRole("button", { name: "Set up authenticator app" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("Code from your app")).toBeVisible();
+    await fits();
+  });
+}
+
+for (const [name, fontSize, width] of [
+  ["a 320 px window", 0, 320],
+  ["a 32 px browser font size", 32, 640]
+] as const) {
+  test(`the passkeys fit ${name}`, async ({ page, api }) => {
+    if (fontSize) await browserFontSize(page, fontSize);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/login");
+    await expect(page.getByRole("button", { name: "Log in with a passkey" })).toBeVisible();
+    await expectReflow(page);
+
+    api.loggedInAs(MOCK_EMAIL, "e2e");
+    api.hasPasskey("Bitwarden on the family laptop in the living room upstairs");
+    await page.goto("/account");
+    const passkeys = page.getByRole("region", { name: "Passkeys" });
+    await passkeys.getByRole("button", { name: /^Rename/ }).click();
+    await passkeys.getByRole("button", { name: "Add a passkey" }).click();
+    await expect(passkeys.getByLabel("Name", { exact: true })).toBeFocused();
+    await expectReflow(page);
+  });
+}

@@ -15,7 +15,8 @@ declare module "vue-router" {
     title?: string;
     /**
      * Keeps the page out of search results with a robots `noindex` meta, for the not-found pages
-     * (the SPA answers every path with `200`). Leaving the page drops the tag again.
+     * (the SPA answers every path with `200`), and the one-off MFA link. Leaving the page drops the
+     * tag again.
      */
     noindex?: boolean;
   }
@@ -143,6 +144,14 @@ export const routes: RouteRecordRaw[] = [
     name: "login",
     meta: { title: "Log in" },
     component: () => import("../views/LoginView.vue")
+  },
+  // The second step's mailed link, `/login/mfa#token=…` (vb2007/vb2007.hu-api#448): one-off, so
+  // kept out of search results.
+  {
+    path: "/login/mfa",
+    name: "login-mfa",
+    meta: { title: "Log in", noindex: true },
+    component: () => import("../views/LoginMfaView.vue")
   },
   {
     path: "/register",

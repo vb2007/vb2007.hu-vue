@@ -8,6 +8,7 @@ import type {
 import type { PasteSortBy } from "@/types/api/pastebin";
 import type { OwnShortUrl, ShortUrlSortBy } from "@/types/api/shortener";
 import type { Upload, UploadOwner, UploadSortBy } from "@/types/api/uploads";
+import type { MfaStatus } from "@/types/api/user";
 
 export type AdminUserSortBy = "usedBytes" | "username" | "createdAt";
 
@@ -38,6 +39,8 @@ export interface AdminUserDetails extends AdminUser {
   pendingEmail: string | null;
   /** The linked GitHub account's login. */
   githubLogin: string | null;
+  /** Which MFA methods are on, like `GET /user`'s (vb2007/vb2007.hu-api#483). */
+  mfa: MfaStatus;
   /** How much the user owns; `uploads` is the same as `uploads.count`. */
   counts: { pastes: number; shortUrls: number; uploads: number };
 }
@@ -186,10 +189,11 @@ export interface PendingRegistrationsResponse {
 }
 
 /**
- * The API's rate limiters (vb2007/vb2007.hu-api#284), in the order `cleared` lists them. Each is
- * keyed by the e-mail, the IP, or both (`loginPerAccount`). The last five are keyed by the e-mail
- * only (vb2007/vb2007.hu-api#384): the account's own limiters, and the stored daily wrong-code
- * counts of the account or of a registration waiting for the address.
+ * The API's rate limiters (vb2007/vb2007.hu-api#284), in the order `cleared` lists them: the
+ * in-memory ones, then the stored daily counts. Each is keyed by the e-mail, the IP, or both
+ * (`loginPerAccount`). The account's own limiters and the stored counts are found through the
+ * e-mail only (vb2007/vb2007.hu-api#384): the account's, or a registration waiting for the address.
+ * The passkey limiters and the MFA and security-notice counts came with vb2007/vb2007.hu-api#493.
  */
 export type RateLimitName =
   | "loginPerIp"
@@ -204,9 +208,14 @@ export type RateLimitName =
   | "accountCodeChecksPerAccount"
   | "passwordChecksPerIp"
   | "passwordChecksPerAccount"
+  | "passkeyOptionsPerIp"
+  | "passkeyLoginsPerIp"
   | "passwordResetCodeFailures"
   | "emailChangeCodeFailures"
-  | "registrationCodeFailures";
+  | "registrationCodeFailures"
+  | "mfaCodeFailures"
+  | "mfaEmailSends"
+  | "securityNotices";
 
 /** `DELETE /admin/rate-limits`: at least one of the two. */
 export interface ClearRateLimitsBody {

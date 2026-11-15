@@ -27,4 +27,7 @@ export class OauthQuery {
   /** `?github=linked` after linking GitHub (vb2007/vb2007.hu-api#132). */
   static readonly github = "github";
   static readonly githubLinked = "linked";
+  /** `?mfa=required` after a GitHub login whose account has a second step (vb2007/vb2007.hu-api#448). */
+  static readonly mfa = "mfa";
+  static readonly mfaRequired = "required";
 }

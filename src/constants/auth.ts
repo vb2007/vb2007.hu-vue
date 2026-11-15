@@ -1,6 +1,8 @@
 /** What `loginStatus` holds besides the API's own error message. */
 export class LoginStatus {
   static readonly Success = "success";
+  /** The password was right and the second step waits, with the methods in `mfaMethods`. */
+  static readonly MfaRequired = "mfa-required";
   /** Failed without the API's message: offline, or an error without one. */
   static readonly UnknownError = "unknown-error";
 }

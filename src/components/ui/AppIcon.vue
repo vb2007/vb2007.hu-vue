@@ -12,6 +12,7 @@ const ICONS = {
   close: "M6 6l12 12M18 6L6 18",
   arrow: "M5 12h14M13 6l6 6-6 6",
   upload: "M12 15.5V4M7 9l5-5 5 5M4 15v4.5h16V15",
+  download: "M12 4v11.5M7 10.5l5 5 5-5M4 15v4.5h16V15",
   document: "M14 3H6v18h12V7zM14 3v4h4M9 12.5h6M9 16.5h6",
   image: "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01",
   video: "M4 5h16v14H4zM10 9v6l5-3z",
@@ -19,12 +20,19 @@ const ICONS = {
   archive: "M4 4h16v4H4zM5 8v12h14V8M10 12h4",
   mail: "M3.5 5.5h17v13h-17zM3.5 6.5l8.5 6.5 8.5-6.5",
   lock: "M4.5 10.5h15V21h-15zM8 10.5V7a4 4 0 018 0v3.5",
+  phone:
+    "M8 2.5h8A1.5 1.5 0 0117.5 4v16a1.5 1.5 0 01-1.5 1.5H8A1.5 1.5 0 016.5 20V4A1.5 1.5 0 018 2.5zM11 18h2",
+  key: "M8 11.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM11.2 12.8L20 4M16.5 7.5l3 3M14 10l2 2",
+  shield: "M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6zM8.5 12l2.5 2.5 4.5-5",
   globe:
     "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9M12 3c-2.4 2.5-3.6 5.5-3.6 9s1.2 6.5 3.6 9",
   pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   logout: "M10 4H4v16h6M15 8l4 4-4 4M19 12H9",
-  chevron: "M6 9l6 6 6-6"
+  chevron: "M6 9l6 6 6-6",
+  /** A person with a key, like the FIDO Alliance's passkey mark. */
+  passkey:
+    "M9.5 3a4 4 0 100 8 4 4 0 000-8zM3 21v-1.5A5.5 5.5 0 018.5 14H12M18 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM18 14.5V21M18 18h2"
 } as const;
 
 /** Brand marks are filled shapes on their own grid, unlike the stroked icons above. */

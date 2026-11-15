@@ -32,10 +32,10 @@ const hasEmailFormat = (email: string) => EMAIL_PATTERN.test(normalizeEmail(emai
  */
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 /** After an emoji, its presentation selector or a skin tone; before an emoji, not a digit or #. */
-const EMOJI_JOINERS =
+export const EMOJI_JOINERS =
   /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
 /** 3 to 5 tags for digits and lowercase letters, then the cancel tag. */
-const EMOJI_TAG_SEQUENCES =
+export const EMOJI_TAG_SEQUENCES =
   /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
 const EMOJI_PRESENTATION_SELECTORS = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
 /** Whitespace other than a space, invisible and control characters, and the braille blank. */
@@ -154,15 +154,18 @@ const CODE_MESSAGE = Messages.EmailCode.invalid(Limits.Code.digits);
 /** The API ignores spaces in a code. */
 const withoutSpaces = (code: string) => code.replace(/\s/g, "");
 
-/** The mailed codes are `Limits.Code.digits` digits. */
-export const confirmationCodeError = (code: string) => {
+/**
+ * The mailed codes and an authenticator app's are `Limits.Code.digits` digits; `message` says
+ * where the code comes from (the e-mail by default).
+ */
+export const confirmationCodeError = (code: string, message = CODE_MESSAGE) => {
   const digits = withoutSpaces(code);
-  return /^\d+$/.test(digits) && digits.length === Limits.Code.digits ? "" : CODE_MESSAGE;
+  return /^\d+$/.test(digits) && digits.length === Limits.Code.digits ? "" : message;
 };
 
 /** Anything but digits and spaces, or too many digits, which shows while typing. */
-export const confirmationCodeEarlyError = (code: string) =>
-  /[^\d\s]/.test(code) || withoutSpaces(code).length > Limits.Code.digits ? CODE_MESSAGE : "";
+export const confirmationCodeEarlyError = (code: string, message = CODE_MESSAGE) =>
+  /[^\d\s]/.test(code) || withoutSpaces(code).length > Limits.Code.digits ? message : "";
 
 /** The register form's fields, for an error about one of them. */
 export type RegisterField = "email" | "username" | "password" | "confirmPassword";

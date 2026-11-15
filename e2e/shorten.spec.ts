@@ -6,7 +6,7 @@ test("a user logs in and shortens a link", async ({ page, api }) => {
 
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
 
   await page.getByRole("link", { name: "Go to Shorten" }).click();

@@ -78,6 +78,28 @@ export class Limits {
     static readonly reauthMinutes: number = 10;
   };
 
+  static readonly Mfa = class {
+    /** A login's second step works this long and for this many tries, shared by every method. */
+    static readonly challengeMinutes: number = 10;
+    static readonly challengeAttempts: number = 5;
+    /** Login codes mailed to one account a day. */
+    static readonly emailsPerDay: number = 10;
+    /** A TOTP setup waits this long and this many tries for its first code. */
+    static readonly totpSetupMinutes: number = 10;
+    static readonly totpSetupAttempts: number = 5;
+    /** An authenticator app shows a new code this often. */
+    static readonly totpPeriodSeconds: number = 30;
+    static readonly recoveryCodes: number = 10;
+    /** Security notice e-mails to one account a day. */
+    static readonly securityNoticesPerDay: number = 10;
+  };
+
+  /** The name is counted after trimming, in characters (code points), like the API's `passkeyNameError`. */
+  static readonly Passkey = class {
+    static readonly perAccount: number = 10;
+    static readonly nameMaxLength: number = 64;
+  };
+
   /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */
   static readonly FileName = class {
     static readonly minLength: number = 1;

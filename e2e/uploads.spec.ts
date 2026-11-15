@@ -66,7 +66,7 @@ test("an upload from a session replaced elsewhere is refused and logs the page o
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   await page.goto("/upload");
   await expect(page.getByText("No uploads yet.")).toBeVisible();
@@ -123,7 +123,7 @@ test("an upload whose connection drops after the session ended logs the page out
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   await page.goto("/upload");
   await expect(page.getByText("No uploads yet.")).toBeVisible();

@@ -381,7 +381,7 @@ test("a GitHub link visit from a session replaced elsewhere asks to log in again
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
 
   // A login on another device replaces this session, so the API sends the visit back as logged out.
@@ -436,7 +436,7 @@ test("an account made with GitHub links again without a password", async ({ page
 
   await expect(page).toHaveURL("/account");
   await expect(page.getByRole("status")).toHaveText(
-    "GitHub confirmed it's you. Set your password within 10 minutes."
+    "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
   );
   await expect(page.getByText("You can log in with GitHub as @e2e-octocat.")).toBeVisible();
 });
@@ -1203,7 +1203,7 @@ test("the password changes in place and the session carries on", async ({ page, 
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
   const sessionCookie = async () =>
     (await page.context().cookies()).find((cookie) => cookie.name === "__Host-VB-AUTH")?.value;
@@ -1695,7 +1695,7 @@ test("an account made with GitHub confirms it with GitHub, then sets a password"
   await confirmWithGithub.click();
   await expect(page).toHaveURL("/account");
   await expect(page.getByRole("status")).toHaveText(
-    "GitHub confirmed it's you. Set your password within 10 minutes."
+    "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
   );
   await expect(newPassword).toHaveValue("");
 
@@ -2062,7 +2062,7 @@ test("coming back from GitHub without a delete under way is about the password",
   await page.goto("/account?github=linked");
 
   await expect(page.getByRole("status")).toHaveText(
-    "GitHub confirmed it's you. Set your password within 10 minutes."
+    "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
   );
   const deletion = page.getByRole("region", { name: "Delete account" });
   await expect(deletion.getByLabel("Username")).toHaveCount(0);
@@ -2091,7 +2091,7 @@ test("a delete cancelled after going to GitHub doesn't open again on the way bac
 
   await page.goto("/account?github=linked");
   await expect(page.getByRole("status")).toHaveText(
-    "GitHub confirmed it's you. Set your password within 10 minutes."
+    "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
   );
   await expect(deletion.getByLabel("Username")).toHaveCount(0);
 });
@@ -2124,7 +2124,7 @@ test("a delete left on GitHub doesn't take over the password's own GitHub confir
 
   await expect(page).toHaveURL("/account");
   await expect(page.getByRole("status")).toHaveText(
-    "GitHub confirmed it's you. Set your password within 10 minutes."
+    "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
   );
   await expect(deletion.getByLabel("Username")).toHaveCount(0);
 });

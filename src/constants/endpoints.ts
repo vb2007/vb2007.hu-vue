@@ -37,6 +37,17 @@ import type {
 } from "@/types/api/auth";
 import type { MessageResponse } from "@/types/api/common";
 import type {
+  MfaLinkBody,
+  MfaMethodsResponse,
+  MfaPasswordBody,
+  MfaRecoveryCodesResponse,
+  MfaRequiredResponse,
+  MfaTurnOnResponse,
+  MfaVerifyBody,
+  TotpConfirmBody,
+  TotpSetupResponse
+} from "@/types/api/mfa";
+import type {
   CreatePasteBody,
   PasteDeletedResponse,
   PasteListQuery,
@@ -45,6 +56,13 @@ import type {
   PastesResponse,
   UpdatePasteBody
 } from "@/types/api/pastebin";
+import type {
+  AddPasskeyBody,
+  PasskeyAddedResponse,
+  PasskeyLoginBody,
+  PasskeysResponse,
+  RenamePasskeyBody
+} from "@/types/api/passkeys";
 import type {
   ShortenUrlBody,
   ShortenUrlResponse,
@@ -107,7 +125,8 @@ export class Endpoints {
       path: "/auth/username-available",
       credentials: false
     });
-    static readonly login = defineEndpoint<LoginBody, MessageResponse>()({
+    /** A 200 with the session, or a 202 when the account has a second step (vb2007/vb2007.hu-api#448). */
+    static readonly login = defineEndpoint<LoginBody, MessageResponse | MfaRequiredResponse>()({
       method: HttpMethod.Post,
       path: "/auth/login",
       credentials: true
@@ -176,6 +195,64 @@ export class Endpoints {
       path: "/auth/github/link",
       credentials: true
     });
+    /*
+     * A login's second step (vb2007/vb2007.hu-api#448). Each needs the `__Host-VB-MFA` cookie the
+     * login set, so it sends the cookies, and answers 403 once the step expired.
+     */
+    /** The methods the waiting step takes, e.g. back from a GitHub login with `?mfa=required`. */
+    static readonly mfaMethods = defineEndpoint<undefined, MfaMethodsResponse>()({
+      method: HttpMethod.Get,
+      path: "/auth/mfa",
+      credentials: true
+    });
+    /** Mails a login code and link, a 202 (one a minute, `Limits.Mfa.emailsPerDay` a day). */
+    static readonly mfaEmail = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Post,
+      path: "/auth/mfa/email",
+      credentials: true
+    });
+    /** A method's answer; a 200 starts the session like a login without MFA. */
+    static readonly mfaVerify = defineEndpoint<MfaVerifyBody, MessageResponse>()({
+      method: HttpMethod.Post,
+      path: "/auth/mfa/verify",
+      credentials: true
+    });
+    /** The mailed link's token, in place of its code. */
+    static readonly mfaVerifyLink = defineEndpoint<MfaLinkBody, MessageResponse>()({
+      method: HttpMethod.Post,
+      path: "/auth/mfa/verify-link",
+      credentials: true
+    });
+    /**
+     * A passkey as the second step (vb2007/vb2007.hu-api#484): request options bound to the
+     * waiting step's cookie, for `navigator.credentials.get()`.
+     */
+    static readonly mfaPasskeyOptions = defineEndpoint<
+      undefined,
+      PublicKeyCredentialRequestOptionsJSON
+    >()({
+      method: HttpMethod.Post,
+      path: "/auth/mfa/passkey/options",
+      credentials: true
+    });
+    /**
+     * Logging in with a passkey (vb2007/vb2007.hu-api#446): request options whose challenge waits
+     * in a cookie, so it goes along.
+     */
+    static readonly passkeyOptions = defineEndpoint<
+      undefined,
+      PublicKeyCredentialRequestOptionsJSON
+    >()({
+      method: HttpMethod.Post,
+      path: "/auth/passkey/options",
+      credentials: true
+    });
+    /** The passkey's answer; a 200 starts the session and skips any second step. */
+    static readonly passkeyLogin = defineEndpoint<PasskeyLoginBody, MessageResponse>()({
+      method: HttpMethod.Post,
+      path: "/auth/passkey",
+      credentials: true
+    });
   };
 
   static readonly User = class {
@@ -212,6 +289,73 @@ export class Endpoints {
     static readonly confirmEmail = defineEndpoint<ConfirmEmailBody, MessageResponse>()({
       method: HttpMethod.Post,
       path: "/user/email/confirm",
+      credentials: true
+    });
+    /** Turns e-mail MFA on (vb2007/vb2007.hu-api#448); the first method brings recovery codes. */
+    static readonly mfaEmailOn = defineEndpoint<MfaPasswordBody, MfaTurnOnResponse>()({
+      method: HttpMethod.Put,
+      path: "/user/mfa/email",
+      credentials: true
+    });
+    static readonly mfaEmailOff = defineEndpoint<MfaPasswordBody, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/user/mfa/email",
+      credentials: true
+    });
+    /**
+     * An authenticator app (vb2007/vb2007.hu-api#447): a new secret, which works once its first code
+     * is confirmed (with TOTP on, the old one works until then); the first method brings recovery codes.
+     */
+    static readonly mfaTotpSetup = defineEndpoint<MfaPasswordBody, TotpSetupResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/totp",
+      credentials: true
+    });
+    static readonly mfaTotpConfirm = defineEndpoint<TotpConfirmBody, MfaTurnOnResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/totp/confirm",
+      credentials: true
+    });
+    static readonly mfaTotpOff = defineEndpoint<MfaPasswordBody, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/user/mfa/totp",
+      credentials: true
+    });
+    /** A new set of recovery codes (vb2007/vb2007.hu-api#482), `409` without an MFA method on. */
+    static readonly mfaRecoveryCodes = defineEndpoint<MfaPasswordBody, MfaRecoveryCodesResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/recovery-codes",
+      credentials: true
+    });
+    /** The account's passkeys (vb2007/vb2007.hu-api#446). */
+    static readonly passkeys = defineEndpoint<undefined, PasskeysResponse>()({
+      method: HttpMethod.Get,
+      path: "/user/passkeys",
+      credentials: true
+    });
+    /** A new passkey's creation options, once it's confirmed to be the owner; 409 at the cap. */
+    static readonly passkeyOptions = defineEndpoint<
+      MfaPasswordBody,
+      PublicKeyCredentialCreationOptionsJSON
+    >()({
+      method: HttpMethod.Post,
+      path: "/user/passkeys/options",
+      credentials: true
+    });
+    static readonly addPasskey = defineEndpoint<AddPasskeyBody, PasskeyAddedResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/passkeys",
+      credentials: true
+    });
+    /** Renaming needs no password: the name is only a label. */
+    static readonly renamePasskey = defineEndpoint<RenamePasskeyBody, MessageResponse>()({
+      method: HttpMethod.Patch,
+      path: "/user/passkeys/:id",
+      credentials: true
+    });
+    static readonly removePasskey = defineEndpoint<MfaPasswordBody, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/user/passkeys/:id",
       credentials: true
     });
   };
@@ -344,6 +488,12 @@ export class Endpoints {
     static readonly deleteUser = defineEndpoint<undefined, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/admin/users/:id",
+      credentials: true
+    });
+    /** Turns off every MFA method and recovery code and ends the session; passkeys stay. 409 on the superuser's own. */
+    static readonly resetUserMfa = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/users/:id/mfa",
       credentials: true
     });
     static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({

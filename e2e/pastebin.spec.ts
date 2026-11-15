@@ -76,7 +76,7 @@ test("a shared paste still opens after the session was replaced elsewhere", asyn
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(MOCK_EMAIL);
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("Login successful!")).toBeVisible();
 
   // A login on another device replaces this session, but reading a paste doesn't need one.
