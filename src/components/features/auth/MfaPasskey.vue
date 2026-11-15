@@ -27,7 +27,7 @@ const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 
 const use = async () => {
-  if (isAsking.value || isVerifying.value || isHeld.value) return;
+  if (isAsking.value) return;
   isAsking.value = true;
   error.value = refusal.value = "";
   const options = await loadMfaPasskeyOptions();

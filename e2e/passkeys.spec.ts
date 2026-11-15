@@ -51,7 +51,7 @@ test("a passkey is added on the account page, renamed, and logs in", async ({ pa
   await page.goto("/account");
   await addAuthenticator(page);
   const section = page.getByRole("region", { name: "Passkeys" });
-  await expect(section).toContainText("They don't turn on two-step login by themselves");
+  await expect(section).toContainText("They don't turn on two-step login, but once it's on");
 
   await section.getByRole("button", { name: "Add a passkey" }).click();
   await expect(section.getByLabel("Name", { exact: true })).toBeFocused();

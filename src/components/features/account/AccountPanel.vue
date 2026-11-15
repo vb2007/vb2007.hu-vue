@@ -204,8 +204,8 @@ const onRecoveryCodesSaved = async () => {
           >They also answer two-step login's second step.</template
         >
         <template v-else
-          >They don't turn on two-step login by themselves: with e-mail codes or an authenticator
-          app on, they answer its second step too.</template
+          >They don't turn on two-step login, but once it's on, they also answer its second
+          step.</template
         >
       </p>
       <PasskeyList @start="clearNotice" @done="announce" />

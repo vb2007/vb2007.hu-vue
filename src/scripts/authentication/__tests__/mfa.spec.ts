@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
-import { loadMfaMethods, verifyMfa, verifyMfaLink } from "@/scripts/authentication/mfa";
+import {
+  loadMfaMethods,
+  loadMfaPasskeyOptions,
+  verifyMfa,
+  verifyMfaLink
+} from "@/scripts/authentication/mfa";
 import { forgetLogin, loginStatus, mfaMethods, startMfa } from "@/scripts/authentication/user";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { clearSession } from "@/scripts/authentication/user";
@@ -143,5 +148,51 @@ describe("verifyMfaLink", () => {
 
     expect(failure?.error).toBe(error);
     expect(console.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadMfaPasskeyOptions", () => {
+  it("hands on the request options for the waiting step", async () => {
+    startMfa(["email", "passkey"]);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { challenge: "abc" }));
+
+    const result = await loadMfaPasskeyOptions();
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/mfa/passkey/options", {
+      method: "POST",
+      credentials: "include"
+    });
+    expect(result).toMatchObject({ ok: true, data: { challenge: "abc" } });
+    expect(mfaMethods.value).toEqual(["email", "passkey"]);
+  });
+
+  it("goes back to the password once the step expired", async () => {
+    startMfa(["email", "passkey"]);
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED }));
+
+    await loadMfaPasskeyOptions();
+
+    expect(mfaMethods.value).toEqual([]);
+    expect(loginStatus.value).toBe(EXPIRED);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("leaves a step the form left meanwhile alone", async () => {
+    startMfa(["email", "passkey"]);
+    const response = deferResponse(fetchMock);
+    const pending = loadMfaPasskeyOptions();
+    forgetLogin();
+    response.respond(jsonResponse(403, { error: EXPIRED }));
+    await pending;
+
+    expect(loginStatus.value).toBe("");
+  });
+
+  it("keeps the step after any other failure", async () => {
+    startMfa(["email", "passkey"]);
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: "Not on." }));
+
+    expect(await loadMfaPasskeyOptions()).toMatchObject({ ok: false, error: "Not on." });
+    expect(mfaMethods.value).toEqual(["email", "passkey"]);
   });
 });

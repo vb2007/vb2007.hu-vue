@@ -25,7 +25,7 @@ const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
 
 const logIn = async () => {
-  if (isBusy.value || isHeld.value) return;
+  if (isBusy.value) return;
   isBusy.value = true;
   error.value = "";
   const failure = await passkeyLogin();

@@ -148,15 +148,23 @@ const onDeleted = (data: MessageResponse) => emit("done", data.message, true);
       />
 
       <div v-else ref="keys" class="passkey__keys">
-        <BaseButton data-key="rename" size="sm" variant="secondary" @click="startRename">
-          <AppIcon name="pencil" :size="16" /> Rename<span class="visually-hidden">
-            {{ passkey.name }}</span
-          >
+        <BaseButton
+          data-key="rename"
+          size="sm"
+          variant="secondary"
+          :aria-label="`Rename ${passkey.name}`"
+          @click="startRename"
+        >
+          <AppIcon name="pencil" :size="16" /> Rename
         </BaseButton>
-        <BaseButton data-key="delete" size="sm" variant="secondary" @click="startDelete">
-          <AppIcon name="trash" :size="16" /> Delete<span class="visually-hidden">
-            {{ passkey.name }}</span
-          >
+        <BaseButton
+          data-key="delete"
+          size="sm"
+          variant="secondary"
+          :aria-label="`Delete ${passkey.name}`"
+          @click="startDelete"
+        >
+          <AppIcon name="trash" :size="16" /> Delete
         </BaseButton>
       </div>
     </div>
