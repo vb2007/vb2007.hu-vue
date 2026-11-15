@@ -62,6 +62,9 @@ const describedBy = computed(() => {
 .field {
   display: grid;
   gap: var(--sp-2);
+  /* A word longer than a narrow column ("authenticator" at 320 px with a large font) breaks. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .field__label {

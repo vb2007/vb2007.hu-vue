@@ -234,7 +234,9 @@ describe("AccountPanel's two-step login", () => {
       "New recovery codes made, and the earlier ones no longer work: store these somewhere safe, they aren't shown again.";
     const NEW_CODES = CODES.map((code) => code.toUpperCase());
     const codesRow = (panel: VueWrapper) =>
-      panel.findAll('[aria-labelledby="mfa-title"] .login')[1];
+      panel
+        .findAll('[aria-labelledby="mfa-title"] .login')
+        .find((row) => row.find(".login__name").text() === "Recovery codes")!;
 
     it("has no row without a method on", async () => {
       const panel = await mountPanel();

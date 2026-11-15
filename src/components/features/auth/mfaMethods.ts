@@ -1,6 +1,7 @@
 import type { Component } from "vue";
 import MfaEmail from "@/components/features/auth/MfaEmail.vue";
 import MfaRecovery from "@/components/features/auth/MfaRecovery.vue";
+import MfaTotp from "@/components/features/auth/MfaTotp.vue";
 import type { MfaMethod } from "@/types/api/mfa";
 
 /** One method of the login's second step, as `MfaStep` offers it. */
@@ -19,6 +20,12 @@ export interface MfaMethodEntry {
  * step. One the API offers that isn't here isn't offered yet.
  */
 export const MFA_METHODS: MfaMethodEntry[] = [
+  {
+    method: "totp",
+    title: "Authenticator app",
+    switchLabel: "Use your authenticator app",
+    component: MfaTotp
+  },
   { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail },
   {
     method: "recovery",

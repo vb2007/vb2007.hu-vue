@@ -102,12 +102,19 @@ onMounted(() => lead.value?.focus());
   scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
 }
 
+/* Its column shrinks to the board, so a long word ("Authenticator") breaks rather than widening it. */
+.mfa > * {
+  min-width: 0;
+}
+
 .mfa__title,
 .mfa__others-title {
   font-size: 1.25rem;
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .mfa__others {
