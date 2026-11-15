@@ -92,6 +92,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.hasMfaEmail()` turns e-mail MFA on for `MOCK_EMAIL` (vb2007/vb2007.hu-api#448): its right password then answers 202 with `methods`, `POST /auth/mfa/email` "mails"
  * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all (`api.expiresMfaChallenge()` ends the step, so every
  * `/auth/mfa` endpoint answers 403). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
+ * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
+ * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries; `DELETE /user/mfa/totp` turns it off.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
  * address has an account (which ends the waiting registration) or the name was taken meanwhile (which keeps it, so the code still works with another name).
@@ -325,6 +327,9 @@ export const MOCK_EMAIL_CODE = "246810";
 /** The code `POST /auth/mfa/email` "mails" for a login's second step, and its link's token (vb2007/vb2007.hu-api#448). */
 export const MOCK_MFA_CODE = "135790";
 export const MOCK_MFA_LINK_TOKEN = "e2e-mfa-link-token";
+/** The authenticator app's secret `POST /user/mfa/totp` answers, and the code the app "shows" (vb2007/vb2007.hu-api#447). */
+export const MOCK_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+export const MOCK_TOTP_CODE = "424242";
 /** The recovery codes the first MFA method turned on brings, shown once. */
 export const MOCK_RECOVERY_CODES = Array.from(
   { length: 10 },
@@ -578,6 +583,9 @@ interface MockUser {
   githubLogin?: string;
   /** E-mail MFA (vb2007/vb2007.hu-api#448): a right password then answers 202 and waits for the mailed code. */
   mfaEmail?: boolean;
+  /** An authenticator app (vb2007/vb2007.hu-api#447), and a setup waiting for its first code, with the tries it used. */
+  mfaTotp?: boolean;
+  totpSetupTries?: number;
   recoveryCodesLeft?: number;
 }
 
@@ -1424,13 +1432,21 @@ export class MockApi {
         return { status: 202, body: { message: "A code and a login link were sent." } };
       }
       case "POST /auth/mfa/verify":
-        return this.passMfa(body?.method === "email" ? body.code : undefined, MOCK_MFA_CODE);
+        return body?.method === "totp"
+          ? this.passMfa(body.code, MOCK_TOTP_CODE)
+          : this.passMfa(body?.method === "email" ? body.code : undefined, MOCK_MFA_CODE);
       case "POST /auth/mfa/verify-link":
         return this.passMfa(body?.token, MOCK_MFA_LINK_TOKEN);
       case "PUT /user/mfa/email":
         return this.setMfaEmail(true, body?.password);
       case "DELETE /user/mfa/email":
         return this.setMfaEmail(false, body?.password);
+      case "POST /user/mfa/totp":
+        return this.startTotpSetup(body?.password);
+      case "POST /user/mfa/totp/confirm":
+        return this.confirmTotp(body?.code);
+      case "DELETE /user/mfa/totp":
+        return this.turnOffTotp(body?.password);
       case "GET /user":
         return this.user
           ? {
@@ -1439,7 +1455,7 @@ export class MockApi {
                 ...this.user,
                 mfa: {
                   email: this.user.mfaEmail === true,
-                  totp: false,
+                  totp: this.user.mfaTotp === true,
                   passkeys: 0,
                   recoveryCodesLeft: this.user.recoveryCodesLeft ?? 0
                 },
@@ -1623,7 +1639,7 @@ export class MockApi {
       };
     }
     if (this.verifiedAddresses.has(normalizeEmail(email))) account.emailVerified = true;
-    if (account.mfaEmail) {
+    if (account.mfaEmail || account.mfaTotp) {
       // A new login replaces a waiting step, and its mailed code with it.
       this.mfaChallenge = { account, expiresAt: this.now() + 10 * 60_000, tries: 0, mailed: false };
       return { status: 202, body: { mfaRequired: true, methods: this.mfaMethodsOf(account) } };
@@ -1642,13 +1658,26 @@ export class MockApi {
     account.emailVerified = true;
   }
 
+  /** Turns an authenticator app on for the account with `email`, with its 10 recovery codes left. */
+  hasMfaTotp(email = MOCK_EMAIL) {
+    const account = this.accounts.find(
+      (candidate) => normalizeEmail(candidate.email) === normalizeEmail(email)
+    )!;
+    account.mfaTotp = true;
+    account.recoveryCodesLeft = 10;
+  }
+
   /** The waiting second step runs out of time, like after its 10 minutes. */
   expiresMfaChallenge() {
     this.mfaChallenge = null;
   }
 
   private mfaMethodsOf(account: MockUser) {
-    return account.recoveryCodesLeft ? ["email", "recovery"] : ["email"];
+    return [
+      ...(account.mfaEmail ? ["email"] : []),
+      ...(account.mfaTotp ? ["totp"] : []),
+      ...(account.recoveryCodesLeft ? ["recovery"] : [])
+    ];
   }
 
   /** The waiting step, while it has time and tries left. */
@@ -1665,12 +1694,13 @@ export class MockApi {
     if (!answer)
       return { status: 400, body: { error: "You must provide the login link's token." } };
     challenge.tries++;
-    if (!challenge.mailed || answer !== expected) {
+    // Only the mailed code and link wait for the mail; the app's code is always there.
+    if ((expected !== MOCK_TOTP_CODE && !challenge.mailed) || answer !== expected) {
       return {
         status: 400,
         body: {
           error:
-            expected === MOCK_MFA_CODE
+            expected !== MOCK_MFA_LINK_TOKEN
               ? "The code is wrong, expired or already used: check it or request a new one."
               : "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again."
         }
@@ -1686,10 +1716,10 @@ export class MockApi {
   }
 
   /** `PUT` and `DELETE /user/mfa/email`, confirmed like the API's `rejectFailedMfaReauth`. */
-  private setMfaEmail(on: boolean, password?: string): MockResponse {
-    if (!this.user) return NOT_LOGGED_IN;
+  /** The API's `rejectFailedMfaReauth`: the password, or a recent GitHub confirmation without one. */
+  private refuseMfaReauth(user: MockUser, password?: string): MockResponse | null {
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
-    if (this.user.hasPassword) {
+    if (user.hasPassword) {
       if (!password) {
         return {
           status: 400,
@@ -1708,10 +1738,18 @@ export class MockApi {
         }
       };
     }
+    return null;
+  }
+
+  /** `PUT` and `DELETE /user/mfa/email`, confirmed like the API's `rejectFailedMfaReauth`. */
+  private setMfaEmail(on: boolean, password?: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const refused = this.refuseMfaReauth(this.user, password);
+    if (refused) return refused;
     if (!on) {
       // With no other method on, the recovery codes go too.
       this.user.mfaEmail = false;
-      this.user.recoveryCodesLeft = 0;
+      if (!this.user.mfaTotp) this.user.recoveryCodesLeft = 0;
       return { status: 200, body: { message: "E-mail MFA turned off." } };
     }
     if (!this.user.emailVerified) {
@@ -1729,6 +1767,57 @@ export class MockApi {
     if (this.user.recoveryCodesLeft) return { status: 200, body: { message } };
     this.user.recoveryCodesLeft = 10;
     return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
+  }
+
+  /** `POST /user/mfa/totp`: a new setup, replacing a waiting one; a TOTP that's on stays until it's confirmed. */
+  private startTotpSetup(password?: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const refused = this.refuseMfaReauth(this.user, password);
+    if (refused) return refused;
+    this.user.totpSetupTries = 0;
+    const secret = MOCK_TOTP_SECRET;
+    return {
+      status: 200,
+      body: {
+        secret,
+        otpauthUrl: `otpauth://totp/vb2007.hu:${encodeURIComponent(this.user.username)}?secret=${secret}&issuer=vb2007.hu&algorithm=SHA1&digits=6&period=30`
+      }
+    };
+  }
+
+  /** `POST /user/mfa/totp/confirm`: a wrong code and a setup that's gone or used up answer the same 400. */
+  private confirmTotp(code?: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    if (!code) {
+      return { status: 400, body: { error: "You must provide the confirmation code." } };
+    }
+    const tries = this.user.totpSetupTries;
+    if (tries === undefined || tries >= 5 || code !== MOCK_TOTP_CODE) {
+      if (tries !== undefined) this.user.totpSetupTries = tries + 1;
+      return {
+        status: 400,
+        body: {
+          error: "The code is wrong, expired or already used: check it or request a new one."
+        }
+      };
+    }
+    delete this.user.totpSetupTries;
+    this.user.mfaTotp = true;
+    const message = "TOTP MFA turned on: logins now also need a code from the authenticator app.";
+    if (this.user.recoveryCodesLeft) return { status: 200, body: { message } };
+    this.user.recoveryCodesLeft = 10;
+    return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
+  }
+
+  /** `DELETE /user/mfa/totp`, which drops a waiting setup too. */
+  private turnOffTotp(password?: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const refused = this.refuseMfaReauth(this.user, password);
+    if (refused) return refused;
+    this.user.mfaTotp = false;
+    delete this.user.totpSetupTries;
+    if (!this.user.mfaEmail) this.user.recoveryCodesLeft = 0;
+    return { status: 200, body: { message: "TOTP MFA turned off." } };
   }
 
   /** Links @e2e-octocat and comes back to the account page, which also confirms the user. */

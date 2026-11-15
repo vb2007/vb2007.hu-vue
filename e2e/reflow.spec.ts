@@ -203,7 +203,10 @@ for (const [name, fontSize, width] of [
   ["a 320 px window", 0, 320],
   ["a 32 px browser font size", 32, 640]
 ] as const) {
-  test(`the login's second step and the recovery codes fit ${name}`, async ({ page, api }) => {
+  test(`the login's second step, the recovery codes and the authenticator setup fit ${name}`, async ({
+    page,
+    api
+  }) => {
     if (fontSize) await browserFontSize(page, fontSize);
     await page.setViewportSize({ width, height: 900 });
     api.hasMfaEmail();
@@ -221,6 +224,13 @@ for (const [name, fontSize, width] of [
     await page.getByLabel("Password").fill(MOCK_PASSWORD);
     await page.getByRole("button", { name: "Turn on", exact: true }).click();
     await expect(page.getByRole("button", { name: "I've saved them" })).toBeVisible();
+    await expectReflow(page);
+
+    await page.getByRole("button", { name: "I've saved them" }).click();
+    await page.getByRole("button", { name: "Set up authenticator app" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("Code from your app")).toBeVisible();
     await expectReflow(page);
   });
 }

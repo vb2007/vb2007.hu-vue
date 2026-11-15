@@ -56,7 +56,7 @@ describe("MfaStep", () => {
   });
 
   it("offers no method it can't do yet, and says so when none is left", () => {
-    const step = mountStep(["totp", "recovery"]);
+    const step = mountStep(["passkey", "recovery"]);
 
     expect(step.find('[role="alert"]').text()).toBe(
       "Your account's second step uses a method this site can't do yet. Ask the site's admin to reset it, then log in again."
