@@ -65,7 +65,10 @@ describe("MfaStep's authenticator app", () => {
       body: JSON.stringify({ method: "totp", code: "123456" }),
       credentials: "include"
     });
-    expect(step.find(".field__error").text()).toBe(WRONG);
+    // The API's "request a new one" doesn't fit an app's code.
+    expect(step.find(".field__error").text()).toBe(
+      "That code didn't work: check it, or wait for the next one."
+    );
     expect(document.activeElement).toBe(field.element);
   });
 });

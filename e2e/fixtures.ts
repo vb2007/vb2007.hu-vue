@@ -1715,7 +1715,6 @@ export class MockApi {
     };
   }
 
-  /** `PUT` and `DELETE /user/mfa/email`, confirmed like the API's `rejectFailedMfaReauth`. */
   /** The API's `rejectFailedMfaReauth`: the password, or a recent GitHub confirmation without one. */
   private refuseMfaReauth(user: MockUser, password?: string): MockResponse | null {
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;

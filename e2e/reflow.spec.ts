@@ -234,3 +234,45 @@ for (const [name, fontSize, width] of [
     await expectReflow(page);
   });
 }
+
+// "Authenticator" is the longest word on these boards: at 320 px with a large font it has to break.
+for (const [name, width] of [
+  ["a 320 px window", 320],
+  ["a 640 px window", 640]
+] as const) {
+  test(`the authenticator app's long name fits ${name} with a 32 px browser font size`, async ({
+    page,
+    api
+  }) => {
+    await browserFontSize(page, 32);
+    await page.setViewportSize({ width, height: 900 });
+    // At 320 px the navbar alone is wider than the window with this font, on every page, so there
+    // only the main content is checked.
+    const fits = async () => {
+      if (width > 320) return expectReflow(page);
+      await page.locator("html").evaluate((html) => html.ownerDocument.fonts.ready);
+      await expect.poll(() => cutOff(page)).toEqual([]);
+    };
+    api.hasMfaEmail();
+    api.hasMfaTotp();
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill(MOCK_EMAIL);
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(page.getByLabel("Code from your authenticator app")).toBeVisible();
+    await fits();
+    // The account page's other rows (Log-in details, Linked accounts) don't fit that yet either.
+    if (width === 320) return;
+
+    api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
+    await page.goto("/account");
+    await expect(page.getByRole("button", { name: "Set up authenticator app" })).toBeVisible();
+    await fits();
+
+    await page.getByRole("button", { name: "Set up authenticator app" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("Code from your app")).toBeVisible();
+    await fits();
+  });
+}

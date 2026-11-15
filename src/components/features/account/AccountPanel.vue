@@ -363,6 +363,9 @@ const onRecoveryCodesSaved = async () => {
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
+  /* "Authenticator app" at 320 px with a large font breaks rather than widening the row. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .login__note {

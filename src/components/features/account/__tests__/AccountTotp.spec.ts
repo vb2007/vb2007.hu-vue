@@ -23,6 +23,11 @@ const CODES = Array.from({ length: 10 }, (_, i) => `abcd${i}-efgh${i}`);
 const ON = "TOTP MFA turned on: logins now also need a code from the authenticator app.";
 const OFF = "TOTP MFA turned off.";
 const WRONG = "The code is wrong, expired or already used: check it or request a new one.";
+/** The site's own words for the outcomes, in place of the API's. */
+const SAID_ON = "Authenticator app is on: each login can now take a code from it.";
+const SAID_MOVED = "Moved to your new authenticator app: the old one's codes no longer work.";
+const SAID_OFF = "Authenticator app is off: logins no longer take its codes.";
+const REFUSED = "That code didn't work: check it, or wait for the next one.";
 
 let fetchMock: ReturnType<typeof mockFetch>;
 let wrapper: VueWrapper | undefined;
@@ -127,6 +132,8 @@ describe("AccountPanel's authenticator app", () => {
     // 4 modules of quiet zone around it, and its finder pattern's corner right after.
     expect(setup.find("svg path").attributes("d")).toMatch(/^M4 4h7v1H4z/);
     expect(setup.find(".setup__secret").text()).toBe("JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP");
+    expect(setup.find("a").text()).toBe("Open in your authenticator app");
+    expect(setup.find("a").attributes("href")).toBe(SETUP.otpauthUrl);
     expect(codeField(panel).attributes("autocomplete")).toBe("one-time-code");
 
     fetchMock
@@ -147,24 +154,27 @@ describe("AccountPanel's authenticator app", () => {
     ]);
   });
 
-  it("turns on with the first code, refreshes the account and shows the recovery codes", async () => {
+  it("turns on with the first code, shows the recovery codes before the refresh answers", async () => {
     const panel = await mountPanel();
     await openSetup(panel);
 
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }))
-      .mockResolvedValueOnce(user(true, 10));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }));
+    const refresh = deferResponse(fetchMock);
     await codeField(panel).setValue("123456");
     await row(panel).find(".setup form").trigger("submit");
     await flushPromises();
 
-    expect(mfa.value.totp).toBe(true);
-    expect(row(panel).find(".badge").text()).toBe("On");
     expect(row(panel).find(".setup").exists()).toBe(false);
     expect(panel.text()).not.toContain("JBSW");
-    expect(panel.find(".notice").text()).toBe(ON);
+    expect(panel.find(".notice").text()).toBe(SAID_ON);
     expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(CODES);
     expect(document.activeElement).toBe(panel.find("#codes-title").element);
+
+    refresh.respond(user(true, 10));
+    await flushPromises();
+    expect(mfa.value.totp).toBe(true);
+    expect(row(panel).find(".badge").text()).toBe("On");
+    expect(panel.findAll(".codes__code")).toHaveLength(10);
   });
 
   it("keeps an open setup when the account is looked up again meanwhile", async () => {
@@ -225,7 +235,7 @@ describe("AccountPanel's authenticator app", () => {
 
     await confirmWith(panel, "000000", jsonResponse(400, { error: WRONG }));
 
-    expect(row(panel).find(".field__error").text()).toBe(WRONG);
+    expect(row(panel).find(".field__error").text()).toBe(REFUSED);
     expect(document.activeElement).toBe(codeField(panel).element);
     await codeField(panel).setValue("111111");
     expect(row(panel).find(".field__error").exists()).toBe(false);
@@ -267,6 +277,7 @@ describe("AccountPanel's authenticator app", () => {
     await confirmWith(panel, "123456", jsonResponse(400, { error: WRONG }));
 
     expect(row(panel).find(".setup__ran-out").exists()).toBe(true);
+    expect(row(panel).find(".setup__secret").exists()).toBe(false);
     await keyNamed(row(panel), "Cancel").trigger("click");
     await flushPromises();
     expect(document.activeElement).toBe(keyNamed(row(panel), "Set up authenticator app").element);
@@ -279,14 +290,14 @@ describe("AccountPanel's authenticator app", () => {
     await confirmWith(
       panel,
       "123456",
-      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 60 })
     );
     const submit = row(panel).find('.setup button[type="submit"]');
     expect(row(panel).find('.setup [role="alert"]').text()).toContain(
       "Too many failed attempts: try again later."
     );
     expect(submit.attributes("disabled")).toBeDefined();
-    expect(submit.text()).toBe("Try again in 15 min");
+    expect(submit.text()).toBe("Try again in 60 sec");
     await row(panel).find(".setup form").trigger("submit");
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -297,6 +308,61 @@ describe("AccountPanel's authenticator app", () => {
     await confirmWith(second, "123456", jsonResponse(500, {}));
     expect(row(second).find('.setup [role="alert"]').text()).toBe("Failed to check the code: 500");
     expect(row(second).find('.setup button[type="submit"]').attributes("disabled")).toBeUndefined();
+  });
+
+  it("says so when the code checks' wait outlasts the setup, and still lets it go", async () => {
+    const panel = await mountPanel();
+    await openSetup(panel);
+
+    await confirmWith(
+      panel,
+      "123456",
+      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 900 })
+    );
+
+    const ranOut = row(panel).find(".setup__ran-out");
+    expect(ranOut.text()).toBe(
+      "Too many wrong codes for now, and the wait outlasts this setup. Once it's over, start again for a new QR code, and replace what your app added from this one."
+    );
+    expect(document.activeElement).toBe(ranOut.element);
+    expect(row(panel).find(".setup__secret").exists()).toBe(false);
+    const again = row(panel).find(".setup__actions button");
+    expect(again.text()).toBe("Try again in 15 min");
+    expect(again.attributes("disabled")).toBeDefined();
+    await keyNamed(row(panel), "Cancel").trigger("click");
+    await flushPromises();
+    expect(row(panel).find(".setup").exists()).toBe(false);
+  });
+
+  it("runs out on screen at the end of its minutes, and drops the secret", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const panel = await mountPanel();
+      await openSetup(panel);
+      (codeField(panel).element as HTMLInputElement).focus();
+
+      // A little before the API's 10 minutes, which started at its answer.
+      vi.advanceTimersByTime(9.5 * 60_000 - 1000);
+      await flushPromises();
+      expect(row(panel).find(".setup__secret").exists()).toBe(true);
+      vi.advanceTimersByTime(1000);
+      await flushPromises();
+
+      const ranOut = row(panel).find(".setup__ran-out");
+      expect(ranOut.exists()).toBe(true);
+      expect(document.activeElement).toBe(ranOut.element);
+      expect(panel.text()).not.toContain("JBSW");
+
+      await keyNamed(row(panel), "Start again").trigger("click");
+      await openSetupAgain(panel);
+      (document.activeElement as HTMLElement).blur();
+      vi.advanceTimersByTime(9.5 * 60_000);
+      await flushPromises();
+      expect(row(panel).find(".setup__ran-out").exists()).toBe(true);
+      expect(document.activeElement).toBe(document.body);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends one code at a time, and Escape waits for it", async () => {
@@ -355,6 +421,7 @@ describe("AccountPanel's authenticator app", () => {
     await flushPromises();
 
     expect(panel.find(".codes").exists()).toBe(false);
+    expect(panel.find(".notice").text()).toBe(SAID_MOVED);
     expect(document.activeElement).toBe(panel.find(".notice").element);
   });
 
@@ -378,7 +445,7 @@ describe("AccountPanel's authenticator app", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/user/mfa/totp");
     expect(fetchMock.mock.calls[0][1]!.method).toBe("DELETE");
     expect(row(panel).find(".badge").text()).toBe("Off");
-    expect(panel.find(".notice").text()).toBe(OFF);
+    expect(panel.find(".notice").text()).toBe(SAID_OFF);
     expect(document.activeElement).toBe(panel.find(".notice").element);
   });
 });

@@ -45,7 +45,9 @@ test("an authenticator app's code logs in, before any mail", async ({ page, api 
 
   await code.fill("000000");
   await main.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(main.getByText("The code is wrong, expired or already used")).toBeVisible();
+  await expect(
+    main.getByText("That code didn't work: check it, or wait for the next one.")
+  ).toBeVisible();
   await expect(code).toBeFocused();
 
   await code.fill(MOCK_TOTP_CODE);
@@ -70,7 +72,9 @@ test("an authenticator app is set up with its QR code and first code, showing th
   const code = setup.getByLabel("Code from your app");
   await code.fill("000000");
   await setup.getByRole("button", { name: "Turn on", exact: true }).click();
-  await expect(setup.getByText("The code is wrong, expired or already used")).toBeVisible();
+  await expect(
+    setup.getByText("That code didn't work: check it, or wait for the next one.")
+  ).toBeVisible();
   await expect(code).toBeFocused();
 
   await code.fill(MOCK_TOTP_CODE);
@@ -78,7 +82,9 @@ test("an authenticator app is set up with its QR code and first code, showing th
   const codes = section.getByRole("region", { name: "Your recovery codes" });
   await expect(codes.getByRole("heading")).toBeFocused();
   await expect(codes.getByRole("listitem")).toHaveText(MOCK_RECOVERY_CODES);
-  await expect(page.getByText("TOTP MFA turned on")).toBeVisible();
+  await expect(
+    page.getByText("Authenticator app is on: each login can now take a code from it.")
+  ).toBeVisible();
   await expect(setup).toHaveCount(0);
   await expect(section.getByRole("button", { name: "Move to a new app" })).toBeVisible();
 });
@@ -110,7 +116,11 @@ test("an authenticator app turns off with the password", async ({ page, api }) =
   await section.getByLabel("Password").fill(MOCK_PASSWORD);
   await section.getByRole("button", { name: "Turn off", exact: true }).click();
 
-  await expect(page.getByRole("status").filter({ hasText: "TOTP MFA turned off." })).toBeFocused();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Authenticator app is off: logins no longer take its codes." })
+  ).toBeFocused();
   await expect(section.getByRole("button", { name: "Set up authenticator app" })).toBeVisible();
 });
 

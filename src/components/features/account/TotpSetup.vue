@@ -5,9 +5,20 @@
  * in this component's props: closing it drops it, and the API never sends it again.
  *
  * The confirm's 400 is the same for a wrong code and a setup that's gone, so the setup's time and
- * tries are counted here: once they're used up, the only way on is to start again.
+ * tries are counted here: once they're used up (or a 429's wait outlasts them), it says so and
+ * `expire` asks the parent to drop the dead secret, which leaves `setup` null. The only way on is
+ * to start again.
  */
-import { computed, nextTick, onMounted, ref, useId, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useId,
+  useTemplateRef,
+  watch
+} from "vue";
 import { encode } from "uqr";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
@@ -30,7 +41,8 @@ import { statusTextId } from "@/components/ui/statusMessage";
 import type { MfaTurnOnResponse, TotpSetupResponse } from "@/types/api/mfa";
 
 const props = defineProps<{
-  setup: TotpSetupResponse;
+  /** Null once the setup ran out and its secret was dropped. */
+  setup: TotpSetupResponse | null;
   /** TOTP is on already: the old app works until this one's code is confirmed. */
   moving: boolean;
 }>();
@@ -39,11 +51,13 @@ const emit = defineEmits<{
   cancel: [];
   /** A new setup, which needs the password again. */
   restart: [];
+  /** The setup ran out: its secret is no use any more. */
+  expire: [];
 }>();
 
 /** The QR code as one path of dark modules, a run per row segment, with the 4-module quiet zone. */
 const qr = computed(() => {
-  const { data, size } = encode(props.setup.otpauthUrl, { border: 4 });
+  const { data, size } = encode(props.setup!.otpauthUrl, { border: 4 });
   const path = data
     .flatMap((row, y) =>
       row.map((dark, x) =>
@@ -53,7 +67,7 @@ const qr = computed(() => {
     .join("");
   return { path, size };
 });
-const groupedSecret = computed(() => props.setup.secret.match(/.{1,4}/g)!.join(" "));
+const groupedSecret = computed(() => props.setup!.secret.match(/.{1,4}/g)!.join(" "));
 
 const invalid = Messages.Mfa.totpCodeInvalid(Limits.Code.digits);
 const hint = Messages.Mfa.totpSetupHint(
@@ -61,7 +75,9 @@ const hint = Messages.Mfa.totpSetupHint(
   Limits.Mfa.totpSetupMinutes,
   Limits.Mfa.totpSetupAttempts
 );
-const deadline = Date.now() + Limits.Mfa.totpSetupMinutes * 60_000;
+/** The API's minutes started at its answer, a moment before this opened: end a little early. */
+const EARLY_MS = 30_000;
+const deadline = Date.now() + Limits.Mfa.totpSetupMinutes * 60_000 - EARLY_MS;
 
 const code = ref("");
 const isConfirming = ref(false);
@@ -70,13 +86,14 @@ const refusal = ref("");
 /** Anything else: the per-account limit on codes, the network. */
 const error = ref("");
 const tries = ref(0);
-const ranOut = ref(false);
+const ranOut = computed(() => !props.setup);
 const hold = useRetryHold(error);
 const isHeld = computed(() => hold.isHeld());
 const shownError = computed(() => hold.shown());
 const { copied, failed, copy } = useClipboard();
 const titleId = useId();
 const errorId = useId();
+const panel = useTemplateRef("panel");
 const title = useTemplateRef("title");
 const form = useTemplateRef("form");
 const ranOutMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("ranOutMessage");
@@ -104,18 +121,39 @@ const confirm = async () => {
   isConfirming.value = false;
   if (result.ok) return emit("done", result.data);
 
+  /** When the next try could go: now, or after a 429's wait. */
+  let next = Date.now();
   if (result.status === HttpStatus.BadRequest) {
     tries.value++;
-    refusal.value = result.error;
-    ranOut.value = tries.value >= Limits.Mfa.totpSetupAttempts || Date.now() >= deadline;
+    // The API's text asks to "request a new one", which an app's code can't be.
+    refusal.value = Messages.Mfa.totpCodeRefused;
   } else {
     error.value = result.error;
-    if (result.status === HttpStatus.TooManyRequests) hold.start(retryAfterFrom(result.body));
+    if (result.status === HttpStatus.TooManyRequests) {
+      const wait = retryAfterFrom(result.body);
+      hold.start(wait);
+      next += wait * 1000;
+    }
   }
+  // The busy key gave up the focus, which goes on to what replaces the form.
+  if (tries.value >= Limits.Mfa.totpSetupAttempts || next >= deadline) return runOut(true);
   await nextTick();
-  if (ranOut.value) ranOutMessage.value?.$el.focus();
-  else focusField();
+  focusField();
 };
+
+/**
+ * The setup can't be confirmed any more: the message replaces it, and takes the focus if it was in
+ * the panel (or `focus` says to), so it isn't lost with the field.
+ */
+const runOut = async (focus = panel.value?.contains(document.activeElement)) => {
+  emit("expire");
+  await nextTick();
+  if (focus) ranOutMessage.value?.$el.focus();
+};
+
+// Left open, the setup runs out on screen too, so a QR code scanned later isn't a dead one.
+const timer = setTimeout(runOut, deadline - Date.now());
+onBeforeUnmount(() => clearTimeout(timer));
 
 const cancel = () => {
   if (!isConfirming.value) emit("cancel");
@@ -125,17 +163,27 @@ onMounted(() => title.value?.focus());
 </script>
 
 <template>
-  <div class="setup" role="group" :aria-labelledby="titleId" @keydown.esc="cancel">
+  <div ref="panel" class="setup" role="group" :aria-labelledby="titleId" @keydown.esc="cancel">
     <h4 :id="titleId" ref="title" class="setup__title" tabindex="-1">
       {{ ranOut ? "Setup ran out" : moving ? "Scan with your new app" : "Scan the QR code" }}
     </h4>
 
-    <template v-if="ranOut">
+    <template v-if="!setup">
+      <!-- Held by the code checks' 429 past the setup's end: a new one waits for it too. -->
       <StatusMessage ref="ranOutMessage" class="setup__ran-out" tone="info" tabindex="-1">{{
-        Messages.Mfa.totpSetupRanOut(Limits.Mfa.totpSetupMinutes, Limits.Mfa.totpSetupAttempts)
+        isHeld
+          ? Messages.Mfa.totpSetupHeldOut
+          : Messages.Mfa.totpSetupRanOut(Limits.Mfa.totpSetupMinutes, Limits.Mfa.totpSetupAttempts)
       }}</StatusMessage>
       <div class="setup__actions">
-        <BaseButton size="sm" @click="emit('restart')">Start again</BaseButton>
+        <BaseButton
+          size="sm"
+          :disabled="isHeld"
+          :aria-label="isHeld ? hold.name.value : undefined"
+          @click="emit('restart')"
+        >
+          {{ isHeld ? hold.label.value : "Start again" }}
+        </BaseButton>
         <BaseButton size="sm" variant="ghost" @click="cancel">Cancel</BaseButton>
       </div>
     </template>
@@ -159,10 +207,17 @@ onMounted(() => title.value?.focus());
         <div class="setup__key">
           <p class="setup__label">Can't scan it? Type this key instead:</p>
           <code class="setup__secret">{{ groupedSecret }}</code>
-          <BaseButton size="sm" variant="secondary" @click="copy(setup.secret)">
-            <AppIcon :name="copied ? 'check' : 'copy'" :size="16" />
-            {{ copied ? "Copied" : "Copy key" }}
-          </BaseButton>
+          <div class="setup__actions">
+            <BaseButton size="sm" variant="secondary" @click="copy(setup.secret)">
+              <AppIcon :name="copied ? 'check' : 'copy'" :size="16" />
+              {{ copied ? "Copied" : "Copy key" }}
+            </BaseButton>
+            <!-- On the phone the app is on, the link adds it there, with nothing to scan. -->
+            <BaseButton size="sm" variant="secondary" :href="setup.otpauthUrl">
+              <AppIcon name="phone" :size="16" />
+              Open in your authenticator app
+            </BaseButton>
+          </div>
           <p class="visually-hidden" role="status">
             {{ copied ? "Key copied." : failed ? "Couldn't copy: select the key instead." : "" }}
           </p>
@@ -264,11 +319,15 @@ onMounted(() => title.value?.focus());
   gap: var(--sp-4);
 }
 
-/* Dark modules on the light theme's panel in both themes: some apps can't read a light-on-dark code. */
+/*
+ * Dark modules on the light theme's panel in both themes, and in forced colours: some apps can't
+ * read a light-on-dark code. Large enough for a long username's denser code.
+ */
 .setup__qr {
   color-scheme: light;
+  forced-color-adjust: none;
   flex: none;
-  width: min(100%, 11rem);
+  width: min(100%, 14rem);
   height: auto;
   aspect-ratio: 1;
   border: var(--edge) solid var(--c-hairline);

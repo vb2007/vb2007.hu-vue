@@ -154,7 +154,10 @@ const CODE_MESSAGE = Messages.EmailCode.invalid(Limits.Code.digits);
 /** The API ignores spaces in a code. */
 const withoutSpaces = (code: string) => code.replace(/\s/g, "");
 
-/** The mailed codes are `Limits.Code.digits` digits. */
+/**
+ * The mailed codes and an authenticator app's are `Limits.Code.digits` digits; `message` says
+ * where the code comes from (the e-mail by default).
+ */
 export const confirmationCodeError = (code: string, message = CODE_MESSAGE) => {
   const digits = withoutSpaces(code);
   return /^\d+$/.test(digits) && digits.length === Limits.Code.digits ? "" : message;

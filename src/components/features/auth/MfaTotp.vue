@@ -26,5 +26,6 @@ const hint = `${Messages.Mfa.totpHint(Limits.Code.digits, Limits.Mfa.totpPeriodS
     :hint="hint"
     :check="(code) => confirmationCodeError(code, invalid)"
     :early="(code) => confirmationCodeEarlyError(code, invalid)"
+    :refused="Messages.Mfa.totpCodeRefused"
   />
 </template>

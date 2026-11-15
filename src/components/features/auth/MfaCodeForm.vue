@@ -25,6 +25,8 @@ const props = defineProps<{
   early?: (code: string) => string;
   /** Ids of messages above that also describe the field, e.g. where the code went. */
   describedby?: string;
+  /** Shown in place of the API's wrong-answer text, where that doesn't fit the method. */
+  refused?: string;
 }>();
 
 const code = ref("");
@@ -75,7 +77,7 @@ defineExpose({ focusField, restart });
       autocomplete="one-time-code"
       mono
       :describedby="describedby"
-      :error="refusal || errors.code"
+      :error="(refusal && (refused || refusal)) || errors.code"
       required
       @blur="leave('code')"
     />

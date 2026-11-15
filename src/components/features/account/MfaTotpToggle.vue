@@ -14,19 +14,19 @@ import ReauthForm from "@/components/features/account/ReauthForm.vue";
 import TotpSetup from "@/components/features/account/TotpSetup.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import type { MfaPasswordBody, MfaTurnOnResponse, TotpSetupResponse } from "@/types/api/mfa";
-import type { MessageResponse } from "@/types/api/common";
 
 const emit = defineEmits<{
   /** A form opened: older notices go. */
   start: [];
-  /** The API's message, and the recovery codes the first method brings, shown once. */
+  /** The section's message, and the recovery codes the first method brings, shown once. */
   done: [message: string, recoveryCodes?: string[]];
 }>();
 
 /** Which confirmation is open, fixed when it opened: a new setup (moving, with TOTP on) or off. */
 const confirming = ref<"" | "setup" | "off">("");
 const moving = ref(false);
-/** The waiting setup with its secret, only while it's on screen. */
+/** Whether the setup panel is open, and its setup with the secret, until it runs out. */
+const settingUp = ref(false);
 const setup = ref<TotpSetupResponse | null>(null);
 const setupKey = useTemplateRef<InstanceType<typeof BaseButton>>("setupKey");
 const offKey = useTemplateRef<InstanceType<typeof BaseButton>>("offKey");
@@ -42,11 +42,17 @@ const open = (kind: "setup" | "off") => {
   emit("start");
 };
 
+/** Drops the setup and its secret, and whatever was open. */
+const reset = () => {
+  confirming.value = "";
+  settingUp.value = false;
+  setup.value = null;
+};
+
 /** Back to the keys, on the one that opened what closed. */
 const close = async () => {
   const kind = confirming.value || "setup";
-  confirming.value = "";
-  setup.value = null;
+  reset();
   await nextTick();
   (kind === "off" ? offKey : setupKey).value?.$el.focus();
 };
@@ -54,20 +60,26 @@ const close = async () => {
 const onSetup = (data: TotpSetupResponse) => {
   confirming.value = "";
   setup.value = data;
+  settingUp.value = true;
 };
 
 /** Starting again takes the password again, as the API's setup does. */
 const restart = () => {
-  setup.value = null;
+  reset();
   confirming.value = "setup";
 };
 
-const finish = async (data: MessageResponse | MfaTurnOnResponse) => {
-  confirming.value = "";
-  setup.value = null;
-  await fetchUserDetails();
-  emit("done", data.message, "recoveryCodes" in data ? data.recoveryCodes : undefined);
+/**
+ * The outcome, with any recovery codes, goes out first: they exist only in this answer, so a slow
+ * or failed refresh (the session ended meanwhile, say) mustn't hold them back.
+ */
+const finish = (message: string, recoveryCodes?: string[]) => {
+  reset();
+  emit("done", message, recoveryCodes);
+  void fetchUserDetails();
 };
+const onTurnedOn = (data: MfaTurnOnResponse) =>
+  finish(moving.value ? Messages.Mfa.totpMoved : Messages.Mfa.totpOn, data.recoveryCodes);
 </script>
 
 <template>
@@ -78,7 +90,7 @@ const finish = async (data: MessageResponse | MfaTurnOnResponse) => {
     busy-label="Turning off"
     hint="Confirms it's you. Without another second step, your recovery codes go too."
     danger
-    @done="finish"
+    @done="finish(Messages.Mfa.totpOff)"
     @cancel="close"
   />
   <ReauthForm
@@ -95,12 +107,13 @@ const finish = async (data: MessageResponse | MfaTurnOnResponse) => {
     @cancel="close"
   />
   <TotpSetup
-    v-else-if="setup"
+    v-else-if="settingUp"
     :setup="setup"
     :moving="moving"
-    @done="finish"
+    @done="onTurnedOn"
     @cancel="close"
     @restart="restart"
+    @expire="setup = null"
   />
   <div v-else class="keys">
     <BaseButton
