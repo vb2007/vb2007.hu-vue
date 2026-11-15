@@ -95,6 +95,11 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.hasMfaEmail()` turns e-mail MFA on for `MOCK_EMAIL` (vb2007/vb2007.hu-api#448): its right password then answers 202 with `methods`, `POST /auth/mfa/email` "mails"
  * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all (`api.expiresMfaChallenge()` ends the step, so every
  * `/auth/mfa` endpoint answers 403). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
+ * Passkeys (vb2007/vb2007.hu-api#446, #484) live on their account (`api.hasPasskey(name, { id })` arranges one, and `GET /user` counts them).
+ * The options name the app's own host as the RP ID, so the browser's (virtual) authenticator works, and the double takes whatever
+ * credential it sends back, checking only its id: `POST /user/passkeys` stores it for the waiting registration (confirmed like the
+ * MFA settings), `POST /auth/passkey` logs in the account that owns it after `/options`, and with e-mail MFA or TOTP on the second step lists
+ * `passkey` and takes one of the account's after `POST /auth/mfa/passkey/options`; anything else gets `PASSKEY_INVALID_ERROR`.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
  * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries; `DELETE /user/mfa/totp` turns it off.
  * Each recovery code passes `POST /auth/mfa/verify` with `method: "recovery"` once (case, spaces and dashes ignored); `POST /user/mfa/recovery-codes` replaces them with `MOCK_NEW_RECOVERY_CODES`.
@@ -225,7 +230,8 @@ const PUBLIC_ROUTES = [
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
   /^GET \/e2e-github\/authorize$/,
   // The second step reads its own cookie, not the session's.
-  /^(GET \/auth\/mfa|POST \/auth\/mfa\/(email|verify|verify-link))$/
+  /^(GET \/auth\/mfa|POST \/auth\/mfa\/(email|verify|verify-link))$/,
+  /^POST \/auth\/(passkey(\/options)?|mfa\/passkey\/options)$/
 ];
 
 /** The API's `PASTE_LANGUAGE_MIN_LENGTH` and `PASTE_LANGUAGE_MAX_LENGTH`, and its `pasteLanguagePattern`. */
@@ -361,6 +367,9 @@ export const MOCK_NEW_RECOVERY_CODES = Array.from(
 export const MFA_EXPIRED_ERROR =
   "The login's second step expired, used up its tries or was never started: log in again.";
 const MFA_EXPIRED: MockResponse = { status: 403, body: { error: MFA_EXPIRED_ERROR } };
+/** The API's one refusal of a passkey that doesn't verify: a login's 403, the second step's 400. */
+export const PASSKEY_INVALID_ERROR =
+  "The passkey couldn't be verified: try again or log in another way.";
 /**
  * The API's `SUPERUSER_EMAIL` until an account is arranged with `superuser: true`, whose address then takes its place
  * (there's only ever one: arranging a second throws). `POST /user/email/confirm` keeps it from other accounts.
@@ -608,12 +617,25 @@ interface MockUser {
   emailVerified: boolean;
   githubId?: string;
   githubLogin?: string;
-  /** All off when unset. With e-mail MFA or TOTP on, a right password answers 202 and waits for the second step. */
+  /**
+   * All off when unset. With e-mail MFA or TOTP on, a right password answers 202 and waits for the second step. Its
+   * `passkeys` and `recoveryCodesLeft` counts are always derived from the lists below (see `mfaStatusOf`).
+   */
   mfa?: MockMfaStatus;
   /** A TOTP setup waiting for its first code (vb2007/vb2007.hu-api#447), with the tries it used. */
   totpSetupTries?: number;
-  /** The unused recovery codes, whose count is `mfa.recoveryCodesLeft` (see `setRecoveryCodes`). */
+  /** The unused recovery codes (see `setRecoveryCodes`). */
   recoveryCodes?: string[];
+  /** Passkeys (vb2007/vb2007.hu-api#446), oldest first, as `GET /user/passkeys` lists them; an MFA reset keeps them. */
+  passkeys?: MockPasskey[];
+}
+
+interface MockPasskey {
+  /** The credential id the browser made, or one `hasPasskey` arranged. */
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 /** A login's second step waiting in the browser's `__Host-VB-MFA` cookie, which the mock stands in for. */
@@ -623,6 +645,8 @@ interface MockMfaChallenge {
   tries: number;
   /** Whether `POST /auth/mfa/email` mailed `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN` for it. */
   mailed: boolean;
+  /** Whether `POST /auth/mfa/passkey/options` gave it a challenge, which one passkey answer uses up. */
+  passkeyAsked?: boolean;
 }
 
 export class MockApi {
@@ -706,6 +730,9 @@ export class MockApi {
   private mfaChallenge: MockMfaChallenge | null = null;
   /** When each account (by id) was last mailed a login code, for the one-a-minute cooldown. */
   private readonly mfaMailSentAt = new Map<string, number>();
+  /** The passkey challenges waiting in the browser's cookies: a registration's (by account id), and a login's. */
+  private passkeyRegistration: string | null = null;
+  private passkeyLoginAsked = false;
   private passwordChecksLimited = false;
   private mailSendsLimited = false;
   private resetLinksLimited = false;
@@ -867,6 +894,15 @@ export class MockApi {
           (candidate) => normalizeEmail(candidate.email) === normalizeEmail(user.email)
         )!;
       account.mfa = { ...this.mfaOf(user.id), ...mfa };
+      // The count comes from the account's passkeys, so `passkeys: n` arranges n of them.
+      if (mfa.passkeys !== undefined) {
+        account.passkeys = Array.from({ length: mfa.passkeys }, (_, i) => ({
+          id: `e2e-passkey-${i + 1}`,
+          name: `Passkey ${i + 1}`,
+          createdAt: new Date(this.now()).toISOString(),
+          lastUsedAt: null
+        }));
+      }
       // The codes themselves, so a login can use them up.
       if (mfa.recoveryCodesLeft !== undefined) {
         this.setRecoveryCodes(account, MOCK_RECOVERY_CODES.slice(0, mfa.recoveryCodesLeft));
@@ -1360,6 +1396,8 @@ export class MockApi {
       username?: string;
       token?: string;
       method?: string;
+      name?: unknown;
+      response?: unknown;
       suspended?: unknown;
       ip?: unknown;
     } | null,
@@ -1433,6 +1471,13 @@ export class MockApi {
     if (logoutRoute) {
       return this.logoutUser(decodeURIComponent(logoutRoute[1]));
     }
+    const passkeyRoute = endpoint.match(/^(PATCH|DELETE) \/user\/passkeys\/([^/]+)$/);
+    if (passkeyRoute) {
+      const id = decodeURIComponent(passkeyRoute[2]);
+      return passkeyRoute[1] === "PATCH"
+        ? this.renamePasskey(id, body?.name)
+        : this.deletePasskey(id, body?.password);
+    }
     const pendingRoute = endpoint.match(/^DELETE \/admin\/pending-registrations\/([^/]+)$/);
     if (pendingRoute) {
       return this.removePendingRegistration(decodeURIComponent(pendingRoute[1]));
@@ -1493,7 +1538,30 @@ export class MockApi {
         challenge.mailed = true;
         return { status: 202, body: { message: "A code and a login link were sent." } };
       }
+      case "GET /user/passkeys":
+        return this.user
+          ? { status: 200, body: { passkeys: this.user.passkeys ?? [] } }
+          : NOT_LOGGED_IN;
+      case "POST /user/passkeys/options":
+        return this.startPasskeyRegistration(body?.password);
+      case "POST /user/passkeys":
+        return this.addPasskey(body?.name, body?.response);
+      case "POST /auth/passkey/options":
+        this.passkeyLoginAsked = true;
+        return { status: 200, body: this.passkeyRequestOptions() };
+      case "POST /auth/passkey":
+        return this.passkeyLogin(body?.response);
+      case "POST /auth/mfa/passkey/options": {
+        const challenge = this.liveMfaChallenge();
+        if (!challenge) return MFA_EXPIRED;
+        challenge.passkeyAsked = true;
+        return {
+          status: 200,
+          body: this.passkeyRequestOptions(challenge.account.passkeys ?? [])
+        };
+      }
       case "POST /auth/mfa/verify":
+        if (body?.method === "passkey") return this.passMfaPasskey(body.response);
         if (body?.method === "recovery") {
           return this.passMfa(body.code, (code, account) => this.spendRecoveryCode(account, code));
         }
@@ -1520,7 +1588,7 @@ export class MockApi {
               status: 200,
               body: {
                 ...this.user,
-                mfa: this.user.mfa ?? NO_MFA,
+                mfa: this.mfaStatusOf(this.user),
                 // Like the API's `getUser`, from the address.
                 isSuperuser: this.isSuperuserEmail(this.user.email),
                 pendingEmail: this.isEmailChangeLive() ? this.emailChange!.email : null
@@ -1750,9 +1818,20 @@ export class MockApi {
     return [
       ...(mfa.email ? ["email"] : []),
       ...(mfa.totp ? ["totp"] : []),
+      // Passkeys answer the step only next to another method, like the API's backups.
+      ...(account.passkeys?.length ? ["passkey"] : []),
       // A backup: only with codes left, next to a method that isn't one.
       ...(account.recoveryCodes?.length && (mfa.email || mfa.totp) ? ["recovery"] : [])
     ];
+  }
+
+  /** The account's `mfa`, with its passkeys and recovery codes counted from their own lists. */
+  private mfaStatusOf(account: MockUser): MockMfaStatus {
+    return {
+      ...(account.mfa ?? NO_MFA),
+      passkeys: account.passkeys?.length ?? 0,
+      recoveryCodesLeft: account.recoveryCodes?.length ?? 0
+    };
   }
 
   /** The waiting step, while it has time and tries left. */
@@ -1823,7 +1902,7 @@ export class MockApi {
     this.user!.mfa = { ...current, email: true };
     const message =
       "E-mail MFA turned on: logins now also need a code or link mailed to the account's address.";
-    if (current.recoveryCodesLeft) return { status: 200, body: { message } };
+    if (this.user!.recoveryCodes?.length) return { status: 200, body: { message } };
     this.setRecoveryCodes(this.user!, MOCK_RECOVERY_CODES);
     return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
   }
@@ -1850,10 +1929,9 @@ export class MockApi {
     };
   }
 
-  /** An account's unused recovery codes, and the count the MFA store shows for them, set together. */
+  /** An account's unused recovery codes, which the MFA store counts (see `mfaStatusOf`). */
   private setRecoveryCodes(account: MockUser, codes: string[]) {
     account.recoveryCodes = [...codes];
-    account.mfa = { ...(account.mfa ?? NO_MFA), recoveryCodesLeft: codes.length };
   }
 
   /** Uses up `code` of the account's, ignoring case, spaces and dashes like the API; false when it has none such. */
@@ -1931,9 +2009,206 @@ export class MockApi {
     const current = this.user.mfa ?? NO_MFA;
     const message = "TOTP MFA turned on: logins now also need a code from the authenticator app.";
     this.user.mfa = { ...current, totp: true };
-    if (current.recoveryCodesLeft) return { status: 200, body: { message } };
+    if (this.user.recoveryCodes?.length) return { status: 200, body: { message } };
     this.setRecoveryCodes(this.user, MOCK_RECOVERY_CODES);
     return { status: 200, body: { message, recoveryCodes: MOCK_RECOVERY_CODES } };
+  }
+
+  /**
+   * Gives the logged-in account (else `MOCK_EMAIL`'s) a passkey named `name`, e.g. with the `id` of one a test's
+   * virtual authenticator made, so it logs in. Arrange it after `loggedInAs`, which may replace the account it went to.
+   */
+  hasPasskey(
+    name: string,
+    { id = `e2e-passkey-${name}`, lastUsedAt = null as string | null } = {}
+  ) {
+    const account =
+      this.user ??
+      this.accounts.find((candidate) => normalizeEmail(candidate.email) === MOCK_EMAIL)!;
+    (account.passkeys ??= []).push({
+      id,
+      name,
+      createdAt: new Date(this.now()).toISOString(),
+      lastUsedAt
+    });
+  }
+
+  /** The RP ID the API takes from `BASE_SITE_URL`: here the app's own host, like a local API's. */
+  private passkeyRpId() {
+    return new URL(this.appOrigin).hostname;
+  }
+
+  private passkeyRequestOptions(allowed?: MockPasskey[]) {
+    return {
+      challenge: "ZTJlLXBhc3NrZXktbG9naW4",
+      rpId: this.passkeyRpId(),
+      timeout: 300_000,
+      userVerification: "required",
+      ...(allowed && { allowCredentials: allowed.map(({ id }) => ({ id, type: "public-key" })) })
+    };
+  }
+
+  /** The API's `passkeyNameError`; the double skips its exception for emoji joiners and tags. */
+  private passkeyNameRefusal(name: unknown): MockResponse | undefined {
+    const error =
+      typeof name !== "string" || !name.trim()
+        ? "You must provide a name for the passkey."
+        : /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)
+          ? "The passkey name can't contain line breaks or invisible formatting characters."
+          : [...name.trim()].length > 64
+            ? "The passkey name can be at most 64 characters long."
+            : "";
+    return error ? { status: 400, body: { error } } : undefined;
+  }
+
+  /** `POST /user/passkeys/options`: creation options for the app's host, with the account's passkeys excluded. */
+  private startPasskeyRegistration(password?: string): MockResponse {
+    const refusal = this.refuseMfaReauth(password);
+    if (refusal) return refusal;
+    const user = this.user!;
+    if ((user.passkeys?.length ?? 0) >= 10) {
+      return {
+        status: 409,
+        body: { error: "An account can have at most 10 passkeys: delete one first." }
+      };
+    }
+    this.passkeyRegistration = user._id;
+    const rpId = this.passkeyRpId();
+    return {
+      status: 200,
+      body: {
+        challenge: "ZTJlLXBhc3NrZXktcmVnaXN0cmF0aW9u",
+        rp: { name: rpId, id: rpId },
+        user: {
+          id: Buffer.from(user._id, "hex").toString("base64url"),
+          name: user.username,
+          displayName: user.username
+        },
+        pubKeyCredParams: [-8, -7, -257].map((alg) => ({ alg, type: "public-key" })),
+        timeout: 300_000,
+        attestation: "none",
+        excludeCredentials: (user.passkeys ?? []).map(({ id }) => ({ id, type: "public-key" })),
+        authenticatorSelection: {
+          residentKey: "required",
+          requireResidentKey: true,
+          userVerification: "required"
+        }
+      }
+    };
+  }
+
+  /** `POST /user/passkeys`: takes whatever credential the browser made for the waiting registration. */
+  private addPasskey(name: unknown, response: unknown): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const refusal = this.passkeyNameRefusal(name);
+    if (refusal) return refusal;
+    const id = (response as { id?: unknown } | null)?.id;
+    if (typeof id !== "string") {
+      return {
+        status: 400,
+        body: { error: "You must provide the passkey's response from navigator.credentials." }
+      };
+    }
+    if (this.passkeyRegistration !== this.user._id) {
+      return {
+        status: 400,
+        body: { error: "The passkey request expired or was already used: start again." }
+      };
+    }
+    this.passkeyRegistration = null;
+    if (this.accounts.some((account) => account.passkeys?.some((passkey) => passkey.id === id))) {
+      return { status: 409, body: { error: "This passkey is already registered." } };
+    }
+    const passkey = {
+      id,
+      name: (name as string).trim(),
+      createdAt: new Date(this.now()).toISOString(),
+      lastUsedAt: null
+    };
+    (this.user.passkeys ??= []).push(passkey);
+    return { status: 201, body: { message: "Passkey added successfully.", passkey } };
+  }
+
+  private renamePasskey(id: string, name: unknown): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const refusal = this.passkeyNameRefusal(name);
+    if (refusal) return refusal;
+    const passkey = this.user.passkeys?.find((candidate) => candidate.id === id);
+    if (!passkey)
+      return { status: 404, body: { error: "There is no such passkey on this account." } };
+    passkey.name = (name as string).trim();
+    return { status: 200, body: { message: "Passkey renamed successfully." } };
+  }
+
+  private deletePasskey(id: string, password?: string): MockResponse {
+    const refusal = this.refuseMfaReauth(password);
+    if (refusal) return refusal;
+    const passkeys = this.user!.passkeys ?? [];
+    if (!passkeys.some((passkey) => passkey.id === id)) {
+      return { status: 404, body: { error: "There is no such passkey on this account." } };
+    }
+    this.user!.passkeys = passkeys.filter((passkey) => passkey.id !== id);
+    return { status: 200, body: { message: "Passkey deleted successfully." } };
+  }
+
+  /**
+   * `POST /auth/passkey`: the browser's answer to the waiting login challenge logs in the account that owns its
+   * credential (the double checks no signature), skipping any second step.
+   */
+  private passkeyLogin(response: unknown): MockResponse {
+    const id = (response as { id?: unknown } | null)?.id;
+    if (typeof id !== "string") {
+      return {
+        status: 400,
+        body: { error: "You must provide the passkey's response from navigator.credentials." }
+      };
+    }
+    const asked = this.passkeyLoginAsked;
+    this.passkeyLoginAsked = false;
+    const account = this.accounts.find((candidate) =>
+      candidate.passkeys?.some((passkey) => passkey.id === id)
+    );
+    if (!asked || !account) return { status: 403, body: { error: PASSKEY_INVALID_ERROR } };
+    if (this.isSuspended(account.email)) {
+      return {
+        status: 403,
+        body: {
+          error:
+            "This account is suspended: it can't log in until the superuser lifts the suspension."
+        }
+      };
+    }
+    account.passkeys!.find((passkey) => passkey.id === id)!.lastUsedAt = new Date(
+      this.now()
+    ).toISOString();
+    // Like any new login, it ends a waiting second step.
+    this.mfaChallenge = null;
+    this.user = account;
+    return {
+      status: 200,
+      body: { message: `Login successful with user ${account.username}.` },
+      newSession: true
+    };
+  }
+
+  /** A passkey's try at the second step: one of the account's credentials, for options this step asked for. */
+  private passMfaPasskey(response: unknown): MockResponse {
+    const challenge = this.liveMfaChallenge();
+    if (!challenge) return MFA_EXPIRED;
+    const id = (response as { id?: unknown } | null)?.id;
+    const passkey = challenge.account.passkeys?.find((candidate) => candidate.id === id);
+    challenge.tries++;
+    const asked = challenge.passkeyAsked;
+    challenge.passkeyAsked = false;
+    if (!asked || !passkey) return { status: 400, body: { error: PASSKEY_INVALID_ERROR } };
+    passkey.lastUsedAt = new Date(this.now()).toISOString();
+    this.mfaChallenge = null;
+    this.user = challenge.account;
+    return {
+      status: 200,
+      body: { message: `Login successful with user ${challenge.account.username}.` },
+      newSession: true
+    };
   }
 
   /** `DELETE /user/mfa/totp`, which drops a waiting setup too. */
@@ -2941,7 +3216,8 @@ export class MockApi {
 
   /** The MFA of the account with this id: all off unless arranged or turned on. */
   private mfaOf(id: string): MockMfaStatus {
-    return this.accounts.find((account) => account._id === id)?.mfa ?? NO_MFA;
+    const account = this.accounts.find((candidate) => candidate._id === id);
+    return account ? this.mfaStatusOf(account) : NO_MFA;
   }
 
   /**
@@ -2963,7 +3239,8 @@ export class MockApi {
     }
     const account = this.accounts.find((candidate) => candidate._id === id);
     if (account) {
-      account.mfa = { ...NO_MFA, passkeys: this.mfaOf(id).passkeys };
+      // Its passkeys stay, and with them their count.
+      account.mfa = { ...NO_MFA };
       delete account.totpSetupTries;
       account.recoveryCodes = [];
       // Its waiting second step goes too: the next login takes no second step.

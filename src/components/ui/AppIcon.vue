@@ -29,7 +29,10 @@ const ICONS = {
   pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   logout: "M10 4H4v16h6M15 8l4 4-4 4M19 12H9",
-  chevron: "M6 9l6 6 6-6"
+  chevron: "M6 9l6 6 6-6",
+  /** A person with a key, like the FIDO Alliance's passkey mark. */
+  passkey:
+    "M9.5 3a4 4 0 100 8 4 4 0 000-8zM3 21v-1.5A5.5 5.5 0 018.5 14H12M18 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM18 14.5V21M18 18h2"
 } as const;
 
 /** Brand marks are filled shapes on their own grid, unlike the stroked icons above. */

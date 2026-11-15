@@ -455,6 +455,41 @@ export class Messages {
     static readonly recoveryCodesFailed: string = "Failed to make new recovery codes";
   };
 
+  /** Passkeys (vb2007/vb2007.hu-api#446, #484): managing them, and logging in with one. */
+  static readonly Passkeys = class {
+    static readonly listFailed: string = "Failed to load your passkeys";
+    /** Any of the three options requests, before the browser's prompt. */
+    static readonly optionsFailed: string = "Failed to start the passkey";
+    static readonly addFailed: string = "Failed to add the passkey";
+    static readonly renameFailed: string = "Failed to rename the passkey";
+    static readonly deleteFailed: string = "Failed to delete the passkey";
+    static readonly loginFailed: string = "Failed to log in with the passkey";
+    /** In place of the passkey keys, where the browser lacks WebAuthn's JSON methods. */
+    static readonly unsupported: string = "This browser can't use passkeys.";
+    /** `create()`'s `InvalidStateError`: the authenticator holds one of the account's passkeys. */
+    static readonly alreadyOnDevice: string =
+      "This device or password manager already has a passkey for your account.";
+    /** The browser's prompt failed other than by being cancelled. */
+    static readonly browserFailed: string =
+      "Your browser couldn't use the passkey. Try again, or use another device.";
+    /**
+     * A refused prompt right after its options loaded: a cancel, or a browser (Safari) that took
+     * the wait as the click's end. Another click has the options ready.
+     */
+    static readonly noPrompt: string = "If no prompt appeared, try again.";
+    static readonly nameMissing: string = "Give the passkey a name.";
+    /** The API's wording: the name goes into a security notice e-mail. */
+    static readonly nameInvalidCharacters: string =
+      "The passkey name can't contain line breaks or invisible formatting characters.";
+    static nameTooLong(max: number): string {
+      return `The name can be at most ${max} characters long.`;
+    }
+    /** In place of "Add a passkey" once the account has the API's maximum. */
+    static atCap(max: number): string {
+      return `You have ${max} passkeys, the most an account can have: delete one to add another.`;
+    }
+  };
+
   static readonly Uploads = class {
     static readonly listFailed: string = "Failed to load your uploads";
     static readonly usageFailed: string = "Failed to load your storage";

@@ -32,10 +32,10 @@ const hasEmailFormat = (email: string) => EMAIL_PATTERN.test(normalizeEmail(emai
  */
 const USERNAME_COLLATOR = new Intl.Collator("en", { sensitivity: "accent" });
 /** After an emoji, its presentation selector or a skin tone; before an emoji, not a digit or #. */
-const EMOJI_JOINERS =
+export const EMOJI_JOINERS =
   /(?<=[\p{Extended_Pictographic}\ufe0f\u{1F3FB}-\u{1F3FF}])\u200d(?=\p{Extended_Pictographic})/gu;
 /** 3 to 5 tags for digits and lowercase letters, then the cancel tag. */
-const EMOJI_TAG_SEQUENCES =
+export const EMOJI_TAG_SEQUENCES =
   /(?<=\u{1F3F4})[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{3,5}\u{E007F}/gu;
 const EMOJI_PRESENTATION_SELECTORS = /(?<=\p{Emoji})[\ufe0e\ufe0f]/gu;
 /** Whitespace other than a space, invisible and control characters, and the braille blank. */

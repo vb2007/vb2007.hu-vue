@@ -1,5 +1,6 @@
 /** Multi-factor login (vb2007/vb2007.hu-api#448): the second step after a right password or GitHub. */
 import type { MessageResponse } from "@/types/api/common";
+import type { PasskeyCredentialJSON } from "@/types/api/passkeys";
 
 /**
  * A second step's method, in the API's order. `passkey` and `recovery` are backups: the API only
@@ -27,6 +28,7 @@ export interface MfaRequiredResponse extends MfaMethodsResponse {
 export type MfaVerifyBody =
   | { method: "email"; code: string }
   | { method: "totp"; code: string }
+  | { method: "passkey"; response: PasskeyCredentialJSON }
   /** A saved recovery code; case, spaces and dashes don't matter. */
   | { method: "recovery"; code: string };
 

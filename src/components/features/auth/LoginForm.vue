@@ -27,6 +27,7 @@ import { useQueryNotice } from "@/composables/useQueryNotice";
 import { useRetryHold } from "@/composables/useRetryHold";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import MfaStep from "@/components/features/auth/MfaStep.vue";
+import PasskeyLogin from "@/components/features/auth/PasskeyLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -41,6 +42,7 @@ const password = ref("");
 const isLoading = ref(false);
 const isButtonError = ref(false);
 const form = useTemplateRef("form");
+const passkeyKey = useTemplateRef("passkeyKey");
 const { errors, isValid, leave, validate, reset } = useFormValidation({
   email: { value: email, check: () => emailMissingError(email.value) },
   password: {
@@ -103,6 +105,7 @@ const handleSubmit = async () => {
     return;
   }
   resetNotice.value = "";
+  passkeyKey.value?.clear();
   // The answer is about the address sent, whatever the field reads once it lands.
   const id = (triedId.value = heldId.value);
   isLoading.value = true;
@@ -232,6 +235,7 @@ watch(isLoggedIn, (loggedIn) => {
         </BaseButton>
       </form>
       <GithubLogin label="Log in with GitHub" />
+      <PasskeyLogin ref="passkeyKey" />
       <p class="alt">No account yet? <RouterLink to="/register">Register</RouterLink></p>
     </template>
 
