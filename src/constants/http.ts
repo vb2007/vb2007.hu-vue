@@ -2,6 +2,7 @@
 export class HttpMethod {
   static readonly Get = "GET";
   static readonly Post = "POST";
+  static readonly Put = "PUT";
   static readonly Patch = "PATCH";
   static readonly Delete = "DELETE";
 }
@@ -37,6 +38,11 @@ export class ErrorReason {
    * since an API restart starts the count again). A 503 there without it is a failed send.
    */
   static readonly MailBudget = "mailBudget";
+  /**
+   * `POST /auth/mfa/email`'s 429 once the account got its login codes of the day
+   * (`Limits.Mfa.emailsPerDay`), with `retryAfter`.
+   */
+  static readonly MfaEmailLimit = "mfaEmailLimit";
 }
 
 export class Header {

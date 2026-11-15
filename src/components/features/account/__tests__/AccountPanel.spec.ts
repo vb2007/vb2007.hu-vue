@@ -91,8 +91,8 @@ describe("AccountPanel", () => {
 
     expect(wrapper.find("h1").text()).toBe("Your account");
     expect(wrapper.findAll("dd").map((value) => value.text())).toEqual(["vb", "vb@example.com"]);
-    expect(wrapper.find(".badge").text()).toBe("Not linked");
-    expect(wrapper.find(".badge").classes()).toContain("badge--off");
+    expect(githubRow(wrapper).find(".badge").text()).toBe("Not linked");
+    expect(githubRow(wrapper).find(".badge").classes()).toContain("badge--off");
     expect(githubKey(wrapper).text()).toBe("Link GitHub");
     expect(wrapper.find("#delete-title").text()).toBe("Delete account");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -158,8 +158,8 @@ describe("AccountPanel", () => {
     linkGithub();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
-    expect(wrapper.find(".badge").text()).toBe("Linked");
-    expect(wrapper.find(".badge").classes()).toContain("badge--on");
+    expect(githubRow(wrapper).find(".badge").text()).toBe("Linked");
+    expect(githubRow(wrapper).find(".badge").classes()).toContain("badge--on");
     expect(githubNote(wrapper).text()).toBe("You can log in with GitHub as @octocat.");
     expect(wrapper.find(".login__handle").text()).toBe("@octocat");
     expect(githubKey(wrapper).text()).toBe("Unlink GitHub");
@@ -208,7 +208,7 @@ describe("AccountPanel", () => {
     const notice = wrapper.find('[role="status"]');
     expect(notice.text()).toBe("GitHub is unlinked. Log in with your password from now on.");
     expect(document.activeElement).toBe(notice.element);
-    expect(wrapper.find(".badge").text()).toBe("Not linked");
+    expect(githubRow(wrapper).find(".badge").text()).toBe("Not linked");
     expect(githubKey(wrapper).text()).toBe("Link GitHub");
     wrapper.unmount();
   });
@@ -227,7 +227,7 @@ describe("AccountPanel", () => {
       "The provided password is incorrect."
     );
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
-    expect(wrapper.find(".badge").text()).toBe("Linked");
+    expect(githubRow(wrapper).find(".badge").text()).toBe("Linked");
     wrapper.unmount();
   });
 
@@ -261,7 +261,7 @@ describe("AccountPanel", () => {
     );
     await flushPromises();
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "GitHub confirmed it's you. Set your password within 10 minutes."
+      "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
     );
 
     mockFetch()
@@ -718,7 +718,7 @@ describe("AccountPanel", () => {
       const { wrapper } = await comeBack();
 
       expect(wrapper.find(".notice").text()).toBe(
-        "GitHub confirmed it's you. Set your password within 10 minutes."
+        "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
       expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
@@ -731,7 +731,7 @@ describe("AccountPanel", () => {
       const { wrapper } = await comeBack();
 
       expect(wrapper.find(".notice").text()).toBe(
-        "GitHub confirmed it's you. Set your password within 10 minutes."
+        "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
       wrapper.unmount();

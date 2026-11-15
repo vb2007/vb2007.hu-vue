@@ -1,3 +1,13 @@
+/** `mfa` in `GET /user` and `GET /admin/users/:id` (vb2007/vb2007.hu-api#448, #446, #482). */
+export interface MfaStatus {
+  email: boolean;
+  totp: boolean;
+  /** How many passkeys the account has. */
+  passkeys: number;
+  /** Unused recovery codes, 0 without any. */
+  recoveryCodesLeft: number;
+}
+
 /** `GET /user`: the logged-in user, without its secrets. */
 export interface UserDetails {
   _id: string;
@@ -18,6 +28,8 @@ export interface UserDetails {
    */
   pendingEmail: string | null;
   isSuperuser: boolean;
+  /** Which second steps a login needs (vb2007/vb2007.hu-api#448). */
+  mfa: MfaStatus;
 }
 
 /**

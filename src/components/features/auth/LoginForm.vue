@@ -16,12 +16,17 @@ import {
   login,
   loginStatus,
   logout,
+  mfaMethods,
   restoreSession
 } from "@/scripts/authentication/user";
+import { loadMfaMethods } from "@/scripts/authentication/mfa";
+import { OauthQuery } from "@/constants/oauth";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useOauthError } from "@/composables/useOauthError";
+import { useQueryNotice } from "@/composables/useQueryNotice";
 import { useRetryHold } from "@/composables/useRetryHold";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
+import MfaStep from "@/components/features/auth/MfaStep.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -57,6 +62,10 @@ passwordResetNotice.value = "";
 // earlier visit, or landing from a login sent then, a lockout would outlive its hold, over a key
 // that no longer waits.
 forgetLogin();
+// A GitHub login whose account has a second step comes back with ?mfa=required
+// (vb2007/vb2007.hu-api#448): its methods are asked for, after the forgetting above.
+if (useQueryNotice(OauthQuery.mfa) === OauthQuery.mfaRequired) void loadMfaMethods();
+const inMfa = computed(() => mfaMethods.value.length > 0);
 // The login limiter counts per address, so another address may be tried during the hold.
 const hold = useRetryHold(loginStatus);
 const heldId = computed(() => normalizeEmail(email.value));
@@ -123,6 +132,23 @@ onMounted(() => {
   if (wasPrefilled) form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
 });
 
+const focusPassword = () =>
+  form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
+
+// The password has done its job once the second step opens; back from the step (Log in again, or
+// an expired step's message), it's typed again.
+watch(inMfa, async (waiting) => {
+  if (waiting) {
+    password.value = "";
+    return;
+  }
+  await nextTick();
+  focusPassword();
+});
+
+/** "Log in again" leaves the step; the address stays. */
+const leaveMfa = () => forgetLogin();
+
 watch(isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     // The password has done its job: logging out here, maybe on a shared machine, doesn't bring it
@@ -137,7 +163,9 @@ watch(isLoggedIn, (loggedIn) => {
 
 <template>
   <StationBoard title="Log in" as="h1">
-    <template v-if="!isLoggedIn">
+    <MfaStep v-if="!isLoggedIn && inMfa" :methods="mfaMethods" @back="leaveMfa" />
+
+    <template v-else-if="!isLoggedIn">
       <form ref="form" class="form" novalidate @submit.prevent="handleSubmit">
         <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
         <StatusMessage v-if="resetNotice" tone="success">{{ resetNotice }}</StatusMessage>

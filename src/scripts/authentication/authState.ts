@@ -1,4 +1,13 @@
 import { ref } from "vue";
+import type { MfaStatus } from "@/types/api/user";
+
+/** Every method off: a visitor, or an answer without `mfa`. */
+export const NO_MFA: Readonly<MfaStatus> = {
+  email: false,
+  totp: false,
+  passkeys: 0,
+  recoveryCodesLeft: 0
+};
 
 export const isLoggedIn = ref(false);
 export const userEmail = ref("");
@@ -18,6 +27,8 @@ export const hasPassword = ref(false);
 export const pendingEmail = ref("");
 /** Whether the address was confirmed with a code or by GitHub; false for older accounts. */
 export const emailVerified = ref(false);
+/** Which second steps the account's logins take (vb2007/vb2007.hu-api#448). */
+export const mfa = ref<MfaStatus>({ ...NO_MFA });
 /** True once the initial session lookup has finished, so the UI doesn't flash a logged-out state. */
 export const isSessionChecked = ref(false);
 /**

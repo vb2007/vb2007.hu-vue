@@ -12,6 +12,8 @@ import {
   isLoggedIn,
   isSessionChecked,
   isSuperuser,
+  mfa,
+  NO_MFA,
   pendingEmail,
   sessionEnded,
   userEmail,
@@ -19,6 +21,7 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { ref } from "vue";
+import type { MfaMethod } from "@/types/api/mfa";
 
 /**
  * `GET /user` lookups can answer out of order (e.g. the page load's after a login's), so each is
@@ -37,10 +40,48 @@ export const loginStatus = ref("");
  */
 let sentLogins = 0;
 
-/** Forgets the last login's outcome, and the one of any login still on its way. */
+/**
+ * The methods of the second step the newest login waits for (vb2007/vb2007.hu-api#448), in the
+ * API's order; empty without one.
+ */
+export const mfaMethods = ref<MfaMethod[]>([]);
+
+/** Forgets the last login's outcome, its second step, and the one of any login still on its way. */
 export const forgetLogin = () => {
   sentLogins++;
   loginStatus.value = "";
+  mfaMethods.value = [];
+};
+
+/**
+ * The newest login's number: a later step of it (the second step, its mailed link) passes it to
+ * `isCurrentLogin` and `finishLogin`, so a step left meanwhile reports nothing.
+ */
+export const currentLogin = () => sentLogins;
+export const isCurrentLogin = (attempt: number) => attempt === sentLogins;
+
+/** The second step waits: the login form gives way to it. */
+export const startMfa = (methods: MfaMethod[]) => {
+  mfaMethods.value = methods;
+  loginStatus.value = LoginStatus.MfaRequired;
+};
+
+/** The second step ended without a session (it expired, or used up its tries): back to the password. */
+export const endMfa = (message: string) => {
+  mfaMethods.value = [];
+  loginStatus.value = message;
+};
+
+/**
+ * Takes on the session the API started, from a password or a second step: only a working cookie
+ * makes the login real. A login that's no longer the newest still logs the page in, but reports
+ * nothing.
+ */
+export const finishLogin = async (attempt: number) => {
+  const kept = await fetchUserDetails();
+  if (!isCurrentLogin(attempt)) return;
+  mfaMethods.value = [];
+  loginStatus.value = kept ? LoginStatus.Success : Messages.Auth.sessionNotKept;
 };
 
 /**
@@ -89,6 +130,7 @@ export const fetchUserDetails = async () => {
   hasPassword.value = data.hasPassword === true;
   pendingEmail.value = data.pendingEmail ?? "";
   emailVerified.value = data.emailVerified === true;
+  mfa.value = { ...NO_MFA, ...data.mfa };
   isLoggedIn.value = true;
   sessionEnded.value = false;
   return true;
@@ -144,11 +186,13 @@ export const login = async (email: string, password: string): Promise<number | u
     return;
   }
 
-  // The API answered 200, but only a working session cookie makes the login real. A stale login
-  // still started a session, so the page takes it on.
-  const kept = await fetchUserDetails();
-  if (isStale()) return;
-  loginStatus.value = kept ? LoginStatus.Success : Messages.Auth.sessionNotKept;
+  // A 202: the password was right, but the account has a second step, so no session yet.
+  if (result.status === HttpStatus.Accepted && "mfaRequired" in result.data) {
+    if (!isStale()) startMfa(result.data.methods);
+    return;
+  }
+
+  await finishLogin(attempt);
 };
 
 const forgetUser = () => {
@@ -161,6 +205,7 @@ const forgetUser = () => {
   hasPassword.value = false;
   pendingEmail.value = "";
   emailVerified.value = false;
+  mfa.value = { ...NO_MFA };
   isLoggedIn.value = false;
   sessionEnded.value = false;
 };

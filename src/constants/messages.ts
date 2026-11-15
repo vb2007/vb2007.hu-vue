@@ -338,9 +338,12 @@ export class Messages {
     static githubReauthNote(minutes: number): string {
       return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;
     }
-    /** Back from GitHub, which confirmed it's the user, before setting the password. */
-    static passwordGithubConfirmed(minutes: number): string {
-      return `GitHub confirmed it's you. Set your password within ${minutes} minutes.`;
+    /**
+     * Back from GitHub, which confirmed it's the user, before setting the password or changing
+     * two-step login (vb2007/vb2007.hu-api#448), which take the same confirmation.
+     */
+    static githubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Within ${minutes} minutes, set your password or change two-step login.`;
     }
     /** Back from GitHub, which confirmed it's the user asking to delete (vb2007/vb2007.hu-api#245). */
     static deleteGithubConfirmed(minutes: number): string {
@@ -375,6 +378,35 @@ export class Messages {
      */
     static readonly emailChangeInterrupted: string =
       "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password.";
+  };
+
+  /** Two-step login (vb2007/vb2007.hu-api#448): the login's second step and its settings. */
+  static readonly Mfa = class {
+    static readonly methodsFailed: string = "Failed to load the second step";
+    static readonly emailFailed: string = "Failed to send the login code";
+    static readonly verifyFailed: string = "Failed to check the code";
+    static readonly linkFailed: string = "Failed to log in with the link";
+    /**
+     * In place of the cooldown 429's own message (`ErrorReason.ResendCooldown`), which names its
+     * seconds. The cooldown is the account's, so the code may be an earlier login's, which no
+     * longer works.
+     */
+    static readonly emailCooldown: string =
+      "A login code was sent less than a minute ago, for this login or an earlier one. You can send a new one once the countdown ends.";
+    static readonly emailSent: string =
+      "A code and a link are on their way to your account's e-mail address. Enter the code, or open the link in this browser: it doesn't work in another one.";
+    /** The step's limits, shared by every code, link and method. */
+    static stepLimits(minutes: number, tries: number): string {
+      return `This step works for ${minutes} minutes after you logged in, with ${tries} tries in all.`;
+    }
+    /** None of the methods the API offers is built here yet. */
+    static readonly noMethod: string =
+      "Your account's second step uses a method this site can't do yet. Ask the site's admin to reset it, then log in again.";
+    /** `/login/mfa` opened without a token in its fragment. */
+    static readonly linkIncomplete: string =
+      "This login link isn't complete: open it again from the e-mail, or log in again.";
+    static readonly emailOnFailed: string = "Failed to turn on e-mail codes";
+    static readonly emailOffFailed: string = "Failed to turn off e-mail codes";
   };
 
   static readonly Uploads = class {
