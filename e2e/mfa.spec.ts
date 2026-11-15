@@ -56,9 +56,13 @@ test("the mailed link logs in, and leaves the address bar", async ({ page, api }
   expect(new URL(page.url()).hash).toBe("");
   await expect(page).toHaveTitle(/^Log in/);
 
-  // Opened again, the used-up link finds this browser logged in.
+  // Opened again from the mail (a page load of its own, not a fragment change on this page), the
+  // used-up link finds this browser logged in and sends nothing.
+  await page.goto("/");
   await page.goto(`/login/mfa#token=${MOCK_MFA_LINK_TOKEN}`);
-  await expect(page.getByText("Login successful!")).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "You're already logged in." })
+  ).toBeFocused();
   await expect(page.getByRole("link", { name: "Log in again" })).toHaveCount(0);
 });
 

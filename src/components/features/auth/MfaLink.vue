@@ -7,7 +7,6 @@
 import { nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AuthPaths, LoginStatus } from "@/constants/auth";
-import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { verifyMfaLink } from "@/scripts/authentication/mfa";
 import { resetLinkTokenFrom } from "@/scripts/authentication/passwordReset";
@@ -30,16 +29,15 @@ onMounted(async () => {
   if (token) {
     // Out of the address bar and the history entry before it's sent.
     await router.replace({ query: route.query, hash: "" });
-    const refused = await verifyMfaLink(token);
-    if (!refused) {
-      if (loginStatus.value === LoginStatus.Success) done.value = "Login successful!";
-      else failure.value = loginStatus.value;
+    // A link opened again, or after the code was entered, finds this browser logged in already:
+    // its step is gone, so it has nothing left to do (and sending it would answer 403).
+    if (await fetchUserDetails()) {
+      done.value = "You're already logged in.";
     } else {
-      // A link opened again, or after the code was entered: this browser may be logged in already
-      // (a 403 was looked up already, by `verifyMfaLink`).
-      const loggedIn = refused.status !== HttpStatus.Forbidden && (await fetchUserDetails());
-      if (loggedIn) done.value = "You're already logged in.";
-      else failure.value = refused.error;
+      const refused = await verifyMfaLink(token);
+      if (refused) failure.value = refused.error;
+      else if (loginStatus.value === LoginStatus.Success) done.value = "Login successful!";
+      else failure.value = loginStatus.value;
     }
   }
   await nextTick();

@@ -106,7 +106,10 @@ const mfaSection = useTemplateRef("mfaSection");
 const onRecoveryCodesSaved = async () => {
   recoveryCodes.value = [];
   await nextTick();
-  mfaSection.value?.querySelector<HTMLElement>(".login button")?.focus();
+  // Logged out meanwhile, there's no section: the notice of why takes the focus instead.
+  (
+    mfaSection.value?.querySelector<HTMLElement>(".login button") ?? endedMessage.value?.$el
+  )?.focus();
 };
 </script>
 
