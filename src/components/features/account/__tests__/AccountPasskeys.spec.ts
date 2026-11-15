@@ -34,7 +34,7 @@ const PHONE: Passkey = {
   createdAt: "2026-10-01T10:00:00.000Z",
   lastUsedAt: "2026-11-14T10:00:00.000Z"
 };
-const OPTIONS = { challenge: "abc", rp: { id: "vb2007.hu", name: "vb2007.hu" } };
+const OPTIONS = { challenge: "abc", rp: { id: "vb2007.hu", name: "vb2007.hu" }, timeout: 300_000 };
 const RESPONSE = { id: "cred-new" };
 const NOT_FOUND = "There is no such passkey on this account.";
 
@@ -219,22 +219,94 @@ describe("AccountPanel's passkeys", () => {
       expect(section(panel).find("li h3").text()).toBe("Work laptop");
     });
 
-    it("stays on the confirmation, quietly, when the prompt is cancelled", async () => {
-      const panel = await mountPanel();
+    /** Names it "Phone" and confirms with the password, up to the "Add passkey" key. */
+    const toConfirmation = async (panel: VueWrapper) => {
       await openAdd(panel);
       await section(panel).find("input").setValue("Phone");
       await section(panel).find("form").trigger("submit");
       await flushPromises();
       await section(panel).find('input[type="password"]').setValue("secret");
+    };
+    const submit = async (panel: VueWrapper) => {
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+    };
+
+    it("keeps the options of a refused prompt, so the next click runs it at once", async () => {
+      const panel = await mountPanel();
+      await toConfirmation(panel);
       fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
       vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
 
-      await section(panel).find("form").trigger("submit");
-      await flushPromises();
-
-      expect(section(panel).find('[role="alert"]').exists()).toBe(false);
+      await submit(panel);
+      // The prompt followed a request: it may not have shown at all.
+      expect(section(panel).text()).toContain(Messages.Passkeys.noPrompt);
       expect(keyNamed(panel, "Add passkey").exists()).toBe(true);
       expect(fetchMock).toHaveBeenCalledOnce();
+
+      vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
+      await submit(panel);
+      // Run at once this time, so it was a cancel: nothing to say.
+      expect(section(panel).find('[role="alert"]').exists()).toBe(false);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(createPasskey).toHaveBeenNthCalledWith(2, OPTIONS);
+
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(201, { message: "Passkey added successfully.", passkey: LAPTOP })
+        )
+        .mockResolvedValueOnce(user(1))
+        .mockResolvedValueOnce(list(LAPTOP));
+      await submit(panel);
+      expect(createPasskey).toHaveBeenCalledTimes(3);
+      expect(requestOf(1)[0]).toBe("https://api.test/user/passkeys");
+      expect(notice(panel).text()).toBe("Passkey added successfully.");
+    });
+
+    it("asks again once the kept options outlived their timeout", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const panel = await mountPanel();
+      await toConfirmation(panel);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
+      vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
+      await submit(panel);
+      vi.setSystemTime(Date.now() + OPTIONS.timeout + 1);
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
+      vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
+      await submit(panel);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      vi.useRealTimers();
+    });
+
+    it("drops the kept options when the form closes", async () => {
+      const panel = await mountPanel();
+      await toConfirmation(panel);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
+      vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
+      await submit(panel);
+      await keyNamed(panel, "Cancel").trigger("click");
+      await flushPromises();
+      await section(panel).find("form").trigger("keydown", { key: "Escape" });
+      await flushPromises();
+
+      await toConfirmation(panel);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, OPTIONS));
+      vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "" });
+      await submit(panel);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("refuses a name the API would, before the password or the prompt", async () => {
+      const panel = await mountPanel();
+      await openAdd(panel);
+      await section(panel).find("input").setValue("Pho​ne");
+      await submit(panel);
+
+      expect(section(panel).text()).toContain(Messages.Passkeys.nameInvalidCharacters);
+      expect(section(panel).find('input[type="password"]').exists()).toBe(false);
     });
 
     it("shows the browser's and the API's refusals on the confirmation", async () => {
@@ -253,11 +325,40 @@ describe("AccountPanel's passkeys", () => {
       await flushPromises();
       expect(section(panel).find('[role="alert"]').text()).toBe(Messages.Passkeys.alreadyOnDevice);
 
+      // The kept options go to the prompt again; the API refuses what it made.
       const cap = "An account can have at most 10 passkeys: delete one first.";
       fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: cap }));
       await section(panel).find("form").trigger("submit");
       await flushPromises();
+      expect(requestOf(1)[0]).toBe("https://api.test/user/passkeys");
       expect(section(panel).find('[role="alert"]').text()).toBe(cap);
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it("shows the options' refusal, and keeps no options without a timeout", async () => {
+      const panel = await mountPanel();
+      await openAdd(panel);
+      await section(panel).find("input").setValue("Phone");
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+      await section(panel).find('input[type="password"]').setValue("wrong");
+      const wrong = "The provided password is incorrect.";
+      fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: wrong }));
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+      expect(section(panel).find('[role="alert"]').text()).toBe(wrong);
+      expect(console.error).not.toHaveBeenCalled();
+
+      const untimed = { ...OPTIONS, timeout: undefined };
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, untimed))
+        .mockResolvedValueOnce(jsonResponse(200, untimed));
+      vi.mocked(createPasskey).mockResolvedValue({ ok: false, error: "" });
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
     it("goes back to the name from the confirmation, and closes from there", async () => {
@@ -293,6 +394,7 @@ describe("AccountPanel's passkeys", () => {
       expect(document.activeElement).toBe(field.element);
 
       await field.setValue("Old laptop");
+      await field.trigger("blur");
       fetchMock
         .mockResolvedValueOnce(jsonResponse(200, { message: "Passkey renamed successfully." }))
         .mockResolvedValueOnce(list({ ...LAPTOP, name: "Old laptop" }));
@@ -322,11 +424,10 @@ describe("AccountPanel's passkeys", () => {
     });
 
     it("shows the API's refusal of the name on the field", async () => {
-      const refused =
-        "The passkey name can't contain line breaks or invisible formatting characters.";
+      const refused = "You must provide a name for the passkey.";
       const panel = await mountPanel(LAPTOP);
       const field = await openRename(panel);
-      await field.setValue("Lap​top");
+      await field.setValue("  Old laptop ");
       fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: refused }));
 
       await section(panel).find("form").trigger("submit");
@@ -334,6 +435,8 @@ describe("AccountPanel's passkeys", () => {
       await flushPromises();
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      // Sent trimmed, like Add.
+      expect(requestOf(1)[1]?.body).toBe(JSON.stringify({ name: "Old laptop" }));
       expect(section(panel).find(".field__error, [id$='-error']").text()).toBe(refused);
       expect(document.activeElement).toBe(field.element);
       expect(console.error).not.toHaveBeenCalled();
@@ -378,11 +481,38 @@ describe("AccountPanel's passkeys", () => {
         body: JSON.stringify({ password: "secret" })
       });
       expect(notice(panel).text()).toBe("Passkey deleted successfully.");
+      expect(notice(panel).classes()).toContain("status--success");
+      expect(section(panel).find(".notice").element).toBe(document.activeElement);
+      expect(section(panel).find("input[type=password]").exists()).toBe(false);
       expect(
         section(panel)
           .findAll("li h3")
           .map((name) => name.text())
       ).toEqual(["Phone"]);
+    });
+
+    it("closes the form once deleted, before the list catches up, so it isn't sent twice", async () => {
+      const panel = await mountPanel(LAPTOP, PHONE);
+      await keyNamed(panel, "Delete Laptop").trigger("click");
+      await flushPromises();
+      await section(panel).find('input[type="password"]').setValue("secret");
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { message: "Passkey deleted successfully." })
+      );
+      const lookup = deferResponse(fetchMock);
+
+      await section(panel).find("form").trigger("submit");
+      await flushPromises();
+
+      expect(
+        section(panel)
+          .findAll("li h3")
+          .map((name) => name.text())
+      ).toEqual(["Laptop", "Phone"]);
+      expect(section(panel).find("form").exists()).toBe(false);
+      fetchMock.mockResolvedValueOnce(list(PHONE));
+      lookup.respond(user(1));
+      await flushPromises();
     });
 
     it("drops a passkey deleted elsewhere meanwhile", async () => {
@@ -399,6 +529,9 @@ describe("AccountPanel's passkeys", () => {
 
       expect(notice(panel).text()).toBe(NOT_FOUND);
       expect(document.activeElement).toBe(notice(panel).element);
+      // Not a success of this page's, and said by the Passkeys section itself.
+      expect(notice(panel).classes()).toContain("status--info");
+      expect(section(panel).find(".notice").exists()).toBe(true);
       expect(section(panel).find("ul").exists()).toBe(false);
       expect(console.error).not.toHaveBeenCalled();
     });

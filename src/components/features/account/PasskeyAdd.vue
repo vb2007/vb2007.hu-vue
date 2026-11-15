@@ -7,10 +7,11 @@
  */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { useFormValidation } from "@/composables/useFormValidation";
-import { apiRequest, type ApiResult } from "@/scripts/api/client";
+import { apiRequest, type ApiAbortedFailure, type ApiResult } from "@/scripts/api/client";
 import { mfa } from "@/scripts/authentication/authState";
 import { passkeyNameEarlyError, passkeyNameError } from "@/scripts/authentication/passkeys";
 import { createPasskey, passkeysSupported } from "@/scripts/authentication/webauthn";
@@ -54,6 +55,7 @@ const open = () => {
 };
 
 const close = async () => {
+  unused = undefined;
   step.value = "";
   await nextTick();
   opener.value?.$el.focus();
@@ -68,23 +70,53 @@ const back = () => {
   return focusName();
 };
 
+/**
+ * Options a failed prompt left unused (Safari may refuse one that waited for the request): their
+ * challenge waits in the registration cookie until their `timeout`, so the next click runs the
+ * prompt at once, without asking the API again.
+ */
+let unused: { options: PublicKeyCredentialCreationOptionsJSON; until: number } | undefined;
+
+/**
+ * A prompt that made no passkey, shaped as `ApiResult`'s aborted failure (nothing logged) so
+ * `ReauthForm` shows its message like the API's refusals; an empty one (a cancel) shows nothing.
+ */
+const promptFailed = (error: string): ApiAbortedFailure => ({
+  ok: false,
+  kind: "aborted",
+  status: 0,
+  error
+});
+
 const add = async (body: MfaPasswordBody): Promise<ApiResult<PasskeyAddedResponse>> => {
-  const options = await apiRequest(Endpoints.User.passkeyOptions, {
-    body,
-    failure: Messages.Passkeys.optionsFailed
-  });
-  if (!options.ok) return options;
-  const passkey = await createPasskey(options.data);
-  // The user stopped it at the browser's prompt (an empty error, shown as nothing), or the browser
-  // couldn't: `ReauthForm` shows it like the API's refusals.
-  if (!passkey.ok) return { ok: false, kind: "aborted", status: 0, error: passkey.error };
+  const kept = unused && unused.until > Date.now() ? unused : undefined;
+  unused = undefined;
+  let ready = kept;
+  if (!ready) {
+    const sentAt = Date.now();
+    const result = await apiRequest(Endpoints.User.passkeyOptions, {
+      body,
+      failure: Messages.Passkeys.optionsFailed,
+      // A wrong or missing password, GitHub to confirm, the cap: the form's answers, not faults.
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.Conflict]
+    });
+    if (!result.ok) return result;
+    ready = { options: result.data, until: sentAt + (result.data.timeout ?? 0) };
+  }
+  const passkey = await createPasskey(ready.options);
+  if (!passkey.ok) {
+    unused = ready;
+    return promptFailed(passkey.error || (kept ? "" : Messages.Passkeys.noPrompt));
+  }
   return apiRequest(Endpoints.User.addPasskey, {
     body: { name: name.value.trim(), response: passkey.response },
-    failure: Messages.Passkeys.addFailed
+    failure: Messages.Passkeys.addFailed,
+    quietStatuses: [HttpStatus.BadRequest, HttpStatus.Conflict]
   });
 };
 
 const onAdded = (data: PasskeyAddedResponse) => {
+  unused = undefined;
   step.value = "";
   emit("done", data.message);
 };

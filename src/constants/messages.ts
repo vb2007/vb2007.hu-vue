@@ -426,7 +426,15 @@ export class Messages {
     /** The browser's prompt failed other than by being cancelled. */
     static readonly browserFailed: string =
       "Your browser couldn't use the passkey. Try again, or use another device.";
+    /**
+     * A refused prompt right after its options loaded: a cancel, or a browser (Safari) that took
+     * the wait as the click's end. Another click has the options ready.
+     */
+    static readonly noPrompt: string = "If no prompt appeared, try again.";
     static readonly nameMissing: string = "Give the passkey a name.";
+    /** The API's wording: the name goes into a security notice e-mail. */
+    static readonly nameInvalidCharacters: string =
+      "The passkey name can't contain line breaks or invisible formatting characters.";
     static nameTooLong(max: number): string {
       return `The name can be at most ${max} characters long.`;
     }

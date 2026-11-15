@@ -1,12 +1,18 @@
 <script setup lang="ts">
 /**
  * The second step with a passkey (vb2007/vb2007.hu-api#484): the API's options for this login, the
- * browser's prompt, then the step's `verifier`. A cancelled prompt says nothing; the key takes the
- * focus back, or while it's held, the message.
+ * browser's prompt, then the step's `verifier`. The options are asked for as the panel opens, and
+ * again after each try, so the click runs the prompt at once (Safari may refuse one that waits for
+ * a request); a newer set only replaces the challenge. A cancelled prompt says nothing, unless it
+ * followed a wait for the options; the key takes the focus back, or while it's held, the message.
  */
-import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
 import { HttpStatus } from "@/constants/http";
+import { Messages } from "@/constants/messages";
+import { retryAfterFrom } from "@/composables/useCountdown";
+import { useRetryHold } from "@/composables/useRetryHold";
 import { loadMfaPasskeyOptions } from "@/scripts/authentication/mfa";
+import { optionsAhead } from "@/scripts/authentication/passkeys";
 import { getPasskey } from "@/scripts/authentication/webauthn";
 import type { MfaVerifier } from "@/composables/useMfaVerify";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -20,29 +26,46 @@ const { isVerifying, refusal, hold } = props.verifier;
 const isAsking = ref(false);
 /** The options' or the browser's failure; the verifier keeps the API's answers. */
 const error = ref("");
-const isHeld = computed(() => hold.isHeld());
-const shownError = computed(() => error.value || refusal.value || hold.shown());
+/** The options' own limit (30 a minute per IP), apart from the step's daily one. */
+const optionsHold = useRetryHold(error);
+const heldBy = computed(() =>
+  optionsHold.isHeld() ? optionsHold : hold.isHeld() ? hold : undefined
+);
+const shownError = computed(() => optionsHold.shown() || refusal.value || hold.shown());
 const errorId = useId();
 const key = useTemplateRef<InstanceType<typeof BaseButton>>("key");
 const errorMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("errorMessage");
+
+const options = optionsAhead(loadMfaPasskeyOptions);
+options.prefetch();
+let open = true;
+onBeforeUnmount(() => (open = false));
 
 const use = async () => {
   if (isAsking.value) return;
   isAsking.value = true;
   error.value = refusal.value = "";
-  const options = await loadMfaPasskeyOptions();
+  const { result, fetched } = await options.take();
   // A 403 ended the step: the password form is back.
-  if (!options.ok && options.status !== HttpStatus.Forbidden) error.value = options.error;
-  const passkey = options.ok ? await getPasskey(options.data) : undefined;
+  if (!result.ok && result.status !== HttpStatus.Forbidden) {
+    error.value = result.error;
+    if (result.status === HttpStatus.TooManyRequests)
+      optionsHold.start(retryAfterFrom(result.body));
+  }
+  const passkey = result.ok ? await getPasskey(result.data) : undefined;
   isAsking.value = false;
-  if (passkey && !passkey.ok) error.value = passkey.error;
+  if (passkey && !passkey.ok) {
+    error.value = passkey.error || (fetched ? Messages.Passkeys.noPrompt : "");
+  }
   if (
     passkey?.ok &&
     (await props.verifier.verify({ method: "passkey", response: passkey.response }))
   )
     return;
   await nextTick();
-  if (isHeld.value) errorMessage.value?.$el.focus();
+  // The next try's options, while the step is still on and nothing holds the key.
+  if (open && !heldBy.value) options.prefetch();
+  if (heldBy.value) errorMessage.value?.$el.focus();
   else key.value?.$el.focus();
 };
 </script>
@@ -55,22 +78,22 @@ const use = async () => {
       :id="errorId"
       ref="errorMessage"
       class="passkey__error"
-      tone="error"
+      :tone="shownError === Messages.Passkeys.noPrompt ? 'info' : 'error'"
       tabindex="-1"
-      :spoken="hold.spokenFor()"
+      :spoken="heldBy?.spokenFor(undefined, shownError)"
       >{{ shownError }}</StatusMessage
     >
     <BaseButton
       ref="key"
       block
       :loading="isAsking || isVerifying"
-      :disabled="isHeld"
-      :aria-label="isHeld ? hold.name.value : undefined"
-      :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
+      :disabled="!!heldBy"
+      :aria-label="heldBy?.name.value"
+      :aria-describedby="heldBy ? statusTextId(errorId) : undefined"
       @click="use"
     >
       <AppIcon name="passkey" :size="20" />
-      {{ isAsking || isVerifying ? "Logging in" : isHeld ? hold.label.value : "Use a passkey" }}
+      {{ isAsking || isVerifying ? "Logging in" : heldBy ? heldBy.label.value : "Use a passkey" }}
     </BaseButton>
   </div>
 </template>

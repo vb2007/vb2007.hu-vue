@@ -208,7 +208,7 @@ const onRecoveryCodesSaved = async () => {
           step.</template
         >
       </p>
-      <PasskeyList @start="clearNotice" @done="announce" />
+      <PasskeyList @start="clearNotice" />
     </section>
 
     <section class="logins" aria-labelledby="logins-title">

@@ -23,8 +23,10 @@ const props = defineProps<{ passkey: Passkey }>();
 const emit = defineEmits<{
   /** A form opened: older notices go. */
   start: [];
-  /** The API's message; `gone` when the passkey is no longer there (deleted, or a 404). */
+  /** The API's message; `gone` once the passkey was deleted. */
   done: [message: string, gone: boolean];
+  /** The API's 404: the passkey was deleted elsewhere meanwhile. */
+  missing: [message: string];
 }>();
 
 const open = ref<"" | "rename" | "delete">("");
@@ -71,7 +73,7 @@ const saveRename = async () => {
   isRenaming.value = true;
   const result = await apiRequest(Endpoints.User.renamePasskey, {
     params: { id: props.passkey.id },
-    body: { name: draftName.value },
+    body: { name: draftName.value.trim() },
     failure: Messages.Passkeys.renameFailed,
     // A name the API refuses is the field's own error.
     quietStatuses: [HttpStatus.BadRequest, HttpStatus.NotFound]
@@ -80,8 +82,10 @@ const saveRename = async () => {
   if (result.ok) {
     open.value = "";
     emit("done", result.data.message, false);
-  } else if (result.status === HttpStatus.NotFound) emit("done", result.error, true);
-  else {
+  } else if (result.status === HttpStatus.NotFound) {
+    open.value = "";
+    emit("missing", result.error);
+  } else {
     setError("name", result.error);
     renameForm.value?.querySelector("input")?.focus();
   }
@@ -98,17 +102,21 @@ const remove = async (body: MfaPasswordBody) => {
     params: { id: props.passkey.id },
     body,
     failure: Messages.Passkeys.deleteFailed,
-    quietStatuses: [HttpStatus.NotFound]
+    // A wrong or missing password, GitHub to confirm, a passkey gone: answers, not faults.
+    quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.NotFound]
   });
   // Deleted elsewhere already: the form closes and the row goes, like after a delete.
   if (!result.ok && result.status === HttpStatus.NotFound) {
     open.value = "";
-    emit("done", result.error, true);
+    emit("missing", result.error);
   }
   return result;
 };
 
-const onDeleted = (data: MessageResponse) => emit("done", data.message, true);
+const onDeleted = (data: MessageResponse) => {
+  open.value = "";
+  emit("done", data.message, true);
+};
 </script>
 
 <template>

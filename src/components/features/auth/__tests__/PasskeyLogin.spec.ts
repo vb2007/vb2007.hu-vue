@@ -2,18 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
 import { isLoggedIn } from "@/scripts/authentication/authState";
-import { passkeyLogin } from "@/scripts/authentication/passkeys";
+import { passkeyLogin, prefetchPasskeyLogin } from "@/scripts/authentication/passkeys";
+import { Messages } from "@/constants/messages";
 import { passkeysSupported } from "@/scripts/authentication/webauthn";
-import { loginStatus, restoreSession } from "@/scripts/authentication/user";
+import { login, loginStatus, restoreSession } from "@/scripts/authentication/user";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
-  restoreSession: vi.fn()
+  restoreSession: vi.fn(),
+  login: vi.fn()
 }));
 vi.mock("@/scripts/authentication/passkeys", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/passkeys")>()),
-  passkeyLogin: vi.fn()
+  passkeyLogin: vi.fn(),
+  prefetchPasskeyLogin: vi.fn()
 }));
 vi.mock("@/scripts/authentication/webauthn", () => ({ passkeysSupported: vi.fn() }));
 
@@ -32,6 +35,8 @@ describe("LoginForm's passkey", () => {
   beforeEach(() => {
     vi.mocked(restoreSession).mockReset();
     vi.mocked(passkeyLogin).mockReset();
+    vi.mocked(prefetchPasskeyLogin).mockReset();
+    vi.mocked(login).mockReset();
     vi.mocked(passkeysSupported).mockReturnValue(true);
     isLoggedIn.value = false;
   });
@@ -96,6 +101,44 @@ describe("LoginForm's passkey", () => {
     await passkeyKey(form).trigger("click");
     await flushPromises();
 
+    expect(form.find(".passkey [role='alert']").exists()).toBe(false);
+  });
+
+  it("suggests another try, as information, when the prompt may not have shown", async () => {
+    vi.mocked(passkeyLogin).mockResolvedValueOnce({ error: Messages.Passkeys.noPrompt });
+    const form = await mountForm();
+
+    await passkeyKey(form).trigger("click");
+    await flushPromises();
+
+    expect(form.find(".passkey [role='status']").text()).toBe(Messages.Passkeys.noPrompt);
+  });
+
+  it("gets the options ready once the pointer or the focus reaches the key, not before", async () => {
+    const form = await mountForm();
+    expect(prefetchPasskeyLogin).not.toHaveBeenCalled();
+
+    await passkeyKey(form).trigger("pointerenter");
+    await passkeyKey(form).trigger("focus");
+
+    expect(prefetchPasskeyLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops its refusal once a password login starts", async () => {
+    vi.mocked(passkeyLogin).mockResolvedValueOnce({ error: INVALID });
+    vi.mocked(login).mockResolvedValueOnce(undefined);
+    const form = await mountForm();
+    await passkeyKey(form).trigger("click");
+    await flushPromises();
+    expect(form.find(".passkey [role='alert']").exists()).toBe(true);
+
+    const [email, password] = form.findAll("input");
+    await email.setValue("me@example.com");
+    await password.setValue("secret");
+    await form.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(login).toHaveBeenCalled();
     expect(form.find(".passkey [role='alert']").exists()).toBe(false);
   });
 

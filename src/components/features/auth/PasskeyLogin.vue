@@ -3,11 +3,13 @@
  * "Log in with a passkey", under GitHub on the Log in board (vb2007/vb2007.hu-api#446): no address
  * or password, and no second step. Its refusals are its own, not the typed address's, so it shows
  * them, and holds its key after the API's 429, by itself. Browsers that can't run the prompt don't
- * get the key.
+ * get the key. Its options are asked for once the pointer or the focus reaches the key, so the click
+ * runs the prompt at once (Safari may refuse one that waits for a request).
  */
 import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { useRetryHold } from "@/composables/useRetryHold";
-import { passkeyLogin } from "@/scripts/authentication/passkeys";
+import { passkeyLogin, prefetchPasskeyLogin } from "@/scripts/authentication/passkeys";
+import { Messages } from "@/constants/messages";
 import { passkeysSupported } from "@/scripts/authentication/webauthn";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -38,6 +40,11 @@ const logIn = async () => {
   if (isHeld.value) errorMessage.value?.$el.focus();
   else key.value?.$el.focus();
 };
+
+/** A password login started: this key's last refusal is old news (a hold keeps its own message). */
+const clear = () => (error.value = "");
+
+defineExpose({ clear });
 </script>
 
 <template>
@@ -46,7 +53,7 @@ const logIn = async () => {
       v-if="shownError"
       :id="errorId"
       ref="errorMessage"
-      tone="error"
+      :tone="shownError === Messages.Passkeys.noPrompt ? 'info' : 'error'"
       tabindex="-1"
       :spoken="hold.spokenFor()"
       >{{ shownError }}</StatusMessage
@@ -59,6 +66,8 @@ const logIn = async () => {
       :disabled="isHeld"
       :aria-label="isHeld ? hold.name.value : undefined"
       :aria-describedby="isHeld ? statusTextId(errorId) : undefined"
+      @pointerenter="prefetchPasskeyLogin"
+      @focus="prefetchPasskeyLogin"
       @click="logIn"
     >
       <AppIcon name="passkey" :size="20" />

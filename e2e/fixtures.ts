@@ -1748,27 +1748,9 @@ export class MockApi {
 
   /** `PUT` and `DELETE /user/mfa/email`, confirmed like the API's `rejectFailedMfaReauth`. */
   private setMfaEmail(on: boolean, password?: string): MockResponse {
+    const refusal = this.refuseMfaReauth(password);
+    if (refusal) return refusal;
     if (!this.user) return NOT_LOGGED_IN;
-    if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
-    if (this.user.hasPassword) {
-      if (!password) {
-        return {
-          status: 400,
-          body: { error: "You must provide your password to change MFA settings." }
-        };
-      }
-      if (password !== this.password) {
-        return { status: 403, body: { error: "The provided password is incorrect." } };
-      }
-    } else if (!this.githubConfirmed) {
-      return {
-        status: 403,
-        body: {
-          error:
-            "Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within 10 minutes."
-        }
-      };
-    }
     if (!on) {
       // With no other method on, the recovery codes go too.
       this.user.mfaEmail = false;
@@ -1839,8 +1821,8 @@ export class MockApi {
     return error ? { status: 400, body: { error } } : undefined;
   }
 
-  /** The owner's confirmation for adding or deleting a passkey, like the API's `rejectFailedMfaReauth`. */
-  private passkeyReauthRefusal(password?: string): MockResponse | undefined {
+  /** The confirmation every MFA setting takes (e-mail MFA, adding or deleting a passkey), like the API's `rejectFailedMfaReauth`. */
+  private refuseMfaReauth(password?: string): MockResponse | undefined {
     if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
     if (this.user.hasPassword) {
@@ -1866,7 +1848,7 @@ export class MockApi {
 
   /** `POST /user/passkeys/options`: creation options for the app's host, with the account's passkeys excluded. */
   private startPasskeyRegistration(password?: string): MockResponse {
-    const refusal = this.passkeyReauthRefusal(password);
+    const refusal = this.refuseMfaReauth(password);
     if (refusal) return refusal;
     const user = this.user!;
     if ((user.passkeys?.length ?? 0) >= 10) {
@@ -1944,7 +1926,7 @@ export class MockApi {
   }
 
   private deletePasskey(id: string, password?: string): MockResponse {
-    const refusal = this.passkeyReauthRefusal(password);
+    const refusal = this.refuseMfaReauth(password);
     if (refusal) return refusal;
     const passkeys = this.user!.passkeys ?? [];
     if (!passkeys.some((passkey) => passkey.id === id)) {
