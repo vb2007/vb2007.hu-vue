@@ -5,6 +5,7 @@ import {
   MOCK_EMAIL,
   MOCK_MFA_CODE,
   MOCK_MFA_LINK_TOKEN,
+  MOCK_NEW_RECOVERY_CODES,
   MOCK_PASSWORD,
   MOCK_RECOVERY_CODES,
   MOCK_TOTP_CODE,
@@ -161,9 +162,13 @@ test("the mailed link logs in, and leaves the address bar", async ({ page, api }
   expect(new URL(page.url()).hash).toBe("");
   await expect(page).toHaveTitle(/^Log in/);
 
-  // Opened again, the used-up link finds this browser logged in.
+  // Opened again from the mail (a page load of its own, not a fragment change on this page), the
+  // used-up link finds this browser logged in and sends nothing.
+  await page.goto("/");
   await page.goto(`/login/mfa#token=${MOCK_MFA_LINK_TOKEN}`);
-  await expect(page.getByText("Login successful!")).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "You're already logged in." })
+  ).toBeFocused();
   await expect(page.getByRole("link", { name: "Log in again" })).toHaveCount(0);
 });
 
@@ -306,6 +311,69 @@ test("e-mail codes turn on with the password, showing the recovery codes once, a
   await section.getByRole("button", { name: "Turn off", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "E-mail codes are off" })).toBeFocused();
   await expect(emailRow(section).getByText("Off", { exact: true })).toBeVisible();
+});
+
+/** Sends a recovery code from the step's open recovery form; `passes` says whether the API took it. */
+async function sendRecoveryCode(page: Page, code: string, passes: boolean) {
+  const main = page.getByRole("main");
+  await main.getByLabel("Recovery code").fill(code);
+  await main.getByRole("button", { name: "Log in", exact: true }).click();
+  if (passes) await expect(main.getByText("Login successful!")).toBeVisible();
+  else
+    await expect(main.getByLabel("Recovery code")).toHaveAccessibleDescription(
+      /That code didn't work, or it was already used/
+    );
+}
+
+test("a recovery code logs in once, in any case and with spaces", async ({
+  page,
+  api,
+  isMobile
+}) => {
+  api.hasMfaEmail();
+  await passPassword(page);
+  await expect(page.getByText("Lost every way in?")).toContainText(
+    "A password reset doesn't turn this step off"
+  );
+  await page.getByRole("button", { name: "Use a recovery code" }).click();
+  await expect(page.getByRole("heading", { name: "Recovery code" })).toBeVisible();
+
+  await sendRecoveryCode(page, ` ${MOCK_RECOVERY_CODES[0].toUpperCase()} `, true);
+  await page.goto("/account");
+  await expect(page.getByText("9 of 10 left.")).toBeVisible();
+
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await passPassword(page);
+  await page.getByRole("button", { name: "Use a recovery code" }).click();
+  await sendRecoveryCode(page, MOCK_RECOVERY_CODES[0], false);
+  await expect(page.getByLabel("Recovery code")).toBeFocused();
+});
+
+test("new recovery codes show once and replace the old ones", async ({ page, api, isMobile }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e", { emailVerified: true });
+  api.hasMfaEmail();
+  await page.goto("/account");
+  const section = page.getByRole("region", { name: "Two-step login" });
+  await expect(section.getByText("10 of 10 left.")).toBeVisible();
+
+  await section.getByRole("button", { name: "Generate new codes" }).click();
+  await expect(section.getByText("Your current codes stop working")).toBeVisible();
+  await section.getByLabel("Password").fill(MOCK_PASSWORD);
+  await section.getByRole("button", { name: "Generate", exact: true }).click();
+
+  const codes = section.getByRole("region", { name: "Your recovery codes" });
+  await expect(codes.getByRole("heading")).toBeFocused();
+  await expect(codes.getByRole("listitem")).toHaveText(MOCK_NEW_RECOVERY_CODES);
+  await expect(page.getByText("the earlier ones no longer work")).toBeVisible();
+  await codes.getByRole("button", { name: "I've saved them" }).click();
+
+  if (isMobile) await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await passPassword(page);
+  await page.getByRole("button", { name: "Use a recovery code" }).click();
+  await sendRecoveryCode(page, MOCK_RECOVERY_CODES[1], false);
+  await sendRecoveryCode(page, MOCK_NEW_RECOVERY_CODES[1], true);
 });
 
 test("a wrong password doesn't turn e-mail codes on", async ({ page, api }) => {

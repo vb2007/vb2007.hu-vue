@@ -40,6 +40,7 @@ import type {
   MfaLinkBody,
   MfaMethodsResponse,
   MfaPasswordBody,
+  MfaRecoveryCodesResponse,
   MfaRequiredResponse,
   MfaTurnOnResponse,
   MfaVerifyBody,
@@ -281,6 +282,12 @@ export class Endpoints {
     static readonly mfaTotpOff = defineEndpoint<MfaPasswordBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/user/mfa/totp",
+      credentials: true
+    });
+    /** A new set of recovery codes (vb2007/vb2007.hu-api#482), `409` without an MFA method on. */
+    static readonly mfaRecoveryCodes = defineEndpoint<MfaPasswordBody, MfaRecoveryCodesResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/mfa/recovery-codes",
       credentials: true
     });
   };

@@ -29,10 +29,12 @@ import GithubLink from "@/components/features/account/GithubLink.vue";
 import MfaEmailToggle from "@/components/features/account/MfaEmailToggle.vue";
 import MfaTotpToggle from "@/components/features/account/MfaTotpToggle.vue";
 import RecoveryCodesPanel from "@/components/features/account/RecoveryCodesPanel.vue";
+import MfaRecoveryCodes from "@/components/features/account/MfaRecoveryCodes.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import StatusPill from "@/components/ui/StatusPill.vue";
 
 const oauthError = useOauthError();
 // The API comes back with ?github=linked after linking (vb2007/vb2007.hu-api#132). An account
@@ -88,6 +90,9 @@ const onMfaChanged = (message: string, codes?: string[]) => {
   notice.value = message;
   recoveryCodes.value = codes;
 };
+/** At most this many recovery codes left, the row warns: few left to log in with, or none. */
+const FEW_RECOVERY_CODES = 3;
+const recoveryCodesLow = computed(() => mfa.value.recoveryCodesLeft <= FEW_RECOVERY_CODES);
 // Codes the account no longer has (its last method turned off, here or elsewhere) aren't worth
 // saving any more. A session that ended meanwhile says nothing about them: they stay on show,
 // above the logged-out gate, until they're saved.
@@ -102,7 +107,10 @@ const mfaSection = useTemplateRef("mfaSection");
 const onRecoveryCodesSaved = async () => {
   recoveryCodes.value = [];
   await nextTick();
-  mfaSection.value?.querySelector<HTMLElement>(".login button")?.focus();
+  // Logged out meanwhile, there's no section: the notice of why takes the focus instead.
+  (
+    mfaSection.value?.querySelector<HTMLElement>(".login button") ?? endedMessage.value?.$el
+  )?.focus();
 };
 </script>
 
@@ -173,8 +181,10 @@ const onRecoveryCodesSaved = async () => {
       <p class="logins__note">
         A second step after your password or GitHub, so a stolen password alone can't log in.
       </p>
+      <!-- Keyed by the codes, so a newer set opens afresh and takes the focus. -->
       <RecoveryCodesPanel
         v-if="recoveryCodes.length"
+        :key="recoveryCodes.join()"
         :codes="recoveryCodes"
         @done="onRecoveryCodesSaved"
       />
@@ -226,6 +236,31 @@ const onRecoveryCodesSaved = async () => {
             >
           </p>
           <MfaTotpToggle @start="clearNotice" @done="onMfaChanged" />
+        </div>
+      </div>
+      <!-- Only next to a method that isn't a backup: the API removes the codes with the last one. -->
+      <div v-if="mfa.email || mfa.totp" class="login">
+        <span class="login__mark"><AppIcon name="key" :size="26" /></span>
+        <div class="login__main">
+          <div class="login__head">
+            <h3 class="login__name">Recovery codes</h3>
+            <StatusPill v-if="recoveryCodesLow" tone="danger" icon="alert">{{
+              mfa.recoveryCodesLeft ? "Few left" : "None left"
+            }}</StatusPill>
+          </div>
+          <p class="login__note">
+            <template v-if="mfa.recoveryCodesLeft"
+              >{{ mfa.recoveryCodesLeft }} of {{ Limits.Mfa.recoveryCodes }} left. Each logs in once
+              if you can't do your second step.<template v-if="recoveryCodesLow">
+                Generate new ones before they run out.</template
+              ></template
+            >
+            <template v-else
+              >All used. Generate new ones to still log in if you can't do your second
+              step.</template
+            >
+          </p>
+          <MfaRecoveryCodes @start="clearNotice" @done="onMfaChanged" />
         </div>
       </div>
     </section>

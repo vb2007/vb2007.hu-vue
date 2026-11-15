@@ -1,5 +1,6 @@
 import type { Component } from "vue";
 import MfaEmail from "@/components/features/auth/MfaEmail.vue";
+import MfaRecovery from "@/components/features/auth/MfaRecovery.vue";
 import MfaTotp from "@/components/features/auth/MfaTotp.vue";
 import type { MfaMethod } from "@/types/api/mfa";
 
@@ -25,5 +26,11 @@ export const MFA_METHODS: MfaMethodEntry[] = [
     switchLabel: "Use your authenticator app",
     component: MfaTotp
   },
-  { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail }
+  { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail },
+  {
+    method: "recovery",
+    title: "Recovery code",
+    switchLabel: "Use a recovery code",
+    component: MfaRecovery
+  }
 ];

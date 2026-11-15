@@ -36,6 +36,7 @@ describe("Endpoints", () => {
     [Endpoints.User.mfaTotpSetup, "POST", "/user/mfa/totp", true],
     [Endpoints.User.mfaTotpConfirm, "POST", "/user/mfa/totp/confirm", true],
     [Endpoints.User.mfaTotpOff, "DELETE", "/user/mfa/totp", true],
+    [Endpoints.User.mfaRecoveryCodes, "POST", "/user/mfa/recovery-codes", true],
     [Endpoints.ShortUrl.redirect, "GET", "/r/:shortenedUrl", false],
     [Endpoints.ShortUrl.lookup, "GET", "/shortenUrl/:shortenedUrl", false],
     [Endpoints.ShortUrl.create, "POST", "/shortenUrl", true],

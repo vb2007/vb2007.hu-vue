@@ -43,7 +43,7 @@ describe("MfaStep with several methods", () => {
   });
 
   it("offers only the methods the API lists", () => {
-    wrapper = mount(MfaStep, { props: { methods: ["email", "recovery"] } });
+    wrapper = mount(MfaStep, { props: { methods: ["email"] } });
 
     expect(wrapper.find("h2").text()).toBe("E-mail code");
     expect(wrapper.find(".mfa__others").exists()).toBe(false);

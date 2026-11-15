@@ -447,6 +447,12 @@ export class Messages {
     static readonly totpOff: string = "Authenticator app is off: logins no longer take its codes.";
     static readonly totpSetupFailed: string = "Failed to start the authenticator app setup";
     static readonly totpOffFailed: string = "Failed to turn off the authenticator app";
+    /** Only an empty one is refused here: the API checks the code's shape (a wrong one uses a try). */
+    static readonly recoveryCodeMissing: string = "Enter one of your recovery codes.";
+    /** In place of the API's wrong-code 400, whose "request a new one" can't be done at login. */
+    static readonly recoveryCodeRefused: string =
+      "That code didn't work, or it was already used: each code works once.";
+    static readonly recoveryCodesFailed: string = "Failed to make new recovery codes";
   };
 
   static readonly Uploads = class {

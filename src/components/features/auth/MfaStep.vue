@@ -6,6 +6,7 @@
  */
 import { computed, onMounted, ref, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";
+import { CONTACT_MAILTO, MATRIX_URL } from "@/constants/site";
 import { useMfaVerify } from "@/composables/useMfaVerify";
 import { MFA_METHODS } from "@/components/features/auth/mfaMethods";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -80,6 +81,14 @@ onMounted(() => lead.value?.focus());
         Log in again
       </button>
     </p>
+    <!-- For a user with no way through the step left: only the admin's MFA reset helps. -->
+    <p class="mfa__help">
+      Lost every way in? A password reset doesn't turn this step off: ask the site's admin to reset
+      it, by <a :href="CONTACT_MAILTO">e-mail</a> or on
+      <a :href="MATRIX_URL" target="_blank" rel="noopener"
+        >Matrix<span class="visually-hidden"> (opens in a new tab)</span></a
+      >.
+    </p>
   </div>
 </template>
 
@@ -124,8 +133,13 @@ onMounted(() => lead.value?.focus());
   list-style: none;
 }
 
-.mfa__back {
+.mfa__back,
+.mfa__help {
   font-size: var(--fs-sm);
+}
+
+.mfa__help {
+  color: var(--c-ink-soft);
 }
 
 /* A key drawn as a link, like Reset password's "Enter it". */
