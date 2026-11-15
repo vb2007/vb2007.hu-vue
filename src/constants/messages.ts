@@ -454,18 +454,23 @@ export class Messages {
       loginPerIp: "Failed log-ins from the IP",
       loginPerAccount: "Failed log-ins to the address from the IP",
       loginPerEmail: "Failed log-ins to the address from anywhere",
-      codeChecksPerIp: "Wrong sign-up and password reset codes from the IP",
+      codeChecksPerIp: "Wrong sign-up, password reset and MFA codes from the IP",
       codeChecksPerEmail: "Wrong sign-up and password reset codes for the address",
       resetLinkChecksPerIp: "Refused password reset links from the IP",
       mailSendsPerIp: "E-mails requested from the IP",
       usernameChecksPerIp: "Username checks from the IP",
-      accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
-      accountCodeChecksPerAccount: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerAccount} in ${Limits.Code.failedChecksWindowSeconds / 60} min`,
+      accountCodeChecksPerIp: "Wrong e-mail change and authenticator setup codes from the IP",
+      accountCodeChecksPerAccount: `Wrong e-mail change and authenticator setup codes for the account, ${Limits.Code.failedChecksPerAccount} in ${Limits.Code.failedChecksWindowSeconds / 60} min`,
       passwordChecksPerIp: "Wrong passwords on the account page from the IP",
       passwordChecksPerAccount: "Wrong passwords on the account page, per account",
+      passkeyOptionsPerIp: "Passkey requests from the IP",
+      passkeyLoginsPerIp: "Failed passkey log-ins from the IP",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
-      registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay} a day`
+      registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay} a day`,
+      mfaCodeFailures: `Wrong MFA codes, links and passkeys for the account, ${Limits.Code.failedChecksPerDay} a day`,
+      mfaEmailSends: `MFA log-in e-mails to the account, ${Limits.Mfa.emailsPerDay} a day`,
+      securityNotices: `Security notice e-mails to the account, ${Limits.Mfa.securityNoticesPerDay} a day`
     };
     /** A limiter's plain name, or the API's own one for a limiter added after this list. */
     static rateLimitName(name: string): string {

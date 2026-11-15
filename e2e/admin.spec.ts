@@ -1638,6 +1638,9 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     api.countsRateLimit("passwordResetCodeFailures", { email });
     api.countsRateLimit("passwordChecksPerAccount", { email });
     api.countsRateLimit("accountCodeChecksPerAccount", { email });
+    api.countsRateLimit("securityNotices", { email });
+    api.countsRateLimit("mfaEmailSends", { email });
+    api.countsRateLimit("mfaCodeFailures", { email });
   };
   arrange("anna@example.com");
   api.countsRateLimit("passwordResetCodeFailures", { email: "milo@example.com" });
@@ -1655,24 +1658,29 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   await clear.click();
   await expect(notice).toContainText("Cleared for 203.0.113.7:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes from the IP.",
+    "Wrong e-mail change and authenticator setup codes from the IP.",
     "Wrong passwords on the account page from the IP."
   ]);
 
   // With both, each limiter keyed by the IP or the e-mail goes, in the API's order.
+  api.countsRateLimit("passkeyLoginsPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("accountCodeChecksPerIp", { ip: "203.0.113.7" });
   await email.fill("Anna@example.com");
   await clear.click();
   await expect(notice).toContainText("Cleared for Anna@example.com and 203.0.113.7:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes from the IP.",
-    "Wrong e-mail change codes for the account, 10 in 15 min.",
+    "Wrong e-mail change and authenticator setup codes from the IP.",
+    "Wrong e-mail change and authenticator setup codes for the account, 10 in 15 min.",
     "Wrong passwords on the account page from the IP.",
     "Wrong passwords on the account page, per account.",
+    "Failed passkey log-ins from the IP.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
-    "Wrong sign-up codes for the waiting registration, 20 a day."
+    "Wrong sign-up codes for the waiting registration, 20 a day.",
+    "Wrong MFA codes, links and passkeys for the account, 20 a day.",
+    "MFA log-in e-mails to the account, 10 a day.",
+    "Security notice e-mails to the account, 10 a day."
   ]);
 
   // The e-mail alone does the same for an account whose caps are all counting, and spares other addresses.
@@ -1681,11 +1689,14 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   await clear.click();
   await expect(notice).toContainText("Cleared for Anna@example.com:");
   await expect(notice.locator(".cleared__item")).toHaveText([
-    "Wrong e-mail change codes for the account, 10 in 15 min.",
+    "Wrong e-mail change and authenticator setup codes for the account, 10 in 15 min.",
     "Wrong passwords on the account page, per account.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
-    "Wrong sign-up codes for the waiting registration, 20 a day."
+    "Wrong sign-up codes for the waiting registration, 20 a day.",
+    "Wrong MFA codes, links and passkeys for the account, 20 a day.",
+    "MFA log-in e-mails to the account, 10 a day.",
+    "Security notice e-mails to the account, 10 a day."
   ]);
 
   await email.fill("milo@example.com");
