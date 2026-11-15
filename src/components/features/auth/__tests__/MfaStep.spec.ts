@@ -137,6 +137,22 @@ describe("MfaStep", () => {
     expect(step.find('[aria-live="assertive"]').text()).toBe("");
   });
 
+  it("reads a wrong code out with the field when the key was pressed, not twice", async () => {
+    const step = mountStep();
+    await sendCode(step);
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE }));
+    await step.find("input").setValue("000000");
+
+    const key = step.find('button[type="submit"]');
+    (key.element as HTMLButtonElement).focus();
+    await step.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(step.find("input").element);
+    expect(step.find(".field__error").text()).toBe(WRONG_CODE);
+    expect(step.find('[aria-live="assertive"]').text()).toBe("");
+  });
+
   it("holds Log in while a new code is being mailed, which voids the one typed", async () => {
     vi.useFakeTimers();
     const step = mountStep();

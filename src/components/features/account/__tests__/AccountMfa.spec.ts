@@ -137,6 +137,10 @@ describe("AccountPanel's two-step login", () => {
     await flushPromises();
     expect(panel.find(".codes").exists()).toBe(false);
     expect(panel.find(".gate").exists()).toBe(true);
+    // No section to go back to: the notice of why the page logged out takes the focus.
+    const ended = panel.find(".gate .notice");
+    expect(ended.text()).toMatch(/^Your session ended/);
+    expect(document.activeElement).toBe(ended.element);
   });
 
   it("shows the codes before the refresh answers", async () => {
