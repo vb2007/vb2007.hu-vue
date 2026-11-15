@@ -62,11 +62,11 @@ describe("useClearRateLimits", () => {
     expect(limits.outcome.value).toEqual({
       target: "anna@example.com",
       cleared: [
-        "Wrong e-mail change and authenticator setup codes for the account, 10 in 15 min",
+        "Wrong e-mail change and authenticator setup codes for the account, 10\u00a0in\u00a015\u00a0min",
         "Wrong passwords on the account page, per account",
-        "Wrong password reset codes for the account, 20 a day",
-        "Wrong e-mail change codes for the account, 20 a day",
-        "Wrong sign-up codes for the waiting registration, 20 a day"
+        "Wrong password reset codes for the account, 20\u00a0a\u00a0day",
+        "Wrong e-mail change codes for the account, 20\u00a0a\u00a0day",
+        "Wrong sign-up codes for the waiting registration, 20\u00a0a\u00a0day"
       ]
     });
   });

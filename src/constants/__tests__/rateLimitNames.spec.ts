@@ -46,19 +46,21 @@ describe("Messages.Admin.rateLimitNames", () => {
       "mfaCodeFailures"
     ] as const) {
       expect(Messages.Admin.rateLimitNames[name]).toContain(
-        `${Limits.Code.failedChecksPerDay} a day`
+        `${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`
       );
     }
     expect(Limits.Code.failedChecksPerDay).toBe(20);
     // The API's MFA_EMAILS_PER_DAY and SECURITY_NOTICES_PER_DAY.
     expect(Messages.Admin.rateLimitNames.mfaEmailSends).toContain(
-      `${Limits.Mfa.emailsPerDay} a day`
+      `${Limits.Mfa.emailsPerDay}\u00a0a\u00a0day`
     );
     expect(Messages.Admin.rateLimitNames.securityNotices).toContain(
-      `${Limits.Mfa.securityNoticesPerDay} a day`
+      `${Limits.Mfa.securityNoticesPerDay}\u00a0a\u00a0day`
     );
     expect([Limits.Mfa.emailsPerDay, Limits.Mfa.securityNoticesPerDay]).toEqual([10, 10]);
-    expect(Messages.Admin.rateLimitNames.accountCodeChecksPerAccount).toContain("10 in 15 min");
+    expect(Messages.Admin.rateLimitNames.accountCodeChecksPerAccount).toContain(
+      "10\u00a0in\u00a015\u00a0min"
+    );
   });
 
   it("keeps the API's own name for a limiter added later", () => {
