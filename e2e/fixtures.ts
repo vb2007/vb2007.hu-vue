@@ -860,6 +860,10 @@ export class MockApi {
           (candidate) => normalizeEmail(candidate.email) === normalizeEmail(user.email)
         )!;
       account.mfa = { ...this.mfaOf(user.id), ...mfa };
+      // The codes themselves, so a login can use them up.
+      if (mfa.recoveryCodesLeft !== undefined) {
+        this.setRecoveryCodes(account, MOCK_RECOVERY_CODES.slice(0, mfa.recoveryCodesLeft));
+      }
     }
     return user;
   }

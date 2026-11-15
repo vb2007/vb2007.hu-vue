@@ -299,6 +299,8 @@ describe("MfaStep", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE }));
 
     await step.find("input").setValue("abcde-fghij");
+    // Sent with Enter from the field, which keeps the cursor: the refusal is read out.
+    (step.find("input").element as HTMLInputElement).focus();
     await step.find("form").trigger("submit");
     await flushPromises();
 
@@ -306,5 +308,8 @@ describe("MfaStep", () => {
       "That code didn't work, or it was already used: each code works once."
     );
     expect(document.activeElement).toBe(step.find("input").element);
+    expect(step.find('[aria-live="assertive"]').text()).toBe(
+      "That code didn't work, or it was already used: each code works once."
+    );
   });
 });
