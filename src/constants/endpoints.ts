@@ -54,6 +54,13 @@ import type {
   UpdatePasteBody
 } from "@/types/api/pastebin";
 import type {
+  AddPasskeyBody,
+  PasskeyAddedResponse,
+  PasskeyLoginBody,
+  PasskeysResponse,
+  RenamePasskeyBody
+} from "@/types/api/passkeys";
+import type {
   ShortenUrlBody,
   ShortenUrlResponse,
   ShortUrlListQuery,
@@ -213,6 +220,36 @@ export class Endpoints {
       path: "/auth/mfa/verify-link",
       credentials: true
     });
+    /**
+     * A passkey as the second step (vb2007/vb2007.hu-api#484): request options bound to the
+     * waiting step's cookie, for `navigator.credentials.get()`.
+     */
+    static readonly mfaPasskeyOptions = defineEndpoint<
+      undefined,
+      PublicKeyCredentialRequestOptionsJSON
+    >()({
+      method: HttpMethod.Post,
+      path: "/auth/mfa/passkey/options",
+      credentials: true
+    });
+    /**
+     * Logging in with a passkey (vb2007/vb2007.hu-api#446): request options whose challenge waits
+     * in a cookie, so it goes along.
+     */
+    static readonly passkeyOptions = defineEndpoint<
+      undefined,
+      PublicKeyCredentialRequestOptionsJSON
+    >()({
+      method: HttpMethod.Post,
+      path: "/auth/passkey/options",
+      credentials: true
+    });
+    /** The passkey's answer; a 200 starts the session and skips any second step. */
+    static readonly passkeyLogin = defineEndpoint<PasskeyLoginBody, MessageResponse>()({
+      method: HttpMethod.Post,
+      path: "/auth/passkey",
+      credentials: true
+    });
   };
 
   static readonly User = class {
@@ -260,6 +297,37 @@ export class Endpoints {
     static readonly mfaEmailOff = defineEndpoint<MfaPasswordBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/user/mfa/email",
+      credentials: true
+    });
+    /** The account's passkeys (vb2007/vb2007.hu-api#446). */
+    static readonly passkeys = defineEndpoint<undefined, PasskeysResponse>()({
+      method: HttpMethod.Get,
+      path: "/user/passkeys",
+      credentials: true
+    });
+    /** A new passkey's creation options, once it's confirmed to be the owner; 409 at the cap. */
+    static readonly passkeyOptions = defineEndpoint<
+      MfaPasswordBody,
+      PublicKeyCredentialCreationOptionsJSON
+    >()({
+      method: HttpMethod.Post,
+      path: "/user/passkeys/options",
+      credentials: true
+    });
+    static readonly addPasskey = defineEndpoint<AddPasskeyBody, PasskeyAddedResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/passkeys",
+      credentials: true
+    });
+    /** Renaming needs no password: the name is only a label. */
+    static readonly renamePasskey = defineEndpoint<RenamePasskeyBody, MessageResponse>()({
+      method: HttpMethod.Patch,
+      path: "/user/passkeys/:id",
+      credentials: true
+    });
+    static readonly removePasskey = defineEndpoint<MfaPasswordBody, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/user/passkeys/:id",
       credentials: true
     });
   };

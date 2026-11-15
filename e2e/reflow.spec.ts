@@ -224,3 +224,25 @@ for (const [name, fontSize, width] of [
     await expectReflow(page);
   });
 }
+
+for (const [name, fontSize, width] of [
+  ["a 320 px window", 0, 320],
+  ["a 32 px browser font size", 32, 640]
+] as const) {
+  test(`the passkeys fit ${name}`, async ({ page, api }) => {
+    if (fontSize) await browserFontSize(page, fontSize);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/login");
+    await expect(page.getByRole("button", { name: "Log in with a passkey" })).toBeVisible();
+    await expectReflow(page);
+
+    api.loggedInAs(MOCK_EMAIL, "e2e");
+    api.hasPasskey("Bitwarden on the family laptop in the living room upstairs");
+    await page.goto("/account");
+    const passkeys = page.getByRole("region", { name: "Passkeys" });
+    await passkeys.getByRole("button", { name: /^Rename/ }).click();
+    await passkeys.getByRole("button", { name: "Add a passkey" }).click();
+    await expect(passkeys.getByLabel("Name", { exact: true })).toBeFocused();
+    await expectReflow(page);
+  });
+}

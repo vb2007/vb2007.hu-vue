@@ -27,6 +27,7 @@ import { useQueryNotice } from "@/composables/useQueryNotice";
 import { useRetryHold } from "@/composables/useRetryHold";
 import GithubLogin from "@/components/features/auth/GithubLogin.vue";
 import MfaStep from "@/components/features/auth/MfaStep.vue";
+import PasskeyLogin from "@/components/features/auth/PasskeyLogin.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
@@ -211,6 +212,7 @@ watch(isLoggedIn, (loggedIn) => {
         </BaseButton>
       </form>
       <GithubLogin label="Log in with GitHub" />
+      <PasskeyLogin />
       <p class="alt">No account yet? <RouterLink to="/register">Register</RouterLink></p>
     </template>
 

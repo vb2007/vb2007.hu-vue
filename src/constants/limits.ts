@@ -92,6 +92,7 @@ export class Limits {
     static readonly securityNoticesPerDay: number = 10;
   };
 
+  /** The name is counted after trimming, in characters (code points), like the API's `passkeyNameError`. */
   static readonly Passkey = class {
     static readonly perAccount: number = 10;
     static readonly nameMaxLength: number = 64;

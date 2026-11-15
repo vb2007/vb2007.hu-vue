@@ -1,5 +1,7 @@
 import type { Component } from "vue";
 import MfaEmail from "@/components/features/auth/MfaEmail.vue";
+import MfaPasskey from "@/components/features/auth/MfaPasskey.vue";
+import { passkeysSupported } from "@/scripts/authentication/webauthn";
 import type { MfaMethod } from "@/types/api/mfa";
 
 /** One method of the login's second step, as `MfaStep` offers it. */
@@ -18,5 +20,16 @@ export interface MfaMethodEntry {
  * step. One the API offers that isn't here isn't offered yet.
  */
 export const MFA_METHODS: MfaMethodEntry[] = [
+  // Only where the browser can run the prompt: the API lists it next to another method anyway.
+  ...(passkeysSupported()
+    ? [
+        {
+          method: "passkey",
+          title: "Passkey",
+          switchLabel: "Use a passkey",
+          component: MfaPasskey
+        } satisfies MfaMethodEntry
+      ]
+    : []),
   { method: "email", title: "E-mail code", switchLabel: "Use an e-mail code", component: MfaEmail }
 ];

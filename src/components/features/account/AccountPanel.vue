@@ -27,6 +27,7 @@ import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import DeleteAccount from "@/components/features/account/DeleteAccount.vue";
 import GithubLink from "@/components/features/account/GithubLink.vue";
 import MfaEmailToggle from "@/components/features/account/MfaEmailToggle.vue";
+import PasskeyList from "@/components/features/account/PasskeyList.vue";
 import RecoveryCodesPanel from "@/components/features/account/RecoveryCodesPanel.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -191,6 +192,23 @@ const onRecoveryCodesSaved = async () => {
           />
         </div>
       </div>
+    </section>
+
+    <!-- Passwordless logins (vb2007/vb2007.hu-api#446), which also answer the second step once a
+         method above is on (vb2007/vb2007.hu-api#484). -->
+    <section class="logins" aria-labelledby="passkeys-title">
+      <h2 id="passkeys-title" class="logins__title">Passkeys</h2>
+      <p class="logins__note">
+        Log in with your fingerprint, face or screen lock, no password needed.
+        <template v-if="mfa.email || mfa.totp"
+          >They also answer two-step login's second step.</template
+        >
+        <template v-else
+          >They don't turn on two-step login by themselves: with e-mail codes or an authenticator
+          app on, they answer its second step too.</template
+        >
+      </p>
+      <PasskeyList @start="clearNotice" @done="announce" />
     </section>
 
     <section class="logins" aria-labelledby="logins-title">

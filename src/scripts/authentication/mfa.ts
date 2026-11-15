@@ -61,6 +61,22 @@ export const verifyMfa = (body: MfaVerifyBody) =>
     })
   );
 
+/**
+ * The passkey's request options for the waiting step (vb2007/vb2007.hu-api#484). Its 403 (the step
+ * expired) goes back to the password, like an answer's.
+ */
+export const loadMfaPasskeyOptions = async () => {
+  const attempt = currentLogin();
+  const result = await apiRequest(Endpoints.Auth.mfaPasskeyOptions, {
+    failure: Messages.Passkeys.optionsFailed,
+    quietStatuses: [HttpStatus.Forbidden]
+  });
+  if (!result.ok && result.status === HttpStatus.Forbidden && isCurrentLogin(attempt)) {
+    endMfa(result.error);
+  }
+  return result;
+};
+
 /** The token of the mailed link, which only works in the browser that logged in. */
 export const verifyMfaLink = (token: string) =>
   passMfa(
