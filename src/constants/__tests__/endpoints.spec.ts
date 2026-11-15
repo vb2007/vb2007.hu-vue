@@ -48,6 +48,7 @@ describe("Endpoints", () => {
     [Endpoints.Admin.renameUser, "PATCH", "/admin/users/:id", true],
     [Endpoints.Admin.logoutUser, "POST", "/admin/users/:id/logout", true],
     [Endpoints.Admin.deleteUser, "DELETE", "/admin/users/:id", true],
+    [Endpoints.Admin.resetUserMfa, "DELETE", "/admin/users/:id/mfa", true],
     [Endpoints.Admin.setUploadQuota, "PATCH", "/admin/users/:id/upload-quota", true],
     [Endpoints.Admin.setSuspension, "PATCH", "/admin/users/:id/suspension", true],
     [Endpoints.Admin.userUploads, "GET", "/admin/users/:id/uploads", true],

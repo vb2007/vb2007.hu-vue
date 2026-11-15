@@ -17,6 +17,7 @@ import AdminLogoutUser from "./AdminLogoutUser.vue";
 import AdminQuotaEditor from "./AdminQuotaEditor.vue";
 import AdminQuotaMeter from "./AdminQuotaMeter.vue";
 import AdminRenameUser from "./AdminRenameUser.vue";
+import AdminResetMfa from "./AdminResetMfa.vue";
 import AdminUserAction from "./AdminUserAction.vue";
 import AdminUserSuspension from "./AdminUserSuspension.vue";
 import AdminUserTags from "./AdminUserTags.vue";
@@ -54,6 +55,28 @@ const content = computed(() => {
 const password = computed(() => {
   if (user.value!.hasPassword) return "Set";
   return user.value!.githubLogin ? "None: logs in with GitHub only" : "None";
+});
+
+/**
+ * The methods that are on, then the recovery codes left (while a method is on or codes remain, so
+ * none left reads "0") and the passkeys (while there are any).
+ */
+const mfa = computed(() => {
+  const { email, totp, passkeys, recoveryCodesLeft } = user.value!.mfa;
+  const methods =
+    email && totp
+      ? "E-mail and authenticator app"
+      : email
+        ? "E-mail"
+        : totp
+          ? "Authenticator app"
+          : "";
+  const extras = [
+    (email || totp || recoveryCodesLeft > 0) &&
+      plural(recoveryCodesLeft, "recovery code left", "recovery codes left"),
+    passkeys > 0 && plural(passkeys, "passkey", "passkeys")
+  ].filter(Boolean);
+  return { methods, extras };
 });
 </script>
 
@@ -111,6 +134,14 @@ const password = computed(() => {
             <span v-else class="fact__soft">Not linked</span>
           </dd>
         </div>
+        <div class="fact">
+          <dt>MFA</dt>
+          <dd class="fact__figures">
+            <template v-if="mfa.methods">{{ mfa.methods }}</template>
+            <span v-else class="fact__soft">Off</span>
+            <template v-for="extra in mfa.extras" :key="extra"> · {{ extra }}</template>
+          </dd>
+        </div>
         <div v-if="user.suspendedAt" class="fact fact--suspended">
           <dt>Suspended</dt>
           <dd>
@@ -156,7 +187,8 @@ const password = computed(() => {
       <!--
         One AdminUserAction per thing the admin can do to the account, each with its key and any
         form it opens in place (#panel), in this order: Uploads, Rename, Log out everywhere,
-        Suspend, then Delete account last.
+        Reset MFA, Suspend, then
+        Delete account last.
       -->
       <section class="part" :aria-labelledby="actionsTitle">
         <h2 :id="actionsTitle" class="part__title">Actions</h2>
@@ -184,6 +216,7 @@ const password = computed(() => {
           </AdminUserAction>
           <AdminRenameUser :user="user" @updated="applyUser" />
           <AdminLogoutUser :user="user" />
+          <AdminResetMfa :user="user" @updated="applyUser" />
           <AdminUserSuspension :user="user" @updated="applyUser" />
           <AdminDeleteUser :user="user" />
         </div>

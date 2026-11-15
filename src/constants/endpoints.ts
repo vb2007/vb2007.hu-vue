@@ -346,6 +346,12 @@ export class Endpoints {
       path: "/admin/users/:id",
       credentials: true
     });
+    /** Turns off every MFA method and recovery code and ends the session; passkeys stay. 409 on the superuser's own. */
+    static readonly resetUserMfa = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/users/:id/mfa",
+      credentials: true
+    });
     static readonly setUploadQuota = defineEndpoint<SetUploadQuotaBody, UploadQuotaResponse>()({
       method: HttpMethod.Patch,
       path: "/admin/users/:id/upload-quota",
