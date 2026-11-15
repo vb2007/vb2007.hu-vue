@@ -214,3 +214,32 @@ test("a wrong password doesn't turn e-mail codes on", async ({ page, api }) => {
   await expect(section.getByLabel("Password")).toBeFocused();
   await expect(section.getByText("Off", { exact: true })).toBeVisible();
 });
+
+test("the admin's MFA reset turns the account's second step off, from one store", async ({
+  page,
+  api
+}) => {
+  const anna = api.hasUser("anna", {
+    emailVerified: true,
+    mfa: { email: true, recoveryCodesLeft: 10 }
+  });
+  const logInAsAnna = async () => {
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill("anna@example.com");
+    await page.getByLabel("Password", { exact: true }).fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+  };
+  await logInAsAnna();
+  await expect(page.getByRole("heading", { name: "E-mail code" })).toBeVisible();
+
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  await page.goto(`/admin/users/${anna.id}`);
+  const row = page.locator(".action").filter({ hasText: "Reset MFA" });
+  await row.getByRole("button", { name: "Reset MFA" }).click();
+  await page.getByRole("button", { name: "Reset anna's MFA" }).click();
+  await expect(row.getByRole("status")).toBeVisible();
+  api.loggedOut();
+
+  await logInAsAnna();
+  await expect(page.getByText("Login successful!")).toBeVisible();
+});

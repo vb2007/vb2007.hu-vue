@@ -467,6 +467,13 @@ export class Messages {
     static userDeleted(name: string): string {
       return `${name}'s account is deleted, with its pastes, short links and uploads.`;
     }
+    static readonly mfaResetFailed: string = "Failed to reset the account's MFA";
+    static mfaReset(name: string): string {
+      return `${name}'s MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
+    }
+    /** Why the superuser's own page has no Reset MFA key: the API answers it with 409. */
+    static readonly superuserMfaNotResettable: string =
+      "Your own MFA is managed from your Account page.";
     static readonly suspendFailed: string = "Failed to suspend the account";
     static readonly unsuspendFailed: string = "Failed to lift the suspension";
     /** Why the superuser's own page has no Suspend key: the API answers it with 409. */
@@ -486,23 +493,32 @@ export class Messages {
     /** The API wants an e-mail, an IP or both; it says so too, but nothing is sent without one. */
     static readonly rateLimitTargetMissing: string = "Enter an e-mail address, an IP or both.";
     static readonly invalidIp: string = "That isn't an IPv4 or IPv6 address.";
-    /** What each of the API's rate limiters counts, for the notice of what was cleared. */
+    /**
+     * What each of the API's rate limiters counts, for the notice of what was cleared. A cap's
+     * figure and unit are joined by no-break spaces, so a narrow notice doesn't split them.
+     */
     static readonly rateLimitNames: Record<RateLimitName, string> = {
       loginPerIp: "Failed log-ins from the IP",
       loginPerAccount: "Failed log-ins to the address from the IP",
       loginPerEmail: "Failed log-ins to the address from anywhere",
-      codeChecksPerIp: "Wrong sign-up and password reset codes from the IP",
+      codeChecksPerIp:
+        "Wrong sign-up and password reset codes, and MFA codes, links and passkeys, from the IP",
       codeChecksPerEmail: "Wrong sign-up and password reset codes for the address",
       resetLinkChecksPerIp: "Refused password reset links from the IP",
       mailSendsPerIp: "E-mails requested from the IP",
       usernameChecksPerIp: "Username checks from the IP",
-      accountCodeChecksPerIp: "Wrong e-mail change codes from the IP",
-      accountCodeChecksPerAccount: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerAccount} in ${Limits.Code.failedChecksWindowSeconds / 60} min`,
+      accountCodeChecksPerIp: "Wrong e-mail change and authenticator setup codes from the IP",
+      accountCodeChecksPerAccount: `Wrong e-mail change and authenticator setup codes for the account, ${Limits.Code.failedChecksPerAccount}\u00a0in\u00a0${Limits.Code.failedChecksWindowSeconds / 60}\u00a0min`,
       passwordChecksPerIp: "Wrong passwords on the account page from the IP",
       passwordChecksPerAccount: "Wrong passwords on the account page, per account",
-      passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
-      emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay} a day`,
-      registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay} a day`
+      passkeyOptionsPerIp: "Passkey requests from the IP",
+      passkeyLoginsPerIp: "Failed passkey log-ins from the IP",
+      passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
+      emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
+      registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
+      mfaCodeFailures: `Wrong MFA codes, links and passkeys for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
+      mfaEmailSends: `MFA log-in e-mails to the account, ${Limits.Mfa.emailsPerDay}\u00a0a\u00a0day`,
+      securityNotices: `Security notice e-mails to the account, ${Limits.Mfa.securityNoticesPerDay}\u00a0a\u00a0day`
     };
     /** A limiter's plain name, or the API's own one for a limiter added after this list. */
     static rateLimitName(name: string): string {
