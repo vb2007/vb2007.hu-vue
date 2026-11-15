@@ -46,7 +46,11 @@ onMounted(() => lead.value?.focus());
 
     <template v-if="current">
       <h2 class="mfa__title">{{ current.title }}</h2>
-      <component :is="current.component" :key="current.method" :verifier="verifier" />
+      <!-- Kept alive, so switching away and back keeps a method's state, e.g. a mailed code's field
+           and its countdown. -->
+      <KeepAlive>
+        <component :is="current.component" :key="current.method" :verifier="verifier" />
+      </KeepAlive>
     </template>
     <StatusMessage v-else tone="error">{{ Messages.Mfa.noMethod }}</StatusMessage>
 

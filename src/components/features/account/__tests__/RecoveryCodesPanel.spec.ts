@@ -42,6 +42,12 @@ describe("RecoveryCodesPanel", () => {
     expect(wrapper.text()).toContain("they're shown only now");
   });
 
+  it("names as many codes as it got", () => {
+    wrapper = mount(RecoveryCodesPanel, { props: { codes: CODES.slice(0, 3) } });
+
+    expect(wrapper.find("ol").attributes("aria-label")).toBe("3 recovery codes");
+  });
+
   it("downloads them as a text file, freed once the panel goes", async () => {
     wrapper = mount(RecoveryCodesPanel, { props: { codes: CODES } });
 

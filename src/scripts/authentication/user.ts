@@ -73,6 +73,20 @@ export const endMfa = (message: string) => {
 };
 
 /**
+ * Whether the login finished elsewhere while its second step waited, e.g. with the mailed link
+ * opened in another tab: the session is this browser's too, so the page takes it on, and the step
+ * goes for good (a later logout brings back the password form, not a dead step).
+ */
+export const finishedElsewhere = async (attempt: number) => {
+  const loggedIn = await fetchUserDetails();
+  if (loggedIn && isCurrentLogin(attempt)) {
+    mfaMethods.value = [];
+    loginStatus.value = LoginStatus.Success;
+  }
+  return loggedIn;
+};
+
+/**
  * Takes on the session the API started, from a password or a second step: only a working cookie
  * makes the login real. A login that's no longer the newest still logs the page in, but reports
  * nothing.

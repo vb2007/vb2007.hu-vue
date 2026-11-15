@@ -6,6 +6,7 @@
  */
 import { nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
+import { REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
 import { fetchUserDetails } from "@/scripts/authentication/user";
@@ -24,7 +25,11 @@ const confirming = ref(false);
 const opener = useTemplateRef<InstanceType<typeof BaseButton>>("opener");
 
 const generate = (body: MfaPasswordBody) =>
-  apiRequest(Endpoints.User.mfaRecoveryCodes, { body, failure: Messages.Mfa.recoveryCodesFailed });
+  apiRequest(Endpoints.User.mfaRecoveryCodes, {
+    body,
+    failure: Messages.Mfa.recoveryCodesFailed,
+    quietStatuses: REAUTH_QUIET_STATUSES
+  });
 
 const open = () => {
   confirming.value = true;

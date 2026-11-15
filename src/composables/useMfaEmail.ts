@@ -10,7 +10,12 @@ import {
   useCountdown
 } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
-import { currentLogin, endMfa, isCurrentLogin } from "@/scripts/authentication/user";
+import {
+  currentLogin,
+  endMfa,
+  finishedElsewhere,
+  isCurrentLogin
+} from "@/scripts/authentication/user";
 
 /**
  * Mails the second step's code and link (vb2007/vb2007.hu-api#448). The API mails one a minute and
@@ -48,15 +53,16 @@ export const useMfaEmail = () => {
       wait.start(Limits.Code.cooldownSeconds);
       return true;
     }
-    // The step expired: back to the password, unless it was left already.
+    // The step is gone: passed in another tab (logged in), or expired (back to the password),
+    // unless it was left already.
     if (result.status === HttpStatus.Forbidden) {
-      if (isCurrentLogin(attempt)) endMfa(result.error);
+      if (!(await finishedElsewhere(attempt)) && isCurrentLogin(attempt)) endMfa(result.error);
       return false;
     }
 
+    // Inside the minute a code went out for an earlier login, which doesn't work for this one, and
+    // nothing was sent: `sent` stays about this step's own mail.
     const cooldown = codeCooldownOf(result);
-    // Inside the minute a code went out moments ago, maybe for this step.
-    if (cooldown !== undefined) sent.value = true;
     error.value = cooldown === undefined ? result.error : Messages.Mfa.emailCooldown;
     // Every other 429 (the day's codes, the hourly mail limit) names its wait too.
     const seconds =

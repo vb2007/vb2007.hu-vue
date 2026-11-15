@@ -11,7 +11,7 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 const CODES = Array.from({ length: 10 }, (_, i) => `abcd${i}-efgh${i}`);
@@ -100,7 +100,10 @@ describe("AccountPanel's two-step login", () => {
     });
     expect(mfa.value.email).toBe(true);
     expect(mfaRow(panel).find(".badge").text()).toBe("On");
-    expect(panel.find(".notice").text()).toBe(ON);
+    // The section's own words, not the API's.
+    expect(panel.find(".notice").text()).toBe(
+      "E-mail codes are on: each login now also takes a code or link from your inbox."
+    );
     expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(CODES);
     expect(document.activeElement).toBe(panel.find("#codes-title").element);
 
@@ -108,7 +111,83 @@ describe("AccountPanel's two-step login", () => {
     await flushPromises();
 
     expect(panel.find(".codes").exists()).toBe(false);
-    expect(document.activeElement).toBe(panel.find(".notice").element);
+    // The focus stays in the section, on the row's key.
+    expect(document.activeElement).toBe(mfaRow(panel).find("button").element);
+  });
+
+  it("keeps the new codes on show when the session ends right after turning on", async () => {
+    const panel = await mountPanel();
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }))
+      .mockResolvedValueOnce(
+        jsonResponse(403, { error: "You must be logged in to perform this action." })
+      );
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    // Logged out by the refresh, the page shows the gate, with the codes still above it.
+    expect(isLoggedIn.value).toBe(false);
+    expect(panel.find("h1").text()).toBe("Account");
+    expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(CODES);
+    expect(document.activeElement).toBe(panel.find("#codes-title").element);
+
+    await keyNamed(panel, "I've saved them").trigger("click");
+    await flushPromises();
+    expect(panel.find(".codes").exists()).toBe(false);
+    expect(panel.find(".gate").exists()).toBe(true);
+  });
+
+  it("shows the codes before the refresh answers", async () => {
+    const panel = await mountPanel();
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }));
+    const refresh = deferResponse(fetchMock);
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(panel.findAll(".codes__code")).toHaveLength(10);
+    refresh.respond(user(true, 10));
+    await flushPromises();
+    expect(panel.findAll(".codes__code")).toHaveLength(10);
+  });
+
+  it("drops unsaved codes once the method that made them is off again", async () => {
+    const panel = await mountPanel();
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: ON, recoveryCodes: CODES }))
+      .mockResolvedValueOnce(user(true, 10));
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+    expect(panel.find(".codes").exists()).toBe(true);
+
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: OFF }))
+      .mockResolvedValueOnce(user(false));
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(panel.find(".codes").exists()).toBe(false);
+  });
+
+  it("logs no expected refusal, e.g. a wrong password", async () => {
+    const panel = await mountPanel();
+    await mfaRow(panel).find("button").trigger("click");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, { error: "The provided password is incorrect." })
+    );
+    await mfaRow(panel).find('input[type="password"]').setValue("nope");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(mfaRow(panel).find('[role="alert"]').text()).toBe("The provided password is incorrect.");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("turns e-mail codes off and moves the focus to the message", async () => {
@@ -129,6 +208,9 @@ describe("AccountPanel's two-step login", () => {
     expect(fetchMock.mock.calls[0][1]!.method).toBe("DELETE");
     expect(mfaRow(panel).find(".badge").text()).toBe("Off");
     expect(panel.find(".codes").exists()).toBe(false);
+    expect(panel.find(".notice").text()).toBe(
+      "E-mail codes are off: logins no longer ask for a mailed code."
+    );
     expect(document.activeElement).toBe(panel.find(".notice").element);
   });
 
@@ -225,6 +307,24 @@ describe("AccountPanel's two-step login", () => {
       expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/user", expect.anything());
       expect(panel.findAll(".codes__code").map((code) => code.text())).toEqual(NEW_CODES);
       expect(document.activeElement).toBe(panel.find("#codes-title").element);
+    });
+
+    it("logs nothing for a wrong password, and keeps the old codes", async () => {
+      mfa.value = { ...NO_MFA, email: true, recoveryCodesLeft: 10 };
+      const panel = await mountPanel();
+      await keyNamed(panel, "Generate new codes").trigger("click");
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(403, { error: "The provided password is incorrect." })
+      );
+      await codesRow(panel).find('input[type="password"]').setValue("nope");
+      await codesRow(panel).find("form").trigger("submit");
+      await flushPromises();
+
+      expect(codesRow(panel).find('[role="alert"]').text()).toBe(
+        "The provided password is incorrect."
+      );
+      expect(console.error).not.toHaveBeenCalled();
+      expect(panel.find(".codes").exists()).toBe(false);
     });
 
     it("closes the form with Cancel, back on its key", async () => {

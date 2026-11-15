@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
-import { mount, type VueWrapper } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import MfaStep from "@/components/features/auth/MfaStep.vue";
 
 // A second method, standing in for the ones still to come, so switching can be checked.
@@ -37,6 +38,25 @@ describe("MfaStep with several methods", () => {
     expect(wrapper.find(".totp").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.find(".mfa__lead").element);
     expect(wrapper.find(".mfa__others button").text()).toBe("Use your app");
+  });
+
+  it("keeps a method's state across a switch away and back, e.g. the mailed code and its countdown", async () => {
+    const fetchMock = mockFetch();
+    fetchMock.mockResolvedValueOnce(jsonResponse(202, { message: "Sent." }));
+    wrapper = mount(MfaStep, { props: { methods: ["email", "totp"] }, attachTo: document.body });
+    await wrapper.find(".mfa__others button").trigger("click");
+    await wrapper.find(".email__send button").trigger("click");
+    await flushPromises();
+    await wrapper.find("input").setValue("12");
+
+    await wrapper.find(".mfa__others button").trigger("click");
+    expect(wrapper.find(".totp").exists()).toBe(true);
+    await wrapper.find(".mfa__others button").trigger("click");
+
+    expect((wrapper.find("input").element as HTMLInputElement).value).toBe("12");
+    expect(wrapper.find(".email__send button").text()).toMatch(/^Send again in \d+\ssec$/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it("offers only the methods the API lists", () => {

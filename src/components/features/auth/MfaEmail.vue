@@ -74,6 +74,7 @@ const onSend = async () => {
       :check="confirmationCodeError"
       :early="confirmationCodeEarlyError"
       :describedby="sentId"
+      :busy="isSending"
     />
     <div class="email__send" :class="{ 'email__send--again': sent }">
       <span v-if="sent" class="email__ask">No code yet?</span>

@@ -45,6 +45,17 @@ export class ErrorReason {
   static readonly MfaEmailLimit = "mfaEmailLimit";
 }
 
+/**
+ * What an MFA setting's confirmation (`ReauthForm`) expects back besides a success: a missing (400)
+ * or wrong (403) password, GitHub's reauth (403) and, turning a method on, an unconfirmed address
+ * (409). They're the user's to fix, not faults, so they aren't logged.
+ */
+export const REAUTH_QUIET_STATUSES: readonly number[] = [
+  HttpStatus.BadRequest,
+  HttpStatus.Forbidden,
+  HttpStatus.Conflict
+];
+
 export class Header {
   static readonly ContentType = "Content-Type";
 }
