@@ -45,9 +45,10 @@ test("an authenticator app's code logs in, before any mail", async ({ page, api 
 
   await code.fill("000000");
   await main.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(
-    main.getByText("That code didn't work: check it, or wait for the next one.")
-  ).toBeVisible();
+  // The field's error, in the site's words, which the step also reads out.
+  await expect(code).toHaveAccessibleDescription(
+    /That code didn't work: check it, or wait for the next one\./
+  );
   await expect(code).toBeFocused();
 
   await code.fill(MOCK_TOTP_CODE);
