@@ -83,6 +83,14 @@ describe("MfaLink", () => {
     expect(wrapper!.find(".link__outcome").text()).toBe(`${WRONG_LINK} 3 tries left.`);
   });
 
+  it("counts no tries when the link never reached the API", async () => {
+    fetchMock.mockResolvedValueOnce(LOGGED_OUT()).mockRejectedValueOnce(new TypeError("Failed"));
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe("Error connecting to server");
+  });
+
   it("says a wrong last link ended the login", async () => {
     fetchMock
       .mockResolvedValueOnce(LOGGED_OUT())
