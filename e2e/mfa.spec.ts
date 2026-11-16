@@ -1,7 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
-  MFA_EXPIRED_ERROR,
   MOCK_EMAIL,
   MOCK_MFA_CODE,
   MOCK_MFA_LINK_TOKEN,
@@ -12,6 +11,12 @@ import {
   MOCK_TOTP_SECRET,
   test
 } from "./fixtures";
+
+/** The second step's end, in the site's words for the API's 403 `reason`s. */
+const NO_CHALLENGE =
+  "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from.";
+const STEP_EXPIRED = "This login timed out: its second step works for 10 minutes. Log in again.";
+const TRIES_USED_UP = "Too many wrong answers: this login used up its 5 tries. Log in again.";
 
 /** Logs in with the password of `MOCK_EMAIL`, whose account has MFA on, until `method`'s step shows. */
 async function passPassword(page: Page, method = "E-mail code") {
@@ -203,6 +208,34 @@ test("the link opened in another tab logs the step's tab in once it's back", asy
   await expect(page.getByRole("heading", { name: "E-mail code" })).toHaveCount(0);
 });
 
+test("a wrong link that used the last try in another tab ends the step's tab once it's back", async ({
+  page,
+  api
+}) => {
+  api.hasMfaEmail();
+  await passPassword(page);
+  await page.getByRole("button", { name: "E-mail me a code" }).click();
+  for (const code of ["000000", "000001", "000002", "000003"]) {
+    await page.getByLabel("Code from the e-mail").fill(code);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+  }
+  await expect(page.locator(".mfa__tries")).toContainText("1 try left.");
+
+  const appOrigin = new URL(page.url()).origin;
+  const mailTab = await page.context().newPage();
+  await mailTab.route(
+    (url) => url.origin !== appOrigin,
+    (route) => api.handle(route, appOrigin)
+  );
+  await mailTab.goto("/login/mfa#token=not-the-token");
+  await expect(mailTab.getByRole("alert")).toHaveText(TRIES_USED_UP);
+
+  await page.bringToFront();
+  await page.evaluate("document.dispatchEvent(new Event('visibilitychange'))");
+  await expect(page.getByRole("alert")).toHaveText(TRIES_USED_UP);
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+});
+
 test("a new login within the minute says the earlier code doesn't work, and offers no field", async ({
   page,
   api
@@ -238,23 +271,47 @@ test("back from GitHub with ?mfa=required, the step opens with its methods", asy
   expect(new URL(page.url()).search).toBe("");
 });
 
-test("back from GitHub after the step expired, its message takes the focus", async ({ page }) => {
+test("back from GitHub after the step expired, its message takes the focus", async ({
+  page,
+  api
+}) => {
+  api.hasMfaEmail();
+  api.waitsForGithubMfa();
+  api.expiresMfaChallenge();
+
   await page.goto("/login?mfa=required");
 
   const message = page.getByRole("alert");
-  await expect(message).toHaveText(MFA_EXPIRED_ERROR);
+  await expect(message).toHaveText(STEP_EXPIRED);
   await expect(message).toBeFocused();
 });
 
-test("a refused link says so, with the way back to Log in", async ({ page, api }) => {
+test("back from GitHub with no step in this browser, it says so", async ({ page }) => {
+  await page.goto("/login?mfa=required");
+
+  await expect(page.getByRole("alert")).toHaveText(NO_CHALLENGE);
+});
+
+test("a refused link says so with the tries left, and the way back to Log in", async ({
+  page,
+  api
+}) => {
   api.hasMfaEmail();
   await passPassword(page);
 
   await page.goto("/login/mfa#token=not-the-token");
 
   await expect(page.getByRole("alert")).toContainText("The login link is wrong");
+  await expect(page.getByRole("alert")).toContainText("4 tries left.");
   await page.getByRole("link", { name: "Log in again" }).click();
   await expect(page.getByLabel("E-mail")).toBeVisible();
+});
+
+test("a link opened in another browser points to the one that logged in", async ({ page }) => {
+  await page.goto(`/login/mfa#token=${MOCK_MFA_LINK_TOKEN}`);
+
+  await expect(page.getByRole("alert")).toHaveText(NO_CHALLENGE);
+  await expect(page.getByRole("alert")).toBeFocused();
 });
 
 test("an expired step goes back to the password with its message", async ({ page, api }) => {
@@ -264,9 +321,60 @@ test("an expired step goes back to the password with its message", async ({ page
 
   await page.getByRole("button", { name: "E-mail me a code" }).click();
 
-  await expect(page.getByRole("alert")).toHaveText(MFA_EXPIRED_ERROR);
+  await expect(page.getByRole("alert")).toHaveText(STEP_EXPIRED);
   await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
   await expect(page.getByLabel("E-mail")).toHaveValue(MOCK_EMAIL);
+});
+
+for (const [reason, text] of [
+  ["triesUsedUp", TRIES_USED_UP],
+  ["ended", "This login ended: a newer login replaced it, or it already finished. Log in again."]
+] as const) {
+  test(`a step that ${reason === "ended" ? "ended" : "used up its tries"} elsewhere says so on the password form`, async ({
+    page,
+    api
+  }) => {
+    api.hasMfaTotp();
+    await passPassword(page, "Authenticator app");
+    api.expiresMfaChallenge(reason);
+
+    await page.getByLabel("Code from your authenticator app").fill(MOCK_TOTP_CODE);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(text);
+    await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
+  });
+}
+
+test("wrong answers count the step's tries down, across methods, and the last one ends it", async ({
+  page,
+  api
+}) => {
+  api.hasMfaTotp();
+  await passPassword(page, "Authenticator app");
+  const main = page.getByRole("main");
+  const tries = main.locator(".mfa__tries");
+  const sendCode = async (label: string, code: string) => {
+    await main.getByLabel(label).fill(code);
+    await main.getByRole("button", { name: "Log in", exact: true }).click();
+  };
+
+  await sendCode("Code from your authenticator app", "000000");
+  await expect(tries).toHaveText("4 tries left.");
+  await sendCode("Code from your authenticator app", "000001");
+  await expect(tries).toHaveText("3 tries left.");
+
+  // The tries are the step's: a recovery code uses them too.
+  await main.getByRole("button", { name: "Use a recovery code" }).click();
+  await expect(tries).toHaveText("3 tries left.");
+  await sendCode("Recovery code", "wrong-code");
+  await expect(tries).toHaveText("2 tries left.");
+  await sendCode("Recovery code", "wrong-code2");
+  await expect(tries).toHaveText("1 try left. Another wrong answer ends this login.");
+
+  await sendCode("Recovery code", "wrong-code3");
+  await expect(page.getByRole("alert")).toHaveText(TRIES_USED_UP);
+  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
 });
 
 test("Log in again leaves the step for the password form", async ({ page, api }) => {

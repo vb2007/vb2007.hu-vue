@@ -399,12 +399,33 @@ export class Messages {
     static stepLimits(minutes: number, tries: number): string {
       return `This step works for ${minutes} minutes after your password or GitHub login, with ${tries} tries in all.`;
     }
+    /** A wrong answer's tries left (the API's `attemptsLeft`); at 0 the step or setup is over instead. */
+    static triesLeft(left: number): string {
+      return left === 1 ? "1 try left." : `${left} tries left.`;
+    }
     /** None of the methods the API offers is built here yet. */
     static readonly noMethod: string =
       "Your account's second step uses a method this site can't do yet. Ask the site's admin to reset it, then log in again.";
     /** `/login/mfa` opened without a token in its fragment. */
     static readonly linkIncomplete: string =
       "This login link isn't complete: open it again from the e-mail, or log in again.";
+    /** After `triesLeft(1)`, on the step and the link's page: what the last try risks. */
+    static readonly lastTry: string = "Another wrong answer ends this login.";
+    /**
+     * The MFA 403's `reason`s (vb2007/vb2007.hu-api#494), in place of the API's one message.
+     * `noChallenge` is a browser without the step's cookie: the mailed link opened in another one,
+     * or a GitHub login whose step never reached this browser, so it fits both.
+     */
+    static readonly noChallenge: string =
+      "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from.";
+    static stepExpired(minutes: number): string {
+      return `This login timed out: its second step works for ${minutes} minutes. Log in again.`;
+    }
+    static triesUsedUp(tries: number): string {
+      return `Too many wrong answers: this login used up its ${tries} tries. Log in again.`;
+    }
+    static readonly stepEnded: string =
+      "This login ended: a newer login replaced it, or it already finished. Log in again.";
     /** In place of the API's "E-mail MFA turned on/off", in the account page's own words. */
     static readonly emailOn: string =
       "E-mail codes are on: each login now also takes a code or link from your inbox.";

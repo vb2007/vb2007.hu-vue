@@ -137,6 +137,38 @@ describe("MfaStep", () => {
     expect(step.find('[aria-live="assertive"]').text()).toBe("");
   });
 
+  it("counts the step's tries down under the method's heading, read out politely, and marks the last", async () => {
+    const step = mountStep();
+    const tries = () => step.find(".mfa__tries");
+    const spoken = () => step.find('[aria-live="polite"]');
+    await sendCode(step);
+    expect(tries().exists()).toBe(false);
+    expect(spoken().text()).toBe("");
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE, attemptsLeft: 2 }));
+    await step.find("input").setValue("000000");
+    await step.find("form").trigger("submit");
+    await flushPromises();
+    expect(tries().text()).toBe("2 tries left.");
+    expect(tries().attributes("aria-hidden")).toBe("true");
+    expect(tries().classes()).not.toContain("mfa__tries--last");
+    expect(spoken().text()).toBe("2 tries left.");
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE, attemptsLeft: 1 }));
+    await step.find("input").setValue("000001");
+    await step.find("form").trigger("submit");
+    await flushPromises();
+    const last = "1 try left. Another wrong answer ends this login.";
+    expect(tries().text()).toBe(last);
+    expect(tries().classes()).toContain("mfa__tries--last");
+    expect(tries().find("svg").exists()).toBe(true);
+    expect(spoken().text()).toBe(last);
+
+    // The tries are the step's: another method still shows them.
+    await keyNamed(step, "Use a recovery code").trigger("click");
+    expect(tries().text()).toBe(last);
+  });
+
   it("reads a wrong code out with the field when the key was pressed, not twice", async () => {
     const step = mountStep();
     await sendCode(step);
