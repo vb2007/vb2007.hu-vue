@@ -139,7 +139,7 @@ onMounted(() => lead.value?.focus());
   hyphens: auto;
 }
 
-/* Close under the heading, as its subtitle. */
+/* Close under the heading, as its subtitle: takes back `.mfa`'s `gap: var(--sp-4)` down to sp-2. */
 .mfa__tries {
   margin-top: calc(var(--sp-2) - var(--sp-4));
   display: flex;

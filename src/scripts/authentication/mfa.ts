@@ -59,6 +59,22 @@ export const loadMfaMethods = async () => {
 };
 
 /**
+ * Back in the step's tab: another tab may have passed the step (logged in) or ended it, e.g. with
+ * the mailed link's last try. Its 403 then ends this one with the reason, after the same session
+ * lookup as an answer's 403; a step that still waits is left as it is.
+ */
+export const recheckMfa = async () => {
+  const attempt = currentLogin();
+  const result = await apiRequest(Endpoints.Auth.mfaMethods, {
+    failure: Messages.Mfa.methodsFailed,
+    quietStatuses: [HttpStatus.Forbidden]
+  });
+  const ended = result.ok ? undefined : mfaEndOf(result);
+  if (ended === undefined || (await finishedElsewhere(attempt))) return;
+  if (isCurrentLogin(attempt)) endMfa(ended);
+};
+
+/**
  * Sends the second step's answer. A pass finishes the login; an end (the API's 403: the step
  * expired, used up its tries or was replaced by a newer login; or a wrong last try) goes back to
  * the password with its reason. Returns the failure, for the step to show, or nothing once it passed.

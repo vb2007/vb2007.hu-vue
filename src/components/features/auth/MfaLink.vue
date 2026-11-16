@@ -29,7 +29,9 @@ const outcome = useTemplateRef<InstanceType<typeof StatusMessage>>("outcome");
 /** A wrong link's refusal, with the step's tries left: the code still works in the step's tab. */
 const withTriesLeft = (refused: ApiFailure) => {
   const left = refused.kind === "http" ? refused.body?.attemptsLeft : undefined;
-  return left ? `${refused.error} ${Messages.Mfa.triesLeft(left)}` : refused.error;
+  if (!left) return refused.error;
+  const tries = Messages.Mfa.triesLeft(left);
+  return `${refused.error} ${left === 1 ? `${tries} ${Messages.Mfa.lastTry}` : tries}`;
 };
 
 onMounted(async () => {

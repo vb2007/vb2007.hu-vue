@@ -96,7 +96,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all, each wrong answer's 400 carrying the
  * `attemptsLeft` after it (vb2007/vb2007.hu-api#494). Every `/auth/mfa` endpoint answers the API's 403 once the step is over, with its `reason`: `triesUsedUp`
  * after the 5th try, `expired` after its 10 minutes, `ended` once the admin's MFA reset removed it, and `noChallenge` with none in this browser (never started,
- * or passed); `api.expiresMfaChallenge(reason)` ends the waiting step that way (`expired` by default). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
+ * passed, or cleared by an earlier 403, like the API's); `api.expiresMfaChallenge(reason)` ends the waiting step that way (`expired` by default). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
  * Passkeys (vb2007/vb2007.hu-api#446, #484) live on their account (`api.hasPasskey(name, { id })` arranges one, and `GET /user` counts them).
  * The options name the app's own host as the RP ID, so the browser's (virtual) authenticator works, and the double takes whatever
  * credential it sends back, checking only its id: `POST /user/passkeys` stores it for the waiting registration (confirmed like the
@@ -366,10 +366,10 @@ export const MOCK_NEW_RECOVERY_CODES = Array.from(
   (_, i) => `${"klmnopqrst"[i]}7654-${"klmnopqrst"[i]}3276`
 );
 /** The 403 of every `/auth/mfa` endpoint once the second step expired, used up its tries or was replaced. */
-export const MFA_EXPIRED_ERROR =
+const MFA_EXPIRED_ERROR =
   "The login's second step expired, used up its tries or was never started: log in again.";
 /** That 403's `reason` (vb2007/vb2007.hu-api#494). */
-export type MfaEndReason = "noChallenge" | "expired" | "triesUsedUp" | "ended";
+type MfaEndReason = "noChallenge" | "expired" | "triesUsedUp" | "ended";
 /** The API's one refusal of a passkey that doesn't verify: a login's 403, the second step's 400. */
 export const PASSKEY_INVALID_ERROR =
   "The passkey couldn't be verified: try again or log in another way.";
@@ -1804,12 +1804,11 @@ export class MockApi {
 
   /**
    * The waiting second step ends with `reason`: it runs out of time (`expired`, like after its 10 minutes), uses up its
-   * tries, is removed (`ended`), or its cookie leaves the browser (`noChallenge`).
+   * tries, or is removed (`ended`). No step at all answers `noChallenge` by itself.
    */
-  expiresMfaChallenge(reason: MfaEndReason = "expired") {
-    const challenge = this.mfaChallenge;
-    if (!challenge || reason === "noChallenge") this.mfaChallenge = null;
-    else if (reason === "expired") challenge.expiresAt = this.now();
+  expiresMfaChallenge(reason: Exclude<MfaEndReason, "noChallenge"> = "expired") {
+    const challenge = this.mfaChallenge!;
+    if (reason === "expired") challenge.expiresAt = this.now();
     else if (reason === "triesUsedUp") challenge.tries = 5;
     else challenge.ended = true;
   }
@@ -1854,7 +1853,10 @@ export class MockApi {
     return challenge;
   }
 
-  /** The API's 403 once the step is over, with why: used-up tries are told before the expiry, like the API's. */
+  /**
+   * The API's 403 once the step is over, with why: used-up tries are told before the expiry, like the API's. It
+   * clears the step's cookie, so every later request answers `noChallenge`.
+   */
   private mfaEnded(): MockResponse {
     const challenge = this.mfaChallenge;
     const reason: MfaEndReason = !challenge
@@ -1864,6 +1866,7 @@ export class MockApi {
         : challenge.tries >= 5
           ? "triesUsedUp"
           : "expired";
+    this.mfaChallenge = null;
     return { status: 403, body: { error: MFA_EXPIRED_ERROR, reason } };
   }
 

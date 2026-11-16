@@ -251,7 +251,7 @@ describe("mfaEndOf", () => {
   it.each([
     [
       "noChallenge",
-      "This browser has no login waiting for a second step. Open the e-mail's link in the browser where you entered your password, or log in again."
+      "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from."
     ],
     ["expired", "This login timed out: its second step works for 10 minutes. Log in again."],
     ["triesUsedUp", TRIES_USED_UP],

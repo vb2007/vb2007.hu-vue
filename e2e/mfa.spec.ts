@@ -14,7 +14,7 @@ import {
 
 /** The second step's end, in the site's words for the API's 403 `reason`s. */
 const NO_CHALLENGE =
-  "This browser has no login waiting for a second step. Open the e-mail's link in the browser where you entered your password, or log in again.";
+  "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from.";
 const STEP_EXPIRED = "This login timed out: its second step works for 10 minutes. Log in again.";
 const TRIES_USED_UP = "Too many wrong answers: this login used up its 5 tries. Log in again.";
 
@@ -206,6 +206,34 @@ test("the link opened in another tab logs the step's tab in once it's back", asy
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "E-mail code" })).toHaveCount(0);
+});
+
+test("a wrong link that used the last try in another tab ends the step's tab once it's back", async ({
+  page,
+  api
+}) => {
+  api.hasMfaEmail();
+  await passPassword(page);
+  await page.getByRole("button", { name: "E-mail me a code" }).click();
+  for (const code of ["000000", "000001", "000002", "000003"]) {
+    await page.getByLabel("Code from the e-mail").fill(code);
+    await page.getByRole("button", { name: "Log in", exact: true }).click();
+  }
+  await expect(page.locator(".mfa__tries")).toContainText("1 try left.");
+
+  const appOrigin = new URL(page.url()).origin;
+  const mailTab = await page.context().newPage();
+  await mailTab.route(
+    (url) => url.origin !== appOrigin,
+    (route) => api.handle(route, appOrigin)
+  );
+  await mailTab.goto("/login/mfa#token=not-the-token");
+  await expect(mailTab.getByRole("alert")).toHaveText(TRIES_USED_UP);
+
+  await page.bringToFront();
+  await page.evaluate("document.dispatchEvent(new Event('visibilitychange'))");
+  await expect(page.getByRole("alert")).toHaveText(TRIES_USED_UP);
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
 });
 
 test("a new login within the minute says the earlier code doesn't work, and offers no field", async ({

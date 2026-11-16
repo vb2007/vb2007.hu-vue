@@ -83,6 +83,18 @@ describe("MfaLink", () => {
     expect(wrapper!.find(".link__outcome").text()).toBe(`${WRONG_LINK} 3 tries left.`);
   });
 
+  it("says what the last try risks", async () => {
+    fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK, attemptsLeft: 1 }));
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe(
+      `${WRONG_LINK} 1 try left. Another wrong answer ends this login.`
+    );
+  });
+
   it("counts no tries when the link never reached the API", async () => {
     fetchMock.mockResolvedValueOnce(LOGGED_OUT()).mockRejectedValueOnce(new TypeError("Failed"));
     await open("/login/mfa#token=s3cret");
@@ -113,7 +125,7 @@ describe("MfaLink", () => {
     await flushPromises();
 
     expect(wrapper!.find(".link__outcome").text()).toBe(
-      "This browser has no login waiting for a second step. Open the e-mail's link in the browser where you entered your password, or log in again."
+      "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from."
     );
     expect(wrapper!.find("a").text()).toBe("Log in again");
   });

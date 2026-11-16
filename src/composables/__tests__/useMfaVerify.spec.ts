@@ -116,14 +116,29 @@ describe("useMfaVerify", () => {
   describe("back in the tab", () => {
     const returnToTab = () => document.dispatchEvent(new Event("visibilitychange"));
 
+    const STEP_GONE = (reason: string) =>
+      jsonResponse(403, {
+        error:
+          "The login's second step expired, used up its tries or was never started: log in again.",
+        reason
+      });
+    const LOGGED_OUT = () =>
+      jsonResponse(403, { error: "You must be logged in to perform this action." });
+
     it("takes on a session another tab finished, e.g. with the mailed link", async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
+      fetchMock
+        .mockResolvedValueOnce(STEP_GONE("noChallenge"))
+        .mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
       mountVerify();
 
       returnToTab();
       await flushPromises();
 
-      expect(fetchMock).toHaveBeenCalledWith("https://api.test/user", {
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "https://api.test/auth/mfa", {
+        method: "GET",
+        credentials: "include"
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
         method: "GET",
         credentials: "include"
       });
@@ -132,17 +147,42 @@ describe("useMfaVerify", () => {
       expect(mfaMethods.value).toEqual([]);
     });
 
-    it("keeps the step while the login waits for it", async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(403, { error: "You must be logged in to perform this action." })
-      );
+    it("ends the step with its reason when another tab used its last try", async () => {
+      fetchMock.mockResolvedValueOnce(STEP_GONE("triesUsedUp")).mockResolvedValueOnce(LOGGED_OUT());
       mountVerify();
 
       returnToTab();
       await flushPromises();
 
       expect(isLoggedIn.value).toBe(false);
+      expect(mfaMethods.value).toEqual([]);
+      expect(loginStatus.value).toBe(
+        "Too many wrong answers: this login used up its 5 tries. Log in again."
+      );
+    });
+
+    it("keeps the step, as it is, while it still waits", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { methods: ["email", "recovery"] }));
+      mountVerify();
+
+      returnToTab();
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(mfaMethods.value).toEqual(["email"]);
+      expect(loginStatus.value).toBe("mfa-required");
+    });
+
+    it("leaves a login started meanwhile alone", async () => {
+      const response = deferResponse(fetchMock);
+      mountVerify();
+      returnToTab();
+      forgetLogin();
+      fetchMock.mockResolvedValueOnce(LOGGED_OUT());
+      response.respond(STEP_GONE("expired"));
+      await flushPromises();
+
+      expect(loginStatus.value).toBe("");
     });
 
     it("asks nothing while hidden, while an answer is out, or once the step is gone", async () => {
