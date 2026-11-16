@@ -147,7 +147,7 @@ test("a setup that's gone says why", async ({ page, api }) => {
   await code.fill(MOCK_TOTP_CODE);
   await turnOn.click();
   await expect(
-    section.getByRole("status").filter({ hasText: "replaced or finished elsewhere" })
+    section.getByRole("status").filter({ hasText: "a newer setup replaced it" })
   ).toBeFocused();
   await expect(section.getByRole("heading", { name: "Setup ended" })).toBeVisible();
 });
@@ -161,7 +161,7 @@ test("a setup another tab confirmed closes with TOTP on", async ({ page, api }) 
   await section.getByRole("button", { name: "Turn on", exact: true }).click();
 
   await expect(
-    page.getByRole("status").filter({ hasText: "another tab turned it on" })
+    page.getByRole("status").filter({ hasText: "this page missed the answer that turned it on" })
   ).toBeFocused();
   await expect(section.getByRole("group", { name: "Scan the QR code" })).toHaveCount(0);
   await expect(section.getByRole("region", { name: "Your recovery codes" })).toHaveCount(0);
@@ -182,9 +182,7 @@ test("a move whose setup is gone can't tell whether it went through", async ({ p
   await section.getByRole("button", { name: "Move to this app" }).click();
 
   await expect(
-    section
-      .getByRole("status")
-      .filter({ hasText: "If your new app's code works at your next login" })
+    section.getByRole("status").filter({ hasText: "can't tell whether the move went through" })
   ).toBeFocused();
   await expect(section.getByRole("button", { name: "Start again" })).toBeVisible();
 });

@@ -30,6 +30,10 @@ const SAID_OFF = "Authenticator app is off: logins no longer take its codes.";
 const REFUSED = "That code didn't work: check it, or wait for the next one.";
 const LAST_TRY =
   "Enter the 6-digit code your app shows for vb2007.hu. This is your last try: a wrong code ends this setup.";
+const ON_ELSEWHERE =
+  "Authenticator app is on, but this page missed the answer that turned it on, from another tab or a lost connection. To be sure your app's codes work, use Move to a new app. If you didn't save new recovery codes, generate new ones.";
+const GONE =
+  "This setup isn't waiting any more: a newer setup replaced it, maybe from another tab or browser. Start again for a new QR code, and replace what your app added from this one.";
 const HINT =
   "Enter the 6-digit code your app shows for vb2007.hu. This setup works for 10 minutes, with 5 tries.";
 
@@ -241,6 +245,8 @@ describe("AccountPanel's authenticator app", () => {
 
     expect(row(panel).find(".field__error").text()).toBe(REFUSED);
     expect(document.activeElement).toBe(codeField(panel).element);
+    // The focus moved there, which reads the error: nothing more is said.
+    expect(row(panel).find('.setup form [role="status"]').text()).toBe("");
     await codeField(panel).setValue("111111");
     expect(row(panel).find(".field__error").exists()).toBe(false);
 
@@ -297,6 +303,45 @@ describe("AccountPanel's authenticator app", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("says a refusal again when the focus stayed in the field, until the code changes", async () => {
+    const panel = await mountPanel();
+    await openSetup(panel);
+    const spoken = () => row(panel).find('.setup form [role="status"]').text();
+
+    (codeField(panel).element as HTMLInputElement).focus();
+    await confirmWith(panel, "000000", jsonResponse(400, { error: WRONG, attemptsLeft: 3 }));
+    expect(spoken()).toBe(`${REFUSED} 3 tries left.`);
+    await codeField(panel).setValue("11111");
+    expect(spoken()).toBe("");
+
+    await confirmWith(
+      panel,
+      "123456",
+      jsonResponse(429, { error: "Too many failed attempts: try again later.", retryAfter: 1 })
+    );
+    expect(spoken()).toBe("");
+  });
+
+  it("ends for good: the setup's clock doesn't end it again with its own reason", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const panel = await mountPanel();
+      await openSetup(panel);
+      await confirmWith(panel, "000000", jsonResponse(400, { error: WRONG, attemptsLeft: 0 }));
+      const ranOut = row(panel).find(".setup__ran-out");
+      const said = ranOut.text();
+      expect(said).toContain("This setup's 5 tries are used up.");
+      keyNamed(row(panel), "Cancel").element.focus();
+
+      vi.advanceTimersByTime(10 * 60_000);
+      await flushPromises();
+      expect(row(panel).find(".setup__ran-out").text()).toBe(said);
+      expect(document.activeElement).toBe(keyNamed(row(panel), "Cancel").element);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes with TOTP on when no setup waits because another tab confirmed it", async () => {
     const panel = await mountPanel();
     await openSetup(panel);
@@ -314,12 +359,39 @@ describe("AccountPanel's authenticator app", () => {
     expect(fetchMock.mock.calls[2][0]).toBe("https://api.test/user");
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(row(panel).find(".setup").exists()).toBe(false);
-    expect(panel.find(".notice").text()).toBe(
-      "Authenticator app is on: another tab turned it on. If that made new recovery codes, they showed there."
-    );
+    expect(panel.find(".notice").text()).toBe(ON_ELSEWHERE);
     expect(document.activeElement).toBe(panel.find(".notice").element);
     expect(panel.find(".codes").exists()).toBe(false);
     expect(row(panel).find(".badge").text()).toBe("On");
+  });
+
+  it("says TOTP is on after a lost answer, when the retry finds no setup", async () => {
+    const panel = await mountPanel();
+    await openSetup(panel);
+
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await codeField(panel).setValue("123456");
+    await row(panel).find(".setup form").trigger("submit");
+    await flushPromises();
+    expect(row(panel).find('.setup [role="alert"]').exists()).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG, reason: "noSetup" }));
+    await confirmWith(panel, "123456", user(true, 10));
+
+    expect(row(panel).find(".setup").exists()).toBe(false);
+    expect(panel.find(".notice").text()).toBe(ON_ELSEWHERE);
+    expect(panel.find(".codes").exists()).toBe(false);
+  });
+
+  it("starts again when no setup waits and the account can't be looked up", async () => {
+    const panel = await mountPanel();
+    await openSetup(panel);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: WRONG, reason: "noSetup" }));
+    await confirmWith(panel, "123456", jsonResponse(500, {}));
+
+    expect(row(panel).find(".setup__ran-out").text()).toBe(GONE);
+    expect(row(panel).find(".badge").text()).toBe("Off");
   });
 
   it("starts again when no setup waits and TOTP is still off", async () => {
@@ -330,9 +402,7 @@ describe("AccountPanel's authenticator app", () => {
     await confirmWith(panel, "123456", user(false));
 
     const ranOut = row(panel).find(".setup__ran-out");
-    expect(ranOut.text()).toBe(
-      "This setup isn't waiting any more: it was replaced or finished elsewhere, like in another tab. Start again for a new QR code, and replace what your app added from this one."
-    );
+    expect(ranOut.text()).toBe(GONE);
     expect(document.activeElement).toBe(ranOut.element);
     expect(keyNamed(row(panel), "Start again").exists()).toBe(true);
   });
@@ -347,7 +417,7 @@ describe("AccountPanel's authenticator app", () => {
 
     const ranOut = row(panel).find(".setup__ran-out");
     expect(ranOut.text()).toBe(
-      "This setup isn't waiting any more. If your new app's code works at your next login, the move went through; otherwise start again."
+      "This setup isn't waiting any more, and this page can't tell whether the move went through. To be sure, start again and scan the new QR code."
     );
     expect(document.activeElement).toBe(ranOut.element);
     expect(panel.find(".notice").exists()).toBe(false);

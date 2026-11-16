@@ -1798,23 +1798,6 @@ export class MockApi {
     this.setRecoveryCodes(account, MOCK_RECOVERY_CODES);
   }
 
-  /**
-   * Ends the logged-in account's waiting TOTP setup: its 10 minutes are `expired`, another session `replaced` it,
-   * or another tab `confirmed` it, which turns TOTP on with its secret.
-   */
-  endsTotpSetup(how: "expired" | "replaced" | "confirmed") {
-    const user = this.user!;
-    if (how === "expired") {
-      user.totpSetup!.expired = true;
-      return;
-    }
-    delete user.totpSetup;
-    if (how !== "confirmed") return;
-    user.mfa = { ...(user.mfa ?? NO_MFA), totp: true };
-    // Like `confirmTotp`, the first method on brings recovery codes (shown in that other tab).
-    if (!user.recoveryCodes?.length) this.setRecoveryCodes(user, MOCK_RECOVERY_CODES);
-  }
-
   /** The waiting second step runs out of time, like after its 10 minutes. */
   expiresMfaChallenge() {
     this.mfaChallenge = null;
@@ -1991,6 +1974,23 @@ export class MockApi {
     return null;
   }
 
+  /**
+   * Ends the logged-in account's waiting TOTP setup: its 10 minutes are `expired`, another session `replaced` it,
+   * or another tab `confirmed` it, which turns TOTP on with its secret.
+   */
+  endsTotpSetup(how: "expired" | "replaced" | "confirmed") {
+    const user = this.user!;
+    if (how === "expired") {
+      user.totpSetup!.expired = true;
+      return;
+    }
+    delete user.totpSetup;
+    if (how !== "confirmed") return;
+    user.mfa = { ...(user.mfa ?? NO_MFA), totp: true };
+    // Like `confirmTotp`, the first method on brings recovery codes (shown in that other tab).
+    if (!user.recoveryCodes?.length) this.setRecoveryCodes(user, MOCK_RECOVERY_CODES);
+  }
+
   /** `POST /user/mfa/totp`: a new setup, replacing a waiting one; a TOTP that's on stays until it's confirmed. */
   private startTotpSetup(password?: string): MockResponse {
     const refused = this.refuseMfaReauth(password);
@@ -2018,12 +2018,13 @@ export class MockApi {
     }
     const error = "The code is wrong, expired or already used: check it or request a new one.";
     const setup = this.user.totpSetup;
+    // The API's `totpSetupEndReason` order: tries used up before expired.
     const reason = !setup
       ? "noSetup"
-      : setup.expired
-        ? "setupExpired"
-        : setup.tries >= 5
-          ? "setupTriesUsedUp"
+      : setup.tries >= 5
+        ? "setupTriesUsedUp"
+        : setup.expired
+          ? "setupExpired"
           : undefined;
     if (reason) return { status: 400, body: { error, reason } };
     if (code !== MOCK_TOTP_CODE) {
