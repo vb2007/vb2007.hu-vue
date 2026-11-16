@@ -672,6 +672,10 @@ describe("login", () => {
     endMfa("The login's second step expired.");
     expect(mfaMethods.value).toEqual([]);
     expect(loginStatus.value).toBe("The login's second step expired.");
+
+    // A later request's 403 (the cookie went with the first) keeps the real reason.
+    endMfa("This browser has no login waiting for its second step.");
+    expect(loginStatus.value).toBe("The login's second step expired.");
   });
 
   it("finishes a second step like a login, unless it was left on the way", async () => {

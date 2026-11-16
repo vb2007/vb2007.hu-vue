@@ -73,6 +73,63 @@ describe("MfaLink", () => {
     expect(wrapper!.find("a").attributes("href")).toBe("/login");
   });
 
+  it("adds the step's tries left to a wrong link's refusal", async () => {
+    fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK, attemptsLeft: 3 }));
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe(`${WRONG_LINK} 3 tries left.`);
+  });
+
+  it("says what the last try risks", async () => {
+    fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK, attemptsLeft: 1 }));
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe(
+      `${WRONG_LINK} 1 try left. Another wrong answer ends this login.`
+    );
+  });
+
+  it("counts no tries when the link never reached the API", async () => {
+    fetchMock.mockResolvedValueOnce(LOGGED_OUT()).mockRejectedValueOnce(new TypeError("Failed"));
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe("Error connecting to server");
+  });
+
+  it("says a wrong last link ended the login", async () => {
+    fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_LINK, attemptsLeft: 0 }))
+      .mockResolvedValueOnce(LOGGED_OUT());
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe(
+      "Too many wrong answers: this login used up its 5 tries. Log in again."
+    );
+  });
+
+  it("points a link opened in another browser to the one that logged in", async () => {
+    fetchMock
+      .mockResolvedValueOnce(LOGGED_OUT())
+      .mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED, reason: "noChallenge" }))
+      .mockResolvedValueOnce(LOGGED_OUT());
+    await open("/login/mfa#token=s3cret");
+    await flushPromises();
+
+    expect(wrapper!.find(".link__outcome").text()).toBe(
+      "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from."
+    );
+    expect(wrapper!.find("a").text()).toBe("Log in again");
+  });
+
   it("says this browser is logged in already, without sending a link opened again", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "me@example.com" }));
     await open("/login/mfa#token=s3cret");

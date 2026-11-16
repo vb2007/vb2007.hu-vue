@@ -2,8 +2,7 @@ import { onScopeDispose, ref } from "vue";
 import { HttpStatus } from "@/constants/http";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
-import { verifyMfa } from "@/scripts/authentication/mfa";
-import { currentLogin, finishedElsewhere } from "@/scripts/authentication/user";
+import { recheckMfa, verifyMfa } from "@/scripts/authentication/mfa";
 import type { MfaVerifyBody } from "@/types/api/mfa";
 
 /**
@@ -15,6 +14,11 @@ export const useMfaVerify = () => {
   const isVerifying = ref(false);
   /** The API's 400 for a wrong answer, which used a try: about what was typed or presented. */
   const refusal = ref("");
+  /**
+   * The step's tries left after the last wrong answer (the API's `attemptsLeft`), for every method:
+   * it outlasts the refusal, which an edit or another method clears. At 0 the step is over.
+   */
+  const attemptsLeft = ref<number>();
   /** Any other failure: the daily limit, the network. */
   const error = ref("");
   const hold = useRetryHold(error);
@@ -30,6 +34,7 @@ export const useMfaVerify = () => {
 
     if (failure.status === HttpStatus.BadRequest) {
       refusal.value = failure.error;
+      attemptsLeft.value = failure.body?.attemptsLeft ?? attemptsLeft.value;
     } else {
       error.value = failure.error;
       if (failure.status === HttpStatus.TooManyRequests) {
@@ -40,17 +45,18 @@ export const useMfaVerify = () => {
   };
 
   /**
-   * Coming back to the tab looks the session up: the mailed link, which mail apps open in a new
-   * tab, may have finished this login there. One lookup per return, not while an answer is out.
+   * Coming back to the tab looks the step up: the mailed link, which mail apps open in a new tab,
+   * may have finished this login there, or used its last try. One lookup per return, not while an
+   * answer is out.
    */
   const onReturn = () => {
     if (document.hidden || isVerifying.value) return;
-    void finishedElsewhere(currentLogin());
+    void recheckMfa();
   };
   document.addEventListener("visibilitychange", onReturn);
   onScopeDispose(() => document.removeEventListener("visibilitychange", onReturn));
 
-  return { isVerifying, refusal, error, hold, verify };
+  return { isVerifying, refusal, attemptsLeft, error, hold, verify };
 };
 
 /** What a method of the second step is given (its `verifier` prop). */
