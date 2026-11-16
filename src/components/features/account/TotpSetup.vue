@@ -99,6 +99,8 @@ const left = ref<number>();
 const hint = computed(() =>
   left.value === 1 ? Messages.Mfa.totpSetupLastTry(Limits.Code.digits) : setupHint
 );
+/** The refusal again for screen readers when the focus stayed in the field, which doesn't reread it. */
+const spoken = ref("");
 /** Why the setup ended, once it has. */
 const ending = ref("");
 const ranOut = computed(() => !props.setup);
@@ -120,14 +122,16 @@ const { errors, isValid, leave, validate } = useFormValidation({
     early: () => confirmationCodeEarlyError(code.value, invalid)
   }
 });
-watch(code, () => (refusal.value = ""));
-
-const focusField = () => form.value?.querySelector("input")?.focus();
+watch(code, () => {
+  refusal.value = "";
+  spoken.value = "";
+});
 
 const confirm = async () => {
   if (isHeld.value || isConfirming.value || !(await validate(form.value))) return;
   isConfirming.value = true;
   error.value = "";
+  spoken.value = "";
   const result = await apiRequest(Endpoints.User.mfaTotpConfirm, {
     body: { code: code.value.replace(/\s/g, "") },
     failure: Messages.Mfa.verifyFailed,
@@ -154,7 +158,7 @@ const confirm = async () => {
     if (body?.reason === ErrorReason.SetupTriesUsedUp || attemptsLeft === 0) {
       return runOut(true, Messages.Mfa.totpSetupTriesUsedUp(Limits.Mfa.totpSetupAttempts));
     }
-    left.value = typeof attemptsLeft === "number" ? attemptsLeft : undefined;
+    left.value = attemptsLeft;
     // The API's text asks to "request a new one", which an app's code can't be.
     refusal.value =
       left.value === undefined
@@ -171,7 +175,9 @@ const confirm = async () => {
   // The busy key gave up the focus, which goes on to what replaces the form.
   if (next >= deadline) return runOut(true);
   await nextTick();
-  focusField();
+  const field = form.value?.querySelector("input");
+  if (document.activeElement !== field) return field?.focus();
+  if (result.status === HttpStatus.BadRequest) spoken.value = refusal.value;
 };
 
 /**
@@ -182,6 +188,8 @@ const runOut = async (
   focus = panel.value?.contains(document.activeElement),
   why = ranOutOfTime
 ) => {
+  // Ended once, for good: the clock mustn't end it again with its own reason.
+  clearTimeout(timer);
   ending.value = why;
   emit("expire");
   await nextTick();
@@ -275,6 +283,7 @@ onMounted(() => title.value?.focus());
           required
           @blur="leave('code')"
         />
+        <p class="visually-hidden" role="status">{{ spoken }}</p>
         <StatusMessage v-if="shownError" :id="errorId" tone="error" :spoken="hold.spokenFor()">{{
           shownError
         }}</StatusMessage>

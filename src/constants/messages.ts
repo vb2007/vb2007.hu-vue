@@ -442,10 +442,10 @@ export class Messages {
       return `This setup's ${tries} tries are used up. Start again for a new QR code, and replace what your app added from this one.`;
     }
     static readonly totpSetupGone: string =
-      "This setup isn't waiting any more: it was replaced or finished elsewhere, like in another tab. Start again for a new QR code, and replace what your app added from this one.";
-    /** Moving, a setup that's gone may have been confirmed in another tab: TOTP is on either way. */
+      "This setup isn't waiting any more: a newer setup replaced it, maybe from another tab or browser. Start again for a new QR code, and replace what your app added from this one.";
+    /** Moving, TOTP is on either way: this setup confirmed elsewhere, or another one replaced it. */
     static readonly totpMoveUnclear: string =
-      "This setup isn't waiting any more. If your new app's code works at your next login, the move went through; otherwise start again.";
+      "This setup isn't waiting any more, and this page can't tell whether the move went through. To be sure, start again and scan the new QR code.";
     /**
      * In place of the API's wrong-code 400 ("…request a new one"), at login and at the setup: an
      * app's code can't be requested, but the next one comes on its own.
@@ -458,9 +458,12 @@ export class Messages {
     /** The section's own words, rather than the API's "TOTP MFA turned on". */
     static readonly totpOn: string =
       "Authenticator app is on: each login can now take a code from it.";
-    /** A parallel confirm (another tab) turned it on: that answer had any recovery codes. */
+    /**
+     * TOTP turned on without this page getting the answer: another tab's confirm, this one's lost on
+     * the way, or a newer setup's (another secret). Any new recovery codes were in that answer.
+     */
     static readonly totpOnElsewhere: string =
-      "Authenticator app is on: another tab turned it on. If that made new recovery codes, they showed there.";
+      "Authenticator app is on, but this page missed the answer that turned it on, from another tab or a lost connection. To be sure your app's codes work, use Move to a new app. If you didn't save new recovery codes, generate new ones.";
     static readonly totpMoved: string =
       "Moved to your new authenticator app: the old one's codes no longer work.";
     static readonly totpOff: string = "Authenticator app is off: logins no longer take its codes.";
