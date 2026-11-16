@@ -89,6 +89,11 @@ const finish = (message: string, recoveryCodes?: string[]) => {
 };
 const onTurnedOn = (data: MfaTurnOnResponse) =>
   finish(moving.value ? Messages.Mfa.totpMoved : Messages.Mfa.totpOn, data.recoveryCodes);
+/** The setup looked the account up already, which shows TOTP on. */
+const onTurnedOnElsewhere = () => {
+  reset();
+  emit("done", Messages.Mfa.totpOnElsewhere);
+};
 </script>
 
 <template>
@@ -123,6 +128,7 @@ const onTurnedOn = (data: MfaTurnOnResponse) =>
     @cancel="close"
     @restart="restart"
     @expire="setup = null"
+    @turned-on-elsewhere="onTurnedOnElsewhere"
   />
   <div v-else class="keys">
     <BaseButton
