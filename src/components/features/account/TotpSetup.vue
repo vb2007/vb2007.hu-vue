@@ -309,7 +309,8 @@ onMounted(() => title.value?.focus());
                     : "Turn on"
             }}
           </BaseButton>
-          <!-- A refused code may be the app's clock or an old entry: a new setup is a way out. -->
+          <!-- A refused code may be the app's clock, an old entry, or this setup replaced from another
+               tab, which the API answers like a wrong code: a new setup is a way out. -->
           <BaseButton
             v-if="refused"
             size="sm"
@@ -390,6 +391,13 @@ onMounted(() => title.value?.focus());
   display: grid;
   justify-items: start;
   gap: var(--sp-2);
+}
+
+/* Already on the sunk panel: the message drops its own box, which left a narrow row a word a line. */
+.setup .setup__ran-out {
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
 /* Groups of four, which wrap whole on a narrow phone or a large font. */

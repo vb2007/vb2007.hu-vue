@@ -445,7 +445,7 @@ export class Messages {
       "This setup isn't waiting any more: a newer setup replaced it, maybe from another tab or browser. Start again for a new QR code, and replace what your app added from this one.";
     /** Moving, TOTP is on either way: this setup confirmed elsewhere, or another one replaced it. */
     static readonly totpMoveUnclear: string =
-      "This setup isn't waiting any more, and this page can't tell whether the move went through. To be sure, start again and scan the new QR code.";
+      "This setup isn't waiting any more, and this page can't tell whether the move went through. To be sure, start again, scan the new QR code, and remove the entry this one added.";
     /**
      * In place of the API's wrong-code 400 ("…request a new one"), at login and at the setup: an
      * app's code can't be requested, but the next one comes on its own.
@@ -463,7 +463,7 @@ export class Messages {
      * the way, or a newer setup's (another secret). Any new recovery codes were in that answer.
      */
     static readonly totpOnElsewhere: string =
-      "Authenticator app is on, but this page missed the answer that turned it on, from another tab or a lost connection. To be sure your app's codes work, use Move to a new app. If you didn't save new recovery codes, generate new ones.";
+      "Authenticator app is on, but this page missed the answer that turned it on (another tab, or a lost connection), so the entry this page's QR code added may not be the one that works. To be sure, remove it and use Move to a new app. If you didn't save new recovery codes, generate new ones.";
     static readonly totpMoved: string =
       "Moved to your new authenticator app: the old one's codes no longer work.";
     static readonly totpOff: string = "Authenticator app is off: logins no longer take its codes.";
