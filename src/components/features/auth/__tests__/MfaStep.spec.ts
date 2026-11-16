@@ -137,7 +137,7 @@ describe("MfaStep", () => {
     expect(step.find('[aria-live="assertive"]').text()).toBe("");
   });
 
-  it("counts the step's tries down under the method, read out politely, and marks the last", async () => {
+  it("counts the step's tries down under the method's heading, read out politely, and marks the last", async () => {
     const step = mountStep();
     const tries = () => step.find(".mfa__tries");
     const spoken = () => step.find('[aria-live="polite"]');

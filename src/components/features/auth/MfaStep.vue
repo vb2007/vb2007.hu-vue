@@ -55,13 +55,9 @@ onMounted(() => lead.value?.focus());
 
     <template v-if="current">
       <h2 class="mfa__title">{{ current.title }}</h2>
-      <!-- Kept alive, so switching away and back keeps a method's state, e.g. a mailed code's field
-           and its countdown. -->
-      <KeepAlive>
-        <component :is="current.component" :key="current.method" :verifier="verifier" />
-      </KeepAlive>
-      <!-- The step's tries, shared by every method, so it stays when the method changes. Read out
-           once per wrong answer by the region below, after the answer's own refusal. -->
+      <!-- The step's tries, shared by every method, so it stays when the method changes; under the
+           heading, apart from the panel's own keys (a send key's count). Read out once per wrong
+           answer by the region below, after the answer's own refusal. -->
       <p
         v-if="triesLeft"
         class="mfa__tries"
@@ -72,6 +68,11 @@ onMounted(() => lead.value?.focus());
         <span>{{ triesLeft }}</span>
       </p>
       <p class="visually-hidden" aria-live="polite">{{ triesLeft }}</p>
+      <!-- Kept alive, so switching away and back keeps a method's state, e.g. a mailed code's field
+           and its countdown. -->
+      <KeepAlive>
+        <component :is="current.component" :key="current.method" :verifier="verifier" />
+      </KeepAlive>
     </template>
     <StatusMessage v-else tone="error">{{ Messages.Mfa.noMethod }}</StatusMessage>
 
@@ -138,7 +139,9 @@ onMounted(() => lead.value?.focus());
   hyphens: auto;
 }
 
+/* Close under the heading, as its subtitle. */
 .mfa__tries {
+  margin-top: calc(var(--sp-2) - var(--sp-4));
   display: flex;
   align-items: flex-start;
   gap: var(--sp-2);

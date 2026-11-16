@@ -409,7 +409,7 @@ export class Messages {
     /** `/login/mfa` opened without a token in its fragment. */
     static readonly linkIncomplete: string =
       "This login link isn't complete: open it again from the e-mail, or log in again.";
-    /** Under `triesLeft(1)`, on the step and the link's page: what the last try risks. */
+    /** After `triesLeft(1)` on the second step: what the last try risks. */
     static readonly lastTry: string = "Another wrong answer ends this login.";
     /**
      * The MFA 403's `reason`s (vb2007/vb2007.hu-api#494), in place of the API's one message.
