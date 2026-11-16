@@ -399,6 +399,10 @@ export class Messages {
     static stepLimits(minutes: number, tries: number): string {
       return `This step works for ${minutes} minutes after your password or GitHub login, with ${tries} tries in all.`;
     }
+    /** A wrong answer's tries left (the API's `attemptsLeft`); at 0 the step or setup is over instead. */
+    static triesLeft(left: number): string {
+      return left === 1 ? "1 try left." : `${left} tries left.`;
+    }
     /** None of the methods the API offers is built here yet. */
     static readonly noMethod: string =
       "Your account's second step uses a method this site can't do yet. Ask the site's admin to reset it, then log in again.";
