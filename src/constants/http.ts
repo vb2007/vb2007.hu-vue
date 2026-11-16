@@ -43,6 +43,20 @@ export class ErrorReason {
    * (`Limits.Mfa.emailsPerDay`), with `retryAfter`.
    */
   static readonly MfaEmailLimit = "mfaEmailLimit";
+  /** The MFA 403 (every `/auth/mfa*` endpoint) without the step's cookie, e.g. the mailed link opened in another browser. */
+  static readonly NoChallenge = "noChallenge";
+  /** The MFA 403 once the login's second step ran out of time. */
+  static readonly Expired = "expired";
+  /** The MFA 403 once the second step's tries are used up. */
+  static readonly TriesUsedUp = "triesUsedUp";
+  /** The MFA 403 for anything else: a newer login replaced it, it finished already, MFA went off, a suspension. */
+  static readonly Ended = "ended";
+  /** `POST /user/mfa/totp/confirm`'s 400 once the setup's tries are used up. */
+  static readonly SetupTriesUsedUp = "setupTriesUsedUp";
+  /** `POST /user/mfa/totp/confirm`'s 400 once the setup ran out of time. */
+  static readonly SetupExpired = "setupExpired";
+  /** `POST /user/mfa/totp/confirm`'s 400 with no setup waiting for this session: never started, replaced, or already confirmed. */
+  static readonly NoSetup = "noSetup";
 }
 
 /**

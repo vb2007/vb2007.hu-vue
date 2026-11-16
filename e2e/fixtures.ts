@@ -93,8 +93,10 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * and the reset code waiting for its address, like the API's unset `passwordReset`.
  * `api.limitsResetLinks()` answers `POST /auth/password-reset/confirm-link` with the API's 429 after too many rejected links, which waits a fixed 15 minutes and leaves the link usable.
  * `api.hasMfaEmail()` turns e-mail MFA on for `MOCK_EMAIL` (vb2007/vb2007.hu-api#448): its right password then answers 202 with `methods`, `POST /auth/mfa/email` "mails"
- * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all (`api.expiresMfaChallenge()` ends the step, so every
- * `/auth/mfa` endpoint answers 403). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
+ * `MOCK_MFA_CODE` and `MOCK_MFA_LINK_TOKEN`, which `POST /auth/mfa/verify` and `/verify-link` take for 5 tries in all, each wrong answer's 400 carrying the
+ * `attemptsLeft` after it (vb2007/vb2007.hu-api#494). Every `/auth/mfa` endpoint answers the API's 403 once the step is over, with its `reason`: `triesUsedUp`
+ * after the 5th try, `expired` after its 10 minutes, `ended` once the admin's MFA reset removed it, and `noChallenge` with none in this browser (never started,
+ * or passed); `api.expiresMfaChallenge(reason)` ends the waiting step that way (`expired` by default). `PUT` and `DELETE /user/mfa/email` take the password (or a recent GitHub confirmation), and turning on the first method answers `MOCK_RECOVERY_CODES`.
  * Passkeys (vb2007/vb2007.hu-api#446, #484) live on their account (`api.hasPasskey(name, { id })` arranges one, and `GET /user` counts them).
  * The options name the app's own host as the RP ID, so the browser's (virtual) authenticator works, and the double takes whatever
  * credential it sends back, checking only its id: `POST /user/passkeys` stores it for the waiting registration (confirmed like the
@@ -366,7 +368,8 @@ export const MOCK_NEW_RECOVERY_CODES = Array.from(
 /** The 403 of every `/auth/mfa` endpoint once the second step expired, used up its tries or was replaced. */
 export const MFA_EXPIRED_ERROR =
   "The login's second step expired, used up its tries or was never started: log in again.";
-const MFA_EXPIRED: MockResponse = { status: 403, body: { error: MFA_EXPIRED_ERROR } };
+/** That 403's `reason` (vb2007/vb2007.hu-api#494). */
+export type MfaEndReason = "noChallenge" | "expired" | "triesUsedUp" | "ended";
 /** The API's one refusal of a passkey that doesn't verify: a login's 403, the second step's 400. */
 export const PASSKEY_INVALID_ERROR =
   "The passkey couldn't be verified: try again or log in another way.";
@@ -647,6 +650,8 @@ interface MockMfaChallenge {
   mailed: boolean;
   /** Whether `POST /auth/mfa/passkey/options` gave it a challenge, which one passkey answer uses up. */
   passkeyAsked?: boolean;
+  /** Removed while the browser still holds its cookie, e.g. by the admin's MFA reset: the 403's `ended`. */
+  ended?: boolean;
 }
 
 export class MockApi {
@@ -1516,11 +1521,11 @@ export class MockApi {
         const challenge = this.liveMfaChallenge();
         return challenge
           ? { status: 200, body: { methods: this.mfaMethodsOf(challenge.account) } }
-          : MFA_EXPIRED;
+          : this.mfaEnded();
       }
       case "POST /auth/mfa/email": {
         const challenge = this.liveMfaChallenge();
-        if (!challenge) return MFA_EXPIRED;
+        if (!challenge) return this.mfaEnded();
         // One mail a minute per account, kept across logins like the API's.
         const lastSent = this.mfaMailSentAt.get(challenge.account._id) ?? 0;
         const wait = Math.ceil((lastSent + 60_000 - this.now()) / 1000);
@@ -1553,7 +1558,7 @@ export class MockApi {
         return this.passkeyLogin(body?.response);
       case "POST /auth/mfa/passkey/options": {
         const challenge = this.liveMfaChallenge();
-        if (!challenge) return MFA_EXPIRED;
+        if (!challenge) return this.mfaEnded();
         challenge.passkeyAsked = true;
         return {
           status: 200,
@@ -1797,9 +1802,16 @@ export class MockApi {
     this.setRecoveryCodes(account, MOCK_RECOVERY_CODES);
   }
 
-  /** The waiting second step runs out of time, like after its 10 minutes. */
-  expiresMfaChallenge() {
-    this.mfaChallenge = null;
+  /**
+   * The waiting second step ends with `reason`: it runs out of time (`expired`, like after its 10 minutes), uses up its
+   * tries, is removed (`ended`), or its cookie leaves the browser (`noChallenge`).
+   */
+  expiresMfaChallenge(reason: MfaEndReason = "expired") {
+    const challenge = this.mfaChallenge;
+    if (!challenge || reason === "noChallenge") this.mfaChallenge = null;
+    else if (reason === "expired") challenge.expiresAt = this.now();
+    else if (reason === "triesUsedUp") challenge.tries = 5;
+    else challenge.ended = true;
   }
 
   /**
@@ -1837,8 +1849,22 @@ export class MockApi {
   /** The waiting step, while it has time and tries left. */
   private liveMfaChallenge() {
     const challenge = this.mfaChallenge;
-    if (!challenge || challenge.expiresAt <= this.now() || challenge.tries >= 5) return null;
+    if (!challenge || challenge.ended || challenge.expiresAt <= this.now() || challenge.tries >= 5)
+      return null;
     return challenge;
+  }
+
+  /** The API's 403 once the step is over, with why: used-up tries are told before the expiry, like the API's. */
+  private mfaEnded(): MockResponse {
+    const challenge = this.mfaChallenge;
+    const reason: MfaEndReason = !challenge
+      ? "noChallenge"
+      : challenge.ended
+        ? "ended"
+        : challenge.tries >= 5
+          ? "triesUsedUp"
+          : "expired";
+    return { status: 403, body: { error: MFA_EXPIRED_ERROR, reason } };
   }
 
   /**
@@ -1850,7 +1876,7 @@ export class MockApi {
     expected: string | ((answer: string, account: MockUser) => boolean)
   ): MockResponse {
     const challenge = this.liveMfaChallenge();
-    if (!challenge) return MFA_EXPIRED;
+    if (!challenge) return this.mfaEnded();
     if (!answer)
       return { status: 400, body: { error: "You must provide the login link's token." } };
     challenge.tries++;
@@ -1866,7 +1892,8 @@ export class MockApi {
           error:
             expected === MOCK_MFA_LINK_TOKEN
               ? "The login link is wrong, expired or already used, or was opened in another browser: request a new one or log in again."
-              : "The code is wrong, expired or already used: check it or request a new one."
+              : "The code is wrong, expired or already used: check it or request a new one.",
+          attemptsLeft: 5 - challenge.tries
         }
       };
     }
@@ -2194,13 +2221,18 @@ export class MockApi {
   /** A passkey's try at the second step: one of the account's credentials, for options this step asked for. */
   private passMfaPasskey(response: unknown): MockResponse {
     const challenge = this.liveMfaChallenge();
-    if (!challenge) return MFA_EXPIRED;
+    if (!challenge) return this.mfaEnded();
     const id = (response as { id?: unknown } | null)?.id;
     const passkey = challenge.account.passkeys?.find((candidate) => candidate.id === id);
     challenge.tries++;
     const asked = challenge.passkeyAsked;
     challenge.passkeyAsked = false;
-    if (!asked || !passkey) return { status: 400, body: { error: PASSKEY_INVALID_ERROR } };
+    if (!asked || !passkey) {
+      return {
+        status: 400,
+        body: { error: PASSKEY_INVALID_ERROR, attemptsLeft: 5 - challenge.tries }
+      };
+    }
     passkey.lastUsedAt = new Date(this.now()).toISOString();
     this.mfaChallenge = null;
     this.user = challenge.account;
@@ -3244,7 +3276,7 @@ export class MockApi {
       delete account.totpSetupTries;
       account.recoveryCodes = [];
       // Its waiting second step goes too: the next login takes no second step.
-      if (this.mfaChallenge?.account === account) this.mfaChallenge = null;
+      if (this.mfaChallenge?.account === account) this.mfaChallenge.ended = true;
     }
     this.loggedOutUsers.push(id);
     return {

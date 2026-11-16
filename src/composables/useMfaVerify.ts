@@ -15,6 +15,11 @@ export const useMfaVerify = () => {
   const isVerifying = ref(false);
   /** The API's 400 for a wrong answer, which used a try: about what was typed or presented. */
   const refusal = ref("");
+  /**
+   * The step's tries left after the last wrong answer (the API's `attemptsLeft`), for every method:
+   * it outlasts the refusal, which an edit or another method clears. At 0 the step is over.
+   */
+  const attemptsLeft = ref<number>();
   /** Any other failure: the daily limit, the network. */
   const error = ref("");
   const hold = useRetryHold(error);
@@ -30,6 +35,7 @@ export const useMfaVerify = () => {
 
     if (failure.status === HttpStatus.BadRequest) {
       refusal.value = failure.error;
+      attemptsLeft.value = failure.body?.attemptsLeft ?? attemptsLeft.value;
     } else {
       error.value = failure.error;
       if (failure.status === HttpStatus.TooManyRequests) {
@@ -50,7 +56,7 @@ export const useMfaVerify = () => {
   document.addEventListener("visibilitychange", onReturn);
   onScopeDispose(() => document.removeEventListener("visibilitychange", onReturn));
 
-  return { isVerifying, refusal, error, hold, verify };
+  return { isVerifying, refusal, attemptsLeft, error, hold, verify };
 };
 
 /** What a method of the second step is given (its `verifier` prop). */

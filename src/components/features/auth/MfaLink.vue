@@ -8,7 +8,8 @@ import { nextTick, onMounted, ref, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AuthPaths, LoginStatus } from "@/constants/auth";
 import { Messages } from "@/constants/messages";
-import { verifyMfaLink } from "@/scripts/authentication/mfa";
+import type { ApiFailure } from "@/scripts/api/client";
+import { mfaEndOf, verifyMfaLink } from "@/scripts/authentication/mfa";
 import { resetLinkTokenFrom } from "@/scripts/authentication/passwordReset";
 import { fetchUserDetails, loginStatus } from "@/scripts/authentication/user";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -25,6 +26,12 @@ const failure = ref(token ? "" : Messages.Mfa.linkIncomplete);
 const done = ref("");
 const outcome = useTemplateRef<InstanceType<typeof StatusMessage>>("outcome");
 
+/** A wrong link's refusal, with the step's tries left: the code still works in the step's tab. */
+const withTriesLeft = (refused: ApiFailure) => {
+  const left = refused.kind === "http" ? refused.body?.attemptsLeft : undefined;
+  return left ? `${refused.error} ${Messages.Mfa.triesLeft(left)}` : refused.error;
+};
+
 onMounted(async () => {
   if (token) {
     // Out of the address bar and the history entry before it's sent.
@@ -35,7 +42,7 @@ onMounted(async () => {
       done.value = "You're already logged in.";
     } else {
       const refused = await verifyMfaLink(token);
-      if (refused) failure.value = refused.error;
+      if (refused) failure.value = mfaEndOf(refused) ?? withTriesLeft(refused);
       else if (loginStatus.value === LoginStatus.Success) done.value = "Login successful!";
       else failure.value = loginStatus.value;
     }

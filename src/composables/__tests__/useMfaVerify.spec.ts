@@ -70,6 +70,24 @@ describe("useMfaVerify", () => {
     expect(error.value).toBe("Error connecting to server");
   });
 
+  it("keeps the step's tries left from the last wrong answer that named them", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE, attemptsLeft: 3 }))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(jsonResponse(400, { error: "You must provide the code." }))
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE, attemptsLeft: 2 }));
+    const { verify, attemptsLeft } = mountVerify().api;
+    expect(attemptsLeft.value).toBeUndefined();
+
+    await verify(body);
+    expect(attemptsLeft.value).toBe(3);
+    await verify(body);
+    await verify(body);
+    expect(attemptsLeft.value).toBe(3);
+    await verify(body);
+    expect(attemptsLeft.value).toBe(2);
+  });
+
   it("holds every answer for the daily limit's wait, without asking the API", async () => {
     vi.useFakeTimers();
     fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: TOO_MANY, retryAfter: 3600 }));

@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import type { ApiFailure } from "@/scripts/api/client";
 import {
   loadMfaMethods,
   loadMfaPasskeyOptions,
+  mfaEndOf,
   verifyMfa,
   verifyMfaLink
 } from "@/scripts/authentication/mfa";
+import type { ApiErrorBody } from "@/types/api/common";
 import { forgetLogin, loginStatus, mfaMethods, startMfa } from "@/scripts/authentication/user";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { clearSession } from "@/scripts/authentication/user";
@@ -232,5 +235,64 @@ describe("loadMfaPasskeyOptions", () => {
 
     expect(await loadMfaPasskeyOptions()).toMatchObject({ ok: false, error: "Not on." });
     expect(mfaMethods.value).toEqual(["email", "passkey"]);
+  });
+});
+
+describe("mfaEndOf", () => {
+  const TRIES_USED_UP = "Too many wrong answers: this login used up its 5 tries. Log in again.";
+  const http = (status: number, body: ApiErrorBody | null): ApiFailure => ({
+    ok: false,
+    kind: "http",
+    status,
+    error: body?.error ?? "Failed",
+    body
+  });
+
+  it.each([
+    [
+      "noChallenge",
+      "This browser has no login waiting for a second step. Open the e-mail's link in the browser where you entered your password, or log in again."
+    ],
+    ["expired", "This login timed out: its second step works for 10 minutes. Log in again."],
+    ["triesUsedUp", TRIES_USED_UP],
+    ["ended", "This login ended: a newer login replaced it, or it already finished. Log in again."]
+  ])("puts the 403's %s in the site's words", (reason, text) => {
+    expect(mfaEndOf(http(403, { error: EXPIRED, reason }))).toBe(text);
+  });
+
+  it("keeps the API's message for a 403 without a reason it knows", () => {
+    expect(mfaEndOf(http(403, { error: EXPIRED, reason: "somethingNew" }))).toBe(EXPIRED);
+    expect(mfaEndOf(http(403, null))).toBe("Failed");
+  });
+
+  it("ends the step on a wrong last try, like the used-up tries' 403", () => {
+    expect(mfaEndOf(http(400, { error: WRONG_CODE, attemptsLeft: 0 }))).toBe(TRIES_USED_UP);
+  });
+
+  it("leaves the step on with tries left, and after any other failure", () => {
+    expect(mfaEndOf(http(400, { error: WRONG_CODE, attemptsLeft: 1 }))).toBeUndefined();
+    expect(mfaEndOf(http(400, { error: "You must provide the code." }))).toBeUndefined();
+    expect(mfaEndOf(http(429, null))).toBeUndefined();
+    expect(mfaEndOf({ ok: false, kind: "network", status: 0, error: "Offline" })).toBeUndefined();
+  });
+
+  it("goes back to the password with the reason, from an answer, the methods or the passkey options", async () => {
+    startMfa(["email"]);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(400, { error: WRONG_CODE, attemptsLeft: 0 }))
+      .mockResolvedValueOnce(LOGGED_OUT());
+    expect(await verifyMfa({ method: "email", code: "000000" })).toMatchObject({ status: 400 });
+    expect(mfaMethods.value).toEqual([]);
+    expect(loginStatus.value).toBe(TRIES_USED_UP);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED, reason: "noChallenge" }));
+    await loadMfaMethods();
+    expect(loginStatus.value).toMatch(/^This browser has no login waiting/);
+
+    startMfa(["email", "passkey"]);
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: EXPIRED, reason: "ended" }));
+    await loadMfaPasskeyOptions();
+    expect(mfaMethods.value).toEqual([]);
+    expect(loginStatus.value).toMatch(/^This login ended/);
   });
 });

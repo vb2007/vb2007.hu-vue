@@ -1,6 +1,7 @@
 import { LoginStatus } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpStatus } from "@/constants/http";
+import { ErrorReason, HttpStatus } from "@/constants/http";
+import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { apiErrorOf, apiRequest, type ApiFailure, type ApiResult } from "@/scripts/api/client";
 import {
@@ -16,6 +17,30 @@ import type { MessageResponse } from "@/types/api/common";
 import type { MfaVerifyBody } from "@/types/api/mfa";
 
 /**
+ * Why the failure ended the second step, in the site's words, or `undefined` when it didn't: the
+ * API's 403 by its `reason` (vb2007/vb2007.hu-api#494, its own message for one the site doesn't
+ * know), or a wrong answer that used the last try (`attemptsLeft: 0`), which the next one would get.
+ */
+export const mfaEndOf = (failure: ApiFailure): string | undefined => {
+  if (failure.kind !== "http") return;
+  if (failure.body?.attemptsLeft === 0)
+    return Messages.Mfa.triesUsedUp(Limits.Mfa.challengeAttempts);
+  if (failure.status !== HttpStatus.Forbidden) return;
+  switch (failure.body?.reason) {
+    case ErrorReason.NoChallenge:
+      return Messages.Mfa.noChallenge;
+    case ErrorReason.Expired:
+      return Messages.Mfa.stepExpired(Limits.Mfa.challengeMinutes);
+    case ErrorReason.TriesUsedUp:
+      return Messages.Mfa.triesUsedUp(Limits.Mfa.challengeAttempts);
+    case ErrorReason.Ended:
+      return Messages.Mfa.stepEnded;
+    default:
+      return failure.error;
+  }
+};
+
+/**
  * Back from a GitHub login with `?mfa=required`: asks which methods the waiting second step takes
  * (vb2007/vb2007.hu-api#448). An expired step's 403 shows on the login form.
  */
@@ -29,14 +54,14 @@ export const loadMfaMethods = async () => {
   if (result.ok) {
     startMfa(result.data.methods);
   } else {
-    loginStatus.value = apiErrorOf(result) ?? LoginStatus.UnknownError;
+    loginStatus.value = mfaEndOf(result) ?? apiErrorOf(result) ?? LoginStatus.UnknownError;
   }
 };
 
 /**
- * Sends the second step's answer. A pass finishes the login; the API's 403 (the step expired, used
- * up its tries or was replaced by a newer login) goes back to the password with its message.
- * Returns the failure, for the step to show, or nothing once it passed.
+ * Sends the second step's answer. A pass finishes the login; an end (the API's 403: the step
+ * expired, used up its tries or was replaced by a newer login; or a wrong last try) goes back to
+ * the password with its reason. Returns the failure, for the step to show, or nothing once it passed.
  */
 const passMfa = async (
   request: Promise<ApiResult<MessageResponse>>
@@ -47,10 +72,11 @@ const passMfa = async (
     await finishLogin(attempt);
     return;
   }
-  if (result.status === HttpStatus.Forbidden) {
+  const ended = mfaEndOf(result);
+  if (ended !== undefined) {
     // The step is gone once another tab passed it (its mailed link, say): then this one's logged in.
     if (await finishedElsewhere(attempt)) return;
-    if (isCurrentLogin(attempt)) endMfa(result.error);
+    if (isCurrentLogin(attempt)) endMfa(ended);
   }
   return result;
 };
@@ -76,9 +102,8 @@ export const loadMfaPasskeyOptions = async () => {
     failure: Messages.Passkeys.optionsFailed,
     quietStatuses: [HttpStatus.Forbidden]
   });
-  if (!result.ok && result.status === HttpStatus.Forbidden && isCurrentLogin(attempt)) {
-    endMfa(result.error);
-  }
+  const ended = result.ok ? undefined : mfaEndOf(result);
+  if (ended !== undefined && isCurrentLogin(attempt)) endMfa(ended);
   return result;
 };
 
