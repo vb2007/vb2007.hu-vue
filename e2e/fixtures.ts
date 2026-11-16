@@ -101,7 +101,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * MFA settings), `POST /auth/passkey` logs in the account that owns it after `/options`, and with e-mail MFA or TOTP on the second step lists
  * `passkey` and takes one of the account's after `POST /auth/mfa/passkey/options`; anything else gets `PASSKEY_INVALID_ERROR`.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
- * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries; `DELETE /user/mfa/totp` turns it off.
+ * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries
+ * (vb2007/vb2007.hu-api#494: a wrong code answers `attemptsLeft`, a setup that's gone `reason`, and `api.endsTotpSetup(how)` ends one); `DELETE /user/mfa/totp` turns it off.
  * Each recovery code passes `POST /auth/mfa/verify` with `method: "recovery"` once (case, spaces and dashes ignored); `POST /user/mfa/recovery-codes` replaces them with `MOCK_NEW_RECOVERY_CODES`.
  * Registering mails `REGISTRATION_CODE` and keeps only the address, like the API (vb2007/vb2007.hu-api#295): an account's address gets the same 202, and a taken name a 409.
  * `POST /auth/register/verify` takes the code with a username and password, which create and log in the account (the password becomes `api.password`). It answers 409 when the
@@ -622,8 +623,8 @@ interface MockUser {
    * `passkeys` and `recoveryCodesLeft` counts are always derived from the lists below (see `mfaStatusOf`).
    */
   mfa?: MockMfaStatus;
-  /** A TOTP setup waiting for its first code (vb2007/vb2007.hu-api#447), with the tries it used. */
-  totpSetupTries?: number;
+  /** A TOTP setup waiting for its first code (vb2007/vb2007.hu-api#447), with the tries it used and whether its time is up. */
+  totpSetup?: { tries: number; expired?: boolean };
   /** The unused recovery codes (see `setRecoveryCodes`). */
   recoveryCodes?: string[];
   /** Passkeys (vb2007/vb2007.hu-api#446), oldest first, as `GET /user/passkeys` lists them; an MFA reset keeps them. */
@@ -1797,6 +1798,20 @@ export class MockApi {
     this.setRecoveryCodes(account, MOCK_RECOVERY_CODES);
   }
 
+  /**
+   * Ends the logged-in account's waiting TOTP setup: its 10 minutes are `expired`, another session `replaced` it,
+   * or another tab `confirmed` it, which turns TOTP on with its secret.
+   */
+  endsTotpSetup(how: "expired" | "replaced" | "confirmed") {
+    const user = this.user!;
+    if (how === "expired") {
+      user.totpSetup!.expired = true;
+      return;
+    }
+    delete user.totpSetup;
+    if (how === "confirmed") user.mfa = { ...(user.mfa ?? NO_MFA), totp: true };
+  }
+
   /** The waiting second step runs out of time, like after its 10 minutes. */
   expiresMfaChallenge() {
     this.mfaChallenge = null;
@@ -1978,7 +1993,7 @@ export class MockApi {
     const refused = this.refuseMfaReauth(password);
     if (refused) return refused;
     const user = this.user!;
-    user.totpSetupTries = 0;
+    user.totpSetup = { tries: 0 };
     const secret = MOCK_TOTP_SECRET;
     return {
       status: 200,
@@ -1989,23 +2004,30 @@ export class MockApi {
     };
   }
 
-  /** `POST /user/mfa/totp/confirm`: a wrong code and a setup that's gone or used up answer the same 400. */
+  /**
+   * `POST /user/mfa/totp/confirm` (vb2007/vb2007.hu-api#494): a wrong code answers the setup's `attemptsLeft`, a setup
+   * that's gone the same 400 with its `reason` instead.
+   */
   private confirmTotp(code?: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (!code) {
       return { status: 400, body: { error: "You must provide the confirmation code." } };
     }
-    const tries = this.user.totpSetupTries;
-    if (tries === undefined || tries >= 5 || code !== MOCK_TOTP_CODE) {
-      if (tries !== undefined) this.user.totpSetupTries = tries + 1;
-      return {
-        status: 400,
-        body: {
-          error: "The code is wrong, expired or already used: check it or request a new one."
-        }
-      };
+    const error = "The code is wrong, expired or already used: check it or request a new one.";
+    const setup = this.user.totpSetup;
+    const reason = !setup
+      ? "noSetup"
+      : setup.expired
+        ? "setupExpired"
+        : setup.tries >= 5
+          ? "setupTriesUsedUp"
+          : undefined;
+    if (reason) return { status: 400, body: { error, reason } };
+    if (code !== MOCK_TOTP_CODE) {
+      setup!.tries++;
+      return { status: 400, body: { error, attemptsLeft: 5 - setup!.tries } };
     }
-    delete this.user.totpSetupTries;
+    delete this.user.totpSetup;
     const current = this.user.mfa ?? NO_MFA;
     const message = "TOTP MFA turned on: logins now also need a code from the authenticator app.";
     this.user.mfa = { ...current, totp: true };
@@ -2217,7 +2239,7 @@ export class MockApi {
     if (refused) return refused;
     const user = this.user!;
     const current = user.mfa ?? NO_MFA;
-    delete user.totpSetupTries;
+    delete user.totpSetup;
     user.mfa = { ...current, totp: false };
     // With no other method on, the recovery codes go too.
     if (!current.email) this.setRecoveryCodes(user, []);
@@ -3241,7 +3263,7 @@ export class MockApi {
     if (account) {
       // Its passkeys stay, and with them their count.
       account.mfa = { ...NO_MFA };
-      delete account.totpSetupTries;
+      delete account.totpSetup;
       account.recoveryCodes = [];
       // Its waiting second step goes too: the next login takes no second step.
       if (this.mfaChallenge?.account === account) this.mfaChallenge = null;

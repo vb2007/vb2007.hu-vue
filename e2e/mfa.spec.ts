@@ -91,22 +91,102 @@ test("an authenticator app is set up with its QR code and first code, showing th
   await expect(section.getByRole("button", { name: "Move to a new app" })).toBeVisible();
 });
 
-test("a setup whose tries ran out offers to start again", async ({ page, api }) => {
+test("a setup counts its tries down, and offers to start again once they're used up", async ({
+  page,
+  api
+}) => {
   api.loggedInAs(MOCK_EMAIL, "e2e");
   const section = await startTotpSetup(page);
   const code = section.getByLabel("Code from your app");
-  for (let tries = 0; tries < 5; tries++) {
-    await code.fill(`00000${tries}`);
+  for (const left of [
+    /4 tries left\./,
+    /3 tries left\./,
+    /2 tries left\./,
+    /This is your last try/
+  ]) {
+    await code.fill("000000");
     await section.getByRole("button", { name: "Turn on", exact: true }).click();
-    if (tries < 4) await expect(code).toBeFocused();
+    await expect(code).toBeFocused();
+    await expect(code).toHaveAccessibleDescription(left);
   }
+  // The last try stays in the hint while the next code is typed.
+  await code.fill("00000");
+  await expect(code).toHaveAccessibleDescription(
+    /This is your last try: a wrong code ends this setup\./
+  );
+  await code.fill("000000");
+  await section.getByRole("button", { name: "Turn on", exact: true }).click();
 
   await expect(
-    section.getByRole("status").filter({ hasText: "This setup has run out" })
+    section.getByRole("status").filter({ hasText: "This setup's 5 tries are used up." })
   ).toBeFocused();
+  await expect(section.getByRole("heading", { name: "Setup ended" })).toBeVisible();
   await expect(section.getByRole("img")).toHaveCount(0);
   await section.getByRole("button", { name: "Start again" }).click();
   await expect(section.getByLabel("Password")).toBeFocused();
+});
+
+test("a setup that's gone says why", async ({ page, api }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  const section = await startTotpSetup(page);
+  const code = section.getByLabel("Code from your app");
+  const turnOn = section.getByRole("button", { name: "Turn on", exact: true });
+  await expect(code).toBeVisible();
+  api.endsTotpSetup("expired");
+  await code.fill(MOCK_TOTP_CODE);
+  await turnOn.click();
+  await expect(
+    section.getByRole("status").filter({ hasText: "This setup ran out of time" })
+  ).toBeFocused();
+
+  await section.getByRole("button", { name: "Start again" }).click();
+  await section.getByLabel("Password").fill(MOCK_PASSWORD);
+  await section.getByRole("button", { name: "Continue" }).click();
+  await expect(code).toBeVisible();
+  api.endsTotpSetup("replaced");
+  await code.fill(MOCK_TOTP_CODE);
+  await turnOn.click();
+  await expect(
+    section.getByRole("status").filter({ hasText: "replaced or finished elsewhere" })
+  ).toBeFocused();
+  await expect(section.getByRole("heading", { name: "Setup ended" })).toBeVisible();
+});
+
+test("a setup another tab confirmed closes with TOTP on", async ({ page, api }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  const section = await startTotpSetup(page);
+  await expect(section.getByLabel("Code from your app")).toBeVisible();
+  api.endsTotpSetup("confirmed");
+  await section.getByLabel("Code from your app").fill(MOCK_TOTP_CODE);
+  await section.getByRole("button", { name: "Turn on", exact: true }).click();
+
+  await expect(
+    page.getByRole("status").filter({ hasText: "another tab turned it on" })
+  ).toBeFocused();
+  await expect(section.getByRole("group")).toHaveCount(0);
+  await expect(section.getByRole("region", { name: "Your recovery codes" })).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Move to a new app" })).toBeVisible();
+});
+
+test("a move whose setup is gone can't tell whether it went through", async ({ page, api }) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasMfaTotp();
+  await page.goto("/account");
+  const section = page.getByRole("region", { name: "Two-step login" });
+  await section.getByRole("button", { name: "Move to a new app" }).click();
+  await section.getByLabel("Password").fill(MOCK_PASSWORD);
+  await section.getByRole("button", { name: "Continue" }).click();
+  await expect(section.getByLabel("Code from your app")).toBeVisible();
+  api.endsTotpSetup("confirmed");
+  await section.getByLabel("Code from your app").fill(MOCK_TOTP_CODE);
+  await section.getByRole("button", { name: "Move to this app" }).click();
+
+  await expect(
+    section
+      .getByRole("status")
+      .filter({ hasText: "If your new app's code works at your next login" })
+  ).toBeFocused();
+  await expect(section.getByRole("button", { name: "Start again" })).toBeVisible();
 });
 
 test("an authenticator app turns off with the password", async ({ page, api }) => {
