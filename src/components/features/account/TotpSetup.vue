@@ -4,10 +4,11 @@
  * the secret to type in instead, and the app's first code, which turns it on. The secret is only
  * in this component's props: closing it drops it, and the API never sends it again.
  *
- * The confirm's 400 is the same for a wrong code and a setup that's gone, so the setup's time and
- * tries are counted here: once they're used up (or a 429's wait outlasts them), it says so and
- * `expire` asks the parent to drop the dead secret, which leaves `setup` null. The only way on is
- * to start again.
+ * The confirm's 400 tells a wrong code (with the setup's `attemptsLeft`) from a setup that's gone
+ * (its `reason`, vb2007/vb2007.hu-api#494). Once it's gone, at the last try, or when its time runs
+ * out here (or a 429's wait outlasts it), the panel says why and `expire` asks the parent to drop
+ * the dead secret, which leaves `setup` null. The only way on is to start again. `noSetup` may also
+ * mean a parallel confirm in another tab won, so the account is looked up again first.
  */
 import {
   computed,
@@ -21,7 +22,7 @@ import {
 } from "vue";
 import { encode } from "uqr";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpStatus } from "@/constants/http";
+import { ErrorReason, HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
@@ -29,6 +30,8 @@ import { useClipboard } from "@/composables/useClipboard";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
+import { mfa } from "@/scripts/authentication/authState";
+import { fetchUserDetails } from "@/scripts/authentication/user";
 import {
   confirmationCodeEarlyError,
   confirmationCodeError
@@ -53,6 +56,8 @@ const emit = defineEmits<{
   restart: [];
   /** The setup ran out: its secret is no use any more. */
   expire: [];
+  /** Not moving, a confirm in another tab turned it on (and got any recovery codes). */
+  turnedOnElsewhere: [];
 }>();
 
 /** The QR code as one path of dark modules, a run per row segment, with the 4-module quiet zone. */
@@ -70,11 +75,12 @@ const qr = computed(() => {
 const groupedSecret = computed(() => props.setup!.secret.match(/.{1,4}/g)!.join(" "));
 
 const invalid = Messages.Mfa.totpCodeInvalid(Limits.Code.digits);
-const hint = Messages.Mfa.totpSetupHint(
+const setupHint = Messages.Mfa.totpSetupHint(
   Limits.Code.digits,
   Limits.Mfa.totpSetupMinutes,
   Limits.Mfa.totpSetupAttempts
 );
+const ranOutOfTime = Messages.Mfa.totpSetupRanOut(Limits.Mfa.totpSetupMinutes);
 /** The API's minutes started at its answer, a moment before this opened: end a little early. */
 const EARLY_MS = 30_000;
 const deadline = Date.now() + Limits.Mfa.totpSetupMinutes * 60_000 - EARLY_MS;
@@ -85,7 +91,16 @@ const isConfirming = ref(false);
 const refusal = ref("");
 /** Anything else: the per-account limit on codes, the network. */
 const error = ref("");
-const tries = ref(0);
+/** Whether a code was refused, which offers to start again. */
+const refused = ref(false);
+/** The setup's tries left after the last refusal, from the API. */
+const left = ref<number>();
+/** The last try is the hint's, so it stays while the next code is typed, which clears the refusal. */
+const hint = computed(() =>
+  left.value === 1 ? Messages.Mfa.totpSetupLastTry(Limits.Code.digits) : setupHint
+);
+/** Why the setup ended, once it has. */
+const ending = ref("");
 const ranOut = computed(() => !props.setup);
 const hold = useRetryHold(error);
 const isHeld = computed(() => hold.isHeld());
@@ -118,15 +133,33 @@ const confirm = async () => {
     failure: Messages.Mfa.verifyFailed,
     quietStatuses: [HttpStatus.BadRequest]
   });
+  const body = result.ok || result.status !== HttpStatus.BadRequest ? null : result.body;
+  const noSetup = body?.reason === ErrorReason.NoSetup;
+  // A parallel confirm may have won and removed the setup: the account says whether TOTP is on.
+  if (noSetup) await fetchUserDetails();
   isConfirming.value = false;
   if (result.ok) return emit("done", result.data);
 
   /** When the next try could go: now, or after a 429's wait. */
   let next = Date.now();
   if (result.status === HttpStatus.BadRequest) {
-    tries.value++;
+    refused.value = true;
+    const attemptsLeft = body?.attemptsLeft;
+    if (noSetup) {
+      if (!mfa.value.totp) return runOut(true, Messages.Mfa.totpSetupGone);
+      // Moving, TOTP was on already: a won move and a replaced setup look the same.
+      return props.moving ? runOut(true, Messages.Mfa.totpMoveUnclear) : emit("turnedOnElsewhere");
+    }
+    if (body?.reason === ErrorReason.SetupExpired) return runOut(true, ranOutOfTime);
+    if (body?.reason === ErrorReason.SetupTriesUsedUp || attemptsLeft === 0) {
+      return runOut(true, Messages.Mfa.totpSetupTriesUsedUp(Limits.Mfa.totpSetupAttempts));
+    }
+    left.value = typeof attemptsLeft === "number" ? attemptsLeft : undefined;
     // The API's text asks to "request a new one", which an app's code can't be.
-    refusal.value = Messages.Mfa.totpCodeRefused;
+    refusal.value =
+      left.value === undefined || left.value === 1
+        ? Messages.Mfa.totpCodeRefused
+        : `${Messages.Mfa.totpCodeRefused} ${Messages.Mfa.triesLeft(left.value)}`;
   } else {
     error.value = result.error;
     if (result.status === HttpStatus.TooManyRequests) {
@@ -136,16 +169,20 @@ const confirm = async () => {
     }
   }
   // The busy key gave up the focus, which goes on to what replaces the form.
-  if (tries.value >= Limits.Mfa.totpSetupAttempts || next >= deadline) return runOut(true);
+  if (next >= deadline) return runOut(true);
   await nextTick();
   focusField();
 };
 
 /**
- * The setup can't be confirmed any more: the message replaces it, and takes the focus if it was in
- * the panel (or `focus` says to), so it isn't lost with the field.
+ * The setup can't be confirmed any more: the message (`why`) replaces it, and takes the focus if it
+ * was in the panel (or `focus` says to), so it isn't lost with the field.
  */
-const runOut = async (focus = panel.value?.contains(document.activeElement)) => {
+const runOut = async (
+  focus = panel.value?.contains(document.activeElement),
+  why = ranOutOfTime
+) => {
+  ending.value = why;
   emit("expire");
   await nextTick();
   if (focus) ranOutMessage.value?.$el.focus();
@@ -169,15 +206,13 @@ onMounted(() => title.value?.focus());
 <template>
   <div ref="panel" class="setup" role="group" :aria-labelledby="titleId" @keydown.esc="cancel">
     <h4 :id="titleId" ref="title" class="setup__title" tabindex="-1">
-      {{ ranOut ? "Setup ran out" : moving ? "Scan with your new app" : "Scan the QR code" }}
+      {{ ranOut ? "Setup ended" : moving ? "Scan with your new app" : "Scan the QR code" }}
     </h4>
 
     <template v-if="!setup">
       <!-- Held by the code checks' 429 past the setup's end: a new one waits for it too. -->
       <StatusMessage ref="ranOutMessage" class="setup__ran-out" tone="info" tabindex="-1">{{
-        isHeld
-          ? Messages.Mfa.totpSetupHeldOut
-          : Messages.Mfa.totpSetupRanOut(Limits.Mfa.totpSetupMinutes, Limits.Mfa.totpSetupAttempts)
+        isHeld ? Messages.Mfa.totpSetupHeldOut : ending
       }}</StatusMessage>
       <div class="setup__actions">
         <BaseButton
@@ -265,9 +300,9 @@ onMounted(() => title.value?.focus());
                     : "Turn on"
             }}
           </BaseButton>
-          <!-- Another tab may have replaced this setup, which reads like a wrong code. -->
+          <!-- A refused code may be the app's clock or an old entry: a new setup is a way out. -->
           <BaseButton
-            v-if="tries"
+            v-if="refused"
             size="sm"
             variant="secondary"
             :disabled="isConfirming"
