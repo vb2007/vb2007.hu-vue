@@ -1809,7 +1809,10 @@ export class MockApi {
       return;
     }
     delete user.totpSetup;
-    if (how === "confirmed") user.mfa = { ...(user.mfa ?? NO_MFA), totp: true };
+    if (how !== "confirmed") return;
+    user.mfa = { ...(user.mfa ?? NO_MFA), totp: true };
+    // Like `confirmTotp`, the first method on brings recovery codes (shown in that other tab).
+    if (!user.recoveryCodes?.length) this.setRecoveryCodes(user, MOCK_RECOVERY_CODES);
   }
 
   /** The waiting second step runs out of time, like after its 10 minutes. */

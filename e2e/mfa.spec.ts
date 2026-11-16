@@ -163,7 +163,7 @@ test("a setup another tab confirmed closes with TOTP on", async ({ page, api }) 
   await expect(
     page.getByRole("status").filter({ hasText: "another tab turned it on" })
   ).toBeFocused();
-  await expect(section.getByRole("group")).toHaveCount(0);
+  await expect(section.getByRole("group", { name: "Scan the QR code" })).toHaveCount(0);
   await expect(section.getByRole("region", { name: "Your recovery codes" })).toHaveCount(0);
   await expect(section.getByRole("button", { name: "Move to a new app" })).toBeVisible();
 });

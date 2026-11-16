@@ -157,7 +157,7 @@ const confirm = async () => {
     left.value = typeof attemptsLeft === "number" ? attemptsLeft : undefined;
     // The API's text asks to "request a new one", which an app's code can't be.
     refusal.value =
-      left.value === undefined || left.value === 1
+      left.value === undefined
         ? Messages.Mfa.totpCodeRefused
         : `${Messages.Mfa.totpCodeRefused} ${Messages.Mfa.triesLeft(left.value)}`;
   } else {

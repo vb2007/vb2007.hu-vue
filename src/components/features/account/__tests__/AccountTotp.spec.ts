@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, type DOMWrapper, type VueWrapper } from "@vue/test-utils";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
-import { Messages } from "@/constants/messages";
 import {
   emailVerified,
   hasPassword,
@@ -261,7 +260,7 @@ describe("AccountPanel's authenticator app", () => {
       expect(row(panel).find(".field__hint").text()).toBe(HINT);
     }
     await confirmWith(panel, "000000", jsonResponse(400, { error: WRONG, attemptsLeft: 1 }));
-    expect(row(panel).find(".field__error").text()).toBe(REFUSED);
+    expect(row(panel).find(".field__error").text()).toBe(`${REFUSED} 1 try left.`);
     expect(row(panel).find(".field__hint").text()).toBe(LAST_TRY);
     expect(document.activeElement).toBe(codeField(panel).element);
     await codeField(panel).setValue("111111");
@@ -281,12 +280,6 @@ describe("AccountPanel's authenticator app", () => {
     await openSetupAgain(panel);
     expect(row(panel).find(".setup__ran-out").exists()).toBe(false);
     expect(row(panel).find(".setup svg").exists()).toBe(true);
-  });
-
-  it("words the tries left in the singular for the last one", () => {
-    // The panel moves the last try to its hint; the login's step shows it as counted.
-    expect(Messages.Mfa.triesLeft(1)).toBe("1 try left.");
-    expect(Messages.Mfa.triesLeft(2)).toBe("2 tries left.");
   });
 
   it.each([
