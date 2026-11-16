@@ -463,7 +463,7 @@ export class Messages {
      * the way, or a newer setup's (another secret). Any new recovery codes were in that answer.
      */
     static readonly totpOnElsewhere: string =
-      "Authenticator app is on, but this page missed the answer that turned it on (another tab, or a lost connection), so the entry this page's QR code added may not be the one that works. To be sure, remove it and use Move to a new app. If you didn't save new recovery codes, generate new ones.";
+      "Authenticator app is on, but this page missed the answer that turned it on (another tab or browser, or a lost connection), so this QR code's entry may not be the one that works. To be sure, use Move to a new app, then remove the entry this page added. If you didn't save new recovery codes, generate new ones first.";
     static readonly totpMoved: string =
       "Moved to your new authenticator app: the old one's codes no longer work.";
     static readonly totpOff: string = "Authenticator app is off: logins no longer take its codes.";

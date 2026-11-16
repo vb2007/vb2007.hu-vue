@@ -31,7 +31,7 @@ const REFUSED = "That code didn't work: check it, or wait for the next one.";
 const LAST_TRY =
   "Enter the 6-digit code your app shows for vb2007.hu. This is your last try: a wrong code ends this setup.";
 const ON_ELSEWHERE =
-  "Authenticator app is on, but this page missed the answer that turned it on (another tab, or a lost connection), so the entry this page's QR code added may not be the one that works. To be sure, remove it and use Move to a new app. If you didn't save new recovery codes, generate new ones.";
+  "Authenticator app is on, but this page missed the answer that turned it on (another tab or browser, or a lost connection), so this QR code's entry may not be the one that works. To be sure, use Move to a new app, then remove the entry this page added. If you didn't save new recovery codes, generate new ones first.";
 const GONE =
   "This setup isn't waiting any more: a newer setup replaced it, maybe from another tab or browser. Start again for a new QR code, and replace what your app added from this one.";
 const HINT =
