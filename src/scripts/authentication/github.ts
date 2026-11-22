@@ -26,7 +26,7 @@ const OAUTH_ERRORS: Record<OauthErrorCode, string> = {
     "Linking GitHub takes your password. Press Link GitHub on this page and enter it there.",
   [OauthError.accountSuspended]: Messages.Auth.githubAccountSuspended,
   [OauthError.apiKeyNotAccepted]:
-    "Linking GitHub needs your logged-in session: API keys aren't accepted for it."
+    "Linking GitHub needs your logged-in session: API keys aren't accepted for it. Link it from this page in your browser instead."
 };
 
 export const oauthErrorMessage = (code: string) =>

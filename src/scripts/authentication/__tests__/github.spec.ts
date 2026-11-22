@@ -37,7 +37,7 @@ describe("oauthErrorMessage", () => {
     ],
     [
       "apiKeyNotAccepted",
-      "Linking GitHub needs your logged-in session: API keys aren't accepted for it."
+      "Linking GitHub needs your logged-in session: API keys aren't accepted for it. Link it from this page in your browser instead."
     ]
   ])("explains %s", (code, message) => {
     expect(oauthErrorMessage(code)).toBe(message);
