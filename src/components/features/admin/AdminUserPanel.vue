@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * One account for the superuser: who it is and how it logs in, what it owns, its upload storage
- * with the quota editor, and the Actions that can be taken on it.
+ * with the quota editor, its API keys, and the Actions that can be taken on it.
  */
 import { computed, useId, watch } from "vue";
 import { AdminRoutes } from "@/constants/admin";
@@ -12,12 +12,15 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import StatusPill from "@/components/ui/StatusPill.vue";
+import type { AdminUser } from "@/types/api/admin";
+import AdminApiKeyList from "./AdminApiKeyList.vue";
 import AdminDeleteUser from "./AdminDeleteUser.vue";
 import AdminLogoutUser from "./AdminLogoutUser.vue";
 import AdminQuotaEditor from "./AdminQuotaEditor.vue";
 import AdminQuotaMeter from "./AdminQuotaMeter.vue";
 import AdminRenameUser from "./AdminRenameUser.vue";
 import AdminResetMfa from "./AdminResetMfa.vue";
+import AdminRevokeApiKeys from "./AdminRevokeApiKeys.vue";
 import AdminUserAction from "./AdminUserAction.vue";
 import AdminUserSuspension from "./AdminUserSuspension.vue";
 import AdminUserTags from "./AdminUserTags.vue";
@@ -38,7 +41,12 @@ const {
 watch(() => props.id, load, { immediate: true });
 
 const storageTitle = useId();
+const apiKeysTitle = useId();
 const actionsTitle = useId();
+
+/** Suspending deleted the account's API keys, which its answer doesn't list; lifting it deletes nothing. */
+const applySuspension = (updated: AdminUser) =>
+  applyUser(updated.suspendedAt ? { ...updated, apiKeys: [] } : updated);
 
 const plural = (count: number, one: string, many: string) =>
   `${count.toLocaleString()} ${count === 1 ? one : many}`;
@@ -184,10 +192,15 @@ const mfa = computed(() => {
         </div>
       </section>
 
+      <section class="part" :aria-labelledby="apiKeysTitle">
+        <h2 :id="apiKeysTitle" class="part__title">API keys</h2>
+        <AdminApiKeyList :keys="user.apiKeys" :username="user.username" />
+      </section>
+
       <!--
         One AdminUserAction per thing the admin can do to the account, each with its key and any
         form it opens in place (#panel), in this order: Uploads, Rename, Log out everywhere,
-        Reset MFA, Suspend, then
+        Revoke API keys (right under the logout it pairs with), Reset MFA, Suspend, then
         Delete account last.
       -->
       <section class="part" :aria-labelledby="actionsTitle">
@@ -216,8 +229,9 @@ const mfa = computed(() => {
           </AdminUserAction>
           <AdminRenameUser :user="user" @updated="applyUser" />
           <AdminLogoutUser :user="user" />
+          <AdminRevokeApiKeys :user="user" @updated="applyUser" />
           <AdminResetMfa :user="user" @updated="applyUser" />
-          <AdminUserSuspension :user="user" @updated="applyUser" />
+          <AdminUserSuspension :user="user" @updated="applySuspension" />
           <AdminDeleteUser :user="user" />
         </div>
       </section>

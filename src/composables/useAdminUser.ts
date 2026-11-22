@@ -54,9 +54,10 @@ export const useAdminUser = () => {
   /**
    * Takes the account as an admin action answered it (an `AdminUser`, without the page's details)
    * and keeps the details it doesn't carry. The quota, rename and suspension routes answer this way;
-   * the MFA reset, which answers no account, passes the `AdminUserDetails` it built from the shown one.
+   * the MFA reset and the API key revoke, which answer no account, pass the `AdminUserDetails` they
+   * built from the shown one.
    */
-  const applyUser = (updated: AdminUser) => {
+  const applyUser = (updated: AdminUser | AdminUserDetails) => {
     if (user.value?.id === updated.id) user.value = { ...user.value, ...updated };
   };
 

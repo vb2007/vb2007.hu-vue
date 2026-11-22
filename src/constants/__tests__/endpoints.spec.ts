@@ -65,6 +65,7 @@ describe("Endpoints", () => {
     [Endpoints.Admin.user, "GET", "/admin/users/:id", true],
     [Endpoints.Admin.renameUser, "PATCH", "/admin/users/:id", true],
     [Endpoints.Admin.logoutUser, "POST", "/admin/users/:id/logout", true],
+    [Endpoints.Admin.revokeUserApiKeys, "DELETE", "/admin/users/:id/api-keys", true],
     [Endpoints.Admin.deleteUser, "DELETE", "/admin/users/:id", true],
     [Endpoints.Admin.resetUserMfa, "DELETE", "/admin/users/:id/mfa", true],
     [Endpoints.Admin.setUploadQuota, "PATCH", "/admin/users/:id/upload-quota", true],

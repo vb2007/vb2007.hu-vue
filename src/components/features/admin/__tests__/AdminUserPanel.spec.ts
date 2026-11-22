@@ -5,11 +5,12 @@ import AdminUserPanel from "@/components/features/admin/AdminUserPanel.vue";
 import AdminUserAction from "@/components/features/admin/AdminUserAction.vue";
 import AdminQuotaEditor from "@/components/features/admin/AdminQuotaEditor.vue";
 import AdminResetMfa from "@/components/features/admin/AdminResetMfa.vue";
+import AdminRevokeApiKeys from "@/components/features/admin/AdminRevokeApiKeys.vue";
 import AdminUserSuspension from "@/components/features/admin/AdminUserSuspension.vue";
 import { Messages } from "@/constants/messages";
 import { QUOTA_UNITS } from "@/scripts/admin/adminUser";
 import type { AdminUserDetails } from "@/types/api/admin";
-import { anAdminUser, anAdminUserDetails } from "@/__tests__/helpers/admin";
+import { anAdminUser, anAdminUserDetails, anApiKey } from "@/__tests__/helpers/admin";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { createTestRouter } from "@/__tests__/helpers/mount";
 
@@ -234,6 +235,7 @@ describe("AdminUserPanel", () => {
       "Uploads",
       "Rename",
       "Log out everywhere",
+      "Revoke API keys",
       "Reset MFA",
       "Suspend account",
       "Delete account"
@@ -250,10 +252,13 @@ describe("AdminUserPanel", () => {
     });
   });
 
-  it("tags and dates the account once it's suspended, keeping the details", async () => {
-    const wrapper = await mountPanel(anAdminUserDetails("a", { githubLogin: "octo" }));
+  it("tags and dates the account once it's suspended, keeping the details but not the API keys", async () => {
+    const wrapper = await mountPanel(
+      anAdminUserDetails("a", { githubLogin: "octo", apiKeys: [anApiKey("k1")] })
+    );
     await flushPromises();
     expect(wrapper.find(".tag").exists()).toBe(false);
+    expect(wrapper.findAll(".key")).toHaveLength(1);
 
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
@@ -270,6 +275,54 @@ describe("AdminUserPanel", () => {
     expect(facts(wrapper).GitHub).toBe("@octo");
     expect(wrapper.find(".actions .status--success").text()).toBe(
       "User suspended successfully: their session was ended."
+    );
+    // The suspension deleted them.
+    expect(wrapper.findAll(".key")).toHaveLength(0);
+    expect(wrapper.find(".none").text()).toBe("user-a has no API keys.");
+  });
+
+  it("keeps the API keys when a suspension is lifted, which deletes nothing", async () => {
+    const wrapper = await mountPanel(
+      anAdminUserDetails("a", {
+        suspendedAt: "2026-11-06T10:00:00.000Z",
+        apiKeys: [anApiKey("k1")]
+      })
+    );
+    await flushPromises();
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { message: "User unsuspended successfully.", user: anAdminUser("a") })
+    );
+    await wrapper.findComponent(AdminUserSuspension).find("button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".tag").exists()).toBe(false);
+    expect(wrapper.findAll(".key")).toHaveLength(1);
+  });
+
+  it("lists the account's API keys, and empties the list once they're revoked", async () => {
+    const wrapper = await mountPanel(
+      anAdminUserDetails("a", { apiKeys: [anApiKey("k1"), anApiKey("k2")] })
+    );
+    await flushPromises();
+    expect(wrapper.find('ul[aria-label="user-a\'s API keys"]').findAll("li")).toHaveLength(2);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        message: "User's API keys revoked successfully.",
+        user: { id: "a", username: "user-a" },
+        revoked: 2
+      })
+    );
+    const revoke = wrapper.findComponent(AdminRevokeApiKeys).find("button");
+    await revoke.trigger("click");
+    await revoke.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".key")).toHaveLength(0);
+    expect(wrapper.find(".none").text()).toBe("user-a has no API keys.");
+    expect(wrapper.findComponent(AdminRevokeApiKeys).find(".status--success").text()).toBe(
+      Messages.Admin.apiKeysRevoked("user-a", 2)
     );
   });
 

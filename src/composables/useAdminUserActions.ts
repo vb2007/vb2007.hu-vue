@@ -107,6 +107,34 @@ export const useAdminLogout = () => {
   return { isLoggingOut, logoutError, loggedOut, logOut };
 };
 
+/** Deletes every API key of an account, the superuser's own too (vb2007/vb2007.hu-api#513). */
+export const useAdminApiKeyRevoke = () => {
+  const isRevoking = ref(false);
+  const revokeError = ref("");
+  const revoked = ref("");
+
+  /** Returns whether it worked. */
+  const revoke = async (id: string) => {
+    isRevoking.value = true;
+    revokeError.value = revoked.value = "";
+
+    const result = await apiRequest(Endpoints.Admin.revokeUserApiKeys, {
+      params: { id },
+      failure: Messages.Admin.revokeApiKeysFailed
+    });
+
+    if (result.ok) {
+      revoked.value = Messages.Admin.apiKeysRevoked(result.data.user.username, result.data.revoked);
+    } else {
+      revokeError.value = result.error;
+    }
+    isRevoking.value = false;
+    return result.ok;
+  };
+
+  return { isRevoking, revokeError, revoked, revoke };
+};
+
 /** Deletes an account with its pastes, short links and uploads (vb2007/vb2007.hu-api#276). */
 export const useAdminDelete = () => {
   const isDeleting = ref(false);

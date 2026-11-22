@@ -575,7 +575,14 @@ export class Messages {
     }
     static readonly logoutFailed: string = "Failed to log the account out";
     static loggedOut(name: string): string {
-      return `${name} is logged out everywhere. They can log in again.`;
+      return `${name} is logged out everywhere. They can log in again, and their API keys keep working.`;
+    }
+    static readonly revokeApiKeysFailed: string = "Failed to revoke the account's API keys";
+    /** `revoked` is how many keys the API deleted: 0 when the account had none (left). */
+    static apiKeysRevoked(name: string, revoked: number): string {
+      if (revoked === 0) return `${name} had no API keys, so nothing was revoked.`;
+      const keys = revoked === 1 ? "API key" : `${revoked.toLocaleString()} API keys`;
+      return `Revoked ${name}'s ${keys}. They were mailed a security notice.`;
     }
     static readonly deleteFailed: string = "Failed to delete the account";
     /** On the Users list, once the account's page deleted it. */
@@ -584,7 +591,7 @@ export class Messages {
     }
     static readonly mfaResetFailed: string = "Failed to reset the account's MFA";
     static mfaReset(name: string): string {
-      return `${name}'s MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
+      return `${name}'s MFA is off, their API keys are deleted and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
     }
     /** Why the superuser's own page has no Reset MFA key: the API answers it with 409. */
     static readonly superuserMfaNotResettable: string =

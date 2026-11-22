@@ -3,11 +3,12 @@ import { enableAutoUnmount, flushPromises, type VueWrapper } from "@vue/test-uti
 import AdminDeleteUser from "@/components/features/admin/AdminDeleteUser.vue";
 import AdminLogoutUser from "@/components/features/admin/AdminLogoutUser.vue";
 import AdminRenameUser from "@/components/features/admin/AdminRenameUser.vue";
+import AdminRevokeApiKeys from "@/components/features/admin/AdminRevokeApiKeys.vue";
 import { AdminRoutes } from "@/constants/admin";
 import { Messages } from "@/constants/messages";
 import { isLoggedIn, isSuperuser, userId, username } from "@/scripts/authentication/authState";
 import type { AdminUser } from "@/types/api/admin";
-import { anAdminUser } from "@/__tests__/helpers/admin";
+import { anAdminUser, anAdminUserDetails, anApiKey } from "@/__tests__/helpers/admin";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
@@ -254,7 +255,7 @@ describe("AdminLogoutUser", () => {
     const wrapper = await mountLogout();
     expect(wrapper.find("h3").text()).toBe("Log out everywhere");
     expect(wrapper.find(".action__note").text()).toBe(
-      "Ends anna's session on every device. They can log in again."
+      "Ends anna's session on every device. They can log in again, and their API keys keep working: revoke them below."
     );
 
     const answer = deferResponse(fetchMock);
@@ -279,7 +280,7 @@ describe("AdminLogoutUser", () => {
     });
     expect(wrapper.find("button").text()).toBe("Log out everywhere");
     expect(wrapper.find(".status").text()).toBe(
-      "anna is logged out everywhere. They can log in again."
+      "anna is logged out everywhere. They can log in again, and their API keys keep working."
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // The key was disabled while it worked: the focus comes back to it.
@@ -323,7 +324,7 @@ describe("AdminLogoutUser", () => {
     const wrapper = await mountLogout();
 
     expect(wrapper.find(".action__note").text()).toBe(
-      "This is your account: it ends this session too, so you'll have to log in again."
+      "This is your account: it ends this session too, so you'll have to log in again. Your API keys keep working: revoke them below."
     );
 
     fetchMock
@@ -339,6 +340,118 @@ describe("AdminLogoutUser", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(isLoggedIn.value).toBe(false);
     expect(isSuperuser.value).toBe(false);
+  });
+});
+
+describe("AdminRevokeApiKeys", () => {
+  const withKeys = (count: number) =>
+    anAdminUserDetails("a", {
+      username: "anna",
+      apiKeys: Array.from({ length: count }, (_, i) => anApiKey(`k${i}`))
+    });
+  const mountRevoke = async (user = withKeys(2)) =>
+    (await mountWithRouter(AdminRevokeApiKeys, { props: { user }, attachTo: document.body }))
+      .wrapper;
+  const note = (wrapper: VueWrapper) => wrapper.find(".action__note").text().replace(/\s+/g, " ");
+  const revoked = (count: number) =>
+    jsonResponse(200, {
+      message: "User's API keys revoked successfully.",
+      user: { id: "a", username: "anna" },
+      revoked: count
+    });
+
+  it("arms first, Escape disarms it, and the second click revokes every key", async () => {
+    const wrapper = await mountRevoke();
+    expect(wrapper.find("h3").text()).toBe("Revoke API keys");
+    expect(note(wrapper)).toBe(
+      "Deletes anna's 2 API keys, so whatever uses them stops working, and mails them a security notice. Their session stays: log them out too if the account may be in the wrong hands."
+    );
+    const key = wrapper.find<HTMLButtonElement>("button");
+
+    await key.trigger("click");
+    expect(key.text()).toBe("Confirm revoke");
+    expect(key.classes()).toContain("btn--error");
+    key.element.focus();
+    pressEscape();
+    await flushPromises();
+    expect(key.text()).toBe("Revoke API keys");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const answer = deferResponse(fetchMock);
+    await key.trigger("click");
+    await key.trigger("click");
+    expect(key.text()).toBe("Revoking");
+    dropFocus();
+    answer.respond(revoked(2));
+    await flushPromises();
+
+    expect(sent()).toEqual({
+      method: "DELETE",
+      url: "https://api.test/admin/users/a/api-keys",
+      body: undefined
+    });
+    expect(wrapper.emitted("updated")).toEqual([[{ ...withKeys(2), apiKeys: [] }]]);
+    expect(wrapper.find(".status--success").text()).toBe(
+      "Revoked anna's 2 API keys. They were mailed a security notice."
+    );
+    // The key was disabled while it worked: the focus comes back to it.
+    expect(document.activeElement).toBe(key.element);
+  });
+
+  it("names a single key, and says when there was none left to revoke", async () => {
+    const one = await mountRevoke(withKeys(1));
+    expect(note(one)).toMatch(/^Deletes anna's API key, so whatever uses them stops working/);
+    fetchMock.mockResolvedValueOnce(revoked(1));
+    await one.find("button").trigger("click");
+    await one.find("button").trigger("click");
+    await flushPromises();
+    expect(one.find(".status--success").text()).toBe(
+      "Revoked anna's API key. They were mailed a security notice."
+    );
+
+    // The list is as the page loaded it, so the key stays without keys listed.
+    const none = await mountRevoke(withKeys(0));
+    expect(note(none)).toBe("anna has no API keys.");
+    fetchMock.mockResolvedValueOnce(revoked(0));
+    await none.find("button").trigger("click");
+    await none.find("button").trigger("click");
+    await flushPromises();
+    expect(none.find(".status--success").text()).toBe(
+      "anna had no API keys, so nothing was revoked."
+    );
+  });
+
+  it("revokes the superuser's own keys too, keeping this session", async () => {
+    userId.value = "a";
+    isLoggedIn.value = true;
+    const wrapper = await mountRevoke();
+
+    fetchMock.mockResolvedValueOnce(revoked(2));
+    await wrapper.find("button").trigger("click");
+    await wrapper.find("button").trigger("click");
+    await flushPromises();
+
+    // No check whether the session went: it stays.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(isLoggedIn.value).toBe(true);
+    expect(wrapper.find(".status--success").exists()).toBe(true);
+    isLoggedIn.value = false;
+  });
+
+  it("shows a failure and keeps the keys", async () => {
+    const wrapper = await mountRevoke();
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(404, { error: "There is no such user with that ID." })
+    );
+    await wrapper.find("button").trigger("click");
+    await wrapper.find("button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".status--error").text()).toBe("There is no such user with that ID.");
+    expect(wrapper.find(".status--success").exists()).toBe(false);
+    expect(wrapper.emitted("updated")).toBeUndefined();
+    expect(document.activeElement).toBe(wrapper.find("button").element);
   });
 });
 
