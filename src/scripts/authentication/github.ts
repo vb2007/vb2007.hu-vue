@@ -24,7 +24,9 @@ const OAUTH_ERRORS: Record<OauthErrorCode, string> = {
   [OauthError.notConfigured]: "GitHub login isn't available right now.",
   [OauthError.passwordRequired]:
     "Linking GitHub takes your password. Press Link GitHub on this page and enter it there.",
-  [OauthError.accountSuspended]: Messages.Auth.githubAccountSuspended
+  [OauthError.accountSuspended]: Messages.Auth.githubAccountSuspended,
+  [OauthError.apiKeyNotAccepted]:
+    "Linking GitHub needs your logged-in session: API keys aren't accepted for it."
 };
 
 export const oauthErrorMessage = (code: string) =>
