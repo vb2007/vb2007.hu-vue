@@ -35,7 +35,8 @@ test("an API key is created from the account page and its token shown once", asy
   const token = (await panel.locator(".token__text").textContent())!;
   expect(token).toMatch(TOKEN);
   const [created] = api.apiKeysOf();
-  expect(created.token).toBe(token);
+  expect(api.apiKeyTokenOf(created.id)).toBe(token);
+  expect(created.hint).toBe(token.slice(-4));
   expect(created.scopes).toEqual(["pastes:read", "pastes:write"]);
   expect(Date.parse(created.expiresAt!) - Date.parse(created.createdAt)).toBe(90 * DAY_MS);
   await expect(panel.locator(".token__usage")).toHaveText(
@@ -57,6 +58,7 @@ test("an API key is created from the account page and its token shown once", asy
 test("rotating keeps the key's lifetime unless a new one is picked", async ({ page, api }) => {
   api.loggedInAs(MOCK_EMAIL, "e2e");
   const old = api.hasApiKey("Script", { expiresInDays: 30, expired: true });
+  const oldToken = api.apiKeyTokenOf(old.id);
   await page.goto("/account/api-keys");
   const list = page.getByRole("list", { name: "Your API keys" });
   await expect(list).toContainText("Expired");
@@ -70,8 +72,8 @@ test("rotating keeps the key's lifetime unless a new one is picked", async ({ pa
   await expect(panel).toContainText("the old token no longer works");
   const [rotated] = api.apiKeysOf();
   expect(rotated.id).toBe(old.id);
-  expect(rotated.token).not.toBe(old.token);
-  await expect(panel.locator(".token__text")).toHaveText(rotated.token);
+  expect(api.apiKeyTokenOf(rotated.id)).not.toBe(oldToken);
+  await expect(panel.locator(".token__text")).toHaveText(api.apiKeyTokenOf(rotated.id)!);
   expect(Date.parse(rotated.expiresAt!) - Date.parse(rotated.createdAt)).toBe(30 * DAY_MS);
   await expect(list).not.toContainText("Expired");
   await panel.getByRole("button", { name: "I've saved it" }).click();

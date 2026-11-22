@@ -103,8 +103,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * credential it sends back, checking only its id: `POST /user/passkeys` stores it for the waiting registration (confirmed like the
  * MFA settings), `POST /auth/passkey` logs in the account that owns it after `/options`, and with e-mail MFA or TOTP on the second step lists
  * `passkey` and takes one of the account's after `POST /auth/mfa/passkey/options`; anything else gets `PASSKEY_INVALID_ERROR`.
- * API keys (vb2007/vb2007.hu-api#511) live on their account too (`api.hasApiKey(name, { scopes, expiresInDays, expired })` arranges one
- * and returns it): `GET /user/api-keys` lists them without their tokens, `POST /user/api-keys` checks the body like the API (name, scopes,
+ * API keys (vb2007/vb2007.hu-api#511) live in `userApiKeys` by account id, the store the admin's view of an account reads too
+ * (`api.hasApiKey(name, { scopes, expiresInDays, expired })` arranges one for the logged-in account and returns it, and
+ * `api.apiKeyTokenOf(id)` gives a key's token, kept apart like the API's hash): `GET /user/api-keys` lists them without their tokens, `POST /user/api-keys` checks the body like the API (name, scopes,
  * `expiresInDays` 1 to 365 or `null`, `admin:` scopes for the superuser only) before the confirmation (worded for keys, after the password
  * checks' limiter), refuses an 11th key with 409, and answers 201 with a fresh `vbk_` + 43 base64url token, its last 4 the `hint`.
  * `POST /user/api-keys/:id/rotate` gives the key a new token with `createdAt` now and keeps its lifetime when `expiresInDays` is left
@@ -177,6 +178,17 @@ export interface MockMfaStatus {
 }
 
 const NO_MFA: MockMfaStatus = { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 };
+
+/** An API key as `GET /admin/users/:id` lists it (vb2007/vb2007.hu-api#513): never its token. */
+export interface MockApiKey {
+  id: string;
+  name: string;
+  hint: string;
+  scopes: string[];
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+}
 
 /** A user as the admin list returns them (vb2007/vb2007.hu-api#120). */
 export interface MockAdminUser {
@@ -640,8 +652,6 @@ interface MockUser {
   recoveryCodes?: string[];
   /** Passkeys (vb2007/vb2007.hu-api#446), oldest first, as `GET /user/passkeys` lists them; an MFA reset keeps them. */
   passkeys?: MockPasskey[];
-  /** API keys (vb2007/vb2007.hu-api#511), oldest first, as `GET /user/api-keys` lists them (without `token`). */
-  apiKeys?: MockApiKey[];
 }
 
 interface MockPasskey {
@@ -650,20 +660,6 @@ interface MockPasskey {
   name: string;
   createdAt: string;
   lastUsedAt: string | null;
-}
-
-interface MockApiKey {
-  /** 32 hex characters, like the API's `createApiKeyId`. */
-  id: string;
-  name: string;
-  /** The token's last 4 characters. */
-  hint: string;
-  scopes: string[];
-  createdAt: string;
-  expiresAt: string | null;
-  lastUsedAt: string | null;
-  /** Kept only so a test can check the one the page showed; the API keeps a hash. */
-  token: string;
 }
 
 /** The API's `API_KEY_SCOPES`, in its order. */
@@ -757,6 +753,10 @@ export class MockApi {
   >();
   /** The ids `POST /admin/users/:id/logout` was asked for. */
   readonly loggedOutUsers: string[] = [];
+  /** Admin-listed account id -> its API keys, oldest first (see `hasUser`). */
+  readonly userApiKeys = new Map<string, MockApiKey[]>();
+  /** API key id -> its token, which only the answer making it shows (the API keeps a hash). */
+  private readonly apiKeyTokens = new Map<string, string>();
   /** Admin-listed account id -> the new address its e-mail change waits on (see `hasUser`). */
   private readonly userPendingEmails = new Map<string, string>();
   /** Sign-ups the admin's System page lists (see `hasPendingRegistration`). */
@@ -1611,7 +1611,7 @@ export class MockApi {
         return this.user
           ? {
               status: 200,
-              body: { apiKeys: (this.user.apiKeys ?? []).map((key) => this.apiKeyListItem(key)) }
+              body: { apiKeys: this.apiKeysOfAccount(this.user._id) }
             }
           : NOT_LOGGED_IN;
       case "POST /user/api-keys":
@@ -2275,7 +2275,8 @@ export class MockApi {
 
   /**
    * Gives the logged-in account (else `MOCK_EMAIL`'s) an API key named `name`, created now, expiring after
-   * `expiresInDays` (`null`: never); `expired` dates it so it ran out yesterday. Returns the key, token included.
+   * `expiresInDays` (`null`: never); `expired` dates it so it ran out yesterday. Returns the key; `apiKeyTokenOf`
+   * gives its token. It goes in `userApiKeys`, the store the admin's view of the account reads too.
    */
   hasApiKey(
     name: string,
@@ -2290,10 +2291,20 @@ export class MockApi {
       this.user ??
       this.accounts.find((candidate) => normalizeEmail(candidate.email) === MOCK_EMAIL)!;
     const createdAt = expired ? this.now() - (expiresInDays! + 1) * DAY_MS : this.now();
-    const apiKey = this.newApiKey(name, scopes, createdAt, expiresInDays);
-    apiKey.lastUsedAt = lastUsedAt;
-    (account.apiKeys ??= []).push(apiKey);
+    const apiKey = { ...this.newApiKey(name, scopes, createdAt, expiresInDays), lastUsedAt };
+    this.apiKeysOfAccount(account._id).push(apiKey);
     return apiKey;
+  }
+
+  /** The account's keys in `userApiKeys`, the list itself (made empty when it had none), so it can be changed in place. */
+  private apiKeysOfAccount(id: string) {
+    if (!this.userApiKeys.has(id)) this.userApiKeys.set(id, []);
+    return this.userApiKeys.get(id)!;
+  }
+
+  /** The token of a key made or rotated last, e.g. to check the one the page showed. */
+  apiKeyTokenOf(id: string) {
+    return this.apiKeyTokens.get(id);
   }
 
   /** Creating and rotating API keys answer the API's 429 for the day's used-up security notices. */
@@ -2305,31 +2316,27 @@ export class MockApi {
     name: string,
     scopes: string[],
     createdAt: number,
-    expiresInDays: number | null
+    expiresInDays: number | null,
+    id = randomBytes(16).toString("hex")
   ): MockApiKey {
     const token = `vbk_${randomBytes(32).toString("base64url")}`;
+    this.apiKeyTokens.set(id, token);
     return {
-      id: randomBytes(16).toString("hex"),
+      id,
       name,
       hint: token.slice(-4),
       scopes,
       createdAt: new Date(createdAt).toISOString(),
       expiresAt:
         expiresInDays === null ? null : new Date(createdAt + expiresInDays * DAY_MS).toISOString(),
-      lastUsedAt: null,
-      token
+      lastUsedAt: null
     };
-  }
-
-  /** A key as the API lists it: never its token. */
-  private apiKeyListItem({ token: _token, ...listed }: MockApiKey) {
-    return listed;
   }
 
   private apiKeyAnswer(status: number, message: string, apiKey: MockApiKey): MockResponse {
     return {
       status,
-      body: { message, apiKey: { ...this.apiKeyListItem(apiKey), token: apiKey.token } }
+      body: { message, apiKey: { ...apiKey, token: this.apiKeyTokens.get(apiKey.id) } }
     };
   }
 
@@ -2414,7 +2421,8 @@ export class MockApi {
     }
     const refusal = this.refuseMfaReauth(body?.password as string | undefined, API_KEY_REAUTH);
     if (refusal) return refusal;
-    if ((this.user.apiKeys?.length ?? 0) >= 10) {
+    const apiKeys = this.apiKeysOfAccount(this.user._id);
+    if (apiKeys.length >= 10) {
       return {
         status: 409,
         body: { error: "An account can have at most 10 API keys: delete one first." }
@@ -2425,7 +2433,7 @@ export class MockApi {
     const expiresInDays =
       body?.expiresInDays === undefined ? 90 : (body.expiresInDays as number | null);
     const apiKey = this.newApiKey(name.trim(), scopes, this.now(), expiresInDays);
-    (this.user.apiKeys ??= []).push(apiKey);
+    apiKeys.push(apiKey);
     return this.apiKeyAnswer(
       201,
       "API key created: store the token somewhere safe, it isn't shown again.",
@@ -2445,9 +2453,10 @@ export class MockApi {
     if (!/^[0-9a-f]{32}$/.test(id)) return API_KEY_NOT_FOUND;
     const refusal = this.refuseMfaReauth(body?.password as string | undefined, API_KEY_REAUTH);
     if (refusal) return refusal;
-    const index = this.user.apiKeys?.findIndex((apiKey) => apiKey.id === id) ?? -1;
+    const apiKeys = this.apiKeysOfAccount(this.user._id);
+    const index = apiKeys.findIndex((apiKey) => apiKey.id === id);
     if (index < 0) return API_KEY_NOT_FOUND;
-    const previous = this.user.apiKeys![index];
+    const previous = apiKeys[index];
     if (
       previous.scopes.some((scope) => scope.startsWith("admin:")) &&
       !this.isSuperuserEmail(this.user.email)
@@ -2465,11 +2474,8 @@ export class MockApi {
         : (Date.parse(previous.expiresAt) - Date.parse(previous.createdAt)) / DAY_MS;
     const expiresInDays =
       body?.expiresInDays === undefined ? kept : (body.expiresInDays as number | null);
-    const rotated = {
-      ...this.newApiKey(previous.name, previous.scopes, this.now(), expiresInDays),
-      id
-    };
-    this.user.apiKeys![index] = rotated;
+    const rotated = this.newApiKey(previous.name, previous.scopes, this.now(), expiresInDays, id);
+    apiKeys[index] = rotated;
     return this.apiKeyAnswer(
       200,
       "API key rotated, and the old token no longer works: store the new one somewhere safe, it isn't shown again.",
@@ -2479,15 +2485,17 @@ export class MockApi {
 
   private deleteApiKey(id: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
-    const apiKeys = this.user.apiKeys ?? [];
-    if (!apiKeys.some((apiKey) => apiKey.id === id)) return API_KEY_NOT_FOUND;
-    this.user.apiKeys = apiKeys.filter((apiKey) => apiKey.id !== id);
+    const apiKeys = this.apiKeysOfAccount(this.user._id);
+    const index = apiKeys.findIndex((apiKey) => apiKey.id === id);
+    if (index < 0) return API_KEY_NOT_FOUND;
+    apiKeys.splice(index, 1);
+    this.apiKeyTokens.delete(id);
     return { status: 200, body: { message: "API key deleted successfully." } };
   }
 
-  /** The logged-in account's keys, e.g. to delete or rotate one behind the page's back. */
+  /** The logged-in account's keys (the list in `userApiKeys`), e.g. to delete one behind the page's back. */
   apiKeysOf() {
-    return this.user?.apiKeys ?? [];
+    return this.user ? this.apiKeysOfAccount(this.user._id) : [];
   }
 
   /**
