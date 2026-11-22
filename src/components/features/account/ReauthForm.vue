@@ -5,7 +5,8 @@
  * minutes confirms it (else the API's 403 offers "Confirm with GitHub"). `send` makes the request
  * with that body (and `quietStatuses: REAUTH_QUIET_STATUSES`) and `done` hands on its answer.
  * Every MFA setting takes the same check: turning a method on or off, new recovery codes, adding
- * or deleting a passkey.
+ * or deleting a passkey; and so do creating and rotating an API key (vb2007/vb2007.hu-api#511),
+ * whose `send` adds the key's details to the body. Each names its key and hint through the props.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";

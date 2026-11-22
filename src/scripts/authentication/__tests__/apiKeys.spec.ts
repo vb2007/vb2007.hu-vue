@@ -67,7 +67,10 @@ describe("lifetimes", () => {
 
   it("reads a key's lifetime in days", () => {
     expect(
-      lifetimeDaysOf({ createdAt: "2026-11-21T10:00:00.000Z", expiresAt: "2027-02-19T10:00:00.000Z" })
+      lifetimeDaysOf({
+        createdAt: "2026-11-21T10:00:00.000Z",
+        expiresAt: "2027-02-19T10:00:00.000Z"
+      })
     ).toBe(90);
     expect(lifetimeDaysOf({ createdAt: "2026-11-21T10:00:00.000Z", expiresAt: null })).toBeNull();
   });

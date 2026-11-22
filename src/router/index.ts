@@ -139,6 +139,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: "Account" },
     component: () => import("../views/AccountView.vue")
   },
+  // Kept off the account page, which is long already, and linked from its "API keys" row.
+  {
+    path: "/account/api-keys",
+    name: "account-api-keys",
+    meta: { title: "API keys" },
+    component: () => import("../views/AccountApiKeysView.vue")
+  },
   {
     path: "/login",
     name: "login",
