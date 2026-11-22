@@ -100,7 +100,9 @@ const focusCreateArea = () =>
   (
     opener.value?.$el ??
     capLine.value ??
-    createForm.value?.$el.querySelector("input, select, button") ??
+    createForm.value?.$el.querySelector(
+      ":is(input, select, button):not([tabindex='-1']):not(:disabled)"
+    ) ??
     endedMessage.value?.$el ??
     gateMessage.value?.$el
   )?.focus();
@@ -233,6 +235,7 @@ const closeCreate = async () => {
       />
     </div>
     <div class="gate">
+      <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
       <StatusMessage
         v-if="sessionEnded"
         ref="endedMessage"

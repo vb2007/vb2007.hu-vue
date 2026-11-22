@@ -144,7 +144,8 @@ export const routes: RouteRecordRaw[] = [
     // `?github=linked` or `?oauthError=`. Read on every visit, so an abandoned one doesn't linger.
     beforeEnter: (to) => {
       const back = takeGithubReturn();
-      return back && (OauthQuery.github in to.query || OauthQuery.error in to.query)
+      return back.startsWith("/account/") &&
+        (OauthQuery.github in to.query || OauthQuery.error in to.query)
         ? { path: back, query: to.query, replace: true }
         : true;
     }

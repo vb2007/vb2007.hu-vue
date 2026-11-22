@@ -460,7 +460,7 @@ A new token (`vbk_` and 43 characters) shows once, at the top of the board, in a
 - a Fault Red "Copy it now: it won't be shown again." with the alert glyph;
 - the token in JetBrains Mono on a panel-coloured inset, breaking anywhere and selected whole on a click;
 - the usage hint "Send it in the Authorization header, never in a URL. With the account:read scope, this shows your account:" over `curl -H "Authorization: Bearer vbk_…" <API>/user` in mono, with a placeholder, not the token;
-- a wrapping row of a small secondary "Copy token" ("Copied" with a check, said to screen readers) and a small primary "I've saved it", the only way it closes.
+- a wrapping row of a small secondary "Copy token" ("Copied" with a check, said to screen readers) and a small primary "I've saved it", the only way to close it yourself.
 
 It shows before the list reloads, and a session that ended meanwhile keeps it above the logged-out gate. There is one panel per key, newest first:
 

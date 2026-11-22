@@ -159,6 +159,18 @@ describe("ApiKeysPanel", () => {
     expect(panel.text()).toContain(Messages.ApiKeys.atCap(10));
   });
 
+  it("explains on the gate a relink that came back logged out", async () => {
+    isLoggedIn.value = false;
+    ({ wrapper } = await mountWithRouter(
+      ApiKeysPanel,
+      {},
+      "/account/api-keys?oauthError=notLoggedIn"
+    ));
+
+    expect(wrapper!.find(".gate .status--error").text()).toContain("Your session ended");
+    expect(wrapper!.text()).toContain("Log in to manage your API keys.");
+  });
+
   it("gates a visitor without asking for keys", async () => {
     isLoggedIn.value = false;
     ({ wrapper } = await mountWithRouter(ApiKeysPanel, {}, "/account/api-keys"));
@@ -628,6 +640,16 @@ describe("ApiKeysPanel", () => {
 
       expect(shownTokens(panel)).toEqual([second]);
       expect(document.activeElement).toBe(panel.find(".token__title").element);
+    });
+
+    it("focuses the password, not the hidden username, of a create at its confirmation", async () => {
+      const panel = await showToken();
+      await fillCreate(panel);
+      expect(panel.find('.reauth input[type="email"]').exists()).toBe(true);
+      await key(panel, "I've saved it").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(panel.find('.reauth input[type="password"]').element);
     });
 
     it("focuses the open create form once the last token is saved", async () => {

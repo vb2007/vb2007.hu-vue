@@ -287,6 +287,14 @@ describe("router", () => {
       expect(takeGithubReturn()).toBe("");
     });
 
+    it("follows only a path under the account page", async () => {
+      await router.push("/");
+      saveGithubReturn("//elsewhere.example/account/");
+      await router.push("/account?github=linked");
+
+      expect(router.currentRoute.value.path).toBe("/account");
+    });
+
     it("stays on the account page when nothing was kept", async () => {
       await router.push("/");
       await router.push("/account?github=linked");
