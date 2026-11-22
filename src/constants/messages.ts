@@ -646,6 +646,7 @@ export class Messages {
       passwordChecksPerAccount: "Wrong passwords on the account page, per account",
       passkeyOptionsPerIp: "Passkey requests from the IP",
       passkeyLoginsPerIp: "Failed passkey log-ins from the IP",
+      apiKeyChecksPerIp: "Rejected API keys from the IP",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,

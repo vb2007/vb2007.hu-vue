@@ -459,6 +459,7 @@ const RATE_LIMITERS = {
   passwordChecksPerAccount: ["email"],
   passkeyOptionsPerIp: ["ip"],
   passkeyLoginsPerIp: ["ip"],
+  apiKeyChecksPerIp: ["ip"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
   registrationCodeFailures: ["email"],
