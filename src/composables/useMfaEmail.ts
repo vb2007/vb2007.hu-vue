@@ -10,6 +10,7 @@ import {
   useCountdown
 } from "@/composables/useCountdown";
 import { apiRequest } from "@/scripts/api/client";
+import { mfaEndOf } from "@/scripts/authentication/mfa";
 import {
   currentLogin,
   endMfa,
@@ -55,8 +56,9 @@ export const useMfaEmail = () => {
     }
     // The step is gone: passed in another tab (logged in), or expired (back to the password),
     // unless it was left already.
-    if (result.status === HttpStatus.Forbidden) {
-      if (!(await finishedElsewhere(attempt)) && isCurrentLogin(attempt)) endMfa(result.error);
+    const ended = mfaEndOf(result);
+    if (ended !== undefined) {
+      if (!(await finishedElsewhere(attempt)) && isCurrentLogin(attempt)) endMfa(ended);
       return false;
     }
 

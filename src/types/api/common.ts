@@ -20,6 +20,8 @@ export interface ApiErrorBody {
   retryAfter?: number;
   /** Which kind of failure this is, when the message shouldn't decide (see `ErrorReason`). */
   reason?: string;
+  /** A wrong MFA answer's tries left after it, `0` on the last (vb2007/vb2007.hu-api#494). */
+  attemptsLeft?: number;
 }
 
 /** The `pagination` object of every list route; `pages` is 0 for an empty list. */

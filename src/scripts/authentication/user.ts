@@ -66,8 +66,13 @@ export const startMfa = (methods: MfaMethod[]) => {
   loginStatus.value = LoginStatus.MfaRequired;
 };
 
-/** The second step ended without a session (it expired, or used up its tries): back to the password. */
+/**
+ * The second step ended without a session (it expired, or used up its tries): back to the password.
+ * Only once: the API clears the step's cookie with its first 403, so a later request's `noChallenge`
+ * mustn't replace the real reason.
+ */
 export const endMfa = (message: string) => {
+  if (!mfaMethods.value.length) return;
   mfaMethods.value = [];
   loginStatus.value = message;
 };

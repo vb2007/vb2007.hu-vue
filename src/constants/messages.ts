@@ -399,12 +399,33 @@ export class Messages {
     static stepLimits(minutes: number, tries: number): string {
       return `This step works for ${minutes} minutes after your password or GitHub login, with ${tries} tries in all.`;
     }
+    /** A wrong answer's tries left (the API's `attemptsLeft`); at 0 the step or setup is over instead. */
+    static triesLeft(left: number): string {
+      return left === 1 ? "1 try left." : `${left} tries left.`;
+    }
     /** None of the methods the API offers is built here yet. */
     static readonly noMethod: string =
       "Your account's second step uses a method this site can't do yet. Ask the site's admin to reset it, then log in again.";
     /** `/login/mfa` opened without a token in its fragment. */
     static readonly linkIncomplete: string =
       "This login link isn't complete: open it again from the e-mail, or log in again.";
+    /** After `triesLeft(1)`, on the step and the link's page: what the last try risks. */
+    static readonly lastTry: string = "Another wrong answer ends this login.";
+    /**
+     * The MFA 403's `reason`s (vb2007/vb2007.hu-api#494), in place of the API's one message.
+     * `noChallenge` is a browser without the step's cookie: the mailed link opened in another one,
+     * or a GitHub login whose step never reached this browser, so it fits both.
+     */
+    static readonly noChallenge: string =
+      "This browser has no login waiting for its second step: log in again. A mailed login link only works in the browser you logged in from.";
+    static stepExpired(minutes: number): string {
+      return `This login timed out: its second step works for ${minutes} minutes. Log in again.`;
+    }
+    static triesUsedUp(tries: number): string {
+      return `Too many wrong answers: this login used up its ${tries} tries. Log in again.`;
+    }
+    static readonly stepEnded: string =
+      "This login ended: a newer login replaced it, or it already finished. Log in again.";
     /** In place of the API's "E-mail MFA turned on/off", in the account page's own words. */
     static readonly emailOn: string =
       "E-mail codes are on: each login now also takes a code or link from your inbox.";
@@ -423,13 +444,25 @@ export class Messages {
     static totpSetupHint(digits: number, minutes: number, tries: number): string {
       return `Enter the ${digits}-digit code your app shows for vb2007.hu. This setup works for ${minutes} minutes, with ${tries} tries.`;
     }
-    /**
-     * The confirm's 400 is the same for a wrong code and a setup that's gone, so it's counted here:
-     * once the setup's time or tries are used up, it has to start again.
-     */
-    static totpSetupRanOut(minutes: number, tries: number): string {
-      return `This setup has run out: it works for ${minutes} minutes, with ${tries} tries. Start again for a new QR code, and replace what your app added from this one.`;
+    /** The hint at the setup's last try, which stays while the next code is typed. */
+    static totpSetupLastTry(digits: number): string {
+      return `Enter the ${digits}-digit code your app shows for vb2007.hu. This is your last try: a wrong code ends this setup.`;
     }
+    /**
+     * Why a setup ended, from the confirm's 400 (`attemptsLeft` 0, or its `reason`) or the panel's own
+     * clock: its minutes, its tries, or no setup waiting for this session any more.
+     */
+    static totpSetupRanOut(minutes: number): string {
+      return `This setup ran out of time: it works for ${minutes} minutes. Start again for a new QR code, and replace what your app added from this one.`;
+    }
+    static totpSetupTriesUsedUp(tries: number): string {
+      return `This setup's ${tries} tries are used up. Start again for a new QR code, and replace what your app added from this one.`;
+    }
+    static readonly totpSetupGone: string =
+      "This setup isn't waiting any more: a newer setup replaced it, maybe from another tab or browser. Start again for a new QR code, and replace what your app added from this one.";
+    /** Moving, TOTP is on either way: this setup confirmed elsewhere, or another one replaced it. */
+    static readonly totpMoveUnclear: string =
+      "This setup isn't waiting any more, and this page can't tell whether the move went through. To be sure, start again, scan the new QR code, and remove the entry this one added.";
     /**
      * In place of the API's wrong-code 400 ("…request a new one"), at login and at the setup: an
      * app's code can't be requested, but the next one comes on its own.
@@ -442,6 +475,12 @@ export class Messages {
     /** The section's own words, rather than the API's "TOTP MFA turned on". */
     static readonly totpOn: string =
       "Authenticator app is on: each login can now take a code from it.";
+    /**
+     * TOTP turned on without this page getting the answer: another tab's confirm, this one's lost on
+     * the way, or a newer setup's (another secret). Any new recovery codes were in that answer.
+     */
+    static readonly totpOnElsewhere: string =
+      "Authenticator app is on, but this page missed the answer that turned it on (another tab or browser, or a lost connection), so this QR code's entry may not be the one that works. To be sure, use Move to a new app, then remove the entry this page added. If you didn't save new recovery codes, generate new ones first.";
     static readonly totpMoved: string =
       "Moved to your new authenticator app: the old one's codes no longer work.";
     static readonly totpOff: string = "Authenticator app is off: logins no longer take its codes.";
