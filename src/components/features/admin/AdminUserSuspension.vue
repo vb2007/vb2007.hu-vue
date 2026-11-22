@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * The account page's Suspend row. Suspending ends the user's session and deletes their API keys
- * (vb2007/vb2007.hu-api#513), so it asks first, in place; lifting it, which deletes them again,
- * lifting it doesn't. The superuser's own account can't be suspended, so its row only says so.
+ * (vb2007/vb2007.hu-api#513), so it asks first, in place; lifting it (which deletes them again)
+ * doesn't ask. The superuser's own account can't be suspended, so its row only says so.
  */
 import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";

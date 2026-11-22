@@ -964,7 +964,7 @@ test("the superuser sees a user's API keys and revokes them all, which a logout 
 
   const row = page.locator(".action").filter({ hasText: "Revoke API keys" });
   await expect(row.locator(".action__note")).toHaveText(
-    "Deletes anna's 3 API keys, so whatever uses them stops working, and mails a security notice to their address. Their session stays: log them out too if the account may be in the wrong hands."
+    "Deletes anna's 3 API keys, so whatever uses them stops working, and mails their address a security notice, while today's notices last. Their session stays: log them out too if the account may be in the wrong hands."
   );
   // It arms first; Escape disarms it.
   const key = row.getByRole("button", { name: "Revoke API keys" });

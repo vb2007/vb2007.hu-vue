@@ -364,7 +364,7 @@ describe("AdminRevokeApiKeys", () => {
     const wrapper = await mountRevoke();
     expect(wrapper.find("h3").text()).toBe("Revoke API keys");
     expect(note(wrapper)).toBe(
-      "Deletes anna's 2 API keys, so whatever uses them stops working, and mails a security notice to their address. Their session stays: log them out too if the account may be in the wrong hands."
+      "Deletes anna's 2 API keys, so whatever uses them stops working, and mails their address a security notice, while today's notices last. Their session stays: log them out too if the account may be in the wrong hands."
     );
     const key = wrapper.find<HTMLButtonElement>("button");
 
@@ -399,7 +399,7 @@ describe("AdminRevokeApiKeys", () => {
   it("names a single key, and says when there was none left to revoke", async () => {
     const one = await mountRevoke(withKeys(1));
     expect(note(one)).toBe(
-      "Deletes anna's API key, so whatever uses it stops working, and mails a security notice to their address. Their session stays: log them out too if the account may be in the wrong hands."
+      "Deletes anna's API key, so whatever uses it stops working, and mails their address a security notice, while today's notices last. Their session stays: log them out too if the account may be in the wrong hands."
     );
     fetchMock.mockResolvedValueOnce(revoked(1));
     await one.find("button").trigger("click");

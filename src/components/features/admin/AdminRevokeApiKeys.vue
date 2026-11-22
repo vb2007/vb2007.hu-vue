@@ -52,8 +52,8 @@ const onRevoke = async () => {
     </template>
     <template v-else>
       Deletes {{ user.username }}'s {{ keys.what }}, so whatever uses {{ keys.it }} stops working,
-      and mails a security notice to their address. Their session stays: log them out too if the
-      account may be in the wrong hands.
+      and mails their address a security notice, while today's notices last. Their session stays:
+      log them out too if the account may be in the wrong hands.
     </template>
     <template #key>
       <!-- It arms first, turning solid red like Delete. -->
