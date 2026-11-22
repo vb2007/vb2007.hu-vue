@@ -79,6 +79,13 @@ input {
   color: inherit;
 }
 
+/* A field focused from below the fold (a form's first problem) scrolls clear of the sticky navbar. */
+input,
+select,
+textarea {
+  scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
+}
+
 img,
 svg {
   display: block;

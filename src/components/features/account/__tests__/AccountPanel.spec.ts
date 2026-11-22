@@ -98,6 +98,16 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
+  it("links to the API keys' own page, without asking for them", async () => {
+    logIn();
+    const { wrapper } = await mountWithRouter(AccountPanel);
+
+    const section = wrapper.find('[aria-labelledby="api-keys-title"]');
+    expect(section.find("h2").text()).toBe("API keys");
+    expect(section.find("a").attributes("href")).toBe("/account/api-keys");
+    expect(section.find("a").text()).toBe("Manage API keys");
+  });
+
   /** A row of the log-in details, by its name. */
   const detailsRow =
     (name: string) => (wrapper: Awaited<ReturnType<typeof mountWithRouter>>["wrapper"]) =>
@@ -261,7 +271,7 @@ describe("AccountPanel", () => {
     );
     await flushPromises();
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
+      "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
     );
 
     mockFetch()
@@ -718,7 +728,7 @@ describe("AccountPanel", () => {
       const { wrapper } = await comeBack();
 
       expect(wrapper.find(".notice").text()).toBe(
-        "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
+        "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
       expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
@@ -731,7 +741,7 @@ describe("AccountPanel", () => {
       const { wrapper } = await comeBack();
 
       expect(wrapper.find(".notice").text()).toBe(
-        "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
+        "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
       wrapper.unmount();

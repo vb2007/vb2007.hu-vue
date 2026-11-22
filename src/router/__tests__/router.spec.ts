@@ -7,6 +7,7 @@ import {
 } from "vue-router";
 import router, { routes } from "@/router";
 import { ADMIN_SECTIONS, AdminPaths } from "@/constants/admin";
+import { saveGithubReturn, takeGithubReturn } from "@/scripts/authentication/githubReturn";
 
 const areaRoute = routes.find((route) => route.path === AdminPaths.overview)!;
 
@@ -58,6 +59,7 @@ describe("router", () => {
     ["admin-pastes", "/admin/pastes"],
     ["admin-short-links", "/admin/short-links"],
     ["account", "/account"],
+    ["account-api-keys", "/account/api-keys"],
     ["login", "/login"],
     ["register", "/register"],
     ["reset-password", "/reset-password"],
@@ -164,6 +166,7 @@ describe("router", () => {
     ["/r/abc123", "Short link · vb2007.hu"],
     ["/r/abc123/preview", "Short link preview · vb2007.hu"],
     ["/account", "Account · vb2007.hu"],
+    ["/account/api-keys", "API keys · vb2007.hu"],
     ["/login", "Log in · vb2007.hu"],
     ["/register", "Register · vb2007.hu"],
     ["/reset-password", "Reset password · vb2007.hu"],
@@ -260,5 +263,43 @@ describe("router", () => {
         ? await (route.component as () => Promise<{ default: unknown }>)()
         : { default: route.component };
     expect(component.default).toBeTruthy();
+  });
+
+  describe("back from a GitHub confirmation started elsewhere", () => {
+    it.each([
+      ["?github=linked", { github: "linked" }],
+      ["?oauthError=accessDenied", { oauthError: "accessDenied" }]
+    ])("goes on to that page with %s", async (search, query) => {
+      saveGithubReturn("/account/api-keys");
+      await router.push(`/account${search}`);
+
+      expect(router.currentRoute.value.path).toBe("/account/api-keys");
+      expect(router.currentRoute.value.query).toEqual(query);
+      expect(takeGithubReturn()).toBe("");
+    });
+
+    it("stays on the account page without the relink's query, forgetting the return", async () => {
+      await router.push("/");
+      saveGithubReturn("/account/api-keys");
+      await router.push("/account");
+
+      expect(router.currentRoute.value.path).toBe("/account");
+      expect(takeGithubReturn()).toBe("");
+    });
+
+    it("follows only a path under the account page", async () => {
+      await router.push("/");
+      saveGithubReturn("//elsewhere.example/account/");
+      await router.push("/account?github=linked");
+
+      expect(router.currentRoute.value.path).toBe("/account");
+    });
+
+    it("stays on the account page when nothing was kept", async () => {
+      await router.push("/");
+      await router.push("/account?github=linked");
+
+      expect(router.currentRoute.value.path).toBe("/account");
+    });
   });
 });

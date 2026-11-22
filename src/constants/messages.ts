@@ -340,10 +340,11 @@ export class Messages {
     }
     /**
      * Back from GitHub, which confirmed it's the user, before setting the password or changing
-     * two-step login (vb2007/vb2007.hu-api#448), which take the same confirmation.
+     * two-step login (vb2007/vb2007.hu-api#448) or making an API key (vb2007/vb2007.hu-api#511),
+     * which take the same confirmation. The relink always comes back to the account page.
      */
     static githubConfirmed(minutes: number): string {
-      return `GitHub confirmed it's you. Within ${minutes} minutes, set your password or change two-step login.`;
+      return `GitHub confirmed it's you. Within ${minutes} minutes, set your password, change two-step login, or create or rotate an API key.`;
     }
     /** Back from GitHub, which confirmed it's the user asking to delete (vb2007/vb2007.hu-api#245). */
     static deleteGithubConfirmed(minutes: number): string {
@@ -526,6 +527,33 @@ export class Messages {
     /** In place of "Add a passkey" once the account has the API's maximum. */
     static atCap(max: number): string {
       return `You have ${max} passkeys, the most an account can have: delete one to add another.`;
+    }
+  };
+
+  /** API keys (vb2007/vb2007.hu-api#511): listing, creating, rotating and deleting them. */
+  static readonly ApiKeys = class {
+    static readonly listFailed: string = "Failed to load your API keys";
+    static readonly createFailed: string = "Failed to create the API key";
+    static readonly rotateFailed: string = "Failed to rotate the API key";
+    static readonly deleteFailed: string = "Failed to delete the API key";
+    static readonly nameMissing: string = "Give the API key a name.";
+    /** The API's wording: the name goes into a security notice e-mail. */
+    static readonly nameInvalidCharacters: string =
+      "The API key name can't contain line breaks or invisible formatting characters.";
+    static nameTooLong(max: number): string {
+      return `The name can be at most ${max} characters long.`;
+    }
+    static readonly scopesMissing: string = "Pick at least one scope.";
+    static lifetimeInvalid(min: number, max: number): string {
+      return `Enter a whole number of days from ${min} to ${max}.`;
+    }
+    /** Back from GitHub, which "Confirm with GitHub" on this page sent the user to. */
+    static githubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Create or rotate the API key within ${minutes} minutes.`;
+    }
+    /** In place of "Create an API key" once the account has the API's maximum. */
+    static atCap(max: number): string {
+      return `You have ${max} API keys, the most an account can have: delete one to create another.`;
     }
   };
 

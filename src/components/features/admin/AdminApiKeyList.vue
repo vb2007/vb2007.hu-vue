@@ -4,27 +4,11 @@
  * its token, its scopes, and when it was made, expires and was last used. Revoking them is an
  * Actions row (`AdminRevokeApiKeys`).
  */
-import { formatDate } from "@/scripts/utility/dateUtil";
+import { apiKeyDates } from "@/scripts/authentication/apiKeys";
 import type { ApiKey } from "@/types/api/apiKeys";
 import AppIcon from "@/components/ui/AppIcon.vue";
 
 defineProps<{ keys: ApiKey[]; username: string }>();
-
-/** When the key was made, when it expires (or ran out, as of when the page drew it), and its last use. */
-const dates = ({ createdAt, expiresAt, lastUsedAt }: ApiKey) => {
-  const expired = expiresAt !== null && Date.parse(expiresAt) <= Date.now();
-  return [
-    { text: `Created ${formatDate(createdAt)}` },
-    {
-      text:
-        expiresAt === null
-          ? "Never expires"
-          : `${expired ? "Expired" : "Expires"} ${formatDate(expiresAt)}`,
-      expired
-    },
-    { text: lastUsedAt ? `Last used ${formatDate(lastUsedAt)}` : "Never used" }
-  ];
-};
 </script>
 
 <template>
@@ -42,7 +26,7 @@ const dates = ({ createdAt, expiresAt, lastUsedAt }: ApiKey) => {
         <p class="key__scopes">{{ apiKey.scopes.join(", ") }}</p>
         <!-- The dots are hidden from screen readers, which hear commas instead, like a passkey's. -->
         <p class="key__dates">
-          <template v-for="(fact, index) in dates(apiKey)" :key="index"
+          <template v-for="(fact, index) in apiKeyDates(apiKey)" :key="index"
             ><template v-if="index"
               ><span aria-hidden="true"> · </span><span class="visually-hidden">, </span></template
             ><strong v-if="fact.expired" class="key__expired">{{ fact.text }}</strong

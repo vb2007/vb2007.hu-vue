@@ -17,6 +17,7 @@ import AdminShortLinksView from "@/views/AdminShortLinksView.vue";
 import AdminShortLinkList from "@/components/features/admin/AdminShortLinkList.vue";
 import AdminSystemView from "@/views/AdminSystemView.vue";
 import AccountView from "@/views/AccountView.vue";
+import AccountApiKeysView from "@/views/AccountApiKeysView.vue";
 import AdminUserUploadsView from "@/views/AdminUserUploadsView.vue";
 import AdminUploadsView from "@/views/AdminUploadsView.vue";
 import AdminUserView from "@/views/AdminUserView.vue";
@@ -25,6 +26,7 @@ import AdminSiteBoard from "@/components/features/admin/AdminSiteBoard.vue";
 import AdminUserList from "@/components/features/admin/AdminUserList.vue";
 import AdminPasteList from "@/components/features/admin/AdminPasteList.vue";
 import AccountPanel from "@/components/features/account/AccountPanel.vue";
+import ApiKeysPanel from "@/components/features/account/ApiKeysPanel.vue";
 import HomeHero from "@/components/features/home/HomeHero.vue";
 import ToolDirectory from "@/components/features/home/ToolDirectory.vue";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
@@ -76,6 +78,7 @@ describe("views", () => {
     ["RegisterView", RegisterView, RegisterForm],
     ["PasswordResetView", PasswordResetView, PasswordResetForm],
     ["AccountView", AccountView, AccountPanel],
+    ["AccountApiKeysView", AccountApiKeysView, ApiKeysPanel],
     ["ShortenView", ShortenView, ShortenPanel],
     ["PastebinView", PastebinView, PasteComposer],
     ["UploadView", UploadView, UploadComposer]

@@ -1,7 +1,9 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 import { ADMIN_SECTIONS, AdminPaths, AdminRoutes, type AdminSectionId } from "@/constants/admin";
+import { OauthQuery } from "@/constants/oauth";
 import { pageTitle } from "@/constants/site";
 import { TOOLS_LINE, type ToolId } from "@/constants/stops";
+import { takeGithubReturn } from "@/scripts/authentication/githubReturn";
 import { setNoindex } from "@/scripts/utility/robotsMeta";
 import HomeView from "../views/HomeView.vue";
 
@@ -137,7 +139,23 @@ export const routes: RouteRecordRaw[] = [
     path: "/account",
     name: "account",
     meta: { title: "Account" },
-    component: () => import("../views/AccountView.vue")
+    component: () => import("../views/AccountView.vue"),
+    // The GitHub relink always comes back here; one started from another page goes on to it, with
+    // `?github=linked` or `?oauthError=`. Read on every visit, so an abandoned one doesn't linger.
+    beforeEnter: (to) => {
+      const back = takeGithubReturn();
+      return back.startsWith("/account/") &&
+        (OauthQuery.github in to.query || OauthQuery.error in to.query)
+        ? { path: back, query: to.query, replace: true }
+        : true;
+    }
+  },
+  // Kept off the account page, which is long already, and linked from its "API keys" row.
+  {
+    path: "/account/api-keys",
+    name: "account-api-keys",
+    meta: { title: "API keys" },
+    component: () => import("../views/AccountApiKeysView.vue")
   },
   {
     path: "/login",

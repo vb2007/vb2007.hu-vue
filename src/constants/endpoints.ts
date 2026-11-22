@@ -25,6 +25,12 @@ import type {
   UploadQuotaResponse
 } from "@/types/api/admin";
 import type {
+  ApiKeysResponse,
+  ApiKeyTokenResponse,
+  CreateApiKeyBody,
+  RotateApiKeyBody
+} from "@/types/api/apiKeys";
+import type {
   EmailBody,
   GithubLinkResponse,
   GithubPasswordBody,
@@ -357,6 +363,30 @@ export class Endpoints {
     static readonly removePasskey = defineEndpoint<MfaPasswordBody, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/user/passkeys/:id",
+      credentials: true
+    });
+    /** The account's API keys (vb2007/vb2007.hu-api#511), without their tokens. Session only. */
+    static readonly apiKeys = defineEndpoint<undefined, ApiKeysResponse>()({
+      method: HttpMethod.Get,
+      path: "/user/api-keys",
+      credentials: true
+    });
+    /** Confirmed like an MFA setting; the answer carries the token, shown only then. */
+    static readonly createApiKey = defineEndpoint<CreateApiKeyBody, ApiKeyTokenResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/api-keys",
+      credentials: true
+    });
+    /** A new token for the key, the old one stopping at once; confirmed the same way. */
+    static readonly rotateApiKey = defineEndpoint<RotateApiKeyBody, ApiKeyTokenResponse>()({
+      method: HttpMethod.Post,
+      path: "/user/api-keys/:id/rotate",
+      credentials: true
+    });
+    /** Deleting needs no confirmation. */
+    static readonly removeApiKey = defineEndpoint<undefined, MessageResponse>()({
+      method: HttpMethod.Delete,
+      path: "/user/api-keys/:id",
       credentials: true
     });
   };
