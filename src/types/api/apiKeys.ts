@@ -1,3 +1,6 @@
+import type { MessageResponse } from "@/types/api/common";
+import type { MfaPasswordBody } from "@/types/api/mfa";
+
 /** An API key's scope (vb2007/vb2007.hu-api#511), mirroring the API's `API_KEY_SCOPES`. */
 export type ApiKeyScope =
   | "account:read"
@@ -23,9 +26,6 @@ export interface ApiKey {
   expiresAt: string | null;
   lastUsedAt: string | null;
 }
-
-import type { MessageResponse } from "@/types/api/common";
-import type { MfaPasswordBody } from "@/types/api/mfa";
 
 export interface ApiKeysResponse {
   apiKeys: ApiKey[];

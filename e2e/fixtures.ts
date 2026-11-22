@@ -75,6 +75,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `hasUser(..., { mfa })` arranges the account's MFA (all off by default), one store with `api.hasMfaEmail()` and `api.hasMfaTotp()`: `GET /admin/users/:id` and `GET /user` answer it in `mfa`, and with `email` or `totp` on its login takes the second step;
  * `DELETE /admin/users/:id/mfa` turns its methods and recovery codes off, keeps the passkeys and logs the account out like the admin's
  * logout, refusing the superuser's address with 409 (vb2007/vb2007.hu-api#483).
+ * `hasUser(..., { apiKeys })` arranges the account's API keys, which `GET /admin/users/:id` lists in `apiKeys` (vb2007/vb2007.hu-api#513).
+ * `DELETE /admin/users/:id/api-keys` deletes them all and answers how many in `revoked`, the superuser's own too, leaving the session alone;
+ * suspending the account or lifting a suspension, the MFA reset and a password reset (code or link) delete them too, the admin's logout keeps them.
  * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
  * Where the API populates the owner (`GET /paste/:id`, `GET /pastes/:username`, `GET /shortenUrl/:code`), it's named by its account's
  * current name, or the name it was filed under when no account has it.
@@ -465,6 +468,7 @@ const RATE_LIMITERS = {
   passwordChecksPerAccount: ["email"],
   passkeyOptionsPerIp: ["ip"],
   passkeyLoginsPerIp: ["ip"],
+  apiKeyChecksPerIp: ["ip"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
   registrationCodeFailures: ["email"],
@@ -908,7 +912,8 @@ export class MockApi {
       superuser = false,
       emailVerified = false,
       pendingEmail,
-      mfa
+      mfa,
+      apiKeys
     }: {
       usedBytes?: number;
       count?: number;
@@ -920,6 +925,8 @@ export class MockApi {
       emailVerified?: boolean;
       pendingEmail?: string;
       mfa?: Partial<MockMfaStatus>;
+      /** Its API keys, each filled in from `Key 1`'s defaults: made now, expiring in 90 days, never used. */
+      apiKeys?: Partial<MockApiKey>[];
     } = {}
   ) {
     const email = normalizeEmail(`${username}@example.com`);
@@ -942,6 +949,22 @@ export class MockApi {
       this.arrangedUploadUsage.set(user, { usedBytes: usedBytes ?? 0, count: count ?? 0 });
     }
     if (pendingEmail) this.userPendingEmails.set(user.id, pendingEmail);
+    if (apiKeys) {
+      const now = this.now();
+      this.userApiKeys.set(
+        user.id,
+        apiKeys.map((key, i) => ({
+          id: `${i + 1}`.padStart(32, "c"),
+          name: `Key ${i + 1}`,
+          hint: "x9Qk",
+          scopes: ["pastes:read"],
+          createdAt: new Date(now).toISOString(),
+          expiresAt: new Date(now + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          lastUsedAt: null,
+          ...key
+        }))
+      );
+    }
     this.knowsListedAccount(user, { password, emailVerified, githubLogin });
     if (mfa) {
       // On the login's account, so a login with this address takes the second step too.
@@ -1523,6 +1546,10 @@ export class MockApi {
     const mfaResetRoute = endpoint.match(/^DELETE \/admin\/users\/([^/]+)\/mfa$/);
     if (mfaResetRoute) {
       return this.resetUserMfa(decodeURIComponent(mfaResetRoute[1]));
+    }
+    const apiKeysRoute = endpoint.match(/^DELETE \/admin\/users\/([^/]+)\/api-keys$/);
+    if (apiKeysRoute) {
+      return this.revokeUserApiKeys(decodeURIComponent(apiKeysRoute[1]));
     }
     const logoutRoute = endpoint.match(/^POST \/admin\/users\/([^/]+)\/logout$/);
     if (logoutRoute) {
@@ -3042,7 +3069,7 @@ export class MockApi {
 
   /**
    * Like the API: the right code for an account that asked for one sets the password, confirms the
-   * address and ends every session of the account. The code works once.
+   * address, ends every session of the account and deletes its API keys. The code works once.
    */
   private confirmPasswordReset(
     body: { email?: string; code?: string; newPassword?: string } | null
@@ -3068,6 +3095,9 @@ export class MockApi {
     this.verifiedAddresses.add(email);
     // A reset by code voids the account's mailed links too.
     this.voidResetLinks((link) => normalizeEmail(link.email) === email);
+    // And deletes its API keys, like the API's `passwordResetUpdate` (vb2007/vb2007.hu-api#513).
+    const account = this.accounts.find((item) => normalizeEmail(item.email) === email);
+    if (account) this.userApiKeys.delete(account._id);
     if (this.user && normalizeEmail(this.user.email) === email) {
       this.user = null;
     }
@@ -3090,8 +3120,8 @@ export class MockApi {
   }
 
   /**
-   * Like the API (vb2007/vb2007.hu-api#256): a live link's token sets the password once and ends
-   * every session of its account. A password the API refuses leaves the link usable.
+   * Like the API (vb2007/vb2007.hu-api#256): a live link's token sets the password once, ends
+   * every session of its account and deletes its API keys. A password the API refuses leaves the link usable.
    */
   private confirmPasswordResetLink(body: { token?: string; newPassword?: string } | null) {
     const { token, newPassword } = body ?? {};
@@ -3114,6 +3144,7 @@ export class MockApi {
     this.voidResetLinks((link) => link.userId === userId);
     this.voidResetCode(email);
     this.voidsEmailChangeOf(email, userId);
+    this.userApiKeys.delete(userId);
     this.password = newPassword;
     if (this.user?._id === userId) {
       this.user = null;
@@ -3295,6 +3326,7 @@ export class MockApi {
           githubLogin: account?.githubLogin ?? null,
           pendingEmail: this.userPendingEmails.get(user.id) ?? null,
           mfa: this.mfaOf(user.id),
+          apiKeys: this.userApiKeys.get(user.id) ?? [],
           counts: {
             pastes: this.pastes.filter((paste) => owns(paste.addedBy)).length,
             shortUrls: [...this.shortLinks.values()].filter((link) => owns(link.addedBy)).length,
@@ -3568,6 +3600,25 @@ export class MockApi {
     };
   }
 
+  /**
+   * `DELETE /admin/users/:id/api-keys` (vb2007/vb2007.hu-api#513): deletes every key of the account, the superuser's
+   * own too, and answers how many; 0 when it had none. The session stays.
+   */
+  private revokeUserApiKeys(id: string): MockResponse {
+    const target = this.adminTarget(id);
+    if ("status" in target) return target;
+    const revoked = this.userApiKeys.get(id)?.length ?? 0;
+    this.userApiKeys.delete(id);
+    return {
+      status: 200,
+      body: {
+        message: "User's API keys revoked successfully.",
+        user: { id: target.id, username: target.username },
+        revoked
+      }
+    };
+  }
+
   /** The MFA of the account with this id: all off unless arranged or turned on. */
   private mfaOf(id: string): MockMfaStatus {
     const account = this.accounts.find((candidate) => candidate._id === id);
@@ -3576,8 +3627,8 @@ export class MockApi {
 
   /**
    * `DELETE /admin/users/:id/mfa` (vb2007/vb2007.hu-api#483), in the API's order: 400, 404, then 409 for the
-   * superuser's address. Every method and recovery code goes off, the passkeys stay, and the session ends like
-   * `logoutUser`'s. It answers 200 as well when nothing was on.
+   * superuser's address. Every method and recovery code goes off, the passkeys stay, the API keys are deleted, and
+   * the session ends like `logoutUser`'s. It answers 200 as well when nothing was on.
    */
   private resetUserMfa(id: string): MockResponse {
     const target = this.adminTarget(id);
@@ -3600,6 +3651,7 @@ export class MockApi {
       // Its waiting second step goes too: the next login takes no second step.
       if (this.mfaChallenge?.account === account) this.mfaChallenge.ended = true;
     }
+    this.userApiKeys.delete(id);
     this.loggedOutUsers.push(id);
     return {
       status: 200,
@@ -3870,7 +3922,7 @@ export class MockApi {
   /**
    * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
    * the first `suspendedAt`, and the superuser's address answers 409. Suspending, or lifting a
-   * suspension that's there, voids what's waiting (`voidsWaitingFor`).
+   * suspension that's there, voids what's waiting (`voidsWaitingFor`) and deletes the API keys.
    */
   private setSuspension(id: string, suspended: unknown): MockResponse {
     const refusal = this.refuseNonSuperuser();
@@ -3885,7 +3937,10 @@ export class MockApi {
       return { status: 409, body: { error: "The superuser's account can't be suspended." } };
     }
     // The API's `setUserSuspension` unsets what's waiting on suspending, and on lifting a suspension that was there.
-    if (suspended || user.suspendedAt) this.voidsWaitingFor(user);
+    if (suspended || user.suspendedAt) {
+      this.voidsWaitingFor(user);
+      this.userApiKeys.delete(user.id);
+    }
     user.suspendedAt = suspended ? (user.suspendedAt ?? new Date(this.now()).toISOString()) : null;
     return {
       status: 200,

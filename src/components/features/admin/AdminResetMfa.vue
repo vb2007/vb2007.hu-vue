@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The account page's Reset MFA row, for a user who lost their second factor. The reset turns
- * every method and recovery code off and ends their session, so it asks first, in place, like
+ * every method and recovery code off, deletes the API keys and ends their session, so it asks first, in place, like
  * Suspend. With nothing on there's nothing to reset, and the row only says so. On the superuser's
  * own account, which the API refuses (409), the row only says where that MFA is managed.
  */
@@ -52,10 +52,12 @@ const confirm = async () => {
   if (await reset(props.user.id)) {
     confirming.value = false;
     done.value = Messages.Admin.mfaReset(props.user.username);
-    // The API turned everything off and keeps the passkeys, so it answers no account to take in.
+    // The API turned everything off, deleted the API keys and keeps the passkeys, so it answers
+    // no account to take in.
     emit("updated", {
       ...props.user,
-      mfa: { ...props.user.mfa, email: false, totp: false, recoveryCodesLeft: 0 }
+      mfa: { ...props.user.mfa, email: false, totp: false, recoveryCodesLeft: 0 },
+      apiKeys: []
     });
   }
   // A reset leaves nothing to reset, so its key goes: the focus moves to what it did.
@@ -69,7 +71,7 @@ const confirm = async () => {
     <template v-if="user.isSuperuser">{{ Messages.Admin.superuserMfaNotResettable }}</template>
     <template v-else-if="hasMfa">
       For when {{ user.username }} lost their second factor: turns off every MFA method and recovery
-      code, and ends their session. Their passkeys stay.
+      code, deletes their API keys and ends their session. Their passkeys stay.
     </template>
     <template v-else
       >{{ user.username }} has no MFA method on, so there's nothing to reset.</template
@@ -92,8 +94,9 @@ const confirm = async () => {
       >
         <p class="confirm__text">
           Reset <strong>{{ user.username }}</strong>'s MFA? Every method and recovery code is turned
-          off, and they're logged out at once and mailed a security notice. They log in without a
-          second step (password, GitHub or a passkey) and can turn MFA on again.
+          off, their API keys are deleted, and they're logged out at once and mailed a security
+          notice. They log in without a second step (password, GitHub or a passkey) and can turn MFA
+          on again.
         </p>
         <StatusMessage v-if="resetError" :id="errorId" tone="error">{{ resetError }}</StatusMessage>
         <div class="confirm__actions">

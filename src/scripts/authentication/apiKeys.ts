@@ -1,6 +1,7 @@
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { displayNameEarlyError, displayNameError } from "@/scripts/authentication/displayName";
+import { formatDate } from "@/scripts/utility/dateUtil";
 import type { ApiKey, ApiKeyLifetime, ApiKeyScope } from "@/types/api/apiKeys";
 
 /** An API key name's problem, "" when it has none, like the API's `apiKeyNameError`. */
@@ -62,3 +63,25 @@ export const lifetimeDaysOf = (key: Pick<ApiKey, "createdAt" | "expiresAt">) =>
 /** Whether the key no longer works by its age; one that never expires never is. */
 export const isExpired = (key: Pick<ApiKey, "expiresAt">, now = Date.now()) =>
   key.expiresAt !== null && Date.parse(key.expiresAt) <= now;
+
+/**
+ * A key's dates as its rows say them, the user's and the admin's: when it was made, when it
+ * expires (or ran out, as of `now`, flagged `expired`), and its last use.
+ */
+export const apiKeyDates = (key: ApiKey, now = Date.now()) => {
+  const expired = isExpired(key, now);
+  return [
+    { text: `Created ${formatDate(key.createdAt)}`, expired: false },
+    {
+      text:
+        key.expiresAt === null
+          ? "Never expires"
+          : `${expired ? "Expired" : "Expires"} ${formatDate(key.expiresAt)}`,
+      expired
+    },
+    {
+      text: key.lastUsedAt ? `Last used ${formatDate(key.lastUsedAt)}` : "Never used",
+      expired: false
+    }
+  ];
+};

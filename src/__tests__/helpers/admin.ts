@@ -4,6 +4,7 @@ import type {
   AdminUserDetails,
   MailBudgetResponse
 } from "@/types/api/admin";
+import type { ApiKey } from "@/types/api/apiKeys";
 
 const MB = 1024 ** 2;
 const GB = 1024 ** 3;
@@ -49,8 +50,20 @@ export const anAdminUser = (
   ...overrides
 });
 
+/** An API key as `GET /admin/users/:id` lists it: never used, expiring far in the future. */
+export const anApiKey = (id: string, overrides: Partial<ApiKey> = {}): ApiKey => ({
+  id,
+  name: `Key ${id}`,
+  hint: "x9Qk",
+  scopes: ["pastes:read", "pastes:write"],
+  createdAt: "2026-11-21T10:00:00.000Z",
+  expiresAt: "2099-02-19T10:00:00.000Z",
+  lastUsedAt: null,
+  ...overrides
+});
+
 /**
- * A user as `GET /admin/users/:id` returns them: a confirmed password account without GitHub or MFA, owning
+ * A user as `GET /admin/users/:id` returns them: a confirmed password account without GitHub, MFA or API keys, owning
  * a few pastes and a short link besides `anAdminUser`'s uploads.
  */
 export const anAdminUserDetails = (
@@ -73,6 +86,7 @@ export const anAdminUserDetails = (
     githubLogin: null,
     mfa: { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0 },
     counts: { pastes: 3, shortUrls: 1, uploads: user.uploads.count, ...counts },
+    apiKeys: [],
     ...overrides
   };
 };

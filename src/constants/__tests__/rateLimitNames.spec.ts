@@ -5,7 +5,7 @@ import type { RateLimitName } from "@/types/api/admin";
 
 // The API's limiters in the order `DELETE /admin/rate-limits` lists them (vb2007/vb2007.hu-api#384):
 // its `namedLimiters` (src/middlewares/rateLimit.ts), then `clearCodeFailuresOf`'s stored counts
-// (src/helpers/admin.ts), with the passkey and MFA ones of vb2007/vb2007.hu-api#493.
+// (src/helpers/admin.ts), with the passkey and MFA ones of vb2007/vb2007.hu-api#493 and the API key one of #514.
 const API_ORDER: RateLimitName[] = [
   "loginPerIp",
   "loginPerAccount",
@@ -21,6 +21,7 @@ const API_ORDER: RateLimitName[] = [
   "passwordChecksPerAccount",
   "passkeyOptionsPerIp",
   "passkeyLoginsPerIp",
+  "apiKeyChecksPerIp",
   "passwordResetCodeFailures",
   "emailChangeCodeFailures",
   "registrationCodeFailures",

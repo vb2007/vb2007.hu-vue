@@ -18,6 +18,7 @@ import type {
   PendingRegistrationsResponse,
   RenameUserBody,
   RenameUserResponse,
+  RevokeApiKeysResponse,
   SetSuspensionBody,
   SetUploadQuotaBody,
   SuspensionResponse,
@@ -508,10 +509,16 @@ export class Endpoints {
       path: "/admin/users/:id",
       credentials: true
     });
-    /** Ends every session of the account; on the superuser's own, theirs too. */
+    /** Ends every session of the account; on the superuser's own, theirs too. Its API keys stay. */
     static readonly logoutUser = defineEndpoint<undefined, LogoutUserResponse>()({
       method: HttpMethod.Post,
       path: "/admin/users/:id/logout",
+      credentials: true
+    });
+    /** Deletes every API key of the account, the superuser's own too; the session stays. */
+    static readonly revokeUserApiKeys = defineEndpoint<undefined, RevokeApiKeysResponse>()({
+      method: HttpMethod.Delete,
+      path: "/admin/users/:id/api-keys",
       credentials: true
     });
     /** Deletes the account with its pastes, short links and uploads; never the superuser's own. */
@@ -520,7 +527,7 @@ export class Endpoints {
       path: "/admin/users/:id",
       credentials: true
     });
-    /** Turns off every MFA method and recovery code and ends the session; passkeys stay. 409 on the superuser's own. */
+    /** Turns off every MFA method and recovery code, deletes the API keys and ends the session; passkeys stay. 409 on the superuser's own. */
     static readonly resetUserMfa = defineEndpoint<undefined, MessageResponse>()({
       method: HttpMethod.Delete,
       path: "/admin/users/:id/mfa",
@@ -531,7 +538,7 @@ export class Endpoints {
       path: "/admin/users/:id/upload-quota",
       credentials: true
     });
-    /** Suspending ends the user's session; the superuser's own account answers 409. */
+    /** Suspending ends the user's session and deletes their API keys; the superuser's own account answers 409. */
     static readonly setSuspension = defineEndpoint<SetSuspensionBody, SuspensionResponse>()({
       method: HttpMethod.Patch,
       path: "/admin/users/:id/suspension",

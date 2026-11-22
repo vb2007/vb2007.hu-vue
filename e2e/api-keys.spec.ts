@@ -190,6 +190,37 @@ test("a field the form sends the cursor to scrolls clear of the navbar", async (
     .toBeGreaterThanOrEqual(navBottom.y + navBottom.height);
 });
 
+test("a key made here shows in the admin's view of the account, and goes with the admin's revoke", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const admin = api.hasUser("vb2007", { superuser: true });
+  await page.goto("/account/api-keys");
+  await page.getByRole("button", { name: "Create an API key" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Admin script");
+  // The superuser alone gets the admin scopes.
+  await page.getByRole("group", { name: "Admin" }).getByLabel("Read").check({ force: true });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Create key" }).click();
+  const token = (await page.locator(".token__text").textContent())!;
+
+  await page.goto(`/admin/users/${admin.id}`);
+  const keys = page.getByRole("list", { name: "vb2007's API keys" });
+  await expect(keys.getByRole("heading", { level: 3 })).toHaveText([
+    `Admin script ending in …${token.slice(-4)}`
+  ]);
+  await expect(keys).toContainText("admin:read");
+  const row = page.locator(".action").filter({ hasText: "Revoke API keys" });
+  await row.getByRole("button", { name: "Revoke API keys" }).click();
+  await row.getByRole("button", { name: "Confirm revoke" }).click();
+  await expect(keys).toHaveCount(0);
+
+  await page.goto("/account/api-keys");
+  await expect(page.getByText("No API keys yet.")).toBeVisible();
+});
+
 test("a visitor is asked to log in", async ({ page }) => {
   await page.goto("/account/api-keys");
   await expect(page.getByText("Log in to manage your API keys.")).toBeVisible();

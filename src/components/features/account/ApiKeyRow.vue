@@ -8,8 +8,7 @@ import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import { apiRequest } from "@/scripts/api/client";
-import { isExpired } from "@/scripts/authentication/apiKeys";
-import { formatDate } from "@/scripts/utility/dateUtil";
+import { apiKeyDates } from "@/scripts/authentication/apiKeys";
 import ApiKeyForm from "@/components/features/account/ApiKeyForm.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -39,15 +38,8 @@ const deleting = ref(false);
 const error = ref("");
 const rotateKey = useTemplateRef<InstanceType<typeof BaseButton>>("rotateKey");
 
-const expired = computed(() => isExpired(props.apiKey));
-const expires = computed(() => {
-  const { expiresAt } = props.apiKey;
-  if (!expiresAt) return "Never expires";
-  return `${expired.value ? "Expired" : "Expires"} ${formatDate(expiresAt)}`;
-});
-const used = computed(() =>
-  props.apiKey.lastUsedAt ? `Last used ${formatDate(props.apiKey.lastUsedAt)}` : "Never used"
-);
+const dates = computed(() => apiKeyDates(props.apiKey));
+const expired = computed(() => dates.value[1].expired);
 
 const startRotate = () => {
   error.value = "";
@@ -101,10 +93,13 @@ const remove = async () => {
       <ul class="api-key__scopes" :aria-label="`Scopes of ${apiKey.name}`">
         <li v-for="scope in apiKey.scopes" :key="scope" class="api-key__scope">{{ scope }}</li>
       </ul>
+      <!-- The dots are hidden from screen readers, which hear commas instead. -->
       <p class="api-key__dates">
-        Created {{ formatDate(apiKey.createdAt) }}<span aria-hidden="true"> · </span
-        ><span class="visually-hidden">, </span>{{ expires }}<span aria-hidden="true"> · </span
-        ><span class="visually-hidden">, </span>{{ used }}
+        <template v-for="(fact, index) in dates" :key="index"
+          ><template v-if="index"
+            ><span aria-hidden="true"> · </span><span class="visually-hidden">, </span></template
+          >{{ fact.text }}</template
+        >
       </p>
 
       <ApiKeyForm
