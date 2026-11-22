@@ -1,3 +1,4 @@
+import type { ApiKey } from "@/types/api/apiKeys";
 import type {
   BasePagination,
   ListQuery,
@@ -43,6 +44,8 @@ export interface AdminUserDetails extends AdminUser {
   mfa: MfaStatus;
   /** How much the user owns; `uploads` is the same as `uploads.count`. */
   counts: { pastes: number; shortUrls: number; uploads: number };
+  /** The account's API keys (vb2007/vb2007.hu-api#513), `[]` without any. */
+  apiKeys: ApiKey[];
 }
 
 /** `GET /admin/users/:id` */
@@ -83,17 +86,34 @@ export interface RenameUserResponse extends MessageResponse {
   user: AdminUser;
 }
 
+/** The account an admin action that answers no whole account names. */
+export interface AdminUserRef {
+  id: string;
+  username: string;
+}
+
 /**
  * `POST /admin/users/:id/logout` (vb2007/vb2007.hu-api#275): ends the account's session, and so the
- * superuser's own when it's their account. Also a 200 when they weren't logged in.
+ * superuser's own when it's their account. Also a 200 when they weren't logged in. Its API keys
+ * keep working (vb2007/vb2007.hu-api#513).
  */
 export interface LogoutUserResponse extends MessageResponse {
-  user: { id: string; username: string };
+  user: AdminUserRef;
+}
+
+/**
+ * `DELETE /admin/users/:id/api-keys` (vb2007/vb2007.hu-api#513): deletes every API key of the
+ * account, the superuser's own too, and leaves its session alone.
+ */
+export interface RevokeApiKeysResponse extends MessageResponse {
+  user: AdminUserRef;
+  /** How many keys it deleted: 0 when the account had none. */
+  revoked: number;
 }
 
 /** `PATCH /admin/users/:id/suspension` (vb2007/vb2007.hu-api#273) */
 export interface SetSuspensionBody {
-  /** `true` suspends the user and ends their session; `false` lifts the suspension. */
+  /** `true` suspends the user, ends their session and deletes their API keys; `false` lifts it, deleting them again. */
   suspended: boolean;
 }
 

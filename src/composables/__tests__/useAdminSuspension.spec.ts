@@ -12,7 +12,7 @@ describe("useAdminSuspension", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("suspends the account and keeps the API's word on it", async () => {
+  it("suspends the account and says what that did", async () => {
     const suspended = anAdminUser("a b", { suspendedAt: "2026-11-06T10:00:00.000Z" });
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
@@ -32,7 +32,8 @@ describe("useAdminSuspension", () => {
       body: JSON.stringify({ suspended: true }),
       credentials: "include"
     });
-    expect(saved.value).toBe("User suspended successfully: their session was ended.");
+    // Our own word, since the API's leaves out the API keys.
+    expect(saved.value).toBe(Messages.Admin.suspended("user-a b"));
     expect(error.value).toBe("");
     expect(isSaving.value).toBe(false);
   });
@@ -43,7 +44,7 @@ describe("useAdminSuspension", () => {
     );
     const { error, saved, setSuspension } = useAdminSuspension();
     await setSuspension("a", false);
-    expect(saved.value).toBe("User unsuspended successfully.");
+    expect(saved.value).toBe(Messages.Admin.unsuspended("user-a"));
 
     fetchMock.mockResolvedValueOnce(
       jsonResponse(409, { error: "The superuser's account can't be suspended." })

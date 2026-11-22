@@ -575,7 +575,18 @@ export class Messages {
     }
     static readonly logoutFailed: string = "Failed to log the account out";
     static loggedOut(name: string): string {
-      return `${name} is logged out everywhere. They can log in again.`;
+      return `${name} is logged out everywhere. They can log in again, and their API keys keep working.`;
+    }
+    static readonly revokeApiKeysFailed: string = "Failed to revoke the account's API keys";
+    /**
+     * `revoked` is how many keys the API deleted: 0 when the account had none (left). Without
+     * `name`, they were the admin's own. The security notice isn't claimed: the API mails it after
+     * answering, and not once the account's daily notices are used up.
+     */
+    static apiKeysRevoked(revoked: number, name?: string): string {
+      if (revoked === 0) return `${name ?? "You"} had no API keys, so nothing was revoked.`;
+      const keys = revoked === 1 ? "API key" : `${revoked.toLocaleString()} API keys`;
+      return `Revoked ${name ? `${name}'s` : "your"} ${keys}.`;
     }
     static readonly deleteFailed: string = "Failed to delete the account";
     /** On the Users list, once the account's page deleted it. */
@@ -584,11 +595,18 @@ export class Messages {
     }
     static readonly mfaResetFailed: string = "Failed to reset the account's MFA";
     static mfaReset(name: string): string {
-      return `${name}'s MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
+      return `${name}'s MFA is off, their API keys are deleted and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
     }
     /** Why the superuser's own page has no Reset MFA key: the API answers it with 409. */
     static readonly superuserMfaNotResettable: string =
       "Your own MFA is managed from your Account page.";
+    /** In place of the API's word, which leaves out the API keys. */
+    static suspended(name: string): string {
+      return `${name} is suspended: their session ended and their API keys are deleted.`;
+    }
+    static unsuspended(name: string): string {
+      return `${name}'s suspension is lifted: they can log in again.`;
+    }
     static readonly suspendFailed: string = "Failed to suspend the account";
     static readonly unsuspendFailed: string = "Failed to lift the suspension";
     /** Why the superuser's own page has no Suspend key: the API answers it with 409. */

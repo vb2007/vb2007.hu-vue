@@ -23,7 +23,7 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
   page,
   api
 }) => {
-  api.hasUser("me");
+  const me = api.hasUser("me", { apiKeys: [{}] });
   await page.goto("/login");
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page).toHaveURL("/reset-password");
@@ -44,6 +44,7 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
     "The code is wrong, expired or already used: check it or request a new one."
   );
 
+  expect(api.userApiKeys.get(me.id)).toHaveLength(1);
   await page.getByLabel("Code").fill(api.passwordResetCode);
   await page.getByRole("button", { name: "Reset password" }).click();
 
@@ -52,6 +53,8 @@ test("a forgotten password is reset with the mailed code, then the user logs in"
     "Password reset successfully: log in with the new password."
   );
   await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+  // The wrong code kept the account's API keys; the reset deleted them.
+  expect(api.userApiKeys.get(me.id)).toBeUndefined();
 
   // Logging in with the new password on the same page is an ordinary login.
   await page.getByLabel("E-mail").fill("me@example.com");
@@ -445,6 +448,8 @@ test.describe("the mailed link", () => {
   });
 
   test("sets the password once, then the user logs in with it", async ({ page, api }) => {
+    // `MOCK_EMAIL`'s account, which the link is for, with an API key the reset deletes.
+    const me = api.hasUser("me", { apiKeys: [{}] });
     const token = api.mailsResetLink();
     await page.goto(`/reset-password#token=${token}`);
 
@@ -454,6 +459,7 @@ test.describe("the mailed link", () => {
     await expect(page).toHaveURL("/login");
     await expect(page.getByRole("main").getByRole("status")).toHaveText(RESET);
     expect(api.password).toBe("a new password");
+    expect(api.userApiKeys.get(me.id)).toBeUndefined();
 
     // The old password no longer gets in; the new one does.
     await page.getByLabel("E-mail").fill(MOCK_EMAIL);

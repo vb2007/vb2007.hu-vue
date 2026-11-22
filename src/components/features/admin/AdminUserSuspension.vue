@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * The account page's Suspend row. Suspending ends the user's session, so it asks first, in place;
- * lifting it doesn't. The superuser's own account can't be suspended, so its row only says so.
+ * The account page's Suspend row. Suspending ends the user's session and deletes their API keys
+ * (vb2007/vb2007.hu-api#513), so it asks first, in place; lifting it (which deletes them again)
+ * doesn't ask. The superuser's own account can't be suspended, so its row only says so.
  */
 import { nextTick, ref, useId, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";
@@ -62,11 +63,11 @@ const change = async (suspended: boolean) => {
     <template v-if="user.isSuperuser">{{ Messages.Admin.superuserNotSuspendable }}</template>
     <template v-else-if="user.suspendedAt">
       {{ user.username }} can't log in while suspended. Lifting it lets them log in again, with
-      their password or GitHub.
+      their password or GitHub. Their deleted API keys don't come back.
     </template>
     <template v-else>
-      Ends {{ user.username }}'s session and stops them logging in until you lift it. Their pastes,
-      short links and uploads stay up.
+      Ends {{ user.username }}'s session, deletes their API keys and stops them logging in until you
+      lift it. Their pastes, short links and uploads stay up.
     </template>
 
     <template v-if="!user.isSuperuser && !confirming" #key>
@@ -95,8 +96,8 @@ const change = async (suspended: boolean) => {
         @keydown.esc="cancel"
       >
         <p class="confirm__text">
-          Suspend <strong>{{ user.username }}</strong>? They're logged out at once, and can't log in
-          again until you lift the suspension.
+          Suspend <strong>{{ user.username }}</strong>? They're logged out at once, their API keys
+          are deleted, and they can't log in again until you lift the suspension.
         </p>
         <StatusMessage v-if="error" :id="errorId" tone="error">{{ error }}</StatusMessage>
         <div class="confirm__actions">

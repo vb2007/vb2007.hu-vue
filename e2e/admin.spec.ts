@@ -628,16 +628,20 @@ test("a user page's link that leads to no account says so", async ({ page, api }
 test("the superuser suspends a user after confirming, then lifts it", async ({ page, api }) => {
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   const admin = api.hasUser("vb2007", { superuser: true });
-  const anna = api.hasUser("anna");
+  const anna = api.hasUser("anna", { apiKeys: [{ name: "Deploy bot" }] });
 
   await page.goto(`/admin/users/${anna.id}`);
   await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
   await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "anna's API keys" }).getByRole("listitem")
+  ).toHaveCount(1);
   const actions = page.locator(".actions");
   await expect(actions.getByRole("heading", { level: 3 })).toHaveText([
     "Uploads",
     "Rename",
     "Log out everywhere",
+    "Revoke API keys",
     "Reset MFA",
     "Suspend account",
     "Delete account"
@@ -655,12 +659,17 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await actions.getByRole("button", { name: "Suspend", exact: true }).click();
   await page.getByRole("button", { name: "Suspend anna" }).click();
   await expect(actions.getByRole("status")).toHaveText(
-    "User suspended successfully: their session was ended."
+    "anna is suspended: their session ended and their API keys are deleted."
   );
   await expect(page.locator(".tag", { hasText: "Suspended" })).toBeVisible();
   await expect(page.locator(".fact--suspended dd")).toHaveText(/Since .+: they can't log in\./);
   await expect(page.getByRole("button", { name: "Lift suspension" })).toBeFocused();
   expect(anna.suspendedAt).not.toBeNull();
+  // Suspending deleted their API keys.
+  await expect(
+    page.getByRole("region", { name: "API keys", exact: true }).getByText("anna has no API keys.")
+  ).toBeVisible();
+  expect(api.userApiKeys.get(anna.id)).toBeUndefined();
 
   // The list says so too.
   await page.getByRole("link", { name: "All users" }).click();
@@ -670,7 +679,9 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await page.goBack();
 
   await page.getByRole("button", { name: "Lift suspension" }).click();
-  await expect(actions.getByRole("status")).toHaveText("User unsuspended successfully.");
+  await expect(actions.getByRole("status")).toHaveText(
+    "anna's suspension is lifted: they can log in again."
+  );
   await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
   await expect(page.locator(".fact--suspended")).toHaveCount(0);
   expect(anna.suspendedAt).toBeNull();
@@ -691,7 +702,8 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
     mfa: { totp: true, recoveryCodesLeft: 10 }
   });
   const anna = api.hasUser("anna", {
-    mfa: { email: true, totp: true, passkeys: 2, recoveryCodesLeft: 8 }
+    mfa: { email: true, totp: true, passkeys: 2, recoveryCodesLeft: 8 },
+    apiKeys: [{ name: "Deploy bot" }]
   });
 
   await page.goto(`/admin/users/${anna.id}`);
@@ -700,9 +712,12 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
     .filter({ has: page.locator("dt").getByText("MFA", { exact: true }) })
     .locator("dd");
   await expect(mfa).toHaveText("E-mail and authenticator app · 8 recovery codes left · 2 passkeys");
+  await expect(
+    page.getByRole("list", { name: "anna's API keys" }).getByRole("listitem")
+  ).toHaveCount(1);
   const row = page.locator(".action").filter({ hasText: "Reset MFA" });
   await expect(row.locator(".action__note")).toHaveText(
-    "For when anna lost their second factor: turns off every MFA method and recovery code, and ends their session. Their passkeys stay."
+    "For when anna lost their second factor: turns off every MFA method and recovery code, deletes their API keys and ends their session. Their passkeys stay."
   );
 
   // It asks first, and backing out sends nothing.
@@ -717,10 +732,11 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
   await page.getByRole("button", { name: "Reset anna's MFA" }).click();
   const done = row.getByRole("status");
   await expect(done).toHaveText(
-    "anna's MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
+    "anna's MFA is off, their API keys are deleted and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
   );
   await expect(done).toBeFocused();
   await expect(mfa).toHaveText("Off · 2 passkeys");
+  await expect(page.getByRole("list", { name: "anna's API keys" })).toHaveCount(0);
   await expect(row.locator(".action__note")).toHaveText(
     "anna has no MFA method on, so there's nothing to reset."
   );
@@ -730,6 +746,7 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
   // The API keeps it so: a reload reads the same.
   await page.reload();
   await expect(mfa).toHaveText("Off · 2 passkeys");
+  await expect(page.getByRole("list", { name: "anna's API keys" })).toHaveCount(0);
 
   // The admin's own MFA is managed from their Account page: the API refuses it here, so the row has no key.
   await page.goto(`/admin/users/${admin.id}`);
@@ -767,7 +784,7 @@ test("suspending an account voids its waiting reset code, reset links and e-mail
   await actions.getByRole("button", { name: "Suspend", exact: true }).click();
   await page.getByRole("button", { name: "Suspend anna" }).click();
   await expect(actions.getByRole("status")).toHaveText(
-    "User suspended successfully: their session was ended."
+    "anna is suspended: their session ended and their API keys are deleted."
   );
 
   const code = { email, code: api.passwordResetCode, newPassword };
@@ -852,6 +869,7 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
     "Uploads",
     "Rename",
     "Log out everywhere",
+    "Revoke API keys",
     "Reset MFA",
     "Suspend account",
     "Delete account"
@@ -893,13 +911,108 @@ test("the superuser renames a user and logs them out everywhere", async ({ page,
   expect(anna.username).toBe("Annabel");
 
   await expect(
-    page.getByText("Ends Annabel's session on every device. They can log in again.")
+    page.getByText(
+      "Ends Annabel's session on every device. They can log in again, and their API keys keep working: revoke them below."
+    )
   ).toBeVisible();
   await page.getByRole("button", { name: "Log out everywhere" }).click();
   await expect(
-    page.getByText("Annabel is logged out everywhere. They can log in again.")
+    page.getByText(
+      "Annabel is logged out everywhere. They can log in again, and their API keys keep working."
+    )
   ).toBeVisible();
   expect(api.loggedOutUsers).toEqual([anna.id]);
+});
+
+test("the superuser sees a user's API keys and revokes them all, which a logout doesn't", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  const admin = api.hasUser("vb2007", { superuser: true, apiKeys: [{ name: "Admin script" }] });
+  const anna = api.hasUser("anna", {
+    apiKeys: [
+      {
+        name: "Deploy bot",
+        hint: "Ab12",
+        scopes: ["pastes:read", "pastes:write"],
+        lastUsedAt: "2026-11-20T09:00:00.000Z"
+      },
+      { name: "Old script", expiresAt: "2026-01-01T00:00:00.000Z" },
+      { name: "Forever", expiresAt: null }
+    ]
+  });
+
+  await page.goto(`/admin/users/${anna.id}`);
+  const keys = page.getByRole("list", { name: "anna's API keys" });
+  await expect(keys.getByRole("heading", { level: 3 })).toHaveText([
+    "Deploy bot ending in …Ab12",
+    "Old script ending in …x9Qk",
+    "Forever ending in …x9Qk"
+  ]);
+  const deploy = keys.getByRole("listitem").nth(0);
+  await expect(deploy).toContainText("pastes:read, pastes:write");
+  await expect(deploy).toContainText(/Expires .+Last used .+/);
+  await expect(keys.getByRole("listitem").nth(1)).toContainText(/Expired .+Never used/);
+  await expect(keys.getByRole("listitem").nth(2)).toContainText("Never expires");
+
+  // Logging out ends the session only: the keys keep working.
+  await page.getByRole("button", { name: "Log out everywhere" }).click();
+  await expect(page.getByText("anna is logged out everywhere.")).toBeVisible();
+  await page.reload();
+  await expect(keys.getByRole("listitem")).toHaveCount(3);
+
+  const row = page.locator(".action").filter({ hasText: "Revoke API keys" });
+  await expect(row.locator(".action__note")).toHaveText(
+    "Deletes anna's 3 API keys, so whatever uses them stops working, and mails their address a security notice, while today's notices last. Their session stays: log them out too if the account may be in the wrong hands."
+  );
+  // It arms first; Escape disarms it.
+  const key = row.getByRole("button", { name: "Revoke API keys" });
+  await key.click();
+  await expect(row.getByRole("button", { name: "Confirm revoke" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(key).toBeVisible();
+  expect(api.userApiKeys.get(anna.id)).toHaveLength(3);
+
+  await key.click();
+  await row.getByRole("button", { name: "Confirm revoke" }).click();
+  await expect(row.getByRole("status")).toHaveText("Revoked anna's 3 API keys.");
+  await expect(key).toBeFocused();
+  await expect(keys).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "API keys", exact: true }).getByText("anna has no API keys.")
+  ).toBeVisible();
+  // The session stays: only the logout above ended it.
+  expect(api.loggedOutUsers).toEqual([anna.id]);
+  await page.reload();
+  await expect(
+    page.getByRole("region", { name: "API keys", exact: true }).getByText("anna has no API keys.")
+  ).toBeVisible();
+
+  // Again, there's nothing left to revoke; a link that leads nowhere is refused.
+  expect.soft(await callApi(page, api, "DELETE", `/admin/users/${anna.id}/api-keys`, {})).toEqual({
+    status: 200,
+    body: {
+      message: "User's API keys revoked successfully.",
+      user: { id: anna.id, username: "anna" },
+      revoked: 0
+    }
+  });
+  expect.soft(await callApi(page, api, "DELETE", "/admin/users/nope/api-keys", {})).toEqual({
+    status: 400,
+    body: { error: "Invalid ID format: must be a 24 character HEX string." }
+  });
+  expect
+    .soft(await callApi(page, api, "DELETE", `/admin/users/${"f".repeat(24)}/api-keys`, {}))
+    .toEqual({ status: 404, body: { error: "There is no such user with that ID." } });
+
+  // The superuser's own keys can go too, and this session stays.
+  await page.goto(`/admin/users/${admin.id}`);
+  await page.getByRole("button", { name: "Revoke API keys" }).click();
+  await page.getByRole("button", { name: "Confirm revoke" }).click();
+  await expect(page.getByText("Revoked your API key.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
+  expect(api.userApiKeys.get(admin.id)).toBeUndefined();
 });
 
 test("the superuser deletes a user with everything they own", async ({ page, api }) => {
