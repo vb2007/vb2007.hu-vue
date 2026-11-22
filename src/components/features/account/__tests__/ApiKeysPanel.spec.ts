@@ -11,6 +11,7 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
+import { takeGithubReturn } from "@/scripts/authentication/githubReturn";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 import type { ApiKey } from "@/types/api/apiKeys";
@@ -314,15 +315,34 @@ describe("ApiKeysPanel", () => {
     it("keeps the form with the cap's 409 and reloads the list", async () => {
       const panel = await mountPanel();
       await fillCreate(panel);
+      const ten = Array.from({ length: 10 }, (_, i) => ({ ...OLD, id: `${i}`.repeat(32) }));
       fetchMock
         .mockResolvedValueOnce(jsonResponse(409, { error: CAP }))
-        .mockResolvedValueOnce(list(DEPLOY));
+        .mockResolvedValueOnce(list(...ten));
       await confirm(panel);
 
       expect(panel.find(".reauth").text()).toContain(CAP);
       expect(urlOf(2)).toBe("https://api.test/user/api-keys");
-      expect(rows(panel)).toHaveLength(1);
+      expect(rows(panel)).toHaveLength(10);
       expect(console.error).not.toHaveBeenCalled();
+
+      // Cancelled back out, there's no create key to return to: the cap's line takes the focus.
+      await key(panel, "Cancel").trigger("click");
+      await flushPromises();
+      await key(panel, "Cancel").trigger("click");
+      await flushPromises();
+      expect(document.activeElement?.textContent?.trim()).toBe(Messages.ApiKeys.atCap(10));
+    });
+
+    it("puts the cursor in the first scope when only the scopes are missing", async () => {
+      const panel = await mountPanel();
+      await key(panel, "Create an API key").trigger("click");
+      await panel.find(".key-form input").setValue("CI");
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+
+      expect(panel.find(".key-form__error").attributes("role")).toBe("alert");
+      expect(document.activeElement).toBe(checkbox(panel, "Account", "Read").element);
     });
 
     it("holds the key through the security notices' 429", async () => {
@@ -353,6 +373,36 @@ describe("ApiKeysPanel", () => {
 
       expect(bodyOf(1)).not.toHaveProperty("password");
       expect(panel.find(".reauth a").text()).toContain("Confirm with GitHub");
+      await panel.find(".reauth a").trigger("click");
+      expect(takeGithubReturn()).toBe("/account/api-keys");
+    });
+
+    it("says GitHub confirmed it, back from the relink", async () => {
+      fetchMock.mockResolvedValueOnce(list());
+      const { wrapper: panel, router } = await mountWithRouter(
+        ApiKeysPanel,
+        {},
+        "/account/api-keys?github=linked"
+      );
+      wrapper = panel;
+      await flushPromises();
+
+      expect(panel.find(".notice").text()).toBe(Messages.ApiKeys.githubConfirmed(10));
+      expect(router.currentRoute.value.query).toEqual({});
+      await key(panel, "Create an API key").trigger("click");
+      expect(panel.find(".notice").exists()).toBe(false);
+    });
+
+    it("explains a relink GitHub refused", async () => {
+      fetchMock.mockResolvedValueOnce(list());
+      ({ wrapper } = await mountWithRouter(
+        ApiKeysPanel,
+        {},
+        "/account/api-keys?oauthError=accessDenied"
+      ));
+      await flushPromises();
+
+      expect(wrapper!.find(".status--error").text()).toContain("GitHub login was cancelled");
     });
   });
 
@@ -516,29 +566,92 @@ describe("ApiKeysPanel", () => {
       return panel;
     };
 
-    it("keeps an unsaved token when another key is rotated meanwhile", async () => {
-      const panel = await showToken();
-      const second = `vbk_${"B".repeat(43)}`;
-      await key(panel, "Rotate Deploy bot").trigger("click");
+    /** Rotates `apiKey` (listed on the page), answering with `token`; the list then holds `after`. */
+    const rotate = async (panel: VueWrapper, apiKey: ApiKey, token: string, ...after: ApiKey[]) => {
+      await key(panel, `Rotate ${apiKey.name}`).trigger("click");
       await flushPromises();
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
       fetchMock
         .mockResolvedValueOnce(
-          jsonResponse(200, { message: ROTATED, apiKey: { ...DEPLOY, token: second } })
+          jsonResponse(200, { message: ROTATED, apiKey: { ...apiKey, token } })
         )
-        .mockResolvedValueOnce(list(DEPLOY));
+        .mockResolvedValueOnce(list(...after));
       await confirm(panel);
+    };
+    const shownTokens = (panel: VueWrapper) =>
+      panel.findAll(".token__text").map((text) => text.text());
+    const second = `vbk_${"B".repeat(43)}`;
+    const third = `vbk_${"C".repeat(43)}`;
 
-      expect(panel.findAll(".token__text").map((text) => text.text())).toEqual([second, TOKEN]);
+    it("replaces a key's token on show when that key is rotated again", async () => {
+      const panel = await showToken();
+      await rotate(panel, DEPLOY, second, DEPLOY);
+
+      expect(shownTokens(panel)).toEqual([second]);
+      expect(panel.find(".token__title").text()).toBe("New token for Deploy bot");
+      expect(panel.find(".token").text()).toContain(ROTATED);
+      expect(document.activeElement).toBe(panel.find(".token__title").element);
+    });
+
+    it("keeps another key's unsaved token, and drops a deleted key's", async () => {
+      const panel = await mountPanel(DEPLOY, OLD);
+      await rotate(panel, DEPLOY, second, DEPLOY, OLD);
+      await rotate(panel, OLD, third, DEPLOY, OLD);
+
+      expect(shownTokens(panel)).toEqual([third, second]);
       const titles = panel.findAll(".token__title");
       expect(document.activeElement).toBe(titles[0].element);
       expect(titles[0].attributes("id")).not.toBe(titles[1].attributes("id"));
 
+      const remove = () => rows(panel)[1].find(".api-key__keys button:last-child");
+      await remove().trigger("click");
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { message: "API key deleted successfully." }))
+        .mockResolvedValueOnce(list(DEPLOY));
+      await remove().trigger("click");
+      await flushPromises();
+      expect(shownTokens(panel)).toEqual([second]);
+
       await key(panel, "I've saved it").trigger("click");
       await flushPromises();
-      expect(panel.findAll(".token__text").map((text) => text.text())).toEqual([TOKEN]);
+      expect(shownTokens(panel)).toEqual([]);
+      expect(document.activeElement).toBe(key(panel, "Create an API key").element);
+    });
+
+    it("focuses the next token on show once one is saved", async () => {
+      const panel = await mountPanel(DEPLOY, OLD);
+      await rotate(panel, DEPLOY, second, DEPLOY, OLD);
+      await rotate(panel, OLD, third, DEPLOY, OLD);
+      await key(panel, "I've saved it").trigger("click");
+      await flushPromises();
+
+      expect(shownTokens(panel)).toEqual([second]);
       expect(document.activeElement).toBe(panel.find(".token__title").element);
+    });
+
+    it("focuses the open create form once the last token is saved", async () => {
+      const panel = await showToken();
+      await rotate(panel, DEPLOY, second, DEPLOY);
+      await key(panel, "Create an API key").trigger("click");
+      await key(panel, "I've saved it").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(panel.find(".key-form input").element);
+    });
+
+    it("focuses the cap's line once the tenth key's token is saved", async () => {
+      const nine = Array.from({ length: 9 }, (_, i) => ({ ...OLD, id: `${i}`.repeat(32) }));
+      const panel = await mountPanel(...nine);
+      await fillCreate(panel);
+      fetchMock
+        .mockResolvedValueOnce(withToken(DEPLOY, CREATED))
+        .mockResolvedValueOnce(list(...nine, DEPLOY));
+      await confirm(panel);
+      await key(panel, "I've saved it").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement?.textContent?.trim()).toBe(Messages.ApiKeys.atCap(10));
     });
 
     it("copies it", async () => {
@@ -578,6 +691,16 @@ describe("ApiKeysPanel", () => {
       await flushPromises();
       expect(panel.find(".token").exists()).toBe(false);
       expect(document.activeElement).toBe(panel.find(".notice").element);
+    });
+
+    it("hands the focus to the gate's message once saved after a logout", async () => {
+      const panel = await showToken();
+      isLoggedIn.value = false;
+      await flushPromises();
+      await key(panel, "I've saved it").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement?.textContent?.trim()).toBe("Log in to manage your API keys.");
     });
 
     it("isn't stored anywhere", async () => {

@@ -321,6 +321,19 @@ for (const [name, fontSize, width] of [
     await page.getByLabel("Name", { exact: true }).fill("Deploy");
     await page.getByRole("group", { name: "Account" }).getByLabel("Read").check({ force: true });
     await expectReflow(page);
+    // Each area keeps to one line: Read and Write beside its name, never wrapped under it.
+    const wrapped = await page.locator(".key-form__area").evaluateAll((areas) =>
+      areas
+        .filter((area) => {
+          const [name, read, write] = [...area.children].map((el) => el.getBoundingClientRect());
+          const middle = (box: { top: number; height: number }) => box.top + box.height / 2;
+          return [read, write].some(
+            (box) => middle(box) < name.top || middle(box) > name.bottom || box.left < name.right
+          );
+        })
+        .map((area) => area.textContent)
+    );
+    expect(wrapped).toEqual([]);
 
     await page.getByRole("button", { name: "Continue" }).click();
     await page.getByLabel("Password").fill(MOCK_PASSWORD);

@@ -19,6 +19,7 @@ import { useRetryHold } from "@/composables/useRetryHold";
 import { apiUrl, type ApiResult } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { clearDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { clearGithubReturn, saveGithubReturn } from "@/scripts/authentication/githubReturn";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -35,6 +36,8 @@ const props = defineProps<{
   hint: string;
   /** The key turns red once armed, for a change that weakens the login. */
   danger?: boolean;
+  /** Where "Confirm with GitHub" comes back to, when not the account page (see `githubReturn`). */
+  githubReturn?: string;
 }>();
 const emit = defineEmits<{ done: [data: T]; cancel: [] }>();
 
@@ -87,6 +90,13 @@ const submit = async () => {
   else if (!form.value?.querySelector(":focus:not(:disabled)")) focusFirst();
 };
 
+/** Off to GitHub: only this form's confirmation is remembered, for the way back. */
+const toGithub = () => {
+  clearDeleteIntent();
+  if (props.githubReturn) saveGithubReturn(props.githubReturn);
+  else clearGithubReturn();
+};
+
 const cancel = () => {
   if (!isSending.value) emit("cancel");
 };
@@ -136,7 +146,7 @@ onMounted(focusFirst);
         size="sm"
         :aria-describedby="statusTextId(errorId)"
         :href="githubLink"
-        @click="clearDeleteIntent"
+        @click="toGithub"
       >
         <AppIcon name="github" :size="16" />
         Confirm with GitHub

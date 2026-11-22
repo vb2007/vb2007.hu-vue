@@ -113,7 +113,7 @@ export class Limits {
     static readonly expiryMinDays: number = 1;
     static readonly expiryMaxDays: number = 365;
     static readonly expiryDefaultDays: number = 90;
-    static readonly scopes: readonly ApiKeyScope[] = [
+    static readonly scopes = [
       "account:read",
       "account:write",
       "pastes:read",
@@ -124,7 +124,7 @@ export class Limits {
       "uploads:write",
       "admin:read",
       "admin:write"
-    ];
+    ] as const satisfies readonly ApiKeyScope[];
   };
 
   /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */

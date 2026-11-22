@@ -16,6 +16,8 @@ defineProps<{
   name: string;
   message: string;
   token: string;
+  /** A rotated key's new token, rather than a new key's. */
+  rotated?: boolean;
 }>();
 const emit = defineEmits<{ done: [] }>();
 
@@ -29,7 +31,9 @@ onMounted(() => title.value?.focus());
 
 <template>
   <section class="token" :aria-labelledby="titleId">
-    <h2 :id="titleId" ref="title" class="token__title" tabindex="-1">Your new API key</h2>
+    <h2 :id="titleId" ref="title" class="token__title" tabindex="-1">
+      {{ rotated ? `New token for ${name}` : "Your new API key" }}
+    </h2>
     <p class="token__note">
       <strong class="token__name">{{ name }}</strong>: {{ message }}
     </p>
@@ -40,6 +44,11 @@ onMounted(() => title.value?.focus());
     <p class="token__value">
       <span class="visually-hidden">Token: </span><span class="token__text">{{ token }}</span>
     </p>
+    <p class="token__note">
+      Send it in the Authorization header, never in a URL. With the account:read scope, this shows
+      your account:
+    </p>
+    <code class="token__usage">{{ usage }}</code>
     <div class="token__actions">
       <BaseButton size="sm" variant="secondary" @click="copy(token)">
         <AppIcon :name="copied ? 'check' : 'copy'" :size="16" />
@@ -47,8 +56,6 @@ onMounted(() => title.value?.focus());
       </BaseButton>
       <BaseButton size="sm" @click="emit('done')">I've saved it</BaseButton>
     </div>
-    <p class="token__note">Send it in the Authorization header, never in a URL:</p>
-    <code class="token__usage">{{ usage }}</code>
     <p class="visually-hidden" role="status">
       {{ copied ? "Token copied." : failed ? "Couldn't copy: select the token instead." : "" }}
     </p>
@@ -72,6 +79,7 @@ onMounted(() => title.value?.focus());
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
   scroll-margin-top: calc(var(--nav-h) + var(--sp-4));
 }
 

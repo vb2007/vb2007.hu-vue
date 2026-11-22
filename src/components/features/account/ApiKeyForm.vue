@@ -6,6 +6,7 @@
  * back to the details, kept. The answer carries the token, which `done` hands on to show once.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
+import { useRoute } from "vue-router";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus, REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Limits } from "@/constants/limits";
@@ -42,6 +43,7 @@ const emit = defineEmits<{
   changed: [message: string];
 }>();
 
+const route = useRoute();
 const rotating = !!props.apiKey;
 const step = ref<"details" | "confirm">("details");
 const name = ref("");
@@ -58,7 +60,7 @@ const choices: { value: LifetimeChoice; label: string }[] = [
   { value: "never", label: "Never" }
 ];
 
-/** What "Keep current" keeps: the rotated key's lifetime, counted again from now. */
+/** What "Keep its lifetime" keeps: the rotated key's lifetime, counted again from now. */
 const kept = computed(() => {
   const lifetime = props.apiKey && lifetimeDaysOf(props.apiKey);
   return lifetime === null
@@ -97,7 +99,14 @@ const focusFirst = async () => {
 };
 
 const toConfirm = async () => {
-  if (await validate(form.value)) step.value = "confirm";
+  if (await validate(form.value)) {
+    step.value = "confirm";
+    return;
+  }
+  // No field is marked invalid when only the scopes are missing: the first box takes the cursor.
+  if (!errors.value.name && errors.value.scopes) {
+    form.value?.querySelector<HTMLElement>(".key-form__scopes input")?.focus();
+  }
 };
 
 const back = () => {
@@ -178,7 +187,7 @@ onMounted(focusFirst);
             @update:model-value="toggle(scope, $event)"
           />
         </div>
-        <p v-if="errors.scopes" :id="scopesErrorId" class="key-form__error">
+        <p v-if="errors.scopes" :id="scopesErrorId" class="key-form__error" role="alert">
           {{ errors.scopes }}
         </p>
       </fieldset>
@@ -202,7 +211,10 @@ onMounted(focusFirst);
         @blur="leave('days')"
       />
       <p v-else-if="choice === 'keep'" class="key-form__note">{{ kept }}</p>
-      <p v-else class="key-form__note">It works until you delete or rotate it.</p>
+      <p v-else class="key-form__note">
+        It works until you delete or rotate it. A password reset, a suspension or the admin deletes
+        it too.
+      </p>
     </div>
 
     <div class="key-form__keys">
@@ -220,6 +232,7 @@ onMounted(focusFirst);
         ? 'Confirms it\'s you. The current token stops working at once, and the new one shows only once.'
         : 'Confirms it\'s you. The key\'s token then shows only once.'
     "
+    :github-return="route.path"
     @done="emit('done', $event)"
     @cancel="back"
   />
@@ -255,10 +268,11 @@ onMounted(focusFirst);
   color: var(--c-ink-soft);
 }
 
-/* One area a line: its name, then Read and Write, wrapping under it when narrow. */
+/* One area a line: its name, then Read and Write in columns that line up; a name too long for
+   what's left at 320 px wraps within its own cell, never pushing Write under it. */
 .key-form__area {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--sp-2) var(--sp-4);
   padding: var(--sp-2) 0;
@@ -266,8 +280,8 @@ onMounted(focusFirst);
 }
 
 .key-form__area-name {
-  flex: 0 0 7rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .key-form__error {

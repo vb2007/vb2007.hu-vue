@@ -547,6 +547,10 @@ export class Messages {
     static lifetimeInvalid(min: number, max: number): string {
       return `Enter a whole number of days from ${min} to ${max}.`;
     }
+    /** Back from GitHub, which "Confirm with GitHub" on this page sent the user to. */
+    static githubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Create or rotate the API key within ${minutes} minutes.`;
+    }
     /** In place of "Create an API key" once the account has the API's maximum. */
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;

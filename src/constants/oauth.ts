@@ -16,8 +16,6 @@ export class OauthError {
   static readonly passwordRequired = "passwordRequired";
   /** A GitHub login into a suspended account, which starts no session (vb2007/vb2007.hu-api#273). */
   static readonly accountSuspended = "accountSuspended";
-  /** A link callback sent with an `Authorization` header: only a session links (vb2007/vb2007.hu-api#514). */
-  static readonly apiKeyNotAccepted = "apiKeyNotAccepted";
 }
 
 export type OauthErrorCode = (typeof OauthError)[Exclude<keyof typeof OauthError, "prototype">];

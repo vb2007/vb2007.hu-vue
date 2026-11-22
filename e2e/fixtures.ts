@@ -2275,7 +2275,7 @@ export class MockApi {
 
   /**
    * Gives the logged-in account (else `MOCK_EMAIL`'s) an API key named `name`, created now, expiring after
-   * `expiresInDays` (`null`: never); `expired` dates it so it ran out yesterday. Returns the key; `apiKeyTokenOf`
+   * `expiresInDays` (`null`: never); `expired` dates one with a lifetime so it ran out yesterday. Returns the key; `apiKeyTokenOf`
    * gives its token. It goes in `userApiKeys`, the store the admin's view of the account reads too.
    */
   hasApiKey(
@@ -2290,7 +2290,9 @@ export class MockApi {
     const account =
       this.user ??
       this.accounts.find((candidate) => normalizeEmail(candidate.email) === MOCK_EMAIL)!;
-    const createdAt = expired ? this.now() - (expiresInDays! + 1) * DAY_MS : this.now();
+    // Only a key with a lifetime can have run out: `expired` leaves one that never expires as it is.
+    const createdAt =
+      expired && expiresInDays !== null ? this.now() - (expiresInDays + 1) * DAY_MS : this.now();
     const apiKey = { ...this.newApiKey(name, scopes, createdAt, expiresInDays), lastUsedAt };
     this.apiKeysOfAccount(account._id).push(apiKey);
     return apiKey;

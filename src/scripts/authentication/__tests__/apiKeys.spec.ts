@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import {
@@ -8,8 +8,10 @@ import {
   isExpired,
   lifetimeDaysOf,
   lifetimeError,
-  lifetimeOf
+  lifetimeOf,
+  SCOPE_AREAS
 } from "@/scripts/authentication/apiKeys";
+import type { ApiKeyScope } from "@/types/api/apiKeys";
 
 describe("apiKeyNameError", () => {
   it.each([
@@ -81,6 +83,20 @@ describe("lifetimes", () => {
     expect(isExpired({ expiresAt: "2026-11-22T10:00:00.000Z" }, now)).toBe(true);
     expect(isExpired({ expiresAt: "2026-11-23T10:00:00.000Z" }, now)).toBe(false);
     expect(isExpired({ expiresAt: null }, now)).toBe(false);
+  });
+});
+
+describe("the scope list", () => {
+  it("names every scope of the type, and only those", () => {
+    // `Limits` is typed `satisfies readonly ApiKeyScope[]`: this is the other half.
+    expectTypeOf<Exclude<ApiKeyScope, (typeof Limits.ApiKeys.scopes)[number]>>().toBeNever();
+    expect(new Set(Limits.ApiKeys.scopes).size).toBe(Limits.ApiKeys.scopes.length);
+  });
+
+  it("puts every scope in one of the form's areas", () => {
+    for (const scope of grantableScopes(true)) {
+      expect(SCOPE_AREAS.filter(({ area }) => scope.startsWith(`${area}:`))).toHaveLength(1);
+    }
   });
 });
 

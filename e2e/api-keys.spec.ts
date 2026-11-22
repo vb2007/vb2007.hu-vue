@@ -68,7 +68,7 @@ test("rotating keeps the key's lifetime unless a new one is picked", async ({ pa
   await list.getByRole("button", { name: "Continue" }).click();
   await list.getByLabel("Password").fill(MOCK_PASSWORD);
   await list.getByRole("button", { name: "Rotate key" }).click();
-  const panel = page.getByRole("region", { name: "Your new API key" });
+  const panel = page.getByRole("region", { name: "New token for Script" });
   await expect(panel).toContainText("the old token no longer works");
   const [rotated] = api.apiKeysOf();
   expect(rotated.id).toBe(old.id);
@@ -140,6 +140,54 @@ test("the cap and the used-up security notices hold creating back", async ({ pag
   await expect(page.getByText(/Too many security notices were mailed/)).toBeVisible();
   await expect(page.getByRole("button", { name: /^Try again in/ })).toBeDisabled();
   expect(api.apiKeysOf()).toHaveLength(9);
+});
+
+test("an account without a password confirms with GitHub and comes back to its API keys", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { password: false });
+  await page.goto("/account/api-keys");
+  const fillIn = async () => {
+    await page.getByRole("button", { name: "Create an API key" }).click();
+    await page.getByLabel("Name", { exact: true }).fill("Deploy bot");
+    await page.getByRole("group", { name: "Pastes" }).getByLabel("Read").check({ force: true });
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Create key" }).click();
+  };
+  await fillIn();
+  await expect(page.getByText(/^Confirm it's you first: log in with GitHub again/)).toBeVisible();
+
+  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await expect(page).toHaveURL("/account/api-keys");
+  await expect(page.getByRole("status")).toHaveText(
+    "GitHub confirmed it's you. Create or rotate the API key within 10 minutes."
+  );
+  await fillIn();
+  await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
+  expect(api.apiKeysOf()).toHaveLength(1);
+
+  // A later relink from the account page itself stays there.
+  await page.goto("/account?github=linked");
+  await expect(page).toHaveURL("/account");
+});
+
+test("a field the form sends the cursor to scrolls clear of the navbar", async ({ page, api }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  for (let i = 1; i <= 6; i++) api.hasApiKey(`Key ${i}`);
+  await page.goto("/account/api-keys");
+  await page.getByRole("button", { name: "Create an API key" }).click();
+  await page.getByLabel("Days from now").scrollIntoViewIfNeeded();
+  await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)");
+  await page.getByLabel("Days from now").press("Enter");
+
+  const name = page.getByLabel("Name", { exact: true });
+  await expect(name).toBeFocused();
+  const navBottom = (await page.getByRole("banner").boundingBox())!;
+  await expect
+    .poll(async () => (await name.boundingBox())!.y)
+    .toBeGreaterThanOrEqual(navBottom.y + navBottom.height);
 });
 
 test("a visitor is asked to log in", async ({ page }) => {
