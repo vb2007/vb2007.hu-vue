@@ -76,7 +76,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * logout, refusing the superuser's address with 409 (vb2007/vb2007.hu-api#483).
  * `hasUser(..., { apiKeys })` arranges the account's API keys, which `GET /admin/users/:id` lists in `apiKeys` (vb2007/vb2007.hu-api#513).
  * `DELETE /admin/users/:id/api-keys` deletes them all and answers how many in `revoked`, the superuser's own too, leaving the session alone;
- * suspending the account and the MFA reset delete them too, the admin's logout keeps them.
+ * suspending the account or lifting a suspension, the MFA reset and a password reset (code or link) delete them too, the admin's logout keeps them.
  * Pastes and short links are kept by their owner's name, like uploads, and match it whatever its case, as the API's keying by id would.
  * Where the API populates the owner (`GET /paste/:id`, `GET /pastes/:username`, `GET /shortenUrl/:code`), it's named by its account's
  * current name, or the name it was filed under when no account has it.
@@ -2788,7 +2788,7 @@ export class MockApi {
 
   /**
    * Like the API: the right code for an account that asked for one sets the password, confirms the
-   * address and ends every session of the account. The code works once.
+   * address, ends every session of the account and deletes its API keys. The code works once.
    */
   private confirmPasswordReset(
     body: { email?: string; code?: string; newPassword?: string } | null
@@ -2814,6 +2814,9 @@ export class MockApi {
     this.verifiedAddresses.add(email);
     // A reset by code voids the account's mailed links too.
     this.voidResetLinks((link) => normalizeEmail(link.email) === email);
+    // And deletes its API keys, like the API's `passwordResetUpdate` (vb2007/vb2007.hu-api#513).
+    const account = this.accounts.find((item) => normalizeEmail(item.email) === email);
+    if (account) this.userApiKeys.delete(account._id);
     if (this.user && normalizeEmail(this.user.email) === email) {
       this.user = null;
     }
@@ -2836,8 +2839,8 @@ export class MockApi {
   }
 
   /**
-   * Like the API (vb2007/vb2007.hu-api#256): a live link's token sets the password once and ends
-   * every session of its account. A password the API refuses leaves the link usable.
+   * Like the API (vb2007/vb2007.hu-api#256): a live link's token sets the password once, ends
+   * every session of its account and deletes its API keys. A password the API refuses leaves the link usable.
    */
   private confirmPasswordResetLink(body: { token?: string; newPassword?: string } | null) {
     const { token, newPassword } = body ?? {};
@@ -2860,6 +2863,7 @@ export class MockApi {
     this.voidResetLinks((link) => link.userId === userId);
     this.voidResetCode(email);
     this.voidsEmailChangeOf(email, userId);
+    this.userApiKeys.delete(userId);
     this.password = newPassword;
     if (this.user?._id === userId) {
       this.user = null;
@@ -3637,7 +3641,7 @@ export class MockApi {
   /**
    * Suspends an account or lifts it, like the API (vb2007/vb2007.hu-api#273): suspending again keeps
    * the first `suspendedAt`, and the superuser's address answers 409. Suspending, or lifting a
-   * suspension that's there, voids what's waiting (`voidsWaitingFor`); suspending deletes the API keys.
+   * suspension that's there, voids what's waiting (`voidsWaitingFor`) and deletes the API keys.
    */
   private setSuspension(id: string, suspended: unknown): MockResponse {
     const refusal = this.refuseNonSuperuser();
@@ -3652,8 +3656,10 @@ export class MockApi {
       return { status: 409, body: { error: "The superuser's account can't be suspended." } };
     }
     // The API's `setUserSuspension` unsets what's waiting on suspending, and on lifting a suspension that was there.
-    if (suspended || user.suspendedAt) this.voidsWaitingFor(user);
-    if (suspended) this.userApiKeys.delete(user.id);
+    if (suspended || user.suspendedAt) {
+      this.voidsWaitingFor(user);
+      this.userApiKeys.delete(user.id);
+    }
     user.suspendedAt = suspended ? (user.suspendedAt ?? new Date(this.now()).toISOString()) : null;
     return {
       status: 200,

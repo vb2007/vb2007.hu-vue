@@ -124,7 +124,10 @@ export const useAdminApiKeyRevoke = () => {
     });
 
     if (result.ok) {
-      revoked.value = Messages.Admin.apiKeysRevoked(result.data.user.username, result.data.revoked);
+      revoked.value = Messages.Admin.apiKeysRevoked(
+        result.data.revoked,
+        isOwnAccount(id) ? undefined : result.data.user.username
+      );
     } else {
       revokeError.value = result.error;
     }

@@ -274,14 +274,14 @@ describe("AdminUserPanel", () => {
     expect(facts(wrapper).Suspended).toMatch(/^Since .+: they can't log in\.$/);
     expect(facts(wrapper).GitHub).toBe("@octo");
     expect(wrapper.find(".actions .status--success").text()).toBe(
-      "User suspended successfully: their session was ended."
+      Messages.Admin.suspended("user-a")
     );
     // The suspension deleted them.
     expect(wrapper.findAll(".key")).toHaveLength(0);
     expect(wrapper.find(".none").text()).toBe("user-a has no API keys.");
   });
 
-  it("keeps the API keys when a suspension is lifted, which deletes nothing", async () => {
+  it("empties the API keys when a suspension is lifted too, which deletes them again", async () => {
     const wrapper = await mountPanel(
       anAdminUserDetails("a", {
         suspendedAt: "2026-11-06T10:00:00.000Z",
@@ -297,7 +297,7 @@ describe("AdminUserPanel", () => {
     await flushPromises();
 
     expect(wrapper.find(".tag").exists()).toBe(false);
-    expect(wrapper.findAll(".key")).toHaveLength(1);
+    expect(wrapper.findAll(".key")).toHaveLength(0);
   });
 
   it("lists the account's API keys, and empties the list once they're revoked", async () => {
@@ -322,7 +322,7 @@ describe("AdminUserPanel", () => {
     expect(wrapper.findAll(".key")).toHaveLength(0);
     expect(wrapper.find(".none").text()).toBe("user-a has no API keys.");
     expect(wrapper.findComponent(AdminRevokeApiKeys).find(".status--success").text()).toBe(
-      Messages.Admin.apiKeysRevoked("user-a", 2)
+      Messages.Admin.apiKeysRevoked(2, "user-a")
     );
   });
 

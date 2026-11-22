@@ -44,9 +44,8 @@ const storageTitle = useId();
 const apiKeysTitle = useId();
 const actionsTitle = useId();
 
-/** Suspending deleted the account's API keys, which its answer doesn't list; lifting it deletes nothing. */
-const applySuspension = (updated: AdminUser) =>
-  applyUser(updated.suspendedAt ? { ...updated, apiKeys: [] } : updated);
+/** Suspending and lifting it both delete the account's API keys, which the answer doesn't list. */
+const applySuspension = (updated: AdminUser) => applyUser({ ...updated, apiKeys: [] });
 
 const plural = (count: number, one: string, many: string) =>
   `${count.toLocaleString()} ${count === 1 ? one : many}`;

@@ -5,8 +5,9 @@
  * key arms first, like Delete. The session stays, which the note says. The key stays without any
  * keys listed too: the list is as the page loaded it, and the API answers how many it deleted.
  */
-import { nextTick, useTemplateRef } from "vue";
+import { computed, nextTick, useTemplateRef } from "vue";
 import { useAdminApiKeyRevoke, useArmedKey } from "@/composables/useAdminUserActions";
+import { userId } from "@/scripts/authentication/authState";
 import type { AdminUserDetails } from "@/types/api/admin";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -20,6 +21,14 @@ const emit = defineEmits<{ updated: [user: AdminUserDetails] }>();
 const { isRevoking, revokeError, revoked, revoke } = useAdminApiKeyRevoke();
 const { armed, press, disarm } = useArmedKey();
 const key = useTemplateRef("key");
+const isOwn = computed(() => props.user.id === userId.value);
+/** "API key" or "2 API keys", and the pronoun that goes with it. */
+const keys = computed(() => {
+  const count = props.user.apiKeys.length;
+  return count === 1
+    ? { what: "API key", it: "it" }
+    : { what: `${count.toLocaleString()} API keys`, it: "them" };
+});
 
 const onRevoke = async () => {
   if (!press()) return;
@@ -33,13 +42,19 @@ const onRevoke = async () => {
 
 <template>
   <AdminUserAction title="Revoke API keys" icon="key">
-    <template v-if="user.apiKeys.length">
-      Deletes {{ user.username }}'s
-      {{ user.apiKeys.length === 1 ? "API key" : `${user.apiKeys.length} API keys` }}, so whatever
-      uses them stops working, and mails them a security notice. Their session stays: log them out
-      too if the account may be in the wrong hands.
+    <!-- The list is as the page loaded it, so without keys listed the key still stays. -->
+    <template v-if="!user.apiKeys.length">
+      None listed. Revoking still deletes any made since the page loaded.
     </template>
-    <template v-else>{{ user.username }} has no API keys.</template>
+    <template v-else-if="isOwn">
+      Deletes your {{ keys.what }}, so whatever uses {{ keys.it }} stops working. This session
+      stays.
+    </template>
+    <template v-else>
+      Deletes {{ user.username }}'s {{ keys.what }}, so whatever uses {{ keys.it }} stops working,
+      and mails a security notice to their address. Their session stays: log them out too if the
+      account may be in the wrong hands.
+    </template>
     <template #key>
       <!-- It arms first, turning solid red like Delete. -->
       <BaseButton

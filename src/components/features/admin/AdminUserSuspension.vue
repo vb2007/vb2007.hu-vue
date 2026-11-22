@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The account page's Suspend row. Suspending ends the user's session and deletes their API keys
- * (vb2007/vb2007.hu-api#513), so it asks first, in place;
+ * (vb2007/vb2007.hu-api#513), so it asks first, in place; lifting it, which deletes them again,
  * lifting it doesn't. The superuser's own account can't be suspended, so its row only says so.
  */
 import { nextTick, ref, useId, useTemplateRef } from "vue";
@@ -63,7 +63,7 @@ const change = async (suspended: boolean) => {
     <template v-if="user.isSuperuser">{{ Messages.Admin.superuserNotSuspendable }}</template>
     <template v-else-if="user.suspendedAt">
       {{ user.username }} can't log in while suspended. Lifting it lets them log in again, with
-      their password or GitHub.
+      their password or GitHub. Their deleted API keys don't come back.
     </template>
     <template v-else>
       Ends {{ user.username }}'s session, deletes their API keys and stops them logging in until you

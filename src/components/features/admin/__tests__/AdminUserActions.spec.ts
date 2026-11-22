@@ -364,7 +364,7 @@ describe("AdminRevokeApiKeys", () => {
     const wrapper = await mountRevoke();
     expect(wrapper.find("h3").text()).toBe("Revoke API keys");
     expect(note(wrapper)).toBe(
-      "Deletes anna's 2 API keys, so whatever uses them stops working, and mails them a security notice. Their session stays: log them out too if the account may be in the wrong hands."
+      "Deletes anna's 2 API keys, so whatever uses them stops working, and mails a security notice to their address. Their session stays: log them out too if the account may be in the wrong hands."
     );
     const key = wrapper.find<HTMLButtonElement>("button");
 
@@ -391,27 +391,25 @@ describe("AdminRevokeApiKeys", () => {
       body: undefined
     });
     expect(wrapper.emitted("updated")).toEqual([[{ ...withKeys(2), apiKeys: [] }]]);
-    expect(wrapper.find(".status--success").text()).toBe(
-      "Revoked anna's 2 API keys. They were mailed a security notice."
-    );
+    expect(wrapper.find(".status--success").text()).toBe("Revoked anna's 2 API keys.");
     // The key was disabled while it worked: the focus comes back to it.
     expect(document.activeElement).toBe(key.element);
   });
 
   it("names a single key, and says when there was none left to revoke", async () => {
     const one = await mountRevoke(withKeys(1));
-    expect(note(one)).toMatch(/^Deletes anna's API key, so whatever uses them stops working/);
+    expect(note(one)).toBe(
+      "Deletes anna's API key, so whatever uses it stops working, and mails a security notice to their address. Their session stays: log them out too if the account may be in the wrong hands."
+    );
     fetchMock.mockResolvedValueOnce(revoked(1));
     await one.find("button").trigger("click");
     await one.find("button").trigger("click");
     await flushPromises();
-    expect(one.find(".status--success").text()).toBe(
-      "Revoked anna's API key. They were mailed a security notice."
-    );
+    expect(one.find(".status--success").text()).toBe("Revoked anna's API key.");
 
     // The list is as the page loaded it, so the key stays without keys listed.
     const none = await mountRevoke(withKeys(0));
-    expect(note(none)).toBe("anna has no API keys.");
+    expect(note(none)).toBe("None listed. Revoking still deletes any made since the page loaded.");
     fetchMock.mockResolvedValueOnce(revoked(0));
     await none.find("button").trigger("click");
     await none.find("button").trigger("click");
@@ -425,6 +423,13 @@ describe("AdminRevokeApiKeys", () => {
     userId.value = "a";
     isLoggedIn.value = true;
     const wrapper = await mountRevoke();
+    expect(note(wrapper)).toBe(
+      "Deletes your 2 API keys, so whatever uses them stops working. This session stays."
+    );
+    const one = await mountRevoke(withKeys(1));
+    expect(note(one)).toBe(
+      "Deletes your API key, so whatever uses it stops working. This session stays."
+    );
 
     fetchMock.mockResolvedValueOnce(revoked(2));
     await wrapper.find("button").trigger("click");
@@ -434,7 +439,15 @@ describe("AdminRevokeApiKeys", () => {
     // No check whether the session went: it stays.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(isLoggedIn.value).toBe(true);
-    expect(wrapper.find(".status--success").exists()).toBe(true);
+    expect(wrapper.find(".status--success").text()).toBe("Revoked your 2 API keys.");
+
+    fetchMock.mockResolvedValueOnce(revoked(0));
+    await one.find("button").trigger("click");
+    await one.find("button").trigger("click");
+    await flushPromises();
+    expect(one.find(".status--success").text()).toBe(
+      "You had no API keys, so nothing was revoked."
+    );
     isLoggedIn.value = false;
   });
 

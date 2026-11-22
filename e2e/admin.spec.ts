@@ -659,14 +659,16 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await actions.getByRole("button", { name: "Suspend", exact: true }).click();
   await page.getByRole("button", { name: "Suspend anna" }).click();
   await expect(actions.getByRole("status")).toHaveText(
-    "User suspended successfully: their session was ended."
+    "anna is suspended: their session ended and their API keys are deleted."
   );
   await expect(page.locator(".tag", { hasText: "Suspended" })).toBeVisible();
   await expect(page.locator(".fact--suspended dd")).toHaveText(/Since .+: they can't log in\./);
   await expect(page.getByRole("button", { name: "Lift suspension" })).toBeFocused();
   expect(anna.suspendedAt).not.toBeNull();
   // Suspending deleted their API keys.
-  await expect(page.locator(".none")).toHaveText("anna has no API keys.");
+  await expect(
+    page.getByRole("region", { name: "API keys", exact: true }).getByText("anna has no API keys.")
+  ).toBeVisible();
   expect(api.userApiKeys.get(anna.id)).toBeUndefined();
 
   // The list says so too.
@@ -677,7 +679,9 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await page.goBack();
 
   await page.getByRole("button", { name: "Lift suspension" }).click();
-  await expect(actions.getByRole("status")).toHaveText("User unsuspended successfully.");
+  await expect(actions.getByRole("status")).toHaveText(
+    "anna's suspension is lifted: they can log in again."
+  );
   await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
   await expect(page.locator(".fact--suspended")).toHaveCount(0);
   expect(anna.suspendedAt).toBeNull();
@@ -780,7 +784,7 @@ test("suspending an account voids its waiting reset code, reset links and e-mail
   await actions.getByRole("button", { name: "Suspend", exact: true }).click();
   await page.getByRole("button", { name: "Suspend anna" }).click();
   await expect(actions.getByRole("status")).toHaveText(
-    "User suspended successfully: their session was ended."
+    "anna is suspended: their session ended and their API keys are deleted."
   );
 
   const code = { email, code: api.passwordResetCode, newPassword };
@@ -960,7 +964,7 @@ test("the superuser sees a user's API keys and revokes them all, which a logout 
 
   const row = page.locator(".action").filter({ hasText: "Revoke API keys" });
   await expect(row.locator(".action__note")).toHaveText(
-    "Deletes anna's 3 API keys, so whatever uses them stops working, and mails them a security notice. Their session stays: log them out too if the account may be in the wrong hands."
+    "Deletes anna's 3 API keys, so whatever uses them stops working, and mails a security notice to their address. Their session stays: log them out too if the account may be in the wrong hands."
   );
   // It arms first; Escape disarms it.
   const key = row.getByRole("button", { name: "Revoke API keys" });
@@ -972,16 +976,18 @@ test("the superuser sees a user's API keys and revokes them all, which a logout 
 
   await key.click();
   await row.getByRole("button", { name: "Confirm revoke" }).click();
-  await expect(row.getByRole("status")).toHaveText(
-    "Revoked anna's 3 API keys. They were mailed a security notice."
-  );
+  await expect(row.getByRole("status")).toHaveText("Revoked anna's 3 API keys.");
   await expect(key).toBeFocused();
   await expect(keys).toHaveCount(0);
-  await expect(page.locator(".none")).toHaveText("anna has no API keys.");
+  await expect(
+    page.getByRole("region", { name: "API keys", exact: true }).getByText("anna has no API keys.")
+  ).toBeVisible();
   // The session stays: only the logout above ended it.
   expect(api.loggedOutUsers).toEqual([anna.id]);
   await page.reload();
-  await expect(page.locator(".none")).toHaveText("anna has no API keys.");
+  await expect(
+    page.getByRole("region", { name: "API keys", exact: true }).getByText("anna has no API keys.")
+  ).toBeVisible();
 
   // Again, there's nothing left to revoke; a link that leads nowhere is refused.
   expect.soft(await callApi(page, api, "DELETE", `/admin/users/${anna.id}/api-keys`, {})).toEqual({
@@ -1004,9 +1010,7 @@ test("the superuser sees a user's API keys and revokes them all, which a logout 
   await page.goto(`/admin/users/${admin.id}`);
   await page.getByRole("button", { name: "Revoke API keys" }).click();
   await page.getByRole("button", { name: "Confirm revoke" }).click();
-  await expect(
-    page.getByText("Revoked vb2007's API key. They were mailed a security notice.")
-  ).toBeVisible();
+  await expect(page.getByText("Revoked your API key.")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "vb2007" })).toBeVisible();
   expect(api.userApiKeys.get(admin.id)).toBeUndefined();
 });
