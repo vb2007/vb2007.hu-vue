@@ -1,3 +1,5 @@
+import type { ApiKeyScope } from "@/types/api/apiKeys";
+
 /** The API's limits, checked here too so a request that would fail isn't sent. */
 export class Limits {
   /** Mirrors the API's `SHORT_URL_MAX_LENGTH`: the URL as sent, in UTF-16 units (JS `.length`). */
@@ -98,6 +100,31 @@ export class Limits {
   static readonly Passkey = class {
     static readonly perAccount: number = 10;
     static readonly nameMaxLength: number = 64;
+  };
+
+  /**
+   * API keys (vb2007/vb2007.hu-api#511): the API's `API_KEYS_MAX`, `API_KEY_NAME_MAX_LENGTH` (the
+   * name counted like a passkey's), `API_KEY_EXPIRY_*` in whole days, and `API_KEY_SCOPES` in its
+   * order, the `admin:` ones last.
+   */
+  static readonly ApiKeys = class {
+    static readonly perAccount: number = 10;
+    static readonly nameMaxLength: number = 64;
+    static readonly expiryMinDays: number = 1;
+    static readonly expiryMaxDays: number = 365;
+    static readonly expiryDefaultDays: number = 90;
+    static readonly scopes: readonly ApiKeyScope[] = [
+      "account:read",
+      "account:write",
+      "pastes:read",
+      "pastes:write",
+      "shortUrls:read",
+      "shortUrls:write",
+      "uploads:read",
+      "uploads:write",
+      "admin:read",
+      "admin:write"
+    ];
   };
 
   /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */

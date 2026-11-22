@@ -261,7 +261,7 @@ describe("AccountPanel", () => {
     );
     await flushPromises();
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
+      "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
     );
 
     mockFetch()
@@ -718,7 +718,7 @@ describe("AccountPanel", () => {
       const { wrapper } = await comeBack();
 
       expect(wrapper.find(".notice").text()).toBe(
-        "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
+        "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
       expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
@@ -731,7 +731,7 @@ describe("AccountPanel", () => {
       const { wrapper } = await comeBack();
 
       expect(wrapper.find(".notice").text()).toBe(
-        "GitHub confirmed it's you. Within 10 minutes, set your password or change two-step login."
+        "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
       );
       expect(deleteField(wrapper).exists()).toBe(false);
       wrapper.unmount();

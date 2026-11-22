@@ -34,6 +34,10 @@ describe("oauthErrorMessage", () => {
     [
       "accountSuspended",
       "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension."
+    ],
+    [
+      "apiKeyNotAccepted",
+      "GitHub can't be linked with an API key. Link it from this page, logged in, without one."
     ]
   ])("explains %s", (code, message) => {
     expect(oauthErrorMessage(code)).toBe(message);
