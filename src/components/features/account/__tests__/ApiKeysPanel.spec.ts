@@ -274,7 +274,7 @@ describe("ApiKeysPanel", () => {
       await key(panel, "Create an API key").trigger("click");
       await panel.find(".key-form input").setValue("Forever");
       await checkbox(panel, "Account", "Read").setValue(true);
-      await panel.find('input[type="radio"][value="never"]').setValue(true);
+      await panel.find(".key-form select").setValue("never");
       expect(panel.text()).toContain("It works until you delete or rotate it.");
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
@@ -366,7 +366,7 @@ describe("ApiKeysPanel", () => {
       const panel = await mountPanel(DEPLOY);
       await openRotate(panel);
       expect(panel.text()).toContain("It expires 90 days from now again.");
-      expect(document.activeElement).toBe(panel.find('input[value="keep"]').element);
+      expect(document.activeElement).toBe(panel.find(".key-form select").element);
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
       expect(panel.text()).toContain("The current token stops working at once");
@@ -398,7 +398,7 @@ describe("ApiKeysPanel", () => {
     it("sends a new number of days, or null", async () => {
       const panel = await mountPanel(DEPLOY);
       await openRotate(panel);
-      await panel.find('input[type="radio"][value="days"]').setValue(true);
+      await panel.find(".key-form select").setValue("days");
       await panel.find('input[inputmode="numeric"]').setValue("30");
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
@@ -410,7 +410,7 @@ describe("ApiKeysPanel", () => {
 
       await key(panel, "I've saved it").trigger("click");
       await openRotate(panel);
-      await panel.find('input[type="radio"][value="never"]').setValue(true);
+      await panel.find(".key-form select").setValue("never");
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
       fetchMock

@@ -27,7 +27,7 @@ import ReauthForm from "@/components/features/account/ReauthForm.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseCheckbox from "@/components/ui/BaseCheckbox.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
-import SegmentedControl, { type Segment } from "@/components/ui/SegmentedControl.vue";
+import BaseSelect from "@/components/ui/BaseSelect.vue";
 import type { ApiKey, ApiKeyScope, ApiKeyTokenResponse } from "@/types/api/apiKeys";
 import type { MfaPasswordBody } from "@/types/api/mfa";
 
@@ -51,10 +51,11 @@ const days = ref(String(Limits.ApiKeys.expiryDefaultDays));
 const form = useTemplateRef("form");
 const scopesErrorId = useId();
 
-const choices: Segment<LifetimeChoice>[] = [
-  ...(rotating ? [{ value: "keep" as const, label: "Keep current" }] : []),
-  { value: "days", label: rotating ? "New days" : "Days" },
-  { value: "never", label: "Never expires" }
+// A select rather than segmented keys: three of them don't fit a key's row at 320 px.
+const choices: { value: LifetimeChoice; label: string }[] = [
+  ...(rotating ? [{ value: "keep" as const, label: "Keep its lifetime" }] : []),
+  { value: "days", label: "After a number of days" },
+  { value: "never", label: "Never" }
 ];
 
 /** What "Keep current" keeps: the rotated key's lifetime, counted again from now. */
@@ -92,7 +93,7 @@ const { errors, isValid, leave, validate } = useFormValidation({
 
 const focusFirst = async () => {
   await nextTick();
-  form.value?.querySelector<HTMLElement>("input:not([type=radio]), input:checked")?.focus();
+  form.value?.querySelector<HTMLElement>("input, select")?.focus();
 };
 
 const toConfirm = async () => {
@@ -184,9 +185,9 @@ onMounted(focusFirst);
     </template>
 
     <div class="key-form__lifetime">
-      <SegmentedControl
+      <BaseSelect
         v-model="choice"
-        :legend="rotating ? 'New lifetime' : 'Expires'"
+        :label="rotating ? 'New lifetime' : 'Expires'"
         size="sm"
         :options="choices"
       />

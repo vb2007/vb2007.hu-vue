@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { test as base, expect, type Page, type Route } from "@playwright/test";
 
@@ -102,6 +103,13 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * credential it sends back, checking only its id: `POST /user/passkeys` stores it for the waiting registration (confirmed like the
  * MFA settings), `POST /auth/passkey` logs in the account that owns it after `/options`, and with e-mail MFA or TOTP on the second step lists
  * `passkey` and takes one of the account's after `POST /auth/mfa/passkey/options`; anything else gets `PASSKEY_INVALID_ERROR`.
+ * API keys (vb2007/vb2007.hu-api#511) live on their account too (`api.hasApiKey(name, { scopes, expiresInDays, expired })` arranges one
+ * and returns it): `GET /user/api-keys` lists them without their tokens, `POST /user/api-keys` checks the body like the API (name, scopes,
+ * `expiresInDays` 1 to 365 or `null`, `admin:` scopes for the superuser only) before the confirmation (worded for keys, after the password
+ * checks' limiter), refuses an 11th key with 409, and answers 201 with a fresh `vbk_` + 43 base64url token, its last 4 the `hint`.
+ * `POST /user/api-keys/:id/rotate` gives the key a new token with `createdAt` now and keeps its lifetime when `expiresInDays` is left
+ * out; it and `DELETE /user/api-keys/:id` (no confirmation) answer 404 for a key the account doesn't have. `api.usesUpSecurityNotices()`
+ * answers create and rotate with the day's used-up security notices' 429 (`retryAfter` 7200), and `api.apiKeysOf()` lists the logged-in account's keys.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
  * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries
  * (vb2007/vb2007.hu-api#494: a wrong code answers `attemptsLeft`, a setup that's gone `reason`, and `api.endsTotpSetup(how)` ends one); `DELETE /user/mfa/totp` turns it off.
@@ -632,6 +640,8 @@ interface MockUser {
   recoveryCodes?: string[];
   /** Passkeys (vb2007/vb2007.hu-api#446), oldest first, as `GET /user/passkeys` lists them; an MFA reset keeps them. */
   passkeys?: MockPasskey[];
+  /** API keys (vb2007/vb2007.hu-api#511), oldest first, as `GET /user/api-keys` lists them (without `token`). */
+  apiKeys?: MockApiKey[];
 }
 
 interface MockPasskey {
@@ -641,6 +651,45 @@ interface MockPasskey {
   createdAt: string;
   lastUsedAt: string | null;
 }
+
+interface MockApiKey {
+  /** 32 hex characters, like the API's `createApiKeyId`. */
+  id: string;
+  name: string;
+  /** The token's last 4 characters. */
+  hint: string;
+  scopes: string[];
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  /** Kept only so a test can check the one the page showed; the API keeps a hash. */
+  token: string;
+}
+
+/** The API's `API_KEY_SCOPES`, in its order. */
+const API_KEY_SCOPES = [
+  "account:read",
+  "account:write",
+  "pastes:read",
+  "pastes:write",
+  "shortUrls:read",
+  "shortUrls:write",
+  "uploads:read",
+  "uploads:write",
+  "admin:read",
+  "admin:write"
+];
+const API_KEY_NOT_FOUND: MockResponse = {
+  status: 404,
+  body: { error: "There is no such API key on this account." }
+};
+/** The API key routes' confirmation, worded for them (the API's `Responses.ApiKeys`). */
+const API_KEY_REAUTH = {
+  missingPassword: "You must provide your password to create or rotate an API key.",
+  githubRequired:
+    "Confirm it's you first: log in with GitHub again (or relink it), then create or rotate the API key within 10 minutes."
+};
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** A login's second step waiting in the browser's `__Host-VB-MFA` cookie, which the mock stands in for. */
 interface MockMfaChallenge {
@@ -740,6 +789,8 @@ export class MockApi {
   private passkeyRegistration: string | null = null;
   private passkeyLoginAsked = false;
   private passwordChecksLimited = false;
+  /** Set by `usesUpSecurityNotices`: creating and rotating an API key answer the notices' 429. */
+  private securityNoticesUsedUp = false;
   private mailSendsLimited = false;
   private resetLinksLimited = false;
   private codeChecksCapped = false;
@@ -1477,6 +1528,14 @@ export class MockApi {
     if (logoutRoute) {
       return this.logoutUser(decodeURIComponent(logoutRoute[1]));
     }
+    const rotateRoute = endpoint.match(/^POST \/user\/api-keys\/([^/]+)\/rotate$/);
+    if (rotateRoute)
+      return this.rotateApiKey(
+        decodeURIComponent(rotateRoute[1]),
+        body as Record<string, unknown> | null
+      );
+    const apiKeyRoute = endpoint.match(/^DELETE \/user\/api-keys\/([^/]+)$/);
+    if (apiKeyRoute) return this.deleteApiKey(decodeURIComponent(apiKeyRoute[1]));
     const passkeyRoute = endpoint.match(/^(PATCH|DELETE) \/user\/passkeys\/([^/]+)$/);
     if (passkeyRoute) {
       const id = decodeURIComponent(passkeyRoute[2]);
@@ -1548,6 +1607,15 @@ export class MockApi {
         return this.user
           ? { status: 200, body: { passkeys: this.user.passkeys ?? [] } }
           : NOT_LOGGED_IN;
+      case "GET /user/api-keys":
+        return this.user
+          ? {
+              status: 200,
+              body: { apiKeys: (this.user.apiKeys ?? []).map((key) => this.apiKeyListItem(key)) }
+            }
+          : NOT_LOGGED_IN;
+      case "POST /user/api-keys":
+        return this.createApiKey(body as Record<string, unknown> | null);
       case "POST /user/passkeys/options":
         return this.startPasskeyRegistration(body?.password);
       case "POST /user/passkeys":
@@ -1979,27 +2047,25 @@ export class MockApi {
   }
 
   /** The API's `rejectFailedMfaReauth`: the password, or a recent GitHub confirmation without one. */
-  private refuseMfaReauth(password?: string): MockResponse | null {
+  private refuseMfaReauth(
+    password?: string,
+    messages = {
+      missingPassword: "You must provide your password to change MFA settings.",
+      githubRequired:
+        "Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within 10 minutes."
+    }
+  ): MockResponse | null {
     if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
     if (this.user.hasPassword) {
       if (!password) {
-        return {
-          status: 400,
-          body: { error: "You must provide your password to change MFA settings." }
-        };
+        return { status: 400, body: { error: messages.missingPassword } };
       }
       if (password !== this.password) {
         return { status: 403, body: { error: "The provided password is incorrect." } };
       }
     } else if (!this.githubConfirmed) {
-      return {
-        status: 403,
-        body: {
-          error:
-            "Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within 10 minutes."
-        }
-      };
+      return { status: 403, body: { error: messages.githubRequired } };
     }
     return null;
   }
@@ -2205,6 +2271,223 @@ export class MockApi {
     }
     this.user!.passkeys = passkeys.filter((passkey) => passkey.id !== id);
     return { status: 200, body: { message: "Passkey deleted successfully." } };
+  }
+
+  /**
+   * Gives the logged-in account (else `MOCK_EMAIL`'s) an API key named `name`, created now, expiring after
+   * `expiresInDays` (`null`: never); `expired` dates it so it ran out yesterday. Returns the key, token included.
+   */
+  hasApiKey(
+    name: string,
+    {
+      scopes = ["pastes:read"],
+      expiresInDays = 90 as number | null,
+      expired = false,
+      lastUsedAt = null as string | null
+    } = {}
+  ) {
+    const account =
+      this.user ??
+      this.accounts.find((candidate) => normalizeEmail(candidate.email) === MOCK_EMAIL)!;
+    const createdAt = expired ? this.now() - (expiresInDays! + 1) * DAY_MS : this.now();
+    const apiKey = this.newApiKey(name, scopes, createdAt, expiresInDays);
+    apiKey.lastUsedAt = lastUsedAt;
+    (account.apiKeys ??= []).push(apiKey);
+    return apiKey;
+  }
+
+  /** Creating and rotating API keys answer the API's 429 for the day's used-up security notices. */
+  usesUpSecurityNotices() {
+    this.securityNoticesUsedUp = true;
+  }
+
+  private newApiKey(
+    name: string,
+    scopes: string[],
+    createdAt: number,
+    expiresInDays: number | null
+  ): MockApiKey {
+    const token = `vbk_${randomBytes(32).toString("base64url")}`;
+    return {
+      id: randomBytes(16).toString("hex"),
+      name,
+      hint: token.slice(-4),
+      scopes,
+      createdAt: new Date(createdAt).toISOString(),
+      expiresAt:
+        expiresInDays === null ? null : new Date(createdAt + expiresInDays * DAY_MS).toISOString(),
+      lastUsedAt: null,
+      token
+    };
+  }
+
+  /** A key as the API lists it: never its token. */
+  private apiKeyListItem({ token: _token, ...listed }: MockApiKey) {
+    return listed;
+  }
+
+  private apiKeyAnswer(status: number, message: string, apiKey: MockApiKey): MockResponse {
+    return {
+      status,
+      body: { message, apiKey: { ...this.apiKeyListItem(apiKey), token: apiKey.token } }
+    };
+  }
+
+  /** The API's `isApiKeyLifetime`, for a body's `expiresInDays` when it's there. */
+  private apiKeyLifetimeRefusal(body: Record<string, unknown> | null): MockResponse | undefined {
+    if (!body || !("expiresInDays" in body)) return undefined;
+    const days = body.expiresInDays;
+    if (
+      days === null ||
+      (Number.isInteger(days) && (days as number) >= 1 && (days as number) <= 365)
+    ) {
+      return undefined;
+    }
+    return {
+      status: 400,
+      body: {
+        error:
+          "expiresInDays must be a whole number of days from 1 to 365, or null for a key that never expires."
+      }
+    };
+  }
+
+  private securityNoticesRefusal(): MockResponse | undefined {
+    if (!this.securityNoticesUsedUp) return undefined;
+    return {
+      status: 429,
+      body: {
+        error:
+          "Too many security notices were mailed to this account today, and API keys can't be created or rotated without one: try again tomorrow.",
+        retryAfter: 7200
+      }
+    };
+  }
+
+  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice. */
+  private createApiKey(body: Record<string, unknown> | null): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
+    const name = body?.name;
+    if (typeof name !== "string" || !name.trim()) {
+      return { status: 400, body: { error: "You must provide a name for the API key." } };
+    }
+    // The double skips the API's exception for emoji joiners and tags.
+    if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)) {
+      return {
+        status: 400,
+        body: {
+          error: "The API key name can't contain line breaks or invisible formatting characters."
+        }
+      };
+    }
+    if ([...name.trim()].length > 64) {
+      return {
+        status: 400,
+        body: { error: "The API key name can be at most 64 characters long." }
+      };
+    }
+    const scopes = body?.scopes;
+    if (
+      !Array.isArray(scopes) ||
+      !scopes.length ||
+      new Set(scopes).size !== scopes.length ||
+      !scopes.every((scope) => API_KEY_SCOPES.includes(scope))
+    ) {
+      return {
+        status: 400,
+        body: {
+          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`
+        }
+      };
+    }
+    const lifetimeRefusal = this.apiKeyLifetimeRefusal(body);
+    if (lifetimeRefusal) return lifetimeRefusal;
+    if (
+      scopes.some((scope) => scope.startsWith("admin:")) &&
+      !this.isSuperuserEmail(this.user.email)
+    ) {
+      return {
+        status: 403,
+        body: { error: "Only the superuser can give an API key admin scopes." }
+      };
+    }
+    const refusal = this.refuseMfaReauth(body?.password as string | undefined, API_KEY_REAUTH);
+    if (refusal) return refusal;
+    if ((this.user.apiKeys?.length ?? 0) >= 10) {
+      return {
+        status: 409,
+        body: { error: "An account can have at most 10 API keys: delete one first." }
+      };
+    }
+    const noticesRefusal = this.securityNoticesRefusal();
+    if (noticesRefusal) return noticesRefusal;
+    const expiresInDays =
+      body?.expiresInDays === undefined ? 90 : (body.expiresInDays as number | null);
+    const apiKey = this.newApiKey(name.trim(), scopes, this.now(), expiresInDays);
+    (this.user.apiKeys ??= []).push(apiKey);
+    return this.apiKeyAnswer(
+      201,
+      "API key created: store the token somewhere safe, it isn't shown again.",
+      apiKey
+    );
+  }
+
+  /**
+   * `POST /user/api-keys/:id/rotate`: a new token, `createdAt` now and `lastUsedAt` cleared; without
+   * `expiresInDays` the key keeps the lifetime it had, counted again from now.
+   */
+  private rotateApiKey(id: string, body: Record<string, unknown> | null): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
+    const lifetimeRefusal = this.apiKeyLifetimeRefusal(body);
+    if (lifetimeRefusal) return lifetimeRefusal;
+    if (!/^[0-9a-f]{32}$/.test(id)) return API_KEY_NOT_FOUND;
+    const refusal = this.refuseMfaReauth(body?.password as string | undefined, API_KEY_REAUTH);
+    if (refusal) return refusal;
+    const index = this.user.apiKeys?.findIndex((apiKey) => apiKey.id === id) ?? -1;
+    if (index < 0) return API_KEY_NOT_FOUND;
+    const previous = this.user.apiKeys![index];
+    if (
+      previous.scopes.some((scope) => scope.startsWith("admin:")) &&
+      !this.isSuperuserEmail(this.user.email)
+    ) {
+      return {
+        status: 403,
+        body: { error: "Only the superuser can give an API key admin scopes." }
+      };
+    }
+    const noticesRefusal = this.securityNoticesRefusal();
+    if (noticesRefusal) return noticesRefusal;
+    const kept =
+      previous.expiresAt === null
+        ? null
+        : (Date.parse(previous.expiresAt) - Date.parse(previous.createdAt)) / DAY_MS;
+    const expiresInDays =
+      body?.expiresInDays === undefined ? kept : (body.expiresInDays as number | null);
+    const rotated = {
+      ...this.newApiKey(previous.name, previous.scopes, this.now(), expiresInDays),
+      id
+    };
+    this.user.apiKeys![index] = rotated;
+    return this.apiKeyAnswer(
+      200,
+      "API key rotated, and the old token no longer works: store the new one somewhere safe, it isn't shown again.",
+      rotated
+    );
+  }
+
+  private deleteApiKey(id: string): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const apiKeys = this.user.apiKeys ?? [];
+    if (!apiKeys.some((apiKey) => apiKey.id === id)) return API_KEY_NOT_FOUND;
+    this.user.apiKeys = apiKeys.filter((apiKey) => apiKey.id !== id);
+    return { status: 200, body: { message: "API key deleted successfully." } };
+  }
+
+  /** The logged-in account's keys, e.g. to delete or rotate one behind the page's back. */
+  apiKeysOf() {
+    return this.user?.apiKeys ?? [];
   }
 
   /**
