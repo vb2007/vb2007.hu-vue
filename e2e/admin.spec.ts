@@ -633,6 +633,9 @@ test("the superuser suspends a user after confirming, then lifts it", async ({ p
   await page.goto(`/admin/users/${anna.id}`);
   await expect(page.getByRole("heading", { level: 1, name: "anna" })).toBeVisible();
   await expect(page.locator(".tag", { hasText: "Suspended" })).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "anna's API keys" }).getByRole("listitem")
+  ).toHaveCount(1);
   const actions = page.locator(".actions");
   await expect(actions.getByRole("heading", { level: 3 })).toHaveText([
     "Uploads",
@@ -705,6 +708,9 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
     .filter({ has: page.locator("dt").getByText("MFA", { exact: true }) })
     .locator("dd");
   await expect(mfa).toHaveText("E-mail and authenticator app · 8 recovery codes left · 2 passkeys");
+  await expect(
+    page.getByRole("list", { name: "anna's API keys" }).getByRole("listitem")
+  ).toHaveCount(1);
   const row = page.locator(".action").filter({ hasText: "Reset MFA" });
   await expect(row.locator(".action__note")).toHaveText(
     "For when anna lost their second factor: turns off every MFA method and recovery code, deletes their API keys and ends their session. Their passkeys stay."
