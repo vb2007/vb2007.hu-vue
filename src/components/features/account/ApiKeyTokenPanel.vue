@@ -4,7 +4,7 @@
  * its hash. Like the recovery codes, it stays until the user says they've saved it, and it lives
  * only here: never stored, put in a URL or logged.
  */
-import { onMounted, useTemplateRef } from "vue";
+import { onMounted, useId, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { useClipboard } from "@/composables/useClipboard";
 import { apiUrl } from "@/scripts/api/client";
@@ -21,14 +21,15 @@ const emit = defineEmits<{ done: [] }>();
 
 const { copied, failed, copy } = useClipboard();
 const title = useTemplateRef("title");
+const titleId = useId();
 /** How to use it, with a placeholder: the token itself shows once, above. */
 const usage = `curl -H "Authorization: Bearer vbk_…" ${apiUrl(Endpoints.User.get)}`;
 onMounted(() => title.value?.focus());
 </script>
 
 <template>
-  <section class="token" aria-labelledby="token-title">
-    <h2 id="token-title" ref="title" class="token__title" tabindex="-1">Your new API key</h2>
+  <section class="token" :aria-labelledby="titleId">
+    <h2 :id="titleId" ref="title" class="token__title" tabindex="-1">Your new API key</h2>
     <p class="token__note">
       <strong class="token__name">{{ name }}</strong>: {{ message }}
     </p>

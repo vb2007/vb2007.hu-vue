@@ -255,7 +255,7 @@ describe("ApiKeysPanel", () => {
       expect(panel.find(".token__usage").text()).toBe(
         'curl -H "Authorization: Bearer vbk_…" https://api.test/user'
       );
-      expect(document.activeElement).toBe(panel.find("#token-title").element);
+      expect(document.activeElement).toBe(panel.find(".token__title").element);
       expect(panel.find(".key-form").exists()).toBe(false);
 
       pending.respond(list(DEPLOY));
@@ -516,6 +516,31 @@ describe("ApiKeysPanel", () => {
       return panel;
     };
 
+    it("keeps an unsaved token when another key is rotated meanwhile", async () => {
+      const panel = await showToken();
+      const second = `vbk_${"B".repeat(43)}`;
+      await key(panel, "Rotate Deploy bot").trigger("click");
+      await flushPromises();
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { message: ROTATED, apiKey: { ...DEPLOY, token: second } })
+        )
+        .mockResolvedValueOnce(list(DEPLOY));
+      await confirm(panel);
+
+      expect(panel.findAll(".token__text").map((text) => text.text())).toEqual([second, TOKEN]);
+      const titles = panel.findAll(".token__title");
+      expect(document.activeElement).toBe(titles[0].element);
+      expect(titles[0].attributes("id")).not.toBe(titles[1].attributes("id"));
+
+      await key(panel, "I've saved it").trigger("click");
+      await flushPromises();
+      expect(panel.findAll(".token__text").map((text) => text.text())).toEqual([TOKEN]);
+      expect(document.activeElement).toBe(panel.find(".token__title").element);
+    });
+
     it("copies it", async () => {
       const writeText = vi.fn().mockResolvedValue(undefined);
       vi.stubGlobal("navigator", { clipboard: { writeText } });
@@ -548,7 +573,7 @@ describe("ApiKeysPanel", () => {
 
       expect(panel.find(".token__text").text()).toBe(TOKEN);
       expect(panel.text()).toContain(Messages.Auth.sessionEnded);
-      expect(document.activeElement).toBe(panel.find("#token-title").element);
+      expect(document.activeElement).toBe(panel.find(".token__title").element);
       await key(panel, "I've saved it").trigger("click");
       await flushPromises();
       expect(panel.find(".token").exists()).toBe(false);

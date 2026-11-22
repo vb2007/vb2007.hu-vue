@@ -25,8 +25,12 @@ const apiKeys = ref<ApiKey[]>([]);
 const loaded = ref(false);
 const error = ref("");
 const notice = ref<{ text: string; tone: "success" | "info" } | null>(null);
-/** The token just made, shown once: kept here, above the list's reload and the logged-out gate. */
-const token = ref<{ name: string; message: string; token: string } | null>(null);
+/**
+ * Tokens just made, newest first, each shown once until it's saved: kept here, above the list's
+ * reload and the logged-out gate. A second one made meanwhile (another key created or rotated)
+ * shows above the first rather than replacing it, which would lose a token the API can't show again.
+ */
+const tokens = ref<{ name: string; message: string; token: string }[]>([]);
 const creating = ref(false);
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const endedMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("endedMessage");
@@ -62,7 +66,7 @@ watch(
 // The key that was pressed went with the board, so focus moves to why it went.
 watch(sessionEnded, async (ended) => {
   // A token still on show keeps the focus its panel took: it matters more.
-  if (!ended || token.value) return;
+  if (!ended || tokens.value.length) return;
   await nextTick();
   endedMessage.value?.$el.focus();
 });
@@ -83,14 +87,19 @@ const report = async (text: string, tone: "success" | "info") => {
 const onToken = (data: ApiKeyTokenResponse) => {
   creating.value = false;
   notice.value = null;
-  token.value = { name: data.apiKey.name, message: data.message, token: data.apiKey.token };
+  tokens.value.unshift({ name: data.apiKey.name, message: data.message, token: data.apiKey.token });
   return load();
 };
 
-const onTokenSaved = async () => {
-  token.value = null;
+/** Saved: its panel goes, and the focus moves to the next one still on show, else on. */
+const onTokenSaved = async (token: string) => {
+  tokens.value = tokens.value.filter((each) => each.token !== token);
   await nextTick();
-  (opener.value?.$el ?? endedMessage.value?.$el)?.focus();
+  (
+    document.querySelector<HTMLElement>(".token h2") ??
+    opener.value?.$el ??
+    endedMessage.value?.$el
+  )?.focus();
 };
 
 const startCreate = () => {
@@ -111,11 +120,10 @@ const closeCreate = async () => {
       <BaseButton to="/account" size="sm" variant="ghost">Your account</BaseButton>
     </template>
     <ApiKeyTokenPanel
-      v-if="token"
-      :name="token.name"
-      :message="token.message"
-      :token="token.token"
-      @done="onTokenSaved"
+      v-for="shown in tokens"
+      :key="shown.token"
+      v-bind="shown"
+      @done="onTokenSaved(shown.token)"
     />
     <p class="intro">
       For scripts and programs that use the API as you. A key can only do what its scopes allow, and
@@ -157,11 +165,10 @@ const closeCreate = async () => {
   <StationBoard v-else-if="isSessionChecked" title="API keys" as="h1">
     <!-- A token shown once stays until it's saved, even when the session ended meanwhile. -->
     <ApiKeyTokenPanel
-      v-if="token"
-      :name="token.name"
-      :message="token.message"
-      :token="token.token"
-      @done="onTokenSaved"
+      v-for="shown in tokens"
+      :key="shown.token"
+      v-bind="shown"
+      @done="onTokenSaved(shown.token)"
     />
     <div class="gate">
       <StatusMessage

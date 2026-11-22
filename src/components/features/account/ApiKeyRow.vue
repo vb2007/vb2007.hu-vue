@@ -14,6 +14,7 @@ import ApiKeyForm from "@/components/features/account/ApiKeyForm.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import ConfirmDeleteButton from "@/components/ui/ConfirmDeleteButton.vue";
+import StatusMessage from "@/components/ui/StatusMessage.vue";
 import StatusPill from "@/components/ui/StatusPill.vue";
 import type { ApiKey, ApiKeyTokenResponse } from "@/types/api/apiKeys";
 
@@ -114,7 +115,7 @@ const remove = async () => {
         @changed="onChanged"
       />
       <template v-else>
-        <p v-if="error" class="api-key__error" role="alert">{{ error }}</p>
+        <StatusMessage v-if="error" class="api-key__error" tone="error">{{ error }}</StatusMessage>
         <div class="api-key__keys">
           <BaseButton
             ref="rotateKey"
@@ -211,9 +212,8 @@ const remove = async () => {
 }
 
 .api-key__error {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--c-danger);
+  justify-self: stretch;
+  margin-top: var(--sp-2);
 }
 
 .api-key__keys {
