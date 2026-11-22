@@ -193,7 +193,8 @@ export interface PendingRegistrationsResponse {
  * in-memory ones, then the stored daily counts. Each is keyed by the e-mail, the IP, or both
  * (`loginPerAccount`). The account's own limiters and the stored counts are found through the
  * e-mail only (vb2007/vb2007.hu-api#384): the account's, or a registration waiting for the address.
- * The passkey limiters and the MFA and security-notice counts came with vb2007/vb2007.hu-api#493.
+ * The passkey limiters and the MFA and security-notice counts came with vb2007/vb2007.hu-api#493,
+ * the API key one (`apiKeyChecksPerIp`) with vb2007/vb2007.hu-api#514.
  */
 export type RateLimitName =
   | "loginPerIp"
@@ -210,6 +211,7 @@ export type RateLimitName =
   | "passwordChecksPerAccount"
   | "passkeyOptionsPerIp"
   | "passkeyLoginsPerIp"
+  | "apiKeyChecksPerIp"
   | "passwordResetCodeFailures"
   | "emailChangeCodeFailures"
   | "registrationCodeFailures"

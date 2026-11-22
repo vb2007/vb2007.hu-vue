@@ -1730,6 +1730,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   ]);
 
   // With both, each limiter keyed by the IP or the e-mail goes, in the API's order.
+  api.countsRateLimit("apiKeyChecksPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("passkeyLoginsPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
   api.countsRateLimit("accountCodeChecksPerIp", { ip: "203.0.113.7" });
@@ -1742,6 +1743,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     "Wrong passwords on the account page from the IP.",
     "Wrong passwords on the account page, per account.",
     "Failed passkey log-ins from the IP.",
+    "Rejected API keys from the IP.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day.",
