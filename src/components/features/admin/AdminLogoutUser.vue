@@ -2,6 +2,7 @@
 /**
  * The Actions row that ends every session of the account. On the superuser's own account that's
  * this one too, which the note says, so its key takes two clicks there; the page then logs out.
+ * The account's API keys keep working (vb2007/vb2007.hu-api#513): the note points to Revoke.
  */
 import { computed, nextTick, useTemplateRef } from "vue";
 import { useAdminLogout, useArmedKey } from "@/composables/useAdminUserActions";
@@ -31,10 +32,12 @@ const onLogOut = async () => {
 <template>
   <AdminUserAction title="Log out everywhere" icon="logout">
     <template v-if="isOwn">
-      This is your account: it ends this session too, so you'll have to log in again.
+      This is your account: it ends this session too, so you'll have to log in again. Your API keys
+      keep working: revoke them below.
     </template>
     <template v-else>
-      Ends {{ user.username }}'s session on every device. They can log in again.
+      Ends {{ user.username }}'s session on every device. They can log in again, and their API keys
+      keep working: revoke them below.
     </template>
     <template #key>
       <!-- On the admin's own account it arms first, turning solid red like Delete. -->

@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import ReauthForm from "@/components/features/account/ReauthForm.vue";
 import { hasPassword } from "@/scripts/authentication/authState";
 import { DELETE_INTENT_STORAGE_KEY, saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { saveGithubReturn, takeGithubReturn } from "@/scripts/authentication/githubReturn";
 import type { ApiResult } from "@/scripts/api/client";
 import type { MessageResponse } from "@/types/api/common";
 import { descriptionOf } from "@/__tests__/helpers/description";
@@ -121,6 +122,7 @@ describe("ReauthForm", () => {
   it("sends no password for an account made with GitHub, and offers GitHub when it must confirm", async () => {
     hasPassword.value = false;
     saveDeleteIntent("vb");
+    saveGithubReturn("/account/api-keys");
     const send = vi.fn().mockResolvedValueOnce(refused(403, REAUTH));
     const form = mountForm(send);
     expect(form.find("input").exists()).toBe(false);
@@ -144,6 +146,8 @@ describe("ReauthForm", () => {
     github.element.addEventListener("click", (event) => event.preventDefault());
     await github.trigger("click");
     expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
+    // Nor a return to another page: this form has none, so the relink comes back here.
+    expect(takeGithubReturn()).toBe("");
   });
 
   it("puts the cursor back on the key after a GitHub-only refusal that isn't GitHub's", async () => {

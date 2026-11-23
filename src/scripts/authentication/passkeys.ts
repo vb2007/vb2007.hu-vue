@@ -5,7 +5,7 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { apiRequest, type ApiFailure, type ApiResult } from "@/scripts/api/client";
-import { EMOJI_JOINERS, EMOJI_TAG_SEQUENCES } from "@/scripts/authentication/register";
+import { displayNameEarlyError, displayNameError } from "@/scripts/authentication/displayName";
 import {
   currentLogin,
   finishLogin,
@@ -15,29 +15,13 @@ import {
 } from "@/scripts/authentication/user";
 import { getPasskey } from "@/scripts/authentication/webauthn";
 
-/** Control, format, line and paragraph separator characters, which the API's `passkeyNameError` refuses. */
-const INVALID_PASSKEY_NAME_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-
 /**
- * A passkey name's problem, "" when it has none, checked like the API's `passkeyNameError` on the
- * trimmed name the site sends: the character rule allows the joiners and tags inside emoji, as
- * usernames do. It must match the API's, since its 400 only comes after the browser made the
- * passkey, which would then be left on the device.
+ * A passkey name's problem, "" when it has none, like the API's `passkeyNameError`. It must match
+ * the API's, since its 400 only comes after the browser made the passkey, which would then be left
+ * on the device.
  */
-export const passkeyNameError = (name: string) => {
-  const trimmed = name.trim();
-  if (!trimmed) return Messages.Passkeys.nameMissing;
-  if (
-    INVALID_PASSKEY_NAME_CHARACTER.test(
-      trimmed.replace(EMOJI_JOINERS, "").replace(EMOJI_TAG_SEQUENCES, "")
-    )
-  ) {
-    return Messages.Passkeys.nameInvalidCharacters;
-  }
-  return [...trimmed].length > Limits.Passkey.nameMaxLength
-    ? Messages.Passkeys.nameTooLong(Limits.Passkey.nameMaxLength)
-    : "";
-};
+export const passkeyNameError = (name: string) =>
+  displayNameError(name, Limits.Passkey.nameMaxLength, Messages.Passkeys);
 
 /**
  * Options fetched ahead of the click that uses them (vb2007/vb2007.hu-api#446): Safari may refuse
@@ -117,7 +101,8 @@ const loginOptions = optionsAhead(() =>
 export const prefetchPasskeyLogin = loginOptions.prefetch;
 
 /** A name only gets too long by typing more: shown while typing. */
-export const passkeyNameEarlyError = (name: string) => (name.trim() ? passkeyNameError(name) : "");
+export const passkeyNameEarlyError = (name: string) =>
+  displayNameEarlyError(name, Limits.Passkey.nameMaxLength, Messages.Passkeys);
 
 /**
  * Why a passkey login didn't log in: "" for a cancelled prompt (or `noPrompt` when it followed

@@ -304,3 +304,43 @@ for (const [name, fontSize, width] of [
     await expectReflow(page);
   });
 }
+
+for (const [name, fontSize, width] of [
+  ["a 320 px window", 0, 320],
+  ["a 32 px browser font size", 32, 640]
+] as const) {
+  test(`the API keys, their forms and a new token fit ${name}`, async ({ page, api }) => {
+    if (fontSize) await browserFontSize(page, fontSize);
+    await page.setViewportSize({ width, height: 900 });
+    api.loggedInAs(MOCK_EMAIL, "e2e");
+    api.hasApiKey("Nightly backup of every paste", {
+      scopes: ["pastes:read", "shortUrls:read", "uploads:read", "uploads:write"]
+    });
+    await page.goto("/account/api-keys");
+    await page.getByRole("button", { name: "Create an API key" }).click();
+    await page.getByLabel("Name", { exact: true }).fill("Deploy");
+    await page.getByRole("group", { name: "Account" }).getByLabel("Read").check({ force: true });
+    await expectReflow(page);
+    // Each area keeps to one line: Read and Write beside its name, never wrapped under it.
+    const wrapped = await page.locator(".key-form__area").evaluateAll((areas) =>
+      areas
+        .filter((area) => {
+          const [name, read, write] = [...area.children].map((el) => el.getBoundingClientRect());
+          const middle = (box: { top: number; height: number }) => box.top + box.height / 2;
+          return [read, write].some(
+            (box) => middle(box) < name.top || middle(box) > name.bottom || box.left < name.right
+          );
+        })
+        .map((area) => area.textContent)
+    );
+    expect(wrapped).toEqual([]);
+
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Create key" }).click();
+    await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
+    await page.getByRole("button", { name: "Rotate Nightly backup of every paste" }).click();
+    await expect(page.getByText("It expires 90 days from now again.")).toBeVisible();
+    await expectReflow(page);
+  });
+}

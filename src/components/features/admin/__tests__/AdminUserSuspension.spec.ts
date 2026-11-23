@@ -37,7 +37,7 @@ describe("AdminUserSuspension", () => {
 
     expect(wrapper.find("h3").text()).toBe("Suspend account");
     expect(wrapper.find(".action__note").text().replace(/\s+/g, " ")).toBe(
-      "Ends user-a's session and stops them logging in until you lift it. Their pastes, short links and uploads stay up."
+      "Ends user-a's session, deletes their API keys and stops them logging in until you lift it. Their pastes, short links and uploads stay up."
     );
     expect(keys(wrapper)).toEqual(["Suspend"]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -55,7 +55,7 @@ describe("AdminUserSuspension", () => {
 
     await wrapper.find("button").trigger("click");
     expect(wrapper.find(".confirm__text").text().replace(/\s+/g, " ")).toBe(
-      "Suspend user-a? They're logged out at once, and can't log in again until you lift the suspension."
+      "Suspend user-a? They're logged out at once, their API keys are deleted, and they can't log in again until you lift the suspension."
     );
     expect(keys(wrapper)).toEqual(["Suspend user-a", "Cancel"]);
     expect(document.activeElement?.textContent?.trim()).toBe("Suspend user-a");
@@ -97,10 +97,10 @@ describe("AdminUserSuspension", () => {
     expect(wrapper.find(".confirm").exists()).toBe(false);
     expect(wrapper.find("h3").text()).toBe("Suspension");
     expect(wrapper.find(".action__note").text().replace(/\s+/g, " ")).toBe(
-      "user-a can't log in while suspended. Lifting it lets them log in again, with their password or GitHub."
+      "user-a can't log in while suspended. Lifting it lets them log in again, with their password or GitHub. Their deleted API keys don't come back."
     );
     expect(wrapper.find(".status--success").text()).toBe(
-      "User suspended successfully: their session was ended."
+      "user-a is suspended: their session ended and their API keys are deleted."
     );
     // The pressed key went with the confirmation, so focus moves to the one in its place.
     expect(document.activeElement?.textContent?.trim()).toBe("Lift suspension");
@@ -149,7 +149,9 @@ describe("AdminUserSuspension", () => {
 
     expect(String(fetchMock.mock.calls[1][1]?.body)).toBe(JSON.stringify({ suspended: false }));
     expect(wrapper.find("h3").text()).toBe("Suspend account");
-    expect(wrapper.find(".status--success").text()).toBe("User unsuspended successfully.");
+    expect(wrapper.find(".status--success").text()).toBe(
+      "user-a's suspension is lifted: they can log in again."
+    );
     expect(wrapper.find(".status--error").exists()).toBe(false);
     expect(document.activeElement?.textContent?.trim()).toBe("Suspend");
 

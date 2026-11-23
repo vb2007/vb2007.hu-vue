@@ -4,16 +4,17 @@ import AdminResetMfa from "@/components/features/admin/AdminResetMfa.vue";
 import { Messages } from "@/constants/messages";
 import type { AdminUserDetails } from "@/types/api/admin";
 import type { MfaStatus } from "@/types/api/user";
-import { anAdminUserDetails } from "@/__tests__/helpers/admin";
+import { anAdminUserDetails, anApiKey } from "@/__tests__/helpers/admin";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 enableAutoUnmount(afterEach);
 
 const RESET = "User's MFA reset successfully: every method is off and their session was ended.";
 
-const withMfa = (mfa: Partial<MfaStatus>) =>
+const withMfa = (mfa: Partial<MfaStatus>, apiKeys = [anApiKey("k1")]) =>
   anAdminUserDetails("a", {
-    mfa: { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0, ...mfa }
+    mfa: { email: false, totp: false, passkeys: 0, recoveryCodesLeft: 0, ...mfa },
+    apiKeys
   });
 
 describe("AdminResetMfa", () => {
@@ -44,7 +45,7 @@ describe("AdminResetMfa", () => {
 
     expect(wrapper.find("h3").text()).toBe("Reset MFA");
     expect(note(wrapper)).toBe(
-      "For when user-a lost their second factor: turns off every MFA method and recovery code, and ends their session. Their passkeys stay."
+      "For when user-a lost their second factor: turns off every MFA method and recovery code, deletes their API keys and ends their session. Their passkeys stay."
     );
     expect(keys(wrapper)).toEqual(["Reset MFA"]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -79,7 +80,7 @@ describe("AdminResetMfa", () => {
 
     await wrapper.find("button").trigger("click");
     expect(wrapper.find(".confirm__text").text().replace(/\s+/g, " ")).toBe(
-      "Reset user-a's MFA? Every method and recovery code is turned off, and they're logged out at once and mailed a security notice. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
+      "Reset user-a's MFA? Every method and recovery code is turned off, their API keys are deleted, and they're logged out at once and mailed a security notice. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again."
     );
     expect(keys(wrapper)).toEqual(["Reset user-a's MFA", "Cancel"]);
     expect(document.activeElement?.textContent?.trim()).toBe("Reset user-a's MFA");
@@ -97,7 +98,7 @@ describe("AdminResetMfa", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("resets once confirmed: everything but the passkeys goes off, and the focus moves to the word", async () => {
+  it("resets once confirmed: everything but the passkeys goes off, API keys too, and the focus moves to the word", async () => {
     const wrapper = mountRow(
       withMfa({ email: true, totp: true, passkeys: 2, recoveryCodesLeft: 7 })
     );
@@ -118,7 +119,7 @@ describe("AdminResetMfa", () => {
     expect(String(call[0])).toBe("https://api.test/admin/users/a/mfa");
     expect(call[1]?.method).toBe("DELETE");
     expect(wrapper.emitted("updated")).toEqual([
-      [withMfa({ email: false, totp: false, passkeys: 2, recoveryCodesLeft: 0 })]
+      [withMfa({ email: false, totp: false, passkeys: 2, recoveryCodesLeft: 0 }, [])]
     ]);
     expect(wrapper.find(".confirm").exists()).toBe(false);
     expect(note(wrapper)).toBe("user-a has no MFA method on, so there's nothing to reset.");

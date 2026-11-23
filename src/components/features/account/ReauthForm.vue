@@ -5,7 +5,8 @@
  * minutes confirms it (else the API's 403 offers "Confirm with GitHub"). `send` makes the request
  * with that body (and `quietStatuses: REAUTH_QUIET_STATUSES`) and `done` hands on its answer.
  * Every MFA setting takes the same check: turning a method on or off, new recovery codes, adding
- * or deleting a passkey.
+ * or deleting a passkey; and so do creating and rotating an API key (vb2007/vb2007.hu-api#511),
+ * whose `send` adds the key's details to the body. Each names its key and hint through the props.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
@@ -18,6 +19,7 @@ import { useRetryHold } from "@/composables/useRetryHold";
 import { apiUrl, type ApiResult } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { clearDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { clearGithubReturn, saveGithubReturn } from "@/scripts/authentication/githubReturn";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -34,6 +36,8 @@ const props = defineProps<{
   hint: string;
   /** The key turns red once armed, for a change that weakens the login. */
   danger?: boolean;
+  /** Where "Confirm with GitHub" comes back to, when not the account page (see `githubReturn`). */
+  githubReturn?: string;
 }>();
 const emit = defineEmits<{ done: [data: T]; cancel: [] }>();
 
@@ -86,6 +90,13 @@ const submit = async () => {
   else if (!form.value?.querySelector(":focus:not(:disabled)")) focusFirst();
 };
 
+/** Off to GitHub: only this form's confirmation is remembered, for the way back. */
+const toGithub = () => {
+  clearDeleteIntent();
+  if (props.githubReturn) saveGithubReturn(props.githubReturn);
+  else clearGithubReturn();
+};
+
 const cancel = () => {
   if (!isSending.value) emit("cancel");
 };
@@ -135,7 +146,7 @@ onMounted(focusFirst);
         size="sm"
         :aria-describedby="statusTextId(errorId)"
         :href="githubLink"
-        @click="clearDeleteIntent"
+        @click="toGithub"
       >
         <AppIcon name="github" :size="16" />
         Confirm with GitHub

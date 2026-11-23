@@ -314,6 +314,22 @@ const onRecoveryCodesSaved = async () => {
       </div>
     </section>
 
+    <!-- Managed on a page of their own (vb2007/vb2007.hu-api#511). -->
+    <section class="logins" aria-labelledby="api-keys-title">
+      <h2 id="api-keys-title" class="logins__title">API keys</h2>
+      <div class="login">
+        <span class="login__mark"><AppIcon name="key" :size="26" /></span>
+        <div class="login__main">
+          <p class="login__note">
+            Let your scripts and programs use the API as you, each with only the scopes you pick.
+          </p>
+          <BaseButton to="/account/api-keys" size="sm" variant="secondary">
+            Manage API keys <AppIcon name="arrow" :size="16" />
+          </BaseButton>
+        </div>
+      </div>
+    </section>
+
     <SetPasswordForm @set="onPasswordSet" />
 
     <DeleteAccount :reopen="deleteReturned" />

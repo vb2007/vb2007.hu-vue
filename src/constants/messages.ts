@@ -340,10 +340,11 @@ export class Messages {
     }
     /**
      * Back from GitHub, which confirmed it's the user, before setting the password or changing
-     * two-step login (vb2007/vb2007.hu-api#448), which take the same confirmation.
+     * two-step login (vb2007/vb2007.hu-api#448) or making an API key (vb2007/vb2007.hu-api#511),
+     * which take the same confirmation. The relink always comes back to the account page.
      */
     static githubConfirmed(minutes: number): string {
-      return `GitHub confirmed it's you. Within ${minutes} minutes, set your password or change two-step login.`;
+      return `GitHub confirmed it's you. Within ${minutes} minutes, set your password, change two-step login, or create or rotate an API key.`;
     }
     /** Back from GitHub, which confirmed it's the user asking to delete (vb2007/vb2007.hu-api#245). */
     static deleteGithubConfirmed(minutes: number): string {
@@ -529,6 +530,33 @@ export class Messages {
     }
   };
 
+  /** API keys (vb2007/vb2007.hu-api#511): listing, creating, rotating and deleting them. */
+  static readonly ApiKeys = class {
+    static readonly listFailed: string = "Failed to load your API keys";
+    static readonly createFailed: string = "Failed to create the API key";
+    static readonly rotateFailed: string = "Failed to rotate the API key";
+    static readonly deleteFailed: string = "Failed to delete the API key";
+    static readonly nameMissing: string = "Give the API key a name.";
+    /** The API's wording: the name goes into a security notice e-mail. */
+    static readonly nameInvalidCharacters: string =
+      "The API key name can't contain line breaks or invisible formatting characters.";
+    static nameTooLong(max: number): string {
+      return `The name can be at most ${max} characters long.`;
+    }
+    static readonly scopesMissing: string = "Pick at least one scope.";
+    static lifetimeInvalid(min: number, max: number): string {
+      return `Enter a whole number of days from ${min} to ${max}.`;
+    }
+    /** Back from GitHub, which "Confirm with GitHub" on this page sent the user to. */
+    static githubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Create or rotate the API key within ${minutes} minutes.`;
+    }
+    /** In place of "Create an API key" once the account has the API's maximum. */
+    static atCap(max: number): string {
+      return `You have ${max} API keys, the most an account can have: delete one to create another.`;
+    }
+  };
+
   static readonly Uploads = class {
     static readonly listFailed: string = "Failed to load your uploads";
     static readonly usageFailed: string = "Failed to load your storage";
@@ -575,7 +603,18 @@ export class Messages {
     }
     static readonly logoutFailed: string = "Failed to log the account out";
     static loggedOut(name: string): string {
-      return `${name} is logged out everywhere. They can log in again.`;
+      return `${name} is logged out everywhere. They can log in again, and their API keys keep working.`;
+    }
+    static readonly revokeApiKeysFailed: string = "Failed to revoke the account's API keys";
+    /**
+     * `revoked` is how many keys the API deleted: 0 when the account had none (left). Without
+     * `name`, they were the admin's own. The security notice isn't claimed: the API mails it after
+     * answering, and not once the account's daily notices are used up.
+     */
+    static apiKeysRevoked(revoked: number, name?: string): string {
+      if (revoked === 0) return `${name ?? "You"} had no API keys, so nothing was revoked.`;
+      const keys = revoked === 1 ? "API key" : `${revoked.toLocaleString()} API keys`;
+      return `Revoked ${name ? `${name}'s` : "your"} ${keys}.`;
     }
     static readonly deleteFailed: string = "Failed to delete the account";
     /** On the Users list, once the account's page deleted it. */
@@ -584,11 +623,18 @@ export class Messages {
     }
     static readonly mfaResetFailed: string = "Failed to reset the account's MFA";
     static mfaReset(name: string): string {
-      return `${name}'s MFA is off and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
+      return `${name}'s MFA is off, their API keys are deleted and their session ended. They log in without a second step (password, GitHub or a passkey) and can turn MFA on again.`;
     }
     /** Why the superuser's own page has no Reset MFA key: the API answers it with 409. */
     static readonly superuserMfaNotResettable: string =
       "Your own MFA is managed from your Account page.";
+    /** In place of the API's word, which leaves out the API keys. */
+    static suspended(name: string): string {
+      return `${name} is suspended: their session ended and their API keys are deleted.`;
+    }
+    static unsuspended(name: string): string {
+      return `${name}'s suspension is lifted: they can log in again.`;
+    }
     static readonly suspendFailed: string = "Failed to suspend the account";
     static readonly unsuspendFailed: string = "Failed to lift the suspension";
     /** Why the superuser's own page has no Suspend key: the API answers it with 409. */
@@ -628,6 +674,7 @@ export class Messages {
       passwordChecksPerAccount: "Wrong passwords on the account page, per account",
       passkeyOptionsPerIp: "Passkey requests from the IP",
       passkeyLoginsPerIp: "Failed passkey log-ins from the IP",
+      apiKeyChecksPerIp: "Rejected API keys from the IP",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
