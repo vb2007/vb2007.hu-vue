@@ -262,6 +262,11 @@ describe("views", () => {
     expect(wrapper.find(".directory").attributes("aria-labelledby")).toBe("admin-sections");
     expect(wrapper.findComponent(ToolDirectory).props("stops")).toEqual(ADMIN_SECTIONS);
     expect(wrapper.find('.directory a[href="/admin/users"]').text()).toContain("Users");
+    // The docs with the admin routes, which take the superuser's session, in a new tab.
+    const docs = wrapper.find('.section-lead a[href="https://api.test/docs/admin"]');
+    expect(docs.element.textContent).toBe("admin API docs (opens in a new tab)");
+    expect(docs.attributes("target")).toBe("_blank");
+    expect(docs.attributes("rel")).toBe("noopener");
   });
 
   it("AdminAreaView shows the superuser the users board as the page heading", async () => {
