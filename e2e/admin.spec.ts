@@ -1848,6 +1848,8 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     api.countsRateLimit("mfaEmailSends", { email });
     api.countsRateLimit("mfaCodeFailures", { email });
   };
+  // `emailChangeSends` counts for an account, like the codes `PATCH /user/email` mails.
+  api.hasUser("anna");
   arrange("anna@example.com");
   api.countsRateLimit("passwordResetCodeFailures", { email: "milo@example.com" });
   api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });

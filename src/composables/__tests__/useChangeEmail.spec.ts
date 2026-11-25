@@ -381,19 +381,27 @@ describe("useChangeEmail", () => {
 
     it("says the account's codes of the last 24 hours are used up, and holds until they count again", async () => {
       vi.useFakeTimers();
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, {
-          error: "Too many confirmation codes were mailed for this account today: try again later.",
-          retryAfter: 86_399,
-          reason: ErrorReason.EmailChangeLimit
-        })
-      );
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(429, {
+            error:
+              "Too many confirmation codes were mailed for this account today: try again later.",
+            retryAfter: 86_399,
+            reason: ErrorReason.EmailChangeLimit
+          })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       const email = useEmail();
 
-      expect(await email.change("new@example.com", "secret-password")).toBe(false);
+      expect(await email.change("newer@example.com", "secret-password")).toBe(false);
 
-      // Nothing was mailed, so the user isn't refreshed.
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Nothing was mailed, but the message says whether a waiting code still works, so the
+      // user is refreshed: here, a change waits.
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.test/user", {
+        method: "GET",
+        credentials: "include"
+      });
+      expect(pendingEmail.value).toBe("new@example.com");
       expect(email.changeError.value).toBe(Messages.Account.emailChangeLimit);
       expect(email.capped.value).toBe(true);
       expect(email.cooldown.remaining.value).toBe(86_399);

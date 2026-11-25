@@ -136,7 +136,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
  * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
  * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused as invalid, a resend sends
- * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
+ * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key (`emailChangeSends` the account's own count of e-mail change codes, see `mailedEmailChangeCodes`);
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given, answers their names in the API's order
  * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
  * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily caps on wrong codes and e-mails
@@ -1060,6 +1060,15 @@ export class MockApi {
 
   /** A rate limiter counting for `email`, `ip` or both, as its key needs. */
   countsRateLimit(name: MockRateLimiter, { email, ip }: RateLimitKey) {
+    if (name === "emailChangeSends") {
+      // One store with what `PATCH /user/email` counts (see `mailedEmailChangeCodes`), kept per account.
+      const account = this.storedAccounts().find(
+        (stored) => normalizeEmail(stored.email) === normalizeEmail(email ?? "")
+      );
+      if (!account) throw new Error("emailChangeSends counts for an account: arrange it first.");
+      this.emailChangeSends.set(account.id, { count: 1, since: this.now() });
+      return;
+    }
     this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip });
   }
 

@@ -313,13 +313,16 @@ describe("ChangeEmail", () => {
       pendingEmail.value = "new@example.com";
       wrapper = mount(ChangeEmail, { attachTo: document.body });
       await flushPromises();
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, {
-          error: "Too many confirmation codes were mailed for this account today: try again later.",
-          retryAfter: 85_500,
-          reason: ErrorReason.EmailChangeLimit
-        })
-      );
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(429, {
+            error:
+              "Too many confirmation codes were mailed for this account today: try again later.",
+            retryAfter: 85_500,
+            reason: ErrorReason.EmailChangeLimit
+          })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, waitingUser));
       await button("Change e-mail").trigger("click");
       await flushPromises();
       await fill("newer@example.com", "secret-password");
@@ -343,15 +346,23 @@ describe("ChangeEmail", () => {
       );
     });
 
-    it("says only that the codes are used up with no change waiting", async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(429, {
-          error: "Too many.",
-          retryAfter: 600,
-          reason: ErrorReason.EmailChangeLimit
-        })
-      );
-      await openForm();
+    it("says only that the codes are used up once the refresh finds no change waiting", async () => {
+      // The page still shows a change whose code has expired since.
+      wrapper.unmount();
+      pendingEmail.value = "new@example.com";
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      await flushPromises();
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(429, {
+            error: "Too many.",
+            retryAfter: 600,
+            reason: ErrorReason.EmailChangeLimit
+          })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { ...refreshedUser, email: "old@example.com" }));
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
       await fill("newer@example.com", "secret-password");
 
       await wrapper.find("form").trigger("submit");

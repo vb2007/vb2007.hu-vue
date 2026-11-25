@@ -185,14 +185,16 @@ export const useChangeEmail = () => {
       // limiter (wrong passwords, e-mails from the IP): each counts the API's retryAfter down on
       // the key, but only the cooldown means a code went out.
       const isCooldown = codeCooldownOf(result) !== undefined;
+      const isCap = result.body?.reason === ErrorReason.EmailChangeLimit;
       changeError.value = isCooldown
         ? Messages.EmailCode.cooldown
-        : result.body?.reason === ErrorReason.EmailChangeLimit
+        : isCap
           ? Messages.Account.emailChangeLimit
           : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
       cooldown.start(retryAfterFrom(result.body), account(), changeError.value);
-      // The code it waits for may have been asked for elsewhere, e.g. in another tab.
-      if (isCooldown) await fetchUserDetails();
+      // The code it waits for may have been asked for elsewhere, e.g. in another tab. The cap's
+      // message says whether a waiting code still works, so it needs the change as it is now.
+      if (isCooldown || isCap) await fetchUserDetails();
     } else if (isLoggedOutAnswer(result.status, apiErrorOf(result))) {
       // The password or session stopped holding between the API's check and its store, so it kept
       // and mailed nothing (vb2007/vb2007.hu-api#466). The client's recheck (`onSessionRefused`)
