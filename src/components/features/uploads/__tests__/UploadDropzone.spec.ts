@@ -20,7 +20,7 @@ describe("UploadDropzone", () => {
     );
     await wrapper.find("input[value=public]").setValue();
     expect(wrapper.find(".visibility-hint").text()).toBe(
-      "Others can find and open a public file, not only through its link. Keep anything that shouldn't be found private."
+      "Anyone can find and open public files, not just people you share the link with. Make anything you don't want found private."
     );
     expect(wrapper.find(".dropzone__hint").text()).toBe("Up to 10 MB each.");
   });

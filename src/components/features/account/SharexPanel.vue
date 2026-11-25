@@ -209,9 +209,9 @@ onBeforeUnmount(() => {
       <!-- Gone while a token is on show, so the steps it leads to come right under it. -->
       <template v-if="!created">
         <p class="intro">
-          Send screenshots, files, text and links from ShareX on Windows to your account. What
-          ShareX uploads is public, and others can find it, not only through its link, so don't send
-          anything private with it.
+          Send screenshots, files, text and links from ShareX on Windows to your account.
+          Screenshots, files and text sent with ShareX are public, and anyone can find them without
+          their link. Don't send anything private with it.
         </p>
         <p class="intro">
           Setting it up creates an API key named “{{ Sharex.keyName }}” that can add, change and
