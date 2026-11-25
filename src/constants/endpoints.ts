@@ -515,6 +515,23 @@ export class Endpoints {
     });
   };
 
+  /**
+   * The API's docs (vb2007/vb2007.hu-api#236), linked in a new tab: browser navigations, not fetch
+   * calls. `admin` adds the admin routes, so it needs the superuser's session (a 403 otherwise).
+   */
+  static readonly Docs = class {
+    static readonly index = defineEndpoint()({
+      method: HttpMethod.Get,
+      path: "/docs",
+      credentials: false
+    });
+    static readonly admin = defineEndpoint()({
+      method: HttpMethod.Get,
+      path: "/docs/admin",
+      credentials: true
+    });
+  };
+
   /** The superuser's admin routes (vb2007/vb2007.hu-api#120 to #122). */
   static readonly Admin = class {
     static readonly users = defineEndpoint<undefined, AdminUsersResponse, AdminUserListQuery>()({

@@ -16,7 +16,7 @@ test.describe("page titles", () => {
     });
   }
 
-  // The footer's links are router links, so this is the router's afterEach, not a page load.
+  // The footer's page links are router links, so this is the router's afterEach, not a page load.
   test("the title follows a navigation inside the app", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle("vb2007.hu");
