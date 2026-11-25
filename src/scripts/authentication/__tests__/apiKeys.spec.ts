@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import {
+  apiKeyLink,
   apiKeyNameEarlyError,
   apiKeyNameError,
   grantableScopes,
@@ -105,5 +106,64 @@ describe("grantableScopes", () => {
     expect(grantableScopes(true)).toEqual(Limits.ApiKeys.scopes);
     expect(grantableScopes(false)).toEqual(Limits.ApiKeys.scopes.slice(0, 8));
     expect(grantableScopes(false).some((scope) => scope.startsWith("admin:"))).toBe(false);
+  });
+});
+
+describe("apiKeyLink", () => {
+  it("is nothing without newApiKey", () => {
+    expect(apiKeyLink({ name: "Bot", scopes: "pastes:read" })).toBeUndefined();
+  });
+
+  it.each([
+    ["missing", {}, []],
+    ["empty", { scopes: "" }, []],
+    ["valueless", { scopes: null }, []],
+    [
+      "spaced and repeated",
+      { scopes: " pastes:write , pastes:read,,pastes:write " },
+      ["pastes:read", "pastes:write"]
+    ],
+    [
+      "a repeated param's",
+      { scopes: ["pastes:write", null, "account:read,pastes:read"] },
+      ["account:read", "pastes:read", "pastes:write"]
+    ]
+  ])("reads %s scopes, in the API's order, once each", (_case, query, scopes) => {
+    expect(apiKeyLink({ newApiKey: "1", ...query })).toEqual({
+      name: "",
+      scopes,
+      dropped: []
+    });
+  });
+
+  it("leaves out unknown and admin scopes, which a link never ticks, naming them", () => {
+    expect(
+      apiKeyLink({ newApiKey: "1", scopes: "admin:read,spotdl:submit,uploads:read,spotdl:submit" })
+    ).toEqual({ name: "", scopes: ["uploads:read"], dropped: ["admin:read", "spotdl:submit"] });
+  });
+
+  it("names only what's shaped like a scope, never the link's own text", () => {
+    const scopes = [
+      "Your account is locked. Call +1 555 0100",
+      "x".repeat(30) + ":" + "y".repeat(10),
+      "Spotdl:submit",
+      "spotdl:",
+      "spotdl:Submit",
+      "<b>a:b</b>",
+      "shortUrls:admin",
+      "pastes:read"
+    ];
+    expect(apiKeyLink({ newApiKey: "1", scopes })!.dropped).toEqual(["shortUrls:admin"]);
+    expect(
+      apiKeyLink({ newApiKey: "1", scopes: `${"x".repeat(29)}:${"y".repeat(10)}` })!.dropped
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    [" Deploy bot ", " Deploy bot "],
+    [["First", "Second"], "First"],
+    [null, ""]
+  ])("keeps the name %j as given: %j", (name, expected) => {
+    expect(apiKeyLink({ newApiKey: "1", name })!.name).toBe(expected);
   });
 });

@@ -4,12 +4,13 @@ import { readSaved, removeSaved, writeSaved } from "@/scripts/utility/savedForOw
 /**
  * The API's GitHub relink always comes back to `/account`. A confirmation started elsewhere (the API
  * keys page, vb2007/vb2007.hu-api#511) keeps here where to go back to, for as long as GitHub's
- * confirmation lasts, and `/account`'s route guard sends the browser on with the relink's query.
+ * confirmation lasts, and `/account`'s route guard sends the browser on with the relink's query
+ * added to the one kept (an API key deep link's, which fills the create form in again).
  * It's in sessionStorage, so only this tab follows it, and it's read once whatever comes back.
  */
 export const GITHUB_RETURN_STORAGE_KEY = "account-github-return";
 
-/** Keeps that GitHub was opened to confirm something done at `path`. */
+/** Keeps that GitHub was opened to confirm something done at `path` (a full path, with its query). */
 export const saveGithubReturn = (path: string) =>
   writeSaved(GITHUB_RETURN_STORAGE_KEY, {
     id: path,
