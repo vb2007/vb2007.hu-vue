@@ -58,6 +58,36 @@ test("a user uploads files, copies the link and sees them listed", async ({
   await expect(queue).toHaveCount(0);
 });
 
+test("a name the API would refuse is refused before sending, a padded one is trimmed", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  await page.goto("/upload");
+  await expect(page.getByText("No uploads yet.")).toBeVisible();
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/upload") {
+      posts.push(request.url());
+    }
+  });
+
+  await page.getByLabel("Files to upload").setInputFiles([
+    { name: "   ", mimeType: "image/png", buffer: Buffer.alloc(16) },
+    { name: "tab\there.png", mimeType: "image/png", buffer: Buffer.alloc(16) },
+    { name: "  notes.txt  ", mimeType: "", buffer: Buffer.from("hi") }
+  ]);
+
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(queue.getByText("Uploaded · Private")).toBeVisible();
+  await expect(
+    queue.getByText("File names must be 1–255 characters, without slashes or control characters.")
+  ).toHaveCount(2);
+  expect(posts).toHaveLength(1);
+  expect(api.uploads).toHaveLength(1);
+  expect(api.uploads[0]).toMatchObject({ originalFileName: "notes.txt" });
+});
+
 test("an upload from a session replaced elsewhere is refused and logs the page out", async ({
   page,
   api
