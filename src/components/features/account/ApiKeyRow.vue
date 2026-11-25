@@ -93,11 +93,13 @@ const remove = async () => {
       <ul class="api-key__scopes" :aria-label="`Scopes of ${apiKey.name}`">
         <li v-for="scope in apiKey.scopes" :key="scope" class="api-key__scope">{{ scope }}</li>
       </ul>
-      <!-- The dots are hidden from screen readers, which hear commas instead. -->
+      <!-- The dots are hidden from screen readers, which hear commas instead; a no-break space
+           keeps each with the fact after it, never alone at a line's end. -->
       <p class="api-key__dates">
         <template v-for="(fact, index) in dates" :key="index"
           ><template v-if="index"
-            ><span aria-hidden="true"> · </span><span class="visually-hidden">, </span></template
+            ><span class="visually-hidden">, </span
+            ><span aria-hidden="true"> ·&nbsp;</span></template
           >{{ fact.text }}</template
         >
       </p>

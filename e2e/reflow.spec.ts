@@ -274,6 +274,9 @@ for (const [name, width] of [
     await page.goto("/account");
     await expect(page.getByRole("button", { name: "Set up authenticator app" })).toBeVisible();
     await fits();
+    // Icons grow with the text: the rows' 26 px marks are 52 px at a 32 px font size.
+    const mark = page.getByRole("region", { name: "Two-step login" }).locator(".login__mark svg");
+    expect(await mark.first().boundingBox()).toMatchObject({ width: 52, height: 52 });
 
     await page.getByRole("button", { name: "Set up authenticator app" }).click();
     await page.getByLabel("Password").fill(MOCK_PASSWORD);

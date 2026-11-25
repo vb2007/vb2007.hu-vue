@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * The account page's Reset MFA row, for a user who lost their second factor. The reset turns
- * every method and recovery code off, deletes the API keys and ends their session, so it asks first, in place, like
- * Suspend. With nothing on there's nothing to reset, and the row only says so. On the superuser's
- * own account, which the API refuses (409), the row only says where that MFA is managed.
+ * every method and recovery code off, deletes the API keys and ends their session, so it asks
+ * first, in place, like Suspend. With nothing on there's nothing to reset, and the row only says
+ * so; right after a reset it has no note, only the reset's own message. On the superuser's own
+ * account, which the API refuses (409), the row only says where that MFA is managed.
  */
 import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Messages } from "@/constants/messages";
@@ -60,7 +61,7 @@ const confirm = async () => {
       apiKeys: []
     });
   }
-  // A reset leaves nothing to reset, so its key goes: the focus moves to what it did.
+  // A reset takes the key away: the focus moves to what it did.
   await nextTick();
   (done.value ? doneMessage : confirmKey).value?.$el.focus();
 };
@@ -68,14 +69,16 @@ const confirm = async () => {
 
 <template>
   <AdminUserAction title="Reset MFA" icon="shield">
-    <template v-if="user.isSuperuser">{{ Messages.Admin.superuserMfaNotResettable }}</template>
-    <template v-else-if="hasMfa">
-      For when {{ user.username }} lost their second factor: turns off every MFA method and recovery
-      code, deletes their API keys and ends their session. Their passkeys stay.
+    <template v-if="!done" #default>
+      <template v-if="user.isSuperuser">{{ Messages.Admin.superuserMfaNotResettable }}</template>
+      <template v-else-if="hasMfa">
+        For when {{ user.username }} lost their second factor: turns off every MFA method and
+        recovery code, deletes their API keys and ends their session. Their passkeys stay.
+      </template>
+      <template v-else
+        >{{ user.username }} has no MFA method on, so there's nothing to reset.</template
+      >
     </template>
-    <template v-else
-      >{{ user.username }} has no MFA method on, so there's nothing to reset.</template
-    >
 
     <template v-if="canReset && !confirming" #key>
       <BaseButton ref="key" size="sm" variant="secondary" @click="open">

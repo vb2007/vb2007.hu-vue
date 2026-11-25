@@ -5,7 +5,7 @@
  * comes back), and again after each try, so the click runs the prompt at once (Safari may refuse
  * one that waits for a request); a newer set only replaces the challenge. A cancelled prompt says
  * nothing, unless it followed a wait for the options; the key takes the focus back, or while it's
- * held, the message.
+ * held, the message. The key says "Log in with a passkey", apart from the "Use a passkey" switch.
  */
 import { computed, nextTick, onActivated, onBeforeUnmount, ref, useId, useTemplateRef } from "vue";
 import { HttpStatus } from "@/constants/http";
@@ -104,7 +104,13 @@ const use = async () => {
       @click="use"
     >
       <AppIcon name="passkey" :size="20" />
-      {{ isAsking || isVerifying ? "Logging in" : heldBy ? heldBy.label.value : "Use a passkey" }}
+      {{
+        isAsking || isVerifying
+          ? "Logging in"
+          : heldBy
+            ? heldBy.label.value
+            : "Log in with a passkey"
+      }}
     </BaseButton>
   </div>
 </template>

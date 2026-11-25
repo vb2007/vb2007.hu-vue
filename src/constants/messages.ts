@@ -430,6 +430,9 @@ export class Messages {
     /** In place of the API's "E-mail MFA turned on/off", in the account page's own words. */
     static readonly emailOn: string =
       "E-mail codes are on: each login now also takes a code or link from your inbox.";
+    /** With an authenticator app or a passkey, which the login opens on: e-mail is another way. */
+    static readonly emailOnBesideOthers: string =
+      "E-mail codes are on: each login can now also take a code or link from your inbox.";
     static readonly emailOff: string =
       "E-mail codes are off: logins no longer ask for a mailed code.";
     static readonly emailOnFailed: string = "Failed to turn on e-mail codes";

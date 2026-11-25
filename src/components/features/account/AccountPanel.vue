@@ -199,8 +199,12 @@ const onRecoveryCodesSaved = async () => {
               {{ mfa.email ? "On" : "Off" }}
             </span>
           </div>
+          <!-- With an authenticator app or a passkey, the login opens on it: e-mail is another way. -->
           <p class="login__note">
-            <template v-if="mfa.email"
+            <template v-if="mfa.email && (mfa.totp || mfa.passkeys > 0)"
+              >Each login can also take a code or link mailed to your address.</template
+            >
+            <template v-else-if="mfa.email"
               >Each login also takes a code or link mailed to your address.</template
             >
             <template v-else-if="emailVerified"
