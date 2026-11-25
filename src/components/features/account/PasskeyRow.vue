@@ -124,9 +124,10 @@ const onDeleted = (data: MessageResponse) => {
     <span class="passkey__mark"><AppIcon name="passkey" :size="22" /></span>
     <div class="passkey__main">
       <h3 class="passkey__name">{{ passkey.name }}</h3>
+      <!-- The no-break space keeps the dot with the text after it, never alone at a line's end. -->
       <p class="passkey__dates">
-        Added {{ formatDate(passkey.createdAt) }}<span aria-hidden="true"> · </span
-        ><span class="visually-hidden">, </span>{{ used }}
+        Added {{ formatDate(passkey.createdAt) }}<span class="visually-hidden">, </span
+        ><span aria-hidden="true"> ·&nbsp;</span>{{ used }}
       </p>
 
       <form

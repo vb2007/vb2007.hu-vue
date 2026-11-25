@@ -14,7 +14,7 @@ defineProps<{ title: string; icon: IconName }>();
     <span class="action__mark"><AppIcon :name="icon" :size="26" /></span>
     <div class="action__main">
       <h3 class="action__name">{{ title }}</h3>
-      <p class="action__note"><slot /></p>
+      <p v-if="$slots.default" class="action__note"><slot /></p>
       <div v-if="$slots.key" class="action__keys"><slot name="key" /></div>
       <slot name="panel" />
     </div>

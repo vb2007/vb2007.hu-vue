@@ -32,5 +32,7 @@ describe("AppIcon", () => {
     const wrapper = mount(AppIcon, { props: { name, size: 32 } });
 
     expect(wrapper.attributes()).toMatchObject({ width: "32", height: "32" });
+    // Scales with the root font size: 32px at the default 16px.
+    expect(wrapper.attributes("style")).toBe("width: 2rem; height: 2rem;");
   });
 });

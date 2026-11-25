@@ -115,6 +115,45 @@ describe("AccountPanel's two-step login", () => {
     expect(document.activeElement).toBe(mfaRow(panel).find("button").element);
   });
 
+  it.each([
+    ["an authenticator app", { totp: true, recoveryCodesLeft: 10 }],
+    ["a passkey", { passkeys: 1 }]
+  ])("says e-mail is one more way beside %s, which the login opens on", async (_, others) => {
+    mfa.value = { ...NO_MFA, ...others };
+    // The passkeys section lists them first.
+    if (mfa.value.passkeys) fetchMock.mockResolvedValueOnce(jsonResponse(200, { passkeys: [] }));
+    const panel = await mountPanel();
+    await flushPromises();
+    await mfaRow(panel).find("button").trigger("click");
+    expect(mfaRow(panel).text()).toContain(
+      "Confirms it's you. Each login can then also take a code or link from your inbox."
+    );
+
+    const codes = mfa.value.recoveryCodesLeft ? {} : { recoveryCodes: CODES };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: ON, ...codes }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          _id: "0123456789abcdef01234567",
+          username: "vb",
+          email: "vb@example.com",
+          hasPassword: true,
+          emailVerified: true,
+          mfa: { ...NO_MFA, ...others, email: true, recoveryCodesLeft: 10 }
+        })
+      );
+    await mfaRow(panel).find('input[type="password"]').setValue("hunter22");
+    await mfaRow(panel).find("form").trigger("submit");
+    await flushPromises();
+
+    expect(panel.find(".notice").text()).toBe(
+      "E-mail codes are on: each login can now also take a code or link from your inbox."
+    );
+    expect(mfaRow(panel).find(".login__note").text()).toBe(
+      "Each login can also take a code or link mailed to your address."
+    );
+  });
+
   it("keeps the new codes on show when the session ends right after turning on", async () => {
     const panel = await mountPanel();
     await mfaRow(panel).find("button").trigger("click");

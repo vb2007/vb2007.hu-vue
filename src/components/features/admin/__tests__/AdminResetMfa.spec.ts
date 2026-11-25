@@ -122,7 +122,8 @@ describe("AdminResetMfa", () => {
       [withMfa({ email: false, totp: false, passkeys: 2, recoveryCodesLeft: 0 }, [])]
     ]);
     expect(wrapper.find(".confirm").exists()).toBe(false);
-    expect(note(wrapper)).toBe("user-a has no MFA method on, so there's nothing to reset.");
+    // No note, not even "nothing to reset": only the word that it was just reset.
+    expect(wrapper.find(".action__note").exists()).toBe(false);
     const done = wrapper.find(".outcome.status--success");
     expect(done.text()).toBe(Messages.Admin.mfaReset("user-a"));
     expect(document.activeElement).toBe(done.element);

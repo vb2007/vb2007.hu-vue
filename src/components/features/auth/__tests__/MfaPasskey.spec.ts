@@ -75,7 +75,8 @@ describe("MfaStep's passkey", () => {
     const step = await mountStep();
 
     expect(step.find("h2").text()).toBe("Passkey");
-    expect(passkeyKey(step).text()).toBe("Use a passkey");
+    // Its own name, apart from the "Use a passkey" switch under "Other ways".
+    expect(passkeyKey(step).text()).toBe("Log in with a passkey");
     expect(step.find(".mfa__others").text()).toContain("Use an e-mail code");
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledWith(OPTIONS_URL, {
