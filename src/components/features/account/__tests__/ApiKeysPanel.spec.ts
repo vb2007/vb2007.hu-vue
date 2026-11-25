@@ -369,9 +369,16 @@ describe("ApiKeysPanel", () => {
       expect(key(panel, "Try again in 1 hr").attributes("disabled")).toBeDefined();
     });
 
-    it("offers GitHub to an account without a password", async () => {
+    it("offers GitHub to an account without a password, coming back to the form as it was", async () => {
       hasPassword.value = false;
-      const panel = await mountPanel();
+      fetchMock.mockResolvedValueOnce(list());
+      const { wrapper: panel, router } = await mountWithRouter(
+        ApiKeysPanel,
+        { attachTo: document.body },
+        "/account/api-keys"
+      );
+      wrapper = panel;
+      await flushPromises();
       await fillCreate(panel);
       expect(panel.find('input[type="password"]').exists()).toBe(false);
       fetchMock.mockResolvedValueOnce(
@@ -386,7 +393,13 @@ describe("ApiKeysPanel", () => {
       expect(bodyOf(1)).not.toHaveProperty("password");
       expect(panel.find(".reauth a").text()).toContain("Confirm with GitHub");
       await panel.find(".reauth a").trigger("click");
-      expect(takeGithubReturn()).toBe("/account/api-keys");
+      const back = router.resolve(takeGithubReturn());
+      expect(back.path).toBe("/account/api-keys");
+      expect(back.query).toEqual({
+        newApiKey: "1",
+        name: "Deploy bot",
+        scopes: "pastes:read,pastes:write"
+      });
     });
 
     it("says GitHub confirmed it, back from the relink", async () => {
@@ -474,25 +487,19 @@ describe("ApiKeysPanel", () => {
       expect(leftOut(panel).text()).toBe(
         Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"])
       );
+      // Already there when the form opens, so the fieldset says it rather than a live region.
+      expect(panel.find(".key-form__scopes").attributes("aria-describedby")).toBe(
+        leftOut(panel).attributes("id")
+      );
     });
 
-    it("keeps the admin scopes for the superuser, once the session is known", async () => {
-      isSessionChecked.value = false;
-      isLoggedIn.value = false;
-      const { wrapper: panel } = await mountWithRouter(
-        ApiKeysPanel,
-        { attachTo: document.body },
-        linked("admin:read,spotdl:submit,uploads:read")
-      );
-      wrapper = panel;
-      fetchMock.mockResolvedValueOnce(list());
+    it("never ticks an admin scope, even the superuser's", async () => {
       isSuperuser.value = true;
-      isSessionChecked.value = true;
-      isLoggedIn.value = true;
-      await flushPromises();
+      const { wrapper: panel } = await mountLinked(linked("admin:read,uploads:read"));
 
-      expect(ticked(panel)).toEqual(["Uploads Read", "Admin Read"]);
-      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["spotdl:submit"]));
+      expect(panel.find('[role="group"][aria-label="Admin"]').exists()).toBe(true);
+      expect(ticked(panel)).toEqual(["Uploads Read"]);
+      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["admin:read"]));
     });
 
     it.each(["/account/api-keys", LINK])(
@@ -518,6 +525,22 @@ describe("ApiKeysPanel", () => {
       expect(router.currentRoute.value.query).toHaveProperty("newApiKey", "1");
     });
 
+    it("fills in Create once a key deleted at the cap makes room", async () => {
+      const ten = Array.from({ length: 10 }, (_, i) => ({ ...DEPLOY, id: `${i}`.repeat(32) }));
+      const panel = (await mountLinked(LINK, ...ten)).wrapper;
+      const remove = () => rows(panel)[0].find(".api-key__keys button:last-child");
+      await remove().trigger("click");
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(200, { message: "API key deleted successfully." }))
+        .mockResolvedValueOnce(list(...ten.slice(1)));
+      await remove().trigger("click");
+      await flushPromises();
+      await key(panel, "Create an API key").trigger("click");
+
+      expect((panel.find(".key-form input").element as HTMLInputElement).value).toBe("Deploy bot");
+      expect(ticked(panel)).toEqual(["Pastes Read", "Pastes Write"]);
+    });
+
     it("stays in the address for after a visitor logs in", async () => {
       isLoggedIn.value = false;
       const { wrapper: panel, router } = await mountWithRouter(ApiKeysPanel, {}, LINK);
@@ -531,7 +554,12 @@ describe("ApiKeysPanel", () => {
 
     it("goes with Cancel, which drops its query, and the next form opens empty", async () => {
       const { wrapper: panel, router } = await mountLinked(linked("spotdl:submit"));
-      expect(leftOut(panel).exists()).toBe(true);
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      const errorId = panel.find(".key-form__error").attributes("id");
+      expect(panel.find(".key-form__scopes").attributes("aria-describedby")).toBe(
+        `${leftOut(panel).attributes("id")} ${errorId}`
+      );
       await key(panel, "Cancel").trigger("click");
       await flushPromises();
 
@@ -542,9 +570,11 @@ describe("ApiKeysPanel", () => {
       expect(leftOut(panel).exists()).toBe(false);
     });
 
-    it("comes back from a GitHub confirmation, which keeps it", async () => {
+    it("comes back from a GitHub confirmation as the user left it", async () => {
       hasPassword.value = false;
-      const { wrapper: panel } = await mountLinked(LINK);
+      const { wrapper: panel, router } = await mountLinked(LINK);
+      await panel.find(".key-form input").setValue("Deploy bot 2");
+      await checkbox(panel, "Pastes", "Write").setValue(false);
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
       fetchMock.mockResolvedValueOnce(
@@ -557,7 +587,28 @@ describe("ApiKeysPanel", () => {
       await flushPromises();
       await panel.find(".reauth a").trigger("click");
 
-      expect(takeGithubReturn()).toBe(LINK);
+      expect(router.resolve(takeGithubReturn()).query).toEqual({
+        newApiKey: "1",
+        name: "Deploy bot 2",
+        scopes: "pastes:read",
+        tab: "x"
+      });
+    });
+
+    it("stays through a rotate, which closes the form", async () => {
+      const { wrapper: panel, router } = await mountLinked(LINK, DEPLOY);
+      await key(panel, "Rotate Deploy bot").trigger("click");
+      await flushPromises();
+      await panel.find(".api-key .key-form").trigger("submit");
+      await flushPromises();
+      fetchMock
+        .mockResolvedValueOnce(withToken(DEPLOY, ROTATED))
+        .mockResolvedValueOnce(list(DEPLOY));
+      await confirm(panel);
+
+      expect(panel.find(".token").text()).toContain(ROTATED);
+      expect(panel.find(".key-form").exists()).toBe(false);
+      expect(router.currentRoute.value.fullPath).toBe(LINK);
     });
   });
 

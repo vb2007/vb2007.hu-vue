@@ -148,22 +148,26 @@ test("an account without a password confirms with GitHub and comes back to its A
 }) => {
   api.loggedInAs("me@example.com", "me", { password: false });
   await page.goto("/account/api-keys");
-  const fillIn = async () => {
-    await page.getByRole("button", { name: "Create an API key" }).click();
-    await page.getByLabel("Name", { exact: true }).fill("Deploy bot");
-    await page.getByRole("group", { name: "Pastes" }).getByLabel("Read").check({ force: true });
+  await page.getByRole("button", { name: "Create an API key" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Deploy bot");
+  await page.getByRole("group", { name: "Pastes" }).getByLabel("Read").check({ force: true });
+  const create = async () => {
     await page.getByRole("button", { name: "Continue" }).click();
     await page.getByRole("button", { name: "Create key" }).click();
   };
-  await fillIn();
+  await create();
   await expect(page.getByText(/^Confirm it's you first: log in with GitHub again/)).toBeVisible();
 
+  // The form comes back as it was left, through the deep link's query.
   await page.getByRole("link", { name: "Confirm with GitHub" }).click();
-  await expect(page).toHaveURL("/account/api-keys");
+  await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Create or rotate the API key within 10 minutes."
   );
-  await fillIn();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Deploy bot");
+  await expect(page.getByRole("group", { name: "Pastes" }).getByLabel("Read")).toBeChecked();
+  await create();
+  await expect(page).toHaveURL("/account/api-keys");
   await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
   expect(api.apiKeysOf()).toHaveLength(1);
 
@@ -188,7 +192,7 @@ test("a deep link fills in the create form, leaving out the scopes it can't give
   await expect(page.getByRole("group", { name: "Uploads" }).getByLabel("Read")).not.toBeChecked();
   await expect(page.getByRole("group", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("status")).toHaveText(
-    "The link also asked for scopes this account can't give a key, so they're left out: admin:read, spotdl:submit."
+    "The link asked for scopes it can't set, so they're left out: admin:read, spotdl:submit."
   );
   await expect(page.getByLabel("Days from now")).toHaveValue("90");
 
@@ -227,6 +231,26 @@ test("a deep link's form comes back filled in from a GitHub confirmation", async
   await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
   expect(api.apiKeysOf()[0].scopes).toEqual(["pastes:read"]);
   await expect(page).toHaveURL("/account/api-keys");
+});
+
+test("a deep link names only scope-shaped values, wrapped within 320 px", async ({ page, api }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  const long = `${"a".repeat(29)}:${"b".repeat(10)}`;
+  const scopes = [long, "Your account is locked. Call +1 555 0100", "x".repeat(120), "pastes:read"];
+  await page.goto(
+    `/account/api-keys?newApiKey=1&name=Bot&scopes=${encodeURIComponent(scopes.join())}`
+  );
+
+  await expect(page.getByRole("status")).toHaveText(
+    `The link asked for scopes it can't set, so they're left out: ${long}.`
+  );
+  // Neither the page scrolls sideways nor the notice's text runs out of its box.
+  await expect
+    .poll(() => page.locator("html").evaluate((html) => html.scrollWidth - html.clientWidth))
+    .toBe(0);
+  const text = page.getByRole("status").locator(".status__text");
+  await expect.poll(() => text.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
 });
 
 test("a field the form sends the cursor to scrolls clear of the navbar", async ({ page, api }) => {

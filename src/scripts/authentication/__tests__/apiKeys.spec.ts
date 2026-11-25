@@ -111,7 +111,7 @@ describe("grantableScopes", () => {
 
 describe("apiKeyLink", () => {
   it("is nothing without newApiKey", () => {
-    expect(apiKeyLink({ name: "Bot", scopes: "pastes:read" }, false)).toBeUndefined();
+    expect(apiKeyLink({ name: "Bot", scopes: "pastes:read" })).toBeUndefined();
   });
 
   it.each([
@@ -129,25 +129,34 @@ describe("apiKeyLink", () => {
       ["account:read", "pastes:read", "pastes:write"]
     ]
   ])("reads %s scopes, in the API's order, once each", (_case, query, scopes) => {
-    expect(apiKeyLink({ newApiKey: "1", ...query }, false)).toEqual({
+    expect(apiKeyLink({ newApiKey: "1", ...query })).toEqual({
       name: "",
       scopes,
       dropped: []
     });
   });
 
-  it("leaves out unknown scopes, and the admin ones but for the superuser, naming them", () => {
-    const query = { newApiKey: "1", scopes: "admin:read,spotdl:submit,uploads:read,spotdl:submit" };
-    expect(apiKeyLink(query, false)).toEqual({
-      name: "",
-      scopes: ["uploads:read"],
-      dropped: ["admin:read", "spotdl:submit"]
-    });
-    expect(apiKeyLink(query, true)).toEqual({
-      name: "",
-      scopes: ["uploads:read", "admin:read"],
-      dropped: ["spotdl:submit"]
-    });
+  it("leaves out unknown and admin scopes, which a link never ticks, naming them", () => {
+    expect(
+      apiKeyLink({ newApiKey: "1", scopes: "admin:read,spotdl:submit,uploads:read,spotdl:submit" })
+    ).toEqual({ name: "", scopes: ["uploads:read"], dropped: ["admin:read", "spotdl:submit"] });
+  });
+
+  it("names only what's shaped like a scope, never the link's own text", () => {
+    const scopes = [
+      "Your account is locked. Call +1 555 0100",
+      "x".repeat(30) + ":" + "y".repeat(10),
+      "Spotdl:submit",
+      "spotdl:",
+      "spotdl:Submit",
+      "<b>a:b</b>",
+      "shortUrls:admin",
+      "pastes:read"
+    ];
+    expect(apiKeyLink({ newApiKey: "1", scopes })!.dropped).toEqual(["shortUrls:admin"]);
+    expect(
+      apiKeyLink({ newApiKey: "1", scopes: `${"x".repeat(29)}:${"y".repeat(10)}` })!.dropped
+    ).toHaveLength(1);
   });
 
   it.each([
@@ -155,6 +164,6 @@ describe("apiKeyLink", () => {
     [["First", "Second"], "First"],
     [null, ""]
   ])("keeps the name %j as given: %j", (name, expected) => {
-    expect(apiKeyLink({ newApiKey: "1", name }, false)!.name).toBe(expected);
+    expect(apiKeyLink({ newApiKey: "1", name })!.name).toBe(expected);
   });
 });

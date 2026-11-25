@@ -302,20 +302,35 @@ describe("router", () => {
       expect(router.currentRoute.value.path).toBe("/account");
     });
 
-    it("comes back with the page's own query too, like an API key deep link's", async () => {
+    it.each([
+      ["?github=linked", { github: "linked" }],
+      ["?oauthError=accessDenied", { oauthError: "accessDenied" }]
+    ])(
+      "comes back with %s and the page's own query, like an API key deep link's",
+      async (search, query) => {
+        await router.push("/");
+        saveGithubReturn(
+          "/account/api-keys?newApiKey=1&name=Why?&scopes=pastes%3Aread,uploads%3Aread#top"
+        );
+        await router.push(`/account${search}`);
+
+        expect(router.currentRoute.value.path).toBe("/account/api-keys");
+        expect(router.currentRoute.value.hash).toBe("");
+        expect(router.currentRoute.value.query).toEqual({
+          newApiKey: "1",
+          name: "Why?",
+          scopes: "pastes:read,uploads:read",
+          ...query
+        });
+      }
+    );
+
+    it("lets the relink's query win over the kept one", async () => {
       await router.push("/");
-      saveGithubReturn(
-        "/account/api-keys?newApiKey=1&name=Why?&scopes=pastes%3Aread,uploads%3Aread"
-      );
+      saveGithubReturn("/account/api-keys?github=stale&newApiKey=1");
       await router.push("/account?github=linked");
 
-      expect(router.currentRoute.value.path).toBe("/account/api-keys");
-      expect(router.currentRoute.value.query).toEqual({
-        newApiKey: "1",
-        name: "Why?",
-        scopes: "pastes:read,uploads:read",
-        github: "linked"
-      });
+      expect(router.currentRoute.value.query).toEqual({ github: "linked", newApiKey: "1" });
     });
   });
 
