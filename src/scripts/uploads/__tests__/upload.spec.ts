@@ -108,7 +108,9 @@ describe("validateFile", () => {
     ["over 255 characters", `${"x".repeat(252)}.png`],
     ["no name after its last slash", "photos/"],
     ["the name .", "a/."],
-    ["the name ..", "a\\.."]
+    ["the name ..", "a\\.."],
+    ["an escaped line feed", "a%0Ab.png"],
+    ["an escaped carriage return, whatever its case", "a%0db.png"]
   ])("rejects a name with %s before usage is known", (_how, name) => {
     expect(validateFile(aFile(name, 10), null)).toBe(
       "File names must be 1–255 characters, without slashes or control characters."
@@ -118,7 +120,9 @@ describe("validateFile", () => {
   it.each([
     ["padded", "  notes.txt   "],
     ["after its last backslash", "C:\\fakepath\\notes.txt"],
-    ["after its last slash", "../notes.txt"]
+    ["after its last slash", "../notes.txt"],
+    ["with an escaped line feed trimmed off", "notes.txt%0A"],
+    ["counted once its escapes are reversed", `${"x".repeat(249)}%22%22.txt`]
   ])("checks the name the API stores, %s", (_how, name) => {
     expect(validateFile(aFile(name, 10, ""), someUsage())).toBe("");
   });

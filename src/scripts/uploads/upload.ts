@@ -86,11 +86,14 @@ const extensionOf = (name: string) => {
 
 /**
  * The name the API stores for a file: its multipart parser keeps what follows the last "/" or "\"
- * and turns "." and ".." into no file, then `POST /upload` trims it.
+ * and turns "." and ".." into no file, multer turns the form escapes `%0A`, `%0D` and `%22` back
+ * into LF, CR and `"`, then `POST /upload` trims it.
  */
 const storedNameOf = (name: string) => {
   const base = name.slice(Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\")) + 1);
-  return (base === "." || base === ".." ? "" : base).trim();
+  return (base === "." || base === ".." ? "" : base)
+    .replace(/%0A|%0D|%22/gi, (escape) => decodeURIComponent(escape))
+    .trim();
 };
 
 /**
