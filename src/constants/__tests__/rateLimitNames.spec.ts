@@ -5,7 +5,8 @@ import type { RateLimitName } from "@/types/api/admin";
 
 // The API's limiters in the order `DELETE /admin/rate-limits` lists them (vb2007/vb2007.hu-api#384):
 // its `namedLimiters` (src/middlewares/rateLimit.ts), then `clearCodeFailuresOf`'s stored counts
-// (src/helpers/admin.ts), with the passkey and MFA ones of vb2007/vb2007.hu-api#493 and the API key one of #514.
+// (src/helpers/admin.ts), with the passkey and MFA ones of vb2007/vb2007.hu-api#493, the API key one of #514
+// and the e-mail change sends of #524.
 const API_ORDER: RateLimitName[] = [
   "loginPerIp",
   "loginPerAccount",
@@ -24,6 +25,7 @@ const API_ORDER: RateLimitName[] = [
   "apiKeyChecksPerIp",
   "passwordResetCodeFailures",
   "emailChangeCodeFailures",
+  "emailChangeSends",
   "registrationCodeFailures",
   "mfaCodeFailures",
   "mfaEmailSends",
@@ -51,14 +53,21 @@ describe("Messages.Admin.rateLimitNames", () => {
       );
     }
     expect(Limits.Code.failedChecksPerDay).toBe(20);
-    // The API's MFA_EMAILS_PER_DAY and SECURITY_NOTICES_PER_DAY.
+    // The API's EMAIL_CHANGE_CODES_PER_DAY, MFA_EMAILS_PER_DAY and SECURITY_NOTICES_PER_DAY.
+    expect(Messages.Admin.rateLimitNames.emailChangeSends).toContain(
+      `${Limits.Code.emailChangeCodesPerDay}\u00a0a\u00a0day`
+    );
     expect(Messages.Admin.rateLimitNames.mfaEmailSends).toContain(
       `${Limits.Mfa.emailsPerDay}\u00a0a\u00a0day`
     );
     expect(Messages.Admin.rateLimitNames.securityNotices).toContain(
       `${Limits.Mfa.securityNoticesPerDay}\u00a0a\u00a0day`
     );
-    expect([Limits.Mfa.emailsPerDay, Limits.Mfa.securityNoticesPerDay]).toEqual([10, 10]);
+    expect([
+      Limits.Code.emailChangeCodesPerDay,
+      Limits.Mfa.emailsPerDay,
+      Limits.Mfa.securityNoticesPerDay
+    ]).toEqual([10, 10, 10]);
     expect(Messages.Admin.rateLimitNames.accountCodeChecksPerAccount).toContain(
       "10\u00a0in\u00a015\u00a0min"
     );
