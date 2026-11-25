@@ -58,7 +58,9 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
   );
   const uploaders: SharexUploader[] = [];
   for (const result of results) {
-    if (!result.ok) return result;
+    // One reason whatever went wrong (offline, or a 404 from an API without these routes yet): the
+    // user needs to know no key was made. The status stays, so a 429 still holds the key.
+    if (!result.ok) return { ...result, error: Messages.Sharex.filesUnavailable };
     if (result.data.Headers?.Authorization !== `Bearer ${Sharex.tokenPlaceholder}`) {
       return {
         ok: false,

@@ -74,7 +74,9 @@ test("a file that fails to load costs no key", async ({ page, api }) => {
   await page.getByRole("button", { name: "Set up ShareX" }).click();
   await page.getByLabel("Password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Create key" }).click();
-  await expect(page.getByText("Internal server error.")).toBeVisible();
+  await expect(
+    page.getByText("Couldn't load the ShareX files, so no key was created. Try again later.")
+  ).toBeVisible();
   expect(api.apiKeysOf()).toHaveLength(0);
 });
 

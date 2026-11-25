@@ -211,7 +211,9 @@ describe("SharexPanel", () => {
     await confirm(panel);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(panel.find(".reauth").text()).toContain(`${Messages.Sharex.filesFailed}: 500`);
+    expect(panel.find(".reauth .status--error").text().trim()).toBe(
+      Messages.Sharex.filesUnavailable
+    );
     expect(made).toEqual([]);
   });
 
@@ -222,7 +224,9 @@ describe("SharexPanel", () => {
     await confirm(panel);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(panel.find(".reauth").text()).toContain(Messages.connectionError);
+    expect(panel.find(".reauth .status--error").text().trim()).toBe(
+      Messages.Sharex.filesUnavailable
+    );
     expect(made).toEqual([]);
   });
 
