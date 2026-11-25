@@ -102,6 +102,31 @@ describe("validateFile", () => {
     );
   });
 
+  it.each([
+    ["only spaces", "   "],
+    ["a control character", "tab\there.png"],
+    ["over 255 characters", `${"x".repeat(252)}.png`],
+    ["no name after its last slash", "photos/"],
+    ["the name .", "a/."],
+    ["the name ..", "a\\.."]
+  ])("rejects a name with %s before usage is known", (_how, name) => {
+    expect(validateFile(aFile(name, 10), null)).toBe(
+      "File names must be 1–255 characters, without slashes or control characters."
+    );
+  });
+
+  it.each([
+    ["padded", "  notes.txt   "],
+    ["after its last backslash", "C:\\fakepath\\notes.txt"],
+    ["after its last slash", "../notes.txt"]
+  ])("checks the name the API stores, %s", (_how, name) => {
+    expect(validateFile(aFile(name, 10, ""), someUsage())).toBe("");
+  });
+
+  it("drops . and .. before trimming, as the API does", () => {
+    expect(validateFile(aFile(" . ", 10), null)).toBe("");
+  });
+
   it("rejects a file over the size limit", () => {
     expect(validateFile(aFile("big.png", 10 * MB + 1), someUsage())).toBe(
       "The file is larger than the 10 MB limit."
