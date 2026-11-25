@@ -96,7 +96,7 @@ describe("UploadRow", () => {
     expect(facts).toMatchObject({
       Type: "PNG · image/png",
       Size: `2 kB (${(2048).toLocaleString()} bytes)`,
-      "Who can open it": "Anyone with the link, while it's public"
+      "Who can open it": "Anyone while it's public, not only through its link"
     });
     expect(facts.Changed).toBeTruthy();
     expect(details.findComponent(UploadLink).props("url")).toBe(anUpload("u1").url);

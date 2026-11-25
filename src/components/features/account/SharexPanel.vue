@@ -210,7 +210,8 @@ onBeforeUnmount(() => {
       <template v-if="!created">
         <p class="intro">
           Send screenshots, files, text and links from ShareX on Windows to your account. What
-          ShareX uploads is public to anyone with its link.
+          ShareX uploads is public, and others can find it, not only through its link, so don't send
+          anything private with it.
         </p>
         <p class="intro">
           Setting it up creates an API key named “{{ Sharex.keyName }}” that can add, change and
