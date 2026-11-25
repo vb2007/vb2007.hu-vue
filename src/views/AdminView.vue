@@ -18,7 +18,7 @@ const adminDocs = apiUrl(Endpoints.Docs.admin);
       <a :href="adminDocs" target="_blank" rel="noopener"
         >admin API docs<span class="visually-hidden"> (opens in a new tab)</span></a
       >
-      add the admin routes to the public ones.
+      list every route, the admin ones included.
     </p>
     <!-- The site's figures are a board of their own, never rows of the directory. -->
     <AdminSiteBoard />
