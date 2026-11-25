@@ -230,15 +230,49 @@ describe("SharexPanel", () => {
     expect(made).toEqual([]);
   });
 
-  it("creates no key when a file has no place for the token", async () => {
+  it.each([
+    ["an empty bearer", { ...FILES[2], Headers: { Authorization: "Bearer " } }],
+    ["no headers", { Name: "vb2007.hu shortener" }],
+    ["a different token", { ...FILES[2], Headers: { Authorization: `Bearer ${TOKEN}` } }]
+  ])("creates no key when a file has no place for the token: %s", async (_case, bad) => {
     const panel = await mountPanel();
-    queueFiles(FILES[0], { ...FILES[1], Headers: { Authorization: "Bearer " } });
-    queueFiles({ Name: "vb2007.hu shortener" });
+    queueFiles(FILES[0], FILES[1], bad);
     await confirm(panel);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(panel.find(".reauth").text()).toContain(Messages.Sharex.placeholderMissing);
     expect(made).toEqual([]);
+    expect(clicked).toEqual([]);
+  });
+
+  it("holds the key, creating none, when a file's answer is a 429", async () => {
+    const panel = await mountPanel();
+    queueFiles(FILES[0]);
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { retryAfter: 60 }));
+    queueFiles(FILES[2]);
+    await confirm(panel);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(panel.find(".reauth .status--error").text()).toContain(Messages.Sharex.filesUnavailable);
+    expect(key(panel, "Try again in 60 seconds").attributes("disabled")).toBeDefined();
+  });
+
+  it("makes no files for a key answered after the page went", async () => {
+    const panel = await mountPanel();
+    queueFiles(...FILES);
+    const create = deferResponse(fetchMock);
+    await key(panel, "Set up ShareX").trigger("click");
+    await panel.find('.reauth input[type="password"]').setValue("secret");
+    await panel.find(".reauth").trigger("submit");
+    await flushPromises();
+    panel.unmount();
+    wrapper = undefined;
+
+    create.respond(
+      jsonResponse(201, { message: CREATED, apiKey: { id: "k1", name: "ShareX", token: TOKEN } })
+    );
+    await flushPromises();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(clicked).toEqual([]);
   });
 
@@ -354,6 +388,7 @@ describe("SharexPanel", () => {
       );
       await flushPromises();
       expect(panel.find(".token__text").text()).toBe(TOKEN);
+      expect(document.activeElement).toBe(panel.find(".token__title").element);
       expect(made).toHaveLength(3);
       expect(clicked).toEqual(NAMES);
       expect(panel.text()).toContain("Log in to set up ShareX.");

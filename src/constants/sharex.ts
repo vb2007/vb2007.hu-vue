@@ -7,6 +7,10 @@ export type SharexUploaderId = "upload" | "paste" | "shorten";
 export class Sharex {
   /** What the files' `Authorization` header holds until the key's token replaces it. */
   static readonly tokenPlaceholder: string = "vbk_YOUR_TOKEN";
+  /** The files' `Authorization` header for a token, or as served, for the placeholder. */
+  static authorization(token: string = Sharex.tokenPlaceholder): string {
+    return `Bearer ${token}`;
+  }
   /** The key the page creates: the scopes the three files need, and nothing else. */
   static readonly keyName: string = "ShareX";
   static readonly keyScopes: readonly ApiKeyScope[] = [

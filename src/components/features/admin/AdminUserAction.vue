@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * One row of the account page's Actions: a tile with its mark, the name, a note on what it does,
- * then its key (`#key`). A form or confirmation that opens in place goes in `#panel`, under the key
- * and stretched to the row's width, like the Account board's rows.
+ * One row of the account page's Actions: a tile with its mark, the name, a note on what it does
+ * (when given), then its key (`#key`). A form or confirmation that opens in place goes in `#panel`,
+ * under the key and stretched to the row's width, like the Account board's rows.
  */
 import AppIcon, { type IconName } from "@/components/ui/AppIcon.vue";
 

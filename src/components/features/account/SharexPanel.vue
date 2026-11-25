@@ -61,7 +61,7 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
     // One reason whatever went wrong (offline, or a 404 from an API without these routes yet): the
     // user needs to know no key was made. The status stays, so a 429 still holds the key.
     if (!result.ok) return { ...result, error: Messages.Sharex.filesUnavailable };
-    if (result.data.Headers?.Authorization !== `Bearer ${Sharex.tokenPlaceholder}`) {
+    if (result.data.Headers?.Authorization !== Sharex.authorization()) {
       return {
         ok: false,
         kind: "http",
@@ -85,6 +85,9 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
   return result;
 };
 
+/** Set once the page goes, so a key answered after it makes no files. */
+let left = false;
+
 const forgetFiles = () => {
   files.value.forEach(({ url }) => URL.revokeObjectURL(url));
   files.value = [];
@@ -95,6 +98,8 @@ const forgetFiles = () => {
  * Octet-stream, so no browser renames a `.sxcu` file to match a JSON type.
  */
 const showFiles = async (uploaders: SharexUploader[], data: ApiKeyTokenResponse) => {
+  // The page went while the key was made: nothing would ever free the token's Blob URLs.
+  if (left) return;
   const { token } = data.apiKey;
   confirming.value = false;
   notice.value = "";
@@ -102,7 +107,7 @@ const showFiles = async (uploaders: SharexUploader[], data: ApiKeyTokenResponse)
   files.value = Sharex.uploaders.map(({ id }, i) => {
     const file = {
       ...uploaders[i],
-      Headers: { ...uploaders[i].Headers, Authorization: `Bearer ${token}` }
+      Headers: { ...uploaders[i].Headers, Authorization: Sharex.authorization(token) }
     };
     return {
       id,
@@ -156,7 +161,10 @@ watch(isLoggedIn, (loggedIn) => {
 // on show has it: that matters more.
 watch(sessionEnded, (ended) => ended && !created.value && focusAction());
 
-onBeforeUnmount(forgetFiles);
+onBeforeUnmount(() => {
+  left = true;
+  forgetFiles();
+});
 </script>
 
 <template>
