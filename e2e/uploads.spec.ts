@@ -464,7 +464,11 @@ test("a .json file over 1 MB is refused before it's sent, which the API would ca
   const MB = 1024 * 1024;
   await page.getByLabel("Files to upload").setInputFiles([
     { name: "big.json", mimeType: "application/json", buffer: Buffer.alloc(MB + 1, " ") },
-    { name: "fits.json", mimeType: "application/json", buffer: Buffer.alloc(MB, " ") }
+    {
+      name: "fits.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(`[${" ".repeat(MB - 2)}]`)
+    }
   ]);
   const queue = page.getByRole("region", { name: "On the way" });
   await expect(
