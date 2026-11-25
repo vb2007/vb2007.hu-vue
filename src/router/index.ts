@@ -150,8 +150,9 @@ export const routes: RouteRecordRaw[] = [
         back.startsWith("/account/") &&
         (OauthQuery.github in to.query || OauthQuery.error in to.query)
       ) {
-        const [path, search = ""] = back.split("?");
-        return { path, query: { ...parseQuery(search), ...to.query }, replace: true };
+        const [path] = back.split("?");
+        const query = { ...parseQuery(back.slice(path.length + 1)), ...to.query };
+        return { path, query, replace: true };
       }
       return ApiKeyLinkQuery.open in to.query
         ? { name: "account-api-keys", query: to.query, replace: true }

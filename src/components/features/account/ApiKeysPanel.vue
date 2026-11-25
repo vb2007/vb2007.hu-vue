@@ -80,13 +80,13 @@ const load = async () => {
 };
 
 /**
- * The deep link opens the create form filled in, unless the account is at the cap. Once per login:
- * the session (whether it's the superuser's) and the list are known by then.
+ * The deep link opens the create form filled in, unless the account is at the cap or the form is
+ * open already. Once per login: the session (whether it's the superuser's) and the list are known.
  */
 const openLinked = () => {
-  if (!loaded.value || apiKeys.value.length >= Limits.ApiKeys.perAccount) return;
+  if (!loaded.value || creating.value || apiKeys.value.length >= Limits.ApiKeys.perAccount) return;
   prefill.value = apiKeyLink(route.query, isSuperuser.value);
-  creating.value = !!prefill.value;
+  if (prefill.value) creating.value = true;
 };
 
 /** The create form closed: the deep link is used up, so its query goes and the rest stays. */
@@ -157,7 +157,8 @@ const onGone = (id: string, text: string, tone: "success" | "info") => {
 const onToken = (data: ApiKeyTokenResponse, rotated = false) => {
   const { id, name, token } = data.apiKey;
   creating.value = false;
-  dropLink();
+  // A rotate at the cap leaves the link, which the cap only ignores, as it is.
+  if (!rotated) dropLink();
   onStart();
   tokens.value = [
     { id, name, message: data.message, token, rotated },

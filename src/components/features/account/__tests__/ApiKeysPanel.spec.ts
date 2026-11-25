@@ -495,6 +495,20 @@ describe("ApiKeysPanel", () => {
       expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["spotdl:submit"]));
     });
 
+    it.each(["/account/api-keys", LINK])(
+      "keeps a form opened by hand while the list loads, on %s",
+      async (path) => {
+        const pending = deferResponse(fetchMock);
+        ({ wrapper } = await mountWithRouter(ApiKeysPanel, { attachTo: document.body }, path));
+        await key(wrapper!, "Create an API key").trigger("click");
+        pending.respond(list());
+        await flushPromises();
+
+        expect((wrapper!.find(".key-form input").element as HTMLInputElement).value).toBe("");
+        expect(ticked(wrapper!)).toEqual([]);
+      }
+    );
+
     it("is ignored at the cap, its query kept", async () => {
       const ten = Array.from({ length: 10 }, (_, i) => ({ ...DEPLOY, id: `${i}`.repeat(32) }));
       const { wrapper: panel, router } = await mountLinked(LINK, ...ten);
