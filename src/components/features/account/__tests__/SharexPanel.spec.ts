@@ -123,6 +123,9 @@ describe("SharexPanel", () => {
     ]);
     expect(panel.text()).toContain("Unsupported request format JSON");
     expect(panel.text()).toContain(Messages.Sharex.keyLifetime(90));
+    expect(panel.find(".intro").text()).toContain(
+      "Screenshots, files and text sent with ShareX are public, and anyone can find them without their link. Don't send anything private with it."
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
