@@ -85,6 +85,18 @@ const extensionOf = (name: string) => {
 };
 
 /**
+ * The name the API stores for a file: its multipart parser keeps what follows the last "/" or "\"
+ * and turns "." and ".." into no file, multer turns the form escapes `%0A`, `%0D` and `%22` back
+ * into LF, CR and `"`, then `POST /upload` trims it.
+ */
+const storedNameOf = (name: string) => {
+  const base = name.slice(Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\")) + 1);
+  return (base === "." || base === ".." ? "" : base)
+    .replace(/%0A|%0D|%22/gi, (escape) => decodeURIComponent(escape))
+    .trim();
+};
+
+/**
  * Why a file can't be uploaded, or "" when it can. The API checks the real contents again;
  * this only catches what's obvious up front. `pendingBytes` and `pendingCount` are what's already
  * queued.
@@ -98,10 +110,15 @@ export const validateFile = (
   if (file.size === 0) {
     return Messages.Uploads.emptyFile;
   }
+  const name = storedNameOf(file.name);
+  const nameError = validateFileName(name);
+  if (nameError) {
+    return nameError;
+  }
   if (!usage) {
     return "";
   }
-  const extension = extensionOf(file.name);
+  const extension = extensionOf(name);
   const known = usage.allowedTypes.some(
     (type) =>
       type.mimeType === file.type ||
@@ -122,7 +139,7 @@ export const validateFile = (
     return Messages.Uploads.quotaExceeded;
   }
   // After the cap and the quota, like the API's 415 that this stands in for.
-  if (extensionOf(file.name.trim()) === ".json" && file.size > Limits.Upload.jsonMaxBytes) {
+  if (extension === ".json" && file.size > Limits.Upload.jsonMaxBytes) {
     return Messages.Uploads.jsonTooLarge(formatBytes(Limits.Upload.jsonMaxBytes));
   }
   return "";

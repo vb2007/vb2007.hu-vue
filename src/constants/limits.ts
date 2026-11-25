@@ -69,6 +69,8 @@ export class Limits {
     static readonly failedChecksPerAccount: number = 10;
     /** Wrong codes a day for one address, per kind of code, before even the right one is refused (vb2007/vb2007.hu-api#257). */
     static readonly failedChecksPerDay: number = 20;
+    /** E-mail change codes mailed for one account in 24 hours, counted from the first (vb2007/vb2007.hu-api#524). */
+    static readonly emailChangeCodesPerDay: number = 10;
   };
 
   static readonly Github = class {
