@@ -608,7 +608,7 @@ export class Messages {
     }
     /** `limit` is already formatted, e.g. "1 MB". The API's own 415 reads as an unsupported type. */
     static jsonTooLarge(limit: string): string {
-      return `JSON files can be at most ${limit}. Zip a larger one to upload it.`;
+      return `JSON files can be at most ${limit}. Zip this one to upload it.`;
     }
     /** `limit` is already formatted, e.g. "10 MB". */
     static tooLarge(limit: string): string {

@@ -122,9 +122,19 @@ describe("validateFile", () => {
     });
     expect(validateFile(aFile("data.json", MB, "application/json"), usage)).toBe("");
     expect(validateFile(aFile("data.JSON ", MB + 1, "application/json"), usage)).toBe(
-      "JSON files can be at most 1 MB. Zip a larger one to upload it."
+      "JSON files can be at most 1 MB. Zip this one to upload it."
     );
     expect(validateFile(aFile("data.json.txt", MB + 1, "text/plain"), someUsage())).toBe("");
+    // Like the API, the cap and the quota answer first.
+    expect(
+      validateFile(aFile("data.json", MB + 1, "application/json"), { ...usage, count: 10000 })
+    ).toMatch(/^An account can have at most/);
+    expect(
+      validateFile(aFile("data.json", MB + 1, "application/json"), {
+        ...usage,
+        usedBytes: 100 * MB
+      })
+    ).toBe("This upload would go over your storage quota.");
   });
 
   it("counts what's already queued against the upload cap, which the API checks first", () => {

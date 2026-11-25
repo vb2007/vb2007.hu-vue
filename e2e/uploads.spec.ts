@@ -480,7 +480,7 @@ test("a .json file over 1 MB is refused before it's sent, which the API would ca
   ]);
   const queue = page.getByRole("region", { name: "On the way" });
   await expect(
-    queue.getByText("JSON files can be at most 1 MB. Zip a larger one to upload it.")
+    queue.getByText("JSON files can be at most 1 MB. Zip this one to upload it.")
   ).toBeVisible();
   await expect(queue.getByText(/^Uploaded/)).toBeVisible();
   expect(sent).toHaveLength(1);
