@@ -127,7 +127,9 @@ describe("ApiKeysPanel", () => {
       "pastes:read",
       "pastes:write"
     ]);
-    expect(deploy.find(".api-key__dates").text()).toMatch(/^Created .* Expires .* Never used$/);
+    expect(deploy.find(".api-key__dates").text()).toMatch(
+      /^Created .*,  ·\u00a0Expires .*,  ·\u00a0Never used$/
+    );
     expect(deploy.text()).not.toContain("Expired");
     expect(old.find(".api-key__head").text()).toContain("Expired");
     expect(old.find(".api-key__dates").text()).toMatch(/Expired .*Last used/);

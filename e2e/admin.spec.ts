@@ -737,10 +737,8 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
   await expect(done).toBeFocused();
   await expect(mfa).toHaveText("Off · 2 passkeys");
   await expect(page.getByRole("list", { name: "anna's API keys" })).toHaveCount(0);
-  // Still what the row does, not "nothing to reset" right above the word that it was reset.
-  await expect(row.locator(".action__note")).toHaveText(
-    "For when anna lost their second factor: turns off every MFA method and recovery code, deletes their API keys and ends their session. Their passkeys stay."
-  );
+  // No note, not even "nothing to reset": only the word that it was reset.
+  await expect(row.locator(".action__note")).toHaveCount(0);
   await expect(row.getByRole("button")).toHaveCount(0);
   expect(api.loggedOutUsers).toEqual([anna.id]);
 

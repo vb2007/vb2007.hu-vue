@@ -3,7 +3,7 @@
  * The E-mail codes row's key (vb2007/vb2007.hu-api#448): Turn on or Turn off, each confirmed with
  * `ReauthForm` in place. The account is looked up again afterwards, so `mfa` is current.
  */
-import { nextTick, ref, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useTemplateRef } from "vue";
 import { Endpoints } from "@/constants/endpoints";
 import { REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Messages } from "@/constants/messages";
@@ -25,6 +25,8 @@ const confirming = ref(false);
 /** Which way the open form goes, fixed when it opened. */
 const turningOn = ref(false);
 const opener = useTemplateRef<InstanceType<typeof BaseButton>>("opener");
+/** With an authenticator app or a passkey, the login opens on that: e-mail is one more way. */
+const opensElsewhere = computed(() => mfa.value.totp || mfa.value.passkeys > 0);
 
 const turnOn = (body: MfaPasswordBody) =>
   apiRequest(Endpoints.User.mfaEmailOn, {
@@ -59,7 +61,7 @@ const close = async () => {
 const onDone = (data: MfaTurnOnResponse) => {
   confirming.value = false;
   // The section's own words, rather than the API's "E-mail MFA turned on".
-  const on = mfa.value.totp ? Messages.Mfa.emailOnBesideTotp : Messages.Mfa.emailOn;
+  const on = opensElsewhere.value ? Messages.Mfa.emailOnBesideOthers : Messages.Mfa.emailOn;
   emit("done", turningOn.value ? on : Messages.Mfa.emailOff, data.recoveryCodes);
   void fetchUserDetails();
 };
@@ -73,7 +75,7 @@ const onDone = (data: MfaTurnOnResponse) => {
     :busy-label="turningOn ? 'Turning on' : 'Turning off'"
     :hint="
       turningOn
-        ? mfa.totp
+        ? opensElsewhere
           ? 'Confirms it\'s you. Each login can then also take a code or link from your inbox.'
           : 'Confirms it\'s you. Each login then also takes a code or link from your inbox.'
         : 'Confirms it\'s you. Without another second step, your recovery codes go too.'

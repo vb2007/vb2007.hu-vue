@@ -24,11 +24,13 @@ defineProps<{ keys: ApiKey[]; username: string }>();
           >
         </h3>
         <p class="key__scopes">{{ apiKey.scopes.join(", ") }}</p>
-        <!-- The dots are hidden from screen readers, which hear commas instead, like a passkey's. -->
+        <!-- The dots are hidden from screen readers, which hear commas instead, and held to the fact
+             after them, like a passkey's. -->
         <p class="key__dates">
           <template v-for="(fact, index) in apiKeyDates(apiKey)" :key="index"
             ><template v-if="index"
-              ><span aria-hidden="true"> · </span><span class="visually-hidden">, </span></template
+              ><span class="visually-hidden">, </span
+              ><span aria-hidden="true"> ·&nbsp;</span></template
             ><strong v-if="fact.expired" class="key__expired">{{ fact.text }}</strong
             ><template v-else>{{ fact.text }}</template></template
           >
