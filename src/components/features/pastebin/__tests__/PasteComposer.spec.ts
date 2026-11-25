@@ -29,7 +29,7 @@ describe("PasteComposer", () => {
     expect(wrapper.find("h1").text()).toBe("Paste");
     expect(wrapper.find(".gate").text()).toContain("Only logged-in users can create pastes");
     expect(wrapper.find(".gate").text()).toContain(
-      "Pastes are public: others can find them, not only through their link."
+      "Pastes are public: anyone can find and read them."
     );
     expect(wrapper.findAll(".gate a").map((link) => link.attributes("href"))).toEqual([
       "/register",
@@ -46,7 +46,7 @@ describe("PasteComposer", () => {
 
     expect(wrapper.find(".field__count").text()).toBe("0 / 10000");
     expect(wrapper.find(".field__hint").text()).toBe(
-      "Pastes are public: others can find them, not only through their link. Don't paste anything private."
+      "Pastes are public and can be found without their link. Don't paste anything private."
     );
     await wrapper.find("textarea").setValue("hello world");
     await wrapper.find("form").trigger("submit");

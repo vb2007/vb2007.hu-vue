@@ -65,7 +65,7 @@ watch(createdPaste, (paste) => {
         v-model="content"
         label="Text"
         placeholder="Paste text or code here"
-        hint="Pastes are public: others can find them, not only through their link. Don't paste anything private."
+        hint="Pastes are public and can be found without their link. Don't paste anything private."
         mono
         required
         :max-count="Limits.Paste.maxLength"
@@ -80,8 +80,7 @@ watch(createdPaste, (paste) => {
 
     <div v-else-if="isSessionChecked" class="gate">
       <StatusMessage tone="info">
-        Only logged-in users can create pastes. Pastes are public: others can find them, not only
-        through their link.
+        Only logged-in users can create pastes. Pastes are public: anyone can find and read them.
       </StatusMessage>
       <div class="gate__actions">
         <BaseButton to="/register">Create a new account</BaseButton>
