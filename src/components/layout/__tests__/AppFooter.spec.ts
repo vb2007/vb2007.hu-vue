@@ -56,7 +56,6 @@ describe("AppFooter", () => {
     expect(docs.element.textContent).toBe("API docs (opens in a new tab)");
     expect(docs.attributes("target")).toBe("_blank");
     expect(docs.attributes("rel")).toBe("noopener");
-    expect(wrapper.find('a[href="https://api.test/docs/admin"]').exists()).toBe(false);
   });
 
   it("links the account instead of logging in once logged in", async () => {

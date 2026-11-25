@@ -26,6 +26,7 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /^Users/ })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /admin API docs/ })).toHaveCount(0);
   }
 });
 
