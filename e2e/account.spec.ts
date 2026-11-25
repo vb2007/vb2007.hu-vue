@@ -1045,6 +1045,46 @@ for (const [what, arrange, error, label] of [
   });
 }
 
+test("the day's last e-mail change code holds the key for the rest of the day", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("old@example.com");
+  api.mailedEmailChangeCodes(10);
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("New e-mail").fill("new@example.com");
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  const error = "Too many confirmation codes were mailed for this account today: try again later.";
+  await expect(page.getByRole("alert")).toHaveText(error);
+  // A day's wait, counted in hours ("Send code in 24 hr").
+  const key = page.getByRole("button", { name: /^Send code in 2[34] hr/ });
+  await expect(key).toBeDisabled();
+  await expect(key).toHaveAccessibleDescription(error);
+  // Nothing was sent: the change that waited still does.
+  await expect(page.getByText("Waiting for confirmation: old@example.com")).toBeVisible();
+});
+
+test("the cooldown answers before the day's cap on e-mail change codes", async ({ page, api }) => {
+  api.loggedInAs("me@example.com", "me");
+  api.hasPendingEmail("new@example.com", { sentSecondsAgo: 30, cooldownLeftOnSend: 30 });
+  api.mailedEmailChangeCodes(10);
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await page.getByLabel("Current password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "A code was sent just now. You can send another once the countdown ends."
+  );
+  await expect(page.getByRole("button", { name: /^Send code in \d+ seconds?$/ })).toBeDisabled();
+});
+
 test("a code whose mail failed keeps the change that waited, and another goes at once", async ({
   page,
   api

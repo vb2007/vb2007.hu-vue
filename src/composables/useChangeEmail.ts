@@ -172,8 +172,9 @@ export const useChangeEmail = () => {
         userEmail.value = normalizeEmail(email);
       }
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // The one-code-a-minute cooldown, or a rate limiter (wrong passwords, too many e-mails):
-      // both count the API's retryAfter down on the key, but only the cooldown means a code went out.
+      // The one-code-a-minute cooldown, the account's daily cap on codes (`ErrorReason.EmailChangeLimit`,
+      // up to a day) or a rate limiter (wrong passwords, e-mails from the IP): each counts the API's
+      // retryAfter down on the key, but only the cooldown means a code went out.
       const isCooldown = codeCooldownOf(result) !== undefined;
       changeError.value = isCooldown
         ? Messages.EmailCode.cooldown

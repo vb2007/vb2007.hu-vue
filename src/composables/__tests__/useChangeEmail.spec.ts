@@ -356,13 +356,19 @@ describe("useChangeEmail", () => {
     });
 
     it.each([
-      ["wrong passwords", "Too many failed attempts: try again later.", 900],
-      ["e-mails", "Too many e-mails requested: try again later.", 3600]
+      ["wrong passwords", "Too many failed attempts: try again later.", 900, undefined],
+      ["e-mails", "Too many e-mails requested: try again later.", 3600, undefined],
+      [
+        "codes today",
+        "Too many confirmation codes were mailed for this account today: try again later.",
+        86_399,
+        "emailChangeLimit"
+      ]
     ])(
-      "shows a rate limiter's 429 for too many %s, and waits its retryAfter",
-      async (_, error, retryAfter) => {
+      "shows a 429 for too many %s, and waits its retryAfter",
+      async (_, error, retryAfter, reason) => {
         vi.useFakeTimers();
-        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter, reason }));
         const email = useEmail();
 
         await email.change("new@example.com", "secret-password");

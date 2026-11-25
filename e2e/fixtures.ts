@@ -23,7 +23,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Another account's address (any the login knows, see below) and the superuser's get the same 202 and code: only the confirm refuses them, with 409
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
- * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
+ * 15 minutes ago has expired. Past the cooldown, the 11th code in 24 hours for an account (counted from its first, see
+ * `mailedEmailChangeCodes(n)`) gets the API's 429 with `reason: "emailChangeLimit"` and the `retryAfter` until that window ends. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
  * view's pending address), as the API has since vb2007/vb2007.hu-api#462, and so does the logged-in account's `PATCH /user/password`
  * once the current password is right (vb2007/vb2007.hu-api#474): `GET /user` answers `pendingEmail: null` and the
  * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself; one arranged
@@ -556,6 +557,8 @@ const usernameRefusal = (username: string): MockResponse | undefined => {
 type MockCode = { sentAt: number; expiresAt: number; attempts: number };
 const CODE_TRIES = 5;
 const CODE_COOLDOWN_MS = 60_000;
+/** E-mail change codes the API mails one account in 24 hours (its `EMAIL_CHANGE_CODES_PER_DAY`). */
+const EMAIL_CHANGE_CODES_PER_DAY = 10;
 /**
  * A sign-up waiting for its code lives 24 hours from the last `POST /auth/register` for the address
  * (`registrationExpiresAt`), longer than its code. Past that it's gone for every route, like the API's
@@ -741,6 +744,8 @@ export class MockApi {
    * `hasPendingEmail` arranged, however long it took to arrive. That request uses it up, whether the change still waits or not.
    */
   private emailCooldownOnSend: number | null = null;
+  /** Account `_id` -> e-mail change codes mailed since `since`, like the API's `emailChangeSends`. */
+  private emailChangeSends = new Map<string, { count: number; since: number }>();
   private shortCode = "e2e123";
   /** Short code -> link, oldest first, filled by shortening and by `hasShortLink`; `addedBy` is a username. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -1117,6 +1122,11 @@ export class MockApi {
     };
     this.emailChangeOwnerId = this.user?._id ?? null;
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
+  }
+
+  /** Counts `count` e-mail change codes mailed to the logged-in account just now, as if it asked for them today. */
+  mailedEmailChangeCodes(count: number) {
+    this.emailChangeSends.set(this.user!._id, { count, since: this.now() });
   }
 
   /**
@@ -2852,6 +2862,20 @@ export class MockApi {
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
+    // The API's daily cap per account (vb2007/vb2007.hu-api#524), behind the cooldown, its window starting at the first code.
+    const sends = this.emailChangeSends.get(this.user._id);
+    const counting = sends && this.now() < sends.since + DAY_MS ? sends : undefined;
+    if (counting && counting.count >= EMAIL_CHANGE_CODES_PER_DAY) {
+      const retryAfter = Math.max(1, Math.ceil((counting.since + DAY_MS - this.now()) / 1000));
+      return {
+        status: 429,
+        body: {
+          error: "Too many confirmation codes were mailed for this account today: try again later.",
+          retryAfter,
+          reason: "emailChangeLimit"
+        }
+      };
+    }
     // Like the API, a refusal keeps the change that waited before (if any): after a failed send a new code may go at once.
     if (this.countsMail(normalized) && this.mailRefused("account")) {
       return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
@@ -2859,6 +2883,11 @@ export class MockApi {
     if (!this.sendsMail("account", normalized)) return MAIL_FAILED;
     this.emailChange = { email: normalized, ...this.newCode(15) };
     this.emailChangeOwnerId = this.user?._id ?? null;
+    // A refused or failed mail isn't counted, as the API gives the count back.
+    this.emailChangeSends.set(this.user._id, {
+      count: (counting?.count ?? 0) + 1,
+      since: counting?.since ?? this.now()
+    });
     return {
       status: 202,
       body: {
