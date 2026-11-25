@@ -45,7 +45,7 @@ const isPrivate = computed(() => props.upload.visibility === "private");
  * account's leaves only the admin.
  */
 const audience = computed(() => {
-  if (!isPrivate.value) return "Anyone with the link, while it's public";
+  if (!isPrivate.value) return "Anyone, even without the link (while it's public)";
   const { owner } = props;
   if (owner && owner.id !== userId.value)
     return `${owner.username}, you, and anyone with the link (until it expires)`;

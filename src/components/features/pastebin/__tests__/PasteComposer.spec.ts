@@ -28,6 +28,9 @@ describe("PasteComposer", () => {
 
     expect(wrapper.find("h1").text()).toBe("Paste");
     expect(wrapper.find(".gate").text()).toContain("Only logged-in users can create pastes");
+    expect(wrapper.find(".gate").text()).toContain(
+      "Pastes are public: anyone can find and read them."
+    );
     expect(wrapper.findAll(".gate a").map((link) => link.attributes("href"))).toEqual([
       "/register",
       "/login"
@@ -42,6 +45,9 @@ describe("PasteComposer", () => {
     const { wrapper } = await mountWithRouter(PasteComposer);
 
     expect(wrapper.find(".field__count").text()).toBe("0 / 10000");
+    expect(wrapper.find(".field__hint").text()).toBe(
+      "Pastes are public and can be found without their link. Don't paste anything private."
+    );
     await wrapper.find("textarea").setValue("hello world");
     await wrapper.find("form").trigger("submit");
     expect(wrapper.find('button[type="submit"]').text()).toBe("Creating");

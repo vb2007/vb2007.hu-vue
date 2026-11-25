@@ -109,8 +109,8 @@ export const retryAfterFrom = (body: unknown, fallback = Limits.Code.cooldownSec
  * The seconds left before another code can be mailed, when `failure` is the one-code-a-minute
  * cooldown's 429: a code went out moments ago and still works. It's recognised by the body's
  * `reason`, never by the message, so rewording that can't break it. Undefined for anything else,
- * including a rate limiter's 429, which sends `retryAfter` too (but no `reason`) and means no
- * code was sent.
+ * including a rate limiter's 429 (no `reason`) and a daily cap's (`ErrorReason.EmailChangeLimit`,
+ * `ErrorReason.MfaEmailLimit`), which send `retryAfter` too and mean no code was sent.
  */
 export const codeCooldownOf = (failure: ApiFailure): number | undefined =>
   failure.kind === "http" &&

@@ -23,7 +23,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * Another account's address (any the login knows, see below) and the superuser's get the same 202 and code: only the confirm refuses them, with 409
  * or 403, and drops the change (vb2007/vb2007.hu-api#291). `api.hasPendingEmail(...)` arranges a change that's already
  * waiting; a new code within a minute of the last one gets the API's cooldown 429 with `retryAfter` and `reason`, and one sent over
- * 15 minutes ago has expired. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
+ * 15 minutes ago has expired. Past the cooldown, the 11th code in 24 hours for an account (counted from its first, see
+ * `mailedEmailChangeCodes(n)`) gets the API's 429 with `reason: "emailChangeLimit"` and the `retryAfter` until that window ends. A password reset, by code or by link, drops the waiting change of the account it's for (and the admin
  * view's pending address), as the API has since vb2007/vb2007.hu-api#462, and so does the logged-in account's `PATCH /user/password`
  * once the current password is right (vb2007/vb2007.hu-api#474): `GET /user` answers `pendingEmail: null` and the
  * earlier code is refused with 400. Another account's change stays, also when the logged-in account deletes itself; one arranged
@@ -135,12 +136,12 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
  * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
  * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused as invalid, a resend sends
- * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key;
+ * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key (`emailChangeSends` the account's own count of e-mail change codes, see `mailedEmailChangeCodes`);
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given, answers their names in the API's order
  * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
  * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily caps on wrong codes and e-mails
  * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
- * `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
+ * `emailChangeSends`, `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
@@ -478,6 +479,7 @@ const RATE_LIMITERS = {
   apiKeyChecksPerIp: ["ip"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
+  emailChangeSends: ["email"],
   registrationCodeFailures: ["email"],
   mfaCodeFailures: ["email"],
   mfaEmailSends: ["email"],
@@ -556,6 +558,8 @@ const usernameRefusal = (username: string): MockResponse | undefined => {
 type MockCode = { sentAt: number; expiresAt: number; attempts: number };
 const CODE_TRIES = 5;
 const CODE_COOLDOWN_MS = 60_000;
+/** E-mail change codes the API mails one account in 24 hours (its `EMAIL_CHANGE_CODES_PER_DAY`). */
+const EMAIL_CHANGE_CODES_PER_DAY = 10;
 /**
  * A sign-up waiting for its code lives 24 hours from the last `POST /auth/register` for the address
  * (`registrationExpiresAt`), longer than its code. Past that it's gone for every route, like the API's
@@ -741,6 +745,8 @@ export class MockApi {
    * `hasPendingEmail` arranged, however long it took to arrive. That request uses it up, whether the change still waits or not.
    */
   private emailCooldownOnSend: number | null = null;
+  /** Account `_id` -> e-mail change codes mailed since `since`, like the API's `emailChangeSends`. */
+  private emailChangeSends = new Map<string, { count: number; since: number }>();
   private shortCode = "e2e123";
   /** Short code -> link, oldest first, filled by shortening and by `hasShortLink`; `addedBy` is a username. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
@@ -1054,6 +1060,15 @@ export class MockApi {
 
   /** A rate limiter counting for `email`, `ip` or both, as its key needs. */
   countsRateLimit(name: MockRateLimiter, { email, ip }: RateLimitKey) {
+    if (name === "emailChangeSends") {
+      // One store with what `PATCH /user/email` counts (see `mailedEmailChangeCodes`), kept per account.
+      const account = this.storedAccounts().find(
+        (stored) => normalizeEmail(stored.email) === normalizeEmail(email ?? "")
+      );
+      if (!account) throw new Error("emailChangeSends counts for an account: arrange it first.");
+      this.emailChangeSends.set(account.id, { count: 1, since: this.now() });
+      return;
+    }
     this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip });
   }
 
@@ -1117,6 +1132,14 @@ export class MockApi {
     };
     this.emailChangeOwnerId = this.user?._id ?? null;
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
+  }
+
+  /**
+   * Counts `count` e-mail change codes mailed to the logged-in account just now, as if it asked for them today.
+   * `DELETE /admin/rate-limits` with its address empties the count, naming `emailChangeSends` while it counts.
+   */
+  mailedEmailChangeCodes(count: number) {
+    this.emailChangeSends.set(this.user!._id, { count, since: this.now() });
   }
 
   /**
@@ -2852,6 +2875,20 @@ export class MockApi {
     }
     const tooSoon = this.resendTooSoon(this.emailChange?.sentAt);
     if (tooSoon) return tooSoon;
+    // The API's daily cap per account (vb2007/vb2007.hu-api#524), behind the cooldown, its window starting at the first code.
+    const sends = this.emailChangeSends.get(this.user._id);
+    const counting = sends && this.now() < sends.since + DAY_MS ? sends : undefined;
+    if (counting && counting.count >= EMAIL_CHANGE_CODES_PER_DAY) {
+      const retryAfter = Math.max(1, Math.ceil((counting.since + DAY_MS - this.now()) / 1000));
+      return {
+        status: 429,
+        body: {
+          error: "Too many confirmation codes were mailed for this account today: try again later.",
+          retryAfter,
+          reason: "emailChangeLimit"
+        }
+      };
+    }
     // Like the API, a refusal keeps the change that waited before (if any): after a failed send a new code may go at once.
     if (this.countsMail(normalized) && this.mailRefused("account")) {
       return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
@@ -2859,6 +2896,11 @@ export class MockApi {
     if (!this.sendsMail("account", normalized)) return MAIL_FAILED;
     this.emailChange = { email: normalized, ...this.newCode(15) };
     this.emailChangeOwnerId = this.user?._id ?? null;
+    // A refused or failed mail isn't counted, as the API gives the count back.
+    this.emailChangeSends.set(this.user._id, {
+      count: (counting?.count ?? 0) + 1,
+      since: counting?.since ?? this.now()
+    });
     return {
       status: 202,
       body: {
@@ -3284,7 +3326,10 @@ export class MockApi {
     };
   }
 
-  /** `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`. */
+  /**
+   * `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`,
+   * then the 400 to no file, the type's 415 and the quota's 413, and only then, as in the API's `uploadFile`, the 400 to a bad name.
+   */
   private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (!/boundary=.+$/.test(contentType)) {
@@ -3292,16 +3337,35 @@ export class MockApi {
     }
     if (!body?.length) return { status: 400, body: { error: "Unexpected end of form" } };
     const part = parseMultipart(body, contentType);
+    // Busboy keeps what follows the last "/" or "\" and turns "." and ".." into "", which multer skips as no file.
+    const base = part.fileName.slice(
+      Math.max(part.fileName.lastIndexOf("/"), part.fileName.lastIndexOf("\\")) + 1
+    );
     // `verifyUploadType` and `checkUploadQuota` pass a body without a file on to `uploadFile`, which refuses it.
-    if (!part.hasFile) return { status: 400, body: { error: "No file was provided." } };
-    const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
+    if (!part.hasFile || ["", ".", ".."].includes(base)) {
+      return { status: 400, body: { error: "No file was provided." } };
+    }
+    // Multer reverses the browser's escapes for LF, CR and `"`. The API types by the trimmed name (text types only; it
+    // sniffs binary ones), and `uploadFile` checks and stores it.
+    const fileName = base.replace(/%0A|%0D|%22/gi, (escape) => decodeURIComponent(escape)).trim();
+    const extension = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
     }
     if (this.usedBytes() + part.size > this.quotaBytes) {
       return { status: 413, body: { error: "This upload would go over your storage quota." } };
     }
-    const upload = this.hasUpload(part.fileName, {
+    // `isUploadFileName` (vb2007/vb2007.hu-api#552). The real API refuses raw C0 controls but tab, and DEL, earlier, as
+    // busboy's 400 "Malformed part header"; the composer never sends them.
+    if (fileName.length > 255 || /[/\\\u0000-\u001f\u007f]/.test(fileName)) {
+      return {
+        status: 400,
+        body: {
+          error: "File names must be 1–255 characters, without slashes or control characters."
+        }
+      };
+    }
+    const upload = this.hasUpload(fileName, {
       fileSize: part.size,
       visibility: part.visibility === "public" ? "public" : "private"
     });
@@ -3874,6 +3938,15 @@ export class MockApi {
       );
     const cleared = new Set(this.rateLimitCounts.filter(matches).map((count) => count.name));
     this.rateLimitCounts = this.rateLimitCounts.filter((count) => !matches(count));
+    // The account's real count of e-mail change codes (see `mailedEmailChangeCodes`), named only while it counts.
+    const account = this.storedAccounts().find(
+      ({ email: address }) => key.email !== undefined && normalizeEmail(address) === key.email
+    );
+    const sends = account && this.emailChangeSends.get(account.id);
+    if (sends) {
+      this.emailChangeSends.delete(account.id);
+      if (sends.count > 0 && this.now() < sends.since + DAY_MS) cleared.add("emailChangeSends");
+    }
     return {
       status: 200,
       body: {
