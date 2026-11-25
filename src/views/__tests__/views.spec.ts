@@ -166,6 +166,7 @@ describe("views", () => {
       usedBytes: 10,
       quotaBytes: 100,
       count: 1,
+      maxCount: 10000,
       maxFileSizeBytes: 50,
       allowedTypes: [],
       byCategory: []
@@ -199,6 +200,14 @@ describe("views", () => {
 
     fetchMock.mockClear();
     wrapper.findComponent(UploadList).vm.$emit("changed");
+    await flushPromises();
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.test/uploads/usage"
+    ]);
+
+    // The API refused one for the cap or the quota: only the meter needs catching up.
+    fetchMock.mockClear();
+    wrapper.findComponent(UploadComposer).vm.$emit("refused");
     await flushPromises();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "https://api.test/uploads/usage"

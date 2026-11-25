@@ -14,11 +14,12 @@ import UploadQueue from "./UploadQueue.vue";
 const props = withDefaults(defineProps<{ usage: UploadUsage | null; as?: "h1" | "h2" }>(), {
   as: "h2"
 });
-const emit = defineEmits<{ uploaded: [upload: Upload] }>();
+const emit = defineEmits<{ uploaded: [upload: Upload]; refused: [] }>();
 
 const { items, hasFinished, add, cancel, retry, dismiss, clearFinished } = useUploadQueue(
   toRef(props, "usage"),
-  (upload) => emit("uploaded", upload)
+  (upload) => emit("uploaded", upload),
+  () => emit("refused")
 );
 
 const accept = computed(() => (props.usage ? acceptFor(props.usage.allowedTypes) : undefined));

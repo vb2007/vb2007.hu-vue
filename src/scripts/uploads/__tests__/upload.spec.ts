@@ -144,6 +144,18 @@ describe("validateFile", () => {
       "This upload would go over your storage quota."
     );
   });
+
+  it("counts what's already queued against the upload cap, which the API checks first", () => {
+    const usage = someUsage({ count: 9998 });
+    expect(validateFile(aFile("a.png"), usage, 0, 1)).toBe("");
+    expect(validateFile(aFile("a.png"), usage, 0, 2)).toBe(
+      "An account can have at most 10,000 uploads: delete one first."
+    );
+    // Over the quota too, the cap is what the API answers.
+    expect(validateFile(aFile("a.png"), someUsage({ count: 10000, usedBytes: 100 * MB }))).toMatch(
+      /^An account can have/
+    );
+  });
 });
 
 describe("validateFileName", () => {
@@ -185,12 +197,13 @@ describe("sendUpload", () => {
     expect(onProgress).toHaveBeenLastCalledWith(1);
   });
 
-  it("rejects with the API's error message", async () => {
+  it("rejects with the API's error message and status", async () => {
     const requests = mockXhr();
     const sent = sendUpload(aFile("a.png"), "private", vi.fn());
     requests[0].respond(415, { error: "This file type isn't supported." });
 
     await expect(sent).rejects.toEqual(new UploadError("This file type isn't supported."));
+    await expect(sent).rejects.toMatchObject({ cancelled: false, status: 415 });
   });
 
   it("tells the client about an ended session before it rejects, like apiRequest", async () => {

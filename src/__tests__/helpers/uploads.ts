@@ -21,6 +21,7 @@ export const someUsage = (overrides: Partial<UploadUsage> = {}): UploadUsage => 
   usedBytes: 5 * MB,
   quotaBytes: 100 * MB,
   count: 2,
+  maxCount: 10000,
   maxFileSizeBytes: 10 * MB,
   allowedTypes: [
     { mimeType: "image/png", extension: ".png", category: "image" },

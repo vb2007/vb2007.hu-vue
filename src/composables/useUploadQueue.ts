@@ -13,7 +13,10 @@ import type { Upload, UploadUsage, UploadVisibility } from "@/types/api/uploads"
 
 export const PARALLEL_UPLOADS = 2;
 
-/** `rejected` is the pre-check saying no (wrong type, too big): retrying can't help, unlike `failed`. */
+/**
+ * `rejected` is the pre-check saying no (wrong type, too big, over the quota): retrying can't help,
+ * unlike `failed`. The pre-check's upload cap refusal is `failed`, since deleting uploads lifts it.
+ */
 export type QueueStatus = "queued" | "uploading" | "done" | "failed" | "rejected" | "cancelled";
 
 export interface QueueItem {
@@ -31,11 +34,13 @@ export interface QueueItem {
 
 /**
  * Files waiting for, going through or done with an upload. Runs `PARALLEL_UPLOADS` at a time and
- * calls `onUploaded` after each one lands, so the list and the storage meter can refresh.
+ * calls `onUploaded` after each one lands, so the list and the storage meter can refresh, and
+ * `onRefused` when the API turns one away for the upload cap or the quota, so the meter catches up.
  */
 export const useUploadQueue = (
   usage: Ref<UploadUsage | null>,
-  onUploaded: (upload: Upload) => void
+  onUploaded: (upload: Upload) => void,
+  onRefused: () => void
 ) => {
   const items = ref<QueueItem[]>([]);
   const controllers = new Map<number, AbortController>();
@@ -43,11 +48,26 @@ export const useUploadQueue = (
 
   const find = (id: number) => items.value.find((item) => item.id === id)!;
 
-  /** Bytes queued or in flight but not counted in `usage` yet. */
-  const pendingBytes = () =>
-    items.value
-      .filter((item) => item.status === "queued" || item.status === "uploading")
-      .reduce((sum, item) => sum + item.file.size, 0);
+  /**
+   * Files queued or in flight, not counted in `usage` yet.
+   * shortcut: one the API stored before its answer arrived counts twice if usage reloads meanwhile; harmless, since the API checks again.
+   */
+  const pending = () =>
+    items.value.filter((item) => item.status === "queued" || item.status === "uploading");
+
+  /** `validateFile` with what's pending counted against the quota and the upload cap. */
+  const check = (file: File) => {
+    const files = pending();
+    const bytes = files.reduce((sum, item) => sum + item.file.size, 0);
+    return validateFile(file, usage.value, bytes, files.length);
+  };
+
+  /** What a pre-check's answer makes of a file. */
+  const statusFor = (error: string): QueueStatus => {
+    if (!error) return "queued";
+    const atCap = usage.value && error === Messages.Uploads.tooManyUploads(usage.value.maxCount);
+    return atCap ? "failed" : "rejected";
+  };
 
   const run = async (id: number) => {
     const item = find(id);
@@ -69,6 +89,8 @@ export const useUploadQueue = (
       const cancelled = error instanceof UploadError && error.cancelled;
       item.status = cancelled ? "cancelled" : "failed";
       item.error = cancelled ? "" : (error as Error).message;
+      const { status } = error as UploadError;
+      if (status === HttpStatus.Conflict || status === HttpStatus.ContentTooLarge) onRefused();
     } finally {
       controllers.delete(id);
       pump();
@@ -86,12 +108,12 @@ export const useUploadQueue = (
 
   const add = (files: Iterable<File>, visibility: UploadVisibility) => {
     for (const file of files) {
-      const error = validateFile(file, usage.value, pendingBytes());
+      const error = check(file);
       items.value.push({
         id: nextId++,
         file,
         visibility,
-        status: error ? "rejected" : "queued",
+        status: statusFor(error),
         progress: 0,
         error,
         result: null,
@@ -113,9 +135,9 @@ export const useUploadQueue = (
   /** Tries a failed or cancelled file again, re-checking it first. */
   const retry = (id: number) => {
     const item = find(id);
-    const error = validateFile(item.file, usage.value, pendingBytes());
+    const error = check(item.file);
     item.error = error;
-    item.status = error ? "rejected" : "queued";
+    item.status = statusFor(error);
     pump();
   };
 

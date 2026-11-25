@@ -15,13 +15,15 @@ const MB = 1024 * 1024;
 describe("useUploadQueue", () => {
   let requests: FakeXhr[];
   let onUploaded: ReturnType<typeof vi.fn>;
+  let onRefused: ReturnType<typeof vi.fn>;
   const usage = ref<UploadUsage | null>(null);
 
-  const mountQueue = () => mountComposable(() => useUploadQueue(usage, onUploaded));
+  const mountQueue = () => mountComposable(() => useUploadQueue(usage, onUploaded, onRefused));
 
   beforeEach(() => {
     requests = mockXhr();
     onUploaded = vi.fn();
+    onRefused = vi.fn();
     usage.value = someUsage();
   });
 
@@ -73,6 +75,61 @@ describe("useUploadQueue", () => {
     expect(api.items.value.map((item) => item.status)).toEqual(["uploading", "rejected"]);
   });
 
+  it("counts queued files against the upload cap", () => {
+    usage.value = someUsage({ count: 7, maxCount: 10 });
+    const { api } = mountQueue();
+    api.add([aFile("a.png"), aFile("b.png"), aFile("c.png"), aFile("d.png")], "private");
+
+    expect(api.items.value.map((item) => item.status)).toEqual([
+      "uploading",
+      "uploading",
+      "queued",
+      "failed"
+    ]);
+    expect(api.items.value[3].error).toBe(
+      "An account can have at most 10 uploads: delete one first."
+    );
+    expect(requests).toHaveLength(2);
+  });
+
+  it("keeps a file refused for the upload cap retryable, so it goes once uploads are deleted", () => {
+    usage.value = someUsage({ count: 10, maxCount: 10 });
+    const { api } = mountQueue();
+    api.add([aFile("a.png")], "private");
+    const [item] = api.items.value;
+
+    expect(item).toMatchObject({ status: "failed", error: /^An account can have at most 10/ });
+    api.retry(item.id);
+    expect(api.items.value[0].status).toBe("failed");
+    expect(requests).toHaveLength(0);
+
+    usage.value = someUsage({ count: 9, maxCount: 10 });
+    api.retry(item.id);
+    expect(api.items.value[0]).toMatchObject({ status: "uploading", error: "" });
+  });
+
+  it("rejects an empty file even before usage is known", () => {
+    usage.value = null;
+    const { api } = mountQueue();
+    api.add([aFile("a.png", 0)], "private");
+
+    expect(api.items.value[0]).toMatchObject({ status: "rejected", error: "This file is empty." });
+  });
+
+  it.each([409, 413])(
+    "asks for usage again after the API's %i, but not other failures",
+    async (status) => {
+      const { api } = mountQueue();
+      api.add([aFile("a.png"), aFile("b.png")], "private");
+      requests[0].respond(status, { error: "No." });
+      requests[1].respond(415, { error: "This file type isn't supported." });
+      await flushPromises();
+
+      expect(api.items.value.map((item) => item.status)).toEqual(["failed", "failed"]);
+      expect(onRefused).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it("keeps the API's error on a failed upload, and retries it", async () => {
     const { api } = mountQueue();
     api.add([aFile("a.png")], "private");
@@ -84,6 +141,7 @@ describe("useUploadQueue", () => {
       error: "This upload would go over your storage quota."
     });
     expect(onUploaded).not.toHaveBeenCalled();
+    expect(onRefused).toHaveBeenCalledTimes(1);
 
     api.retry(api.items.value[0].id);
     expect(api.items.value[0]).toMatchObject({ status: "uploading", error: "" });

@@ -77,7 +77,7 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
           <AppIcon class="split__icon" :name="CATEGORY_ICONS[part.category]" :size="18" />
           <span class="split__name">{{ CATEGORY_LABELS[part.category] }}</span>
           <span class="split__count">
-            {{ part.count }} {{ part.count === 1 ? "file" : "files" }}
+            {{ part.count.toLocaleString() }} {{ part.count === 1 ? "file" : "files" }}
           </span>
           <span class="split__bytes">{{ formatBytes(part.bytes) }}</span>
           <span class="split__rail" aria-hidden="true">
@@ -85,6 +85,15 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
           </span>
         </li>
       </ul>
+
+      <p class="tally">
+        <span class="tally__count">{{ usage.count.toLocaleString() }}</span>
+        of {{ usage.maxCount.toLocaleString() }} files
+      </p>
+      <StatusMessage v-if="usage.count >= usage.maxCount" tone="error">
+        You've reached the {{ usage.maxCount.toLocaleString() }}-file limit. Delete some uploads to
+        make room for new ones.
+      </StatusMessage>
     </template>
   </StationBoard>
 </template>
@@ -217,6 +226,7 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
   padding: 0;
   list-style: none;
   border-top: var(--edge) solid var(--c-hairline);
+  container-type: inline-size;
 }
 
 .split__row {
@@ -256,6 +266,17 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
   font-variant-numeric: tabular-nums;
 }
 
+/* Narrow (a 320px screen), the count goes under the name so the two don't run together. */
+@container (max-width: 18rem) {
+  .split__row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon name bytes"
+      ". count ."
+      "bar bar bar";
+  }
+}
+
 /* Each type's share of what you use, as a run along its own rail, ending in a stop. */
 .split__rail {
   grid-area: bar;
@@ -293,5 +314,18 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
 
 .split__row--empty .split__run {
   display: none;
+}
+
+/* The upload cap is a backstop few get near, so it's a figure rather than a second line. */
+.tally {
+  margin-top: calc(-1 * var(--sp-2));
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.tally__count {
+  color: var(--c-ink);
 }
 </style>

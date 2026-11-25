@@ -86,4 +86,17 @@ describe("UploadComposer", () => {
     await buttonNamed(wrapper, "Clear finished").trigger("click");
     expect(queue.props("items")).toHaveLength(1);
   });
+
+  it("says when the API refused a file for the upload cap or the quota", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(UploadComposer, { props: { usage: someUsage() } });
+
+    wrapper.findComponent(UploadDropzone).vm.$emit("files", [aFile("a.png")], "public");
+    requests[0].respond(409, {
+      error: "An account can have at most 10000 uploads: delete one first."
+    });
+    await flushPromises();
+
+    expect(wrapper.emitted("refused")).toEqual([[]]);
+  });
 });

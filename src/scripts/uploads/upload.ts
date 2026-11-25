@@ -98,9 +98,15 @@ const storedNameOf = (name: string) => {
 
 /**
  * Why a file can't be uploaded, or "" when it can. The API checks the real contents again;
- * this only catches what's obvious up front. `pendingBytes` is what's already queued.
+ * this only catches what's obvious up front. `pendingBytes` and `pendingCount` are what's already
+ * queued.
  */
-export const validateFile = (file: File, usage: UploadUsage | null, pendingBytes = 0) => {
+export const validateFile = (
+  file: File,
+  usage: UploadUsage | null,
+  pendingBytes = 0,
+  pendingCount = 0
+) => {
   if (file.size === 0) {
     return Messages.Uploads.emptyFile;
   }
@@ -126,16 +132,21 @@ export const validateFile = (file: File, usage: UploadUsage | null, pendingBytes
   if (file.size > usage.maxFileSizeBytes) {
     return Messages.Uploads.tooLarge(formatBytes(usage.maxFileSizeBytes));
   }
+  if (usage.count + pendingCount >= usage.maxCount) {
+    return Messages.Uploads.tooManyUploads(usage.maxCount);
+  }
   if (usage.usedBytes + pendingBytes + file.size > usage.quotaBytes) {
     return Messages.Uploads.quotaExceeded;
   }
   return "";
 };
 
+/** `status` is the API's answer, 0 when there was none. */
 export class UploadError extends Error {
   constructor(
     message: string,
-    readonly cancelled = false
+    readonly cancelled = false,
+    readonly status = 0
   ) {
     super(message);
   }
@@ -179,7 +190,9 @@ export const sendUpload = (
         resolve((body as ResponseOf<typeof endpoint>).upload);
       } else {
         const error = new UploadError(
-          errorMessageFrom(body, request.status, request.statusText, Messages.Uploads.uploadFailed)
+          errorMessageFrom(body, request.status, request.statusText, Messages.Uploads.uploadFailed),
+          false,
+          request.status
         );
         // Like `apiRequest`, an ended session logs the page out before the failure comes back.
         void noticeSessionRefusal(endpoint, request.status, body).finally(() => reject(error));

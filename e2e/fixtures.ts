@@ -765,6 +765,8 @@ export class MockApi {
   private readonly uploadOwners = new Map<string, string>();
   private nextUploadId = 1;
   private quotaBytes = DEFAULT_QUOTA;
+  /** The API's `UPLOADS_PER_ACCOUNT`; `uploadCapIs` lowers it so a spec can reach it. */
+  private maxUploads = 10000;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockListedUser[] = [];
   /** The upload usage `hasUser(..., { usedBytes, count })` arranged in place of the uploads an account owns. */
@@ -1455,6 +1457,10 @@ export class MockApi {
 
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
+  }
+
+  uploadCapIs(count: number) {
+    this.maxUploads = count;
   }
 
   shortenReturns(code: string) {
@@ -3320,6 +3326,7 @@ export class MockApi {
         usedBytes: this.usedBytes(),
         quotaBytes: this.quotaBytes,
         count: this.uploads.length,
+        maxCount: this.maxUploads,
         maxFileSizeBytes: 100 * MB,
         allowedTypes: ALLOWED_TYPES,
         byCategory: CATEGORIES.map((category) => {
@@ -3336,7 +3343,8 @@ export class MockApi {
 
   /**
    * `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`,
-   * then the 400 to no file, the type's 415 and the quota's 413, and only then, as in the API's `uploadFile`, the 400 to a bad name.
+   * then the 400 to no file, `checkUploadQuota`'s 409 at the upload cap and 413 over the quota, `verifyUploadType`'s 415,
+   * and only then, as in the API's `uploadFile`, the 400 to a bad name.
    */
   private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
@@ -3349,9 +3357,18 @@ export class MockApi {
     const base = part.fileName.slice(
       Math.max(part.fileName.lastIndexOf("/"), part.fileName.lastIndexOf("\\")) + 1
     );
-    // `verifyUploadType` and `checkUploadQuota` pass a body without a file on to `uploadFile`, which refuses it.
+    // `checkUploadQuota` and `verifyUploadType` pass a body without a file on to `uploadFile`, which refuses it.
     if (!part.hasFile || ["", ".", ".."].includes(base)) {
       return { status: 400, body: { error: "No file was provided." } };
+    }
+    if (this.uploads.length + 1 > this.maxUploads) {
+      return {
+        status: 409,
+        body: { error: `An account can have at most ${this.maxUploads} uploads: delete one first.` }
+      };
+    }
+    if (this.usedBytes() + part.size > this.quotaBytes) {
+      return { status: 413, body: { error: "This upload would go over your storage quota." } };
     }
     // Multer reverses the browser's escapes for LF, CR and `"`. The API types by the trimmed name (text types only; it
     // sniffs binary ones), and `uploadFile` checks and stores it.
@@ -3359,9 +3376,6 @@ export class MockApi {
     const extension = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
-    }
-    if (this.usedBytes() + part.size > this.quotaBytes) {
-      return { status: 413, body: { error: "This upload would go over your storage quota." } };
     }
     // `isUploadFileName` (vb2007/vb2007.hu-api#552). The real API refuses raw C0 controls but tab, and DEL, earlier, as
     // busboy's 400 "Malformed part header"; the composer never sends them.
