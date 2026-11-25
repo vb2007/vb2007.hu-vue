@@ -366,7 +366,7 @@ for (const [name, fontSize, width] of [
     await expectReflow(page);
 
     for (let i = 1; i <= 9; i++) api.hasApiKey(`Key ${i}`);
-    await page.getByRole("button", { name: "I've saved it" }).click();
+    await page.getByRole("button", { name: "I've saved the files" }).click();
     await page.getByRole("button", { name: "Set up ShareX" }).click();
     await page.getByLabel("Password").fill(MOCK_PASSWORD);
     await page.getByRole("button", { name: "Create key" }).click();

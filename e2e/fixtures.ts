@@ -248,14 +248,14 @@ const NOT_LOGGED_IN = {
   body: { error: "You must be logged in to perform this action." }
 } satisfies MockResponse;
 
+/** The API's `sharexTokenPlaceholder`: what a ShareX file's `Authorization` header holds until the token replaces it. */
+export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
+
 /**
  * The routes the API serves without `isAuthenticated` (`src/router/*.ts` in vb2007/vb2007.hu-api, which has no session
  * middleware), so a session it has replaced still gets through, as a guest. Every other route refuses that session first.
  * `GET /e2e-github/authorize` stands in for the public `GET /auth/github/callback`.
  */
-/** The API's `sharexTokenPlaceholder`: what a ShareX file's `Authorization` header holds until the token replaces it. */
-export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
-
 const PUBLIC_ROUTES = [
   /^GET \/sharex\/(upload|paste|shorten)\.sxcu$/,
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,

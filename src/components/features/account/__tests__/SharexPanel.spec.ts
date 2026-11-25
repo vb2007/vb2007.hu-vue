@@ -11,7 +11,7 @@ import {
   username
 } from "@/scripts/authentication/authState";
 import { takeGithubReturn } from "@/scripts/authentication/githubReturn";
-import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 const TOKEN = `vbk_${"A".repeat(39)}Zz9_`;
@@ -122,6 +122,7 @@ describe("SharexPanel", () => {
       "URL shortenervb2007.hu shortener"
     ]);
     expect(panel.text()).toContain("Unsupported request format JSON");
+    expect(panel.text()).toContain(Messages.Sharex.keyLifetime(90));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -157,7 +158,7 @@ describe("SharexPanel", () => {
     });
 
     const texts = await Promise.all(made.map(readText));
-    expect(made.map((blob) => blob.type)).toEqual(Array(3).fill("application/json"));
+    expect(made.map((blob) => blob.type)).toEqual(Array(3).fill("application/octet-stream"));
     texts.forEach((text, i) => {
       expect(JSON.parse(text)).toEqual({
         ...FILES[i],
@@ -183,7 +184,7 @@ describe("SharexPanel", () => {
     expect(window.location.href).not.toContain(TOKEN);
     expect(JSON.stringify({ ...sessionStorage, ...localStorage })).not.toContain(TOKEN);
 
-    await key(panel, "I've saved it").trigger("click");
+    await key(panel, "I've saved the files").trigger("click");
     await flushPromises();
     expect(panel.find(".token").exists()).toBe(false);
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
@@ -214,9 +215,21 @@ describe("SharexPanel", () => {
     expect(made).toEqual([]);
   });
 
+  it("creates no key when a file can't be reached", async () => {
+    const panel = await mountPanel();
+    queueFiles(FILES[0], FILES[1]);
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await confirm(panel);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(panel.find(".reauth").text()).toContain(Messages.connectionError);
+    expect(made).toEqual([]);
+  });
+
   it("creates no key when a file has no place for the token", async () => {
     const panel = await mountPanel();
-    queueFiles(FILES[0], FILES[1], { ...FILES[2], Headers: { Authorization: "Bearer " } });
+    queueFiles(FILES[0], { ...FILES[1], Headers: { Authorization: "Bearer " } });
+    queueFiles({ Name: "vb2007.hu shortener" });
     await confirm(panel);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -320,6 +333,28 @@ describe("SharexPanel", () => {
       expect(panel.find(".reauth").exists()).toBe(false);
     });
 
+    it("still shows a token whose key was made as the session ended", async () => {
+      const panel = await mountPanel();
+      queueFiles(...FILES);
+      const create = deferResponse(fetchMock);
+      await key(panel, "Set up ShareX").trigger("click");
+      await panel.find('.reauth input[type="password"]').setValue("secret");
+      await panel.find(".reauth").trigger("submit");
+      await flushPromises();
+      isLoggedIn.value = false;
+      await flushPromises();
+      expect(panel.find(".reauth").exists()).toBe(false);
+
+      create.respond(
+        jsonResponse(201, { message: CREATED, apiKey: { id: "k1", name: "ShareX", token: TOKEN } })
+      );
+      await flushPromises();
+      expect(panel.find(".token__text").text()).toBe(TOKEN);
+      expect(made).toHaveLength(3);
+      expect(clicked).toEqual(NAMES);
+      expect(panel.text()).toContain("Log in to set up ShareX.");
+    });
+
     it("keeps a token on show above the gate until it's saved", async () => {
       const panel = await setUp();
       isLoggedIn.value = false;
@@ -332,7 +367,7 @@ describe("SharexPanel", () => {
       expect(document.activeElement).toBe(panel.find(".token__title").element);
       sessionEnded.value = false;
       await flushPromises();
-      await key(panel, "I've saved it").trigger("click");
+      await key(panel, "I've saved the files").trigger("click");
       await flushPromises();
       expect(document.activeElement?.textContent?.trim()).toBe("Log in to set up ShareX.");
     });

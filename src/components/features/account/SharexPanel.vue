@@ -24,6 +24,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { ApiKeyTokenResponse } from "@/types/api/apiKeys";
+import type { SharexUploader } from "@/types/api/sharex";
 import type { MfaPasswordBody } from "@/types/api/mfa";
 
 const PATH = "/account/sharex";
@@ -40,8 +41,6 @@ const confirming = ref(false);
 const full = ref(false);
 const created = ref<{ message: string; token: string } | null>(null);
 const files = ref<{ id: SharexUploaderId; url: string }[]>([]);
-/** The loaded files, with the placeholder, until the key's token fills them in. */
-let loaded: string[] = [];
 const opener = useTemplateRef<InstanceType<typeof BaseButton>>("opener");
 const capLine = useTemplateRef("capLine");
 const downloads = useTemplateRef("downloads");
@@ -57,11 +56,10 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
       apiRequest(Endpoints.Sharex[id], { failure: Messages.Sharex.filesFailed })
     )
   );
-  const texts: string[] = [];
+  const uploaders: SharexUploader[] = [];
   for (const result of results) {
     if (!result.ok) return result;
-    const text = JSON.stringify(result.data, null, 2);
-    if (!text.includes(Sharex.tokenPlaceholder)) {
+    if (result.data.Headers?.Authorization !== `Bearer ${Sharex.tokenPlaceholder}`) {
       return {
         ok: false,
         kind: "http",
@@ -70,7 +68,7 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
         body: null
       };
     }
-    texts.push(text);
+    uploaders.push(result.data);
   }
 
   const result = await apiRequest(Endpoints.User.createApiKey, {
@@ -78,7 +76,9 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
     failure: Messages.ApiKeys.createFailed,
     quietStatuses: REAUTH_QUIET_STATUSES
   });
-  if (result.ok) loaded = texts;
+  // Shown from here rather than on the form's `done`: a session that ends meanwhile takes the form
+  // away, and its `done` with it, but not this page or the token the API won't show again.
+  if (result.ok) await showFiles(uploaders, result.data);
   else if (result.status === HttpStatus.Conflict) full.value = true;
   return result;
 };
@@ -88,20 +88,27 @@ const forgetFiles = () => {
   files.value = [];
 };
 
-/** The files get the token and download at once; their links stay for a browser that blocked some. */
-const onCreated = async (data: ApiKeyTokenResponse) => {
+/**
+ * The files get the token and download at once; their links stay for a browser that blocked some.
+ * Octet-stream, so no browser renames a `.sxcu` file to match a JSON type.
+ */
+const showFiles = async (uploaders: SharexUploader[], data: ApiKeyTokenResponse) => {
   const { token } = data.apiKey;
   confirming.value = false;
   notice.value = "";
   oauthError.value = "";
-  forgetFiles();
-  files.value = Sharex.uploaders.map(({ id }, i) => ({
-    id,
-    url: URL.createObjectURL(
-      new Blob([loaded[i].split(Sharex.tokenPlaceholder).join(token)], { type: ContentType.Json })
-    )
-  }));
-  loaded = [];
+  files.value = Sharex.uploaders.map(({ id }, i) => {
+    const file = {
+      ...uploaders[i],
+      Headers: { ...uploaders[i].Headers, Authorization: `Bearer ${token}` }
+    };
+    return {
+      id,
+      url: URL.createObjectURL(
+        new Blob([JSON.stringify(file, null, 2)], { type: ContentType.OctetStream })
+      )
+    };
+  });
   created.value = { message: data.message, token };
   await nextTick();
   downloads.value?.querySelectorAll("a").forEach((link) => link.click());
@@ -162,11 +169,14 @@ onBeforeUnmount(forgetFiles);
       :name="Sharex.keyName"
       :message="created.message"
       :token="created.token"
+      done-label="I've saved the files"
       @done="onSaved"
     >
       <p class="note">
         Your browser should have downloaded these three files, with the token filled in. If it held
-        any back, download them here. Then import them as shown under “In ShareX”, below.
+        any back, download them here. Then import them as shown under “In ShareX”, below. Anyone
+        with these files can use the key: don't share them, and delete them once ShareX has imported
+        them.
       </p>
       <ul ref="downloads" class="downloads" aria-label="Your ShareX files">
         <li v-for="file in files" :key="file.id">
@@ -191,9 +201,11 @@ onBeforeUnmount(forgetFiles);
           ShareX uploads is public to anyone with its link.
         </p>
         <p class="intro">
-          Setting it up creates an API key named “{{ Sharex.keyName }}” that can only upload files,
-          create pastes and shorten links, and downloads three uploader files with its token in
-          them. Creating the key mails you a security notice.
+          Setting it up creates an API key named “{{ Sharex.keyName }}” that can add, change and
+          delete your uploads and pastes, and add and delete your short links, and nothing else on
+          your account. It also downloads three uploader files with its token in them. Creating the
+          key mails you a security notice.
+          {{ Messages.Sharex.keyLifetime(Limits.ApiKeys.expiryDefaultDays) }}
         </p>
       </template>
       <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
@@ -216,7 +228,6 @@ onBeforeUnmount(forgetFiles);
           busy-label="Creating"
           hint="Confirms it's you. The key's token then shows only once, and the three files download with it."
           :github-return="PATH"
-          @done="onCreated"
           @cancel="cancel"
         />
         <BaseButton v-else ref="opener" class="open" @click="start">

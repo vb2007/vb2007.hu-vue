@@ -62,7 +62,7 @@ test("ShareX is set up from the account page: one key, three files with its toke
   );
   expect(page.url()).not.toContain(token);
 
-  await panel.getByRole("button", { name: "I've saved it" }).click();
+  await panel.getByRole("button", { name: "I've saved the files" }).click();
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Set up ShareX" })).toBeFocused();
 });

@@ -567,6 +567,10 @@ export class Messages {
     static githubConfirmed(minutes: number): string {
       return `GitHub confirmed it's you. Set up ShareX within ${minutes} minutes.`;
     }
+    /** The key's lifetime: the API's default, as the page sends none. */
+    static keyLifetime(days: number): string {
+      return `The key works for ${days} days. After that, set ShareX up again here and delete the old key under API keys.`;
+    }
   };
 
   static readonly Uploads = class {
