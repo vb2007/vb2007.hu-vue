@@ -210,3 +210,50 @@ test("a URL the API refuses shows its reason", async ({ page, api }) => {
   await expect(url).toHaveValue("https://example.com/a");
   expect(refused).toBe(1);
 });
+
+test("at the account's cap, the form leads to the user's links to make room", async ({
+  page,
+  api
+}) => {
+  const cap = "An account can have at most 2 short URLs: delete one first.";
+  api.loggedInAs();
+  api.capsShortLinksAt(2);
+  api.hasShortLink("old111", "https://example.com/one");
+  api.hasShortLink("old222", "https://example.com/two");
+  // Someone else's link doesn't count towards the user's cap.
+  api.hasShortLink("xyz789", "https://example.com/theirs", "someone-else");
+  api.shortenReturns("new333");
+  await page.goto("/");
+  const url = page.getByLabel("URL");
+  const shorten = async (target: string) => {
+    await url.fill(target);
+    await page.getByRole("button", { name: "Shorten", exact: true }).click();
+  };
+
+  await shorten("https://example.com/three");
+  await expect(url).toHaveAccessibleDescription(`${cap} Go to your links`);
+  // Focus is back on the field, so a screen reader hears the error and its link.
+  await expect(url).toBeFocused();
+  expect(api.shortLinks.has("new333")).toBe(false);
+
+  // A URL the user already shortened still gets its link back.
+  await shorten("https://example.com/one");
+  await expect(page.getByRole("link", { name: /\/r\/old111$/ })).toBeVisible();
+  await page.getByRole("button", { name: "Shorten another" }).click();
+
+  await shorten("https://example.com/three");
+  await page.getByRole("link", { name: "Go to your links" }).click();
+  await expect(page).toHaveURL(/\/shorten#your-links$/);
+  const yourLinks = page
+    .locator(".board")
+    .filter({ has: page.getByRole("heading", { name: "Your links" }) });
+  const row = yourLinks
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("link", { name: "old222", exact: true }) });
+  await row.getByRole("button", { name: "Delete old222" }).click();
+  await row.getByRole("button", { name: "Confirm delete old222" }).click();
+  await expect(yourLinks.getByRole("status")).toHaveText("Deleted old222.");
+
+  await shorten("https://example.com/three");
+  await expect(page.getByRole("link", { name: /\/r\/new333$/ })).toBeVisible();
+});
