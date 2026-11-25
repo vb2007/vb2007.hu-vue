@@ -127,10 +127,12 @@ export const validateFile = (
   return "";
 };
 
+/** `status` is the API's answer, 0 when there was none. */
 export class UploadError extends Error {
   constructor(
     message: string,
-    readonly cancelled = false
+    readonly cancelled = false,
+    readonly status = 0
   ) {
     super(message);
   }
@@ -174,7 +176,9 @@ export const sendUpload = (
         resolve((body as ResponseOf<typeof endpoint>).upload);
       } else {
         const error = new UploadError(
-          errorMessageFrom(body, request.status, request.statusText, Messages.Uploads.uploadFailed)
+          errorMessageFrom(body, request.status, request.statusText, Messages.Uploads.uploadFailed),
+          false,
+          request.status
         );
         // Like `apiRequest`, an ended session logs the page out before the failure comes back.
         void noticeSessionRefusal(endpoint, request.status, body).finally(() => reject(error));

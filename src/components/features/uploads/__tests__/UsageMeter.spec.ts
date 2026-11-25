@@ -84,14 +84,17 @@ describe("UsageMeter", () => {
   });
 
   it("counts the files against the upload cap, and says when it's reached", () => {
-    const some = mountMeter(someUsage({ count: 1234 }));
+    const some = mountMeter(
+      someUsage({ count: 1234, byCategory: [{ category: "image", bytes: 1, count: 1234 }] })
+    );
     expect(some.find(".tally").text()).toBe("1,234 of 10,000 files");
+    expect(some.find(".split__count").text()).toBe("1,234 files");
     expect(some.findComponent(StatusMessage).exists()).toBe(false);
 
     const capped = mountMeter(someUsage({ count: 10000 }));
     expect(capped.findComponent(StatusMessage).props("tone")).toBe("error");
     expect(capped.findComponent(StatusMessage).text()).toBe(
-      "You have the most files an account can have. Delete some uploads to make room for new ones."
+      "You've reached the 10,000-file limit. Delete some uploads to make room for new ones."
     );
   });
 });

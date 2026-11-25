@@ -17,6 +17,7 @@ export class HttpStatus {
   static readonly Forbidden = 403;
   static readonly NotFound = 404;
   static readonly Conflict = 409;
+  static readonly ContentTooLarge = 413;
   static readonly TooManyRequests = 429;
   static readonly InternalServerError = 500;
   static readonly ServiceUnavailable = 503;
