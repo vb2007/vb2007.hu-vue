@@ -13,8 +13,10 @@ import type { Paste } from "@/types/api/pastebin";
 export type LanguageSave = "saved" | "failed" | "gone";
 
 /**
- * Loads a single paste. Public: anyone with the link can read it; only its owner can change its
- * language. Loading another one aborts a load still in flight, as leaving the page does.
+ * Loads a single paste. Public and discoverable rather than unlisted: reading needs no login, the
+ * id is an ObjectId and anyone logged in (or an API key with `pastes:read`) can list a user's
+ * pastes; only its owner can change its language. Loading another one aborts a load still in
+ * flight, as leaving the page does.
  */
 export const usePaste = () => {
   const paste = ref<Paste | null>(null);
