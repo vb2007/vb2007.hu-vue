@@ -301,5 +301,33 @@ describe("router", () => {
 
       expect(router.currentRoute.value.path).toBe("/account");
     });
+
+    it("comes back with the page's own query too, like an API key deep link's", async () => {
+      await router.push("/");
+      saveGithubReturn(
+        "/account/api-keys?newApiKey=1&name=Bot&scopes=pastes%3Aread,uploads%3Aread"
+      );
+      await router.push("/account?github=linked");
+
+      expect(router.currentRoute.value.path).toBe("/account/api-keys");
+      expect(router.currentRoute.value.query).toEqual({
+        newApiKey: "1",
+        name: "Bot",
+        scopes: "pastes:read,uploads:read",
+        github: "linked"
+      });
+    });
+  });
+
+  it("forwards an API key deep link on the account page to the API keys page", async () => {
+    await router.push("/");
+    await router.push("/account?newApiKey=1&name=Bot&scopes=pastes:read&scopes=uploads:read");
+
+    expect(router.currentRoute.value.path).toBe("/account/api-keys");
+    expect(router.currentRoute.value.query).toEqual({
+      newApiKey: "1",
+      name: "Bot",
+      scopes: ["pastes:read", "uploads:read"]
+    });
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import {
+  apiKeyLink,
   apiKeyNameEarlyError,
   apiKeyNameError,
   grantableScopes,
@@ -105,5 +106,55 @@ describe("grantableScopes", () => {
     expect(grantableScopes(true)).toEqual(Limits.ApiKeys.scopes);
     expect(grantableScopes(false)).toEqual(Limits.ApiKeys.scopes.slice(0, 8));
     expect(grantableScopes(false).some((scope) => scope.startsWith("admin:"))).toBe(false);
+  });
+});
+
+describe("apiKeyLink", () => {
+  it("is nothing without newApiKey", () => {
+    expect(apiKeyLink({ name: "Bot", scopes: "pastes:read" }, false)).toBeUndefined();
+  });
+
+  it.each([
+    ["missing", {}, []],
+    ["empty", { scopes: "" }, []],
+    ["valueless", { scopes: null }, []],
+    [
+      "spaced and repeated",
+      { scopes: " pastes:write , pastes:read,,pastes:write " },
+      ["pastes:read", "pastes:write"]
+    ],
+    [
+      "a repeated param's",
+      { scopes: ["pastes:write", null, "account:read,pastes:read"] },
+      ["account:read", "pastes:read", "pastes:write"]
+    ]
+  ])("reads %s scopes, in the API's order, once each", (_case, query, scopes) => {
+    expect(apiKeyLink({ newApiKey: "1", ...query }, false)).toEqual({
+      name: "",
+      scopes,
+      dropped: []
+    });
+  });
+
+  it("leaves out unknown scopes, and the admin ones but for the superuser, naming them", () => {
+    const query = { newApiKey: "1", scopes: "admin:read,spotdl:submit,uploads:read,spotdl:submit" };
+    expect(apiKeyLink(query, false)).toEqual({
+      name: "",
+      scopes: ["uploads:read"],
+      dropped: ["admin:read", "spotdl:submit"]
+    });
+    expect(apiKeyLink(query, true)).toEqual({
+      name: "",
+      scopes: ["uploads:read", "admin:read"],
+      dropped: ["spotdl:submit"]
+    });
+  });
+
+  it.each([
+    [" Deploy bot ", " Deploy bot "],
+    [["First", "Second"], "First"],
+    [null, ""]
+  ])("keeps the name %j as given: %j", (name, expected) => {
+    expect(apiKeyLink({ newApiKey: "1", name }, false)!.name).toBe(expected);
   });
 });

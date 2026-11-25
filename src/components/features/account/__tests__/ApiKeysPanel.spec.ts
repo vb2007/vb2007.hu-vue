@@ -418,6 +418,135 @@ describe("ApiKeysPanel", () => {
     });
   });
 
+  describe("the deep link", () => {
+    const LINK =
+      "/account/api-keys?newApiKey=1&name=Deploy%20bot&scopes=pastes:write,pastes:read&tab=x";
+    const linked = (scopes: string) =>
+      `/account/api-keys?newApiKey=1&name=Bot&scopes=${encodeURIComponent(scopes)}`;
+
+    const mountLinked = async (path: string, ...apiKeys: ApiKey[]) => {
+      fetchMock.mockResolvedValueOnce(list(...apiKeys));
+      const mounted = await mountWithRouter(ApiKeysPanel, { attachTo: document.body }, path);
+      wrapper = mounted.wrapper;
+      await flushPromises();
+      return mounted;
+    };
+    const ticked = (panel: VueWrapper) =>
+      panel.findAll('.key-form__scopes [role="group"]').flatMap((group) =>
+        group
+          .findAll("label")
+          .filter((label) => (label.find("input").element as HTMLInputElement).checked)
+          .map((label) => `${group.attributes("aria-label")} ${label.text()}`)
+      );
+    const leftOut = (panel: VueWrapper) => panel.find(".key-form__scopes .status--info");
+
+    it("opens the create form filled in, keeps the default lifetime, and creating drops its query", async () => {
+      const { wrapper: panel, router } = await mountLinked(LINK);
+
+      expect((panel.find(".key-form input").element as HTMLInputElement).value).toBe("Deploy bot");
+      expect(document.activeElement).toBe(panel.find(".key-form input").element);
+      expect(ticked(panel)).toEqual(["Pastes Read", "Pastes Write"]);
+      expect(leftOut(panel).exists()).toBe(false);
+      expect(panel.find("select").element).toHaveProperty("value", "days");
+      expect(panel.find('input[inputmode="numeric"]').element).toHaveProperty("value", "90");
+
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(withToken(DEPLOY, CREATED));
+      fetchMock.mockResolvedValueOnce(list(DEPLOY));
+      await confirm(panel);
+
+      expect(bodyOf(1)).toEqual({
+        password: "secret",
+        name: "Deploy bot",
+        scopes: ["pastes:read", "pastes:write"],
+        expiresInDays: 90
+      });
+      expect(panel.find(".token__text").text()).toBe(TOKEN);
+      expect(router.currentRoute.value.query).toEqual({ tab: "x" });
+    });
+
+    it("leaves out, and names, the admin and unknown scopes for an account that isn't the superuser", async () => {
+      const { wrapper: panel } = await mountLinked(linked("admin:read,spotdl:submit,uploads:read"));
+
+      expect(ticked(panel)).toEqual(["Uploads Read"]);
+      expect(panel.find('[role="group"][aria-label="Admin"]').exists()).toBe(false);
+      expect(leftOut(panel).text()).toBe(
+        Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"])
+      );
+    });
+
+    it("keeps the admin scopes for the superuser, once the session is known", async () => {
+      isSessionChecked.value = false;
+      isLoggedIn.value = false;
+      const { wrapper: panel } = await mountWithRouter(
+        ApiKeysPanel,
+        { attachTo: document.body },
+        linked("admin:read,spotdl:submit,uploads:read")
+      );
+      wrapper = panel;
+      fetchMock.mockResolvedValueOnce(list());
+      isSuperuser.value = true;
+      isSessionChecked.value = true;
+      isLoggedIn.value = true;
+      await flushPromises();
+
+      expect(ticked(panel)).toEqual(["Uploads Read", "Admin Read"]);
+      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["spotdl:submit"]));
+    });
+
+    it("is ignored at the cap, its query kept", async () => {
+      const ten = Array.from({ length: 10 }, (_, i) => ({ ...DEPLOY, id: `${i}`.repeat(32) }));
+      const { wrapper: panel, router } = await mountLinked(LINK, ...ten);
+
+      expect(panel.find(".key-form").exists()).toBe(false);
+      expect(panel.text()).toContain(Messages.ApiKeys.atCap(10));
+      expect(router.currentRoute.value.query).toHaveProperty("newApiKey", "1");
+    });
+
+    it("stays in the address for after a visitor logs in", async () => {
+      isLoggedIn.value = false;
+      const { wrapper: panel, router } = await mountWithRouter(ApiKeysPanel, {}, LINK);
+      wrapper = panel;
+      await flushPromises();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(panel.text()).toContain("Log in to manage your API keys.");
+      expect(router.currentRoute.value.fullPath).toBe(LINK);
+    });
+
+    it("goes with Cancel, which drops its query, and the next form opens empty", async () => {
+      const { wrapper: panel, router } = await mountLinked(linked("spotdl:submit"));
+      expect(leftOut(panel).exists()).toBe(true);
+      await key(panel, "Cancel").trigger("click");
+      await flushPromises();
+
+      expect(router.currentRoute.value.query).toEqual({});
+      await key(panel, "Create an API key").trigger("click");
+      expect((panel.find(".key-form input").element as HTMLInputElement).value).toBe("");
+      expect(ticked(panel)).toEqual([]);
+      expect(leftOut(panel).exists()).toBe(false);
+    });
+
+    it("comes back from a GitHub confirmation, which keeps it", async () => {
+      hasPassword.value = false;
+      const { wrapper: panel } = await mountLinked(LINK);
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(403, {
+          error:
+            "Confirm it's you first: log in with GitHub again (or relink it), then create or rotate the API key within 10 minutes."
+        })
+      );
+      await panel.find(".reauth").trigger("submit");
+      await flushPromises();
+      await panel.find(".reauth a").trigger("click");
+
+      expect(takeGithubReturn()).toBe(LINK);
+    });
+  });
+
   describe("rotating", () => {
     const openRotate = async (panel: VueWrapper, name = "Deploy bot") => {
       await key(panel, `Rotate ${name}`).trigger("click");

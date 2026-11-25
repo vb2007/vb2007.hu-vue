@@ -172,6 +172,63 @@ test("an account without a password confirms with GitHub and comes back to its A
   await expect(page).toHaveURL("/account");
 });
 
+test("a deep link fills in the create form, leaving out the scopes it can't give", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  await page.goto(
+    "/account?newApiKey=1&name=spotdl%20extension&scopes=uploads:write,admin:read,spotdl:submit"
+  );
+  await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
+  const name = page.getByLabel("Name", { exact: true });
+  await expect(name).toHaveValue("spotdl extension");
+  await expect(name).toBeFocused();
+  await expect(page.getByRole("group", { name: "Uploads" }).getByLabel("Write")).toBeChecked();
+  await expect(page.getByRole("group", { name: "Uploads" }).getByLabel("Read")).not.toBeChecked();
+  await expect(page.getByRole("group", { name: "Admin" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText(
+    "The link also asked for scopes this account can't give a key, so they're left out: admin:read, spotdl:submit."
+  );
+  await expect(page.getByLabel("Days from now")).toHaveValue("90");
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Create key" }).click();
+  await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
+  const [created] = api.apiKeysOf();
+  expect(created.name).toBe("spotdl extension");
+  expect(created.scopes).toEqual(["uploads:write"]);
+  expect(Date.parse(created.expiresAt!) - Date.parse(created.createdAt)).toBe(90 * DAY_MS);
+  await expect(page).toHaveURL("/account/api-keys");
+});
+
+test("a deep link's form comes back filled in from a GitHub confirmation", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me", { password: false });
+  await page.goto("/account/api-keys?newApiKey=1&name=Deploy%20bot&scopes=pastes:read");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Create key" }).click();
+  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "GitHub confirmed it's you. Create or rotate the API key within 10 minutes."
+    })
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
+  expect(new URL(page.url()).searchParams.has("github")).toBe(false);
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Deploy bot");
+  await expect(page.getByRole("group", { name: "Pastes" }).getByLabel("Read")).toBeChecked();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Create key" }).click();
+  await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
+  expect(api.apiKeysOf()[0].scopes).toEqual(["pastes:read"]);
+  await expect(page).toHaveURL("/account/api-keys");
+});
+
 test("a field the form sends the cursor to scrolls clear of the navbar", async ({ page, api }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   api.loggedInAs(MOCK_EMAIL, "e2e");
