@@ -18,6 +18,7 @@ describe("AppFooter", () => {
       "/shorten",
       "/pastebin",
       "/upload",
+      "https://api.test/docs",
       "/login",
       "/register"
     ]);
@@ -48,6 +49,16 @@ describe("AppFooter", () => {
     expect(matrix.attributes("rel")).toBe("noopener");
   });
 
+  it("links the API's public docs in a new tab, after the tools", async () => {
+    const { wrapper } = await mountWithRouter(AppFooter);
+    const docs = wrapper.find('.foot__group a[href="https://api.test/docs"]');
+
+    expect(docs.element.textContent).toBe("API docs (opens in a new tab)");
+    expect(docs.attributes("target")).toBe("_blank");
+    expect(docs.attributes("rel")).toBe("noopener");
+    expect(wrapper.find('a[href="https://api.test/docs/admin"]').exists()).toBe(false);
+  });
+
   it("links the account instead of logging in once logged in", async () => {
     isLoggedIn.value = true;
 
@@ -57,6 +68,7 @@ describe("AppFooter", () => {
       "/shorten",
       "/pastebin",
       "/upload",
+      "https://api.test/docs",
       "/account"
     ]);
   });

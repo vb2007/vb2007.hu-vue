@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+import { Endpoints } from "@/constants/endpoints";
 import { CONTACT_EMAIL, CONTACT_MAILTO, MATRIX_ID, MATRIX_URL, SITE_NAME } from "@/constants/site";
 import { TOOLS_LINE } from "@/constants/stops";
+import { apiUrl } from "@/scripts/api/client";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 
 // Only tools that exist today: the name already leads home, and planned stops have no page yet.
 const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.id !== "home");
+// The API the tools run on: its public docs, after them.
+const apiDocs = apiUrl(Endpoints.Docs.index);
 </script>
 
 <template>
@@ -35,6 +39,11 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
           <RouterLink v-for="stop in tools" :key="stop.id" :to="stop.to">{{
             stop.label
           }}</RouterLink>
+        </div>
+        <div class="foot__group">
+          <a :href="apiDocs" target="_blank" rel="noopener"
+            >API docs<span class="visually-hidden"> (opens in a new tab)</span></a
+          >
         </div>
         <div class="foot__group">
           <RouterLink v-if="isLoggedIn" to="/account">Account</RouterLink>
@@ -190,7 +199,7 @@ const tools = TOOLS_LINE.stops.filter((stop) => stop.status === "open" && stop.i
   }
 }
 
-/* Tools and account links are two groups, so a narrow footer wraps between them, never inside a group */
+/* Tools, API docs and account links are groups, so a narrow footer wraps between them, never inside one */
 .foot__links,
 .foot__group {
   display: flex;
