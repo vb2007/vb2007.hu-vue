@@ -131,6 +131,33 @@ Deploys run one at a time, and only after the release exists. A failing job stop
 
 Each release has auto-generated notes, the image digest, the test summary of the merged PR's CI run (when it can be found), and three assets: a `compose.yaml` pinned to that version, `images.json`, and `site-dist-<version>.tar.gz` (the built site, taken from the pushed image).
 
+### Self-hosted runners
+
+| Label | Where | Runs |
+|---|---|---|
+| `prod` | Production host (vbServer) | Only `release.yml` |
+| `pr-worker` | Shared CI host (Optiplex, see [CI](#ci)) | PR checks (`ci.yml`) and `dev-to-main-pr.yml` |
+
+PR workflows run untrusted code, so they must never use `prod`: pin every new one to `[self-hosted, Linux, X64, pr-worker]`.
+
+A PR can change its own workflow's `runs-on`, so that pin alone doesn't keep it off `prod`. The `prod` runner therefore runs [`.github/runner/host-job-guard.sh`](./.github/runner/host-job-guard.sh) as its job-started hook, which refuses any job that isn't a `push` or `workflow_dispatch` on `main` or `dev` of this repo. That covers `release.yml` (pushes to `main`, manual runs, and re-runs of an older `main` run for a rollback); a manual run of `release.yml` from any other branch or tag is refused too. A failing hook alone isn't enough, since the job's `always()`, `failure()` and `!cancelled()` steps still run after it ([actions/runner#2811](https://github.com/actions/runner/issues/2811)), so the guard SIGKILLs the job's `Runner.Worker` and the job fails before any step runs. That kill also drops the job log, so a refused job just shows "Set up runner" never finishing; the reason is in `journalctl -t host-job-guard` on the host.
+
+The guard only stops a PR job once it reaches `prod`. As a second layer, `src/__tests__/workflows.spec.ts` catches a wrong pin in the PR itself: it fails when a workflow triggered by any `pull_request*` event runs a job anywhere but `[self-hosted, Linux, X64, pr-worker]`, so the PR's checks say why instead of showing "Set up runner" never finishing. A wrong pin on the `unit-tests` job of `ci.yml`, which runs that check, still shows only the guard's refusal. The PR can edit the test too, so it only catches mistakes. Limiting `prod` to `release.yml` with a runner group would need an organization.
+
+Install the guard on vbServer, outside the runner directory and not writable by the runner user. The API repo's guard already lives on the same host at `/usr/local/lib/github-runner/host-job-guard.sh` and only allows that repo, so this one goes in its own folder. Run this from a checkout of `dev`; it is safe to run again. A new script takes effect on the next job, and only a changed `.env` needs the runner restart:
+
+```bash
+sudo install -D -o root -g root -m 0755 .github/runner/host-job-guard.sh /usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh
+unit=actions.runner.vb2007-vb2007.hu-vue.vbServer.service
+env="$(systemctl show -p WorkingDirectory --value "$unit")/.env"
+grep -q '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$env" || echo 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh' >> "$env"
+sudo systemctl restart "$unit"
+```
+
+To roll back, delete the `ACTIONS_RUNNER_HOOK_JOB_STARTED=` line from that `.env` and restart the same unit.
+
+Fork PRs must also keep needing approval: Settings → Actions → General → "Require approval for all external contributors" (`all_external_contributors`).
+
 ### One-time host setup
 
 The `prod` runner needs Docker access and a deploy directory holding the tunnel token. The workflow copies `compose.yaml` there on every deploy and never touches `.env`.
