@@ -61,7 +61,8 @@ const confirm = async () => {
       apiKeys: []
     });
   }
-  // A reset leaves nothing to reset, so its key goes: the focus moves to what it did.
+  // A reset leaves nothing to reset, so its key goes (the note still says what the row does): the
+  // focus moves to what it did.
   await nextTick();
   (done.value ? doneMessage : confirmKey).value?.$el.focus();
 };
