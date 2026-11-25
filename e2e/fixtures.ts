@@ -3286,7 +3286,7 @@ export class MockApi {
 
   /**
    * `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`,
-   * then the API's 400 to no file, 415, 413 and 400 to a bad name, in its order.
+   * then the 400 to no file, the type's 415 and the quota's 413, and only then, as in the API's `uploadFile`, the 400 to a bad name.
    */
   private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
@@ -3303,8 +3303,9 @@ export class MockApi {
     if (!part.hasFile || ["", ".", ".."].includes(base)) {
       return { status: 400, body: { error: "No file was provided." } };
     }
-    // The API types by the trimmed name (text types only; it sniffs binary ones), and `uploadFile` checks and stores it.
-    const fileName = base.trim();
+    // Multer reverses the browser's escapes for LF, CR and `"`. The API types by the trimmed name (text types only; it
+    // sniffs binary ones), and `uploadFile` checks and stores it.
+    const fileName = base.replace(/%0A|%0D|%22/gi, (escape) => decodeURIComponent(escape)).trim();
     const extension = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
@@ -3312,7 +3313,8 @@ export class MockApi {
     if (this.usedBytes() + part.size > this.quotaBytes) {
       return { status: 413, body: { error: "This upload would go over your storage quota." } };
     }
-    // `isUploadFileName` (vb2007/vb2007.hu-api#552)
+    // `isUploadFileName` (vb2007/vb2007.hu-api#552). The real API refuses raw C0 controls but tab, and DEL, earlier, as
+    // busboy's 400 "Malformed part header"; the composer never sends them.
     if (fileName.length > 255 || /[/\\\u0000-\u001f\u007f]/.test(fileName)) {
       return {
         status: 400,
