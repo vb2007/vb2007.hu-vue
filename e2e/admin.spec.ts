@@ -61,6 +61,12 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(row("Default quota", "Upload settings").locator("dd")).toHaveText("10 GB");
   await expect(row("Largest file", "Upload settings").locator("dd")).toHaveText("100 MB");
 
+  // The docs with the admin routes, named apart from the footer's public ones; checked, not followed.
+  const docs = page.getByRole("link", { name: "admin API docs (opens in a new tab)", exact: true });
+  await expect(docs).toHaveAttribute("href", `${api.apiOrigin}/docs/admin`);
+  await expect(docs).toHaveAttribute("target", "_blank");
+  await expect(docs).toHaveAttribute("rel", "noopener");
+
   const mail = board.getByRole("region", { name: "Mail today" });
   await expect(mail.getByText("12 of 250 sent")).toBeVisible();
   await expect(mail.getByRole("meter", { name: "Mail sent today" })).toHaveAttribute(

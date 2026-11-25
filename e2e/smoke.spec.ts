@@ -37,7 +37,7 @@ test("a board header keeps its padding above the kerb hatch", async ({ page }) =
   expect(bottom).toBeCloseTo(top + hatch, 1);
 });
 
-test("footer links lead to each page", async ({ page, isMobile }) => {
+test("footer links lead to each page", async ({ page, api, isMobile }) => {
   await page.goto("/");
   const footer = page.getByRole("navigation", { name: "Footer" });
 
@@ -73,6 +73,13 @@ test("footer links lead to each page", async ({ page, isMobile }) => {
   await expect(matrix).toHaveAttribute("href", "https://matrix.to/#/@vb2007:vb2007.hu");
   await expect(matrix).toHaveAttribute("target", "_blank");
   await expect(matrix).toHaveAttribute("rel", "noopener");
+
+  // The API's docs are on the API's host, so they're checked rather than followed too.
+  const docs = footer.getByRole("link", { name: "API docs (opens in a new tab)", exact: true });
+  await expect.poll(() => api.apiOrigin).not.toBe("");
+  await expect(docs).toHaveAttribute("href", `${api.apiOrigin}/docs`);
+  await expect(docs).toHaveAttribute("target", "_blank");
+  await expect(docs).toHaveAttribute("rel", "noopener");
 
   // A wide footer shows the addresses beside their labels; a phone's shows only the labels, the
   // addresses kept in the names. Visually hidden still has a 1px box, so the width tells them apart.
