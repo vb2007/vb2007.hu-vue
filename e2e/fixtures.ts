@@ -1125,7 +1125,10 @@ export class MockApi {
     this.emailCooldownOnSend = cooldownLeftOnSend ?? null;
   }
 
-  /** Counts `count` e-mail change codes mailed to the logged-in account just now, as if it asked for them today. */
+  /**
+   * Counts `count` e-mail change codes mailed to the logged-in account just now, as if it asked for them today.
+   * `DELETE /admin/rate-limits` with its address empties the count, naming `emailChangeSends` while it counts.
+   */
   mailedEmailChangeCodes(count: number) {
     this.emailChangeSends.set(this.user!._id, { count, since: this.now() });
   }
@@ -3926,6 +3929,15 @@ export class MockApi {
       );
     const cleared = new Set(this.rateLimitCounts.filter(matches).map((count) => count.name));
     this.rateLimitCounts = this.rateLimitCounts.filter((count) => !matches(count));
+    // The account's real count of e-mail change codes (see `mailedEmailChangeCodes`), named only while it counts.
+    const account = this.storedAccounts().find(
+      ({ email: address }) => key.email !== undefined && normalizeEmail(address) === key.email
+    );
+    const sends = account && this.emailChangeSends.get(account.id);
+    if (sends) {
+      this.emailChangeSends.delete(account.id);
+      if (sends.count > 0 && this.now() < sends.since + DAY_MS) cleared.add("emailChangeSends");
+    }
     return {
       status: 200,
       body: {
