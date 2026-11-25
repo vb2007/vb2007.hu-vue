@@ -35,7 +35,7 @@ export interface QueueItem {
 /**
  * Files waiting for, going through or done with an upload. Runs `PARALLEL_UPLOADS` at a time and
  * calls `onUploaded` after each one lands, so the list and the storage meter can refresh, and
- * `onRefused` when the API turns one away for the upload cap or the quota, so the meter catches up.
+ * `onRefused` when the API turns one away with a 409 or 413, so the meter catches up.
  */
 export const useUploadQueue = (
   usage: Ref<UploadUsage | null>,

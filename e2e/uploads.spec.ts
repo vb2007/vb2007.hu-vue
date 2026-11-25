@@ -516,3 +516,43 @@ test("the storage board counts files against the upload cap, which stops uploads
   expect(sent).toHaveLength(2);
   expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["two.png", "three.png"]);
 });
+
+test("a .json file over 1 MB is refused before it's sent, which the API would call an unsupported type", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  await page.goto("/upload");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/upload")) sent.push(request.url());
+  });
+
+  const MB = 1024 * 1024;
+  await page.getByLabel("Files to upload").setInputFiles([
+    { name: "big.json", mimeType: "application/json", buffer: Buffer.alloc(MB + 1, " ") },
+    {
+      name: "fits.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(`[${" ".repeat(MB - 2)}]`)
+    }
+  ]);
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(
+    queue.getByText("JSON files can be at most 1 MB. Zip this one to upload it.")
+  ).toBeVisible();
+  await expect(queue.getByText(/^Uploaded/)).toBeVisible();
+  expect(sent).toHaveLength(1);
+  expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["fits.json"]);
+
+  // The API itself: the same file sent past the page gets the unsupported type's 415.
+  const answer = await page.evaluate(async (url) => {
+    const body = new FormData();
+    body.append("visibility", "private");
+    body.append("file", new File([" ".repeat(1024 * 1024 + 1)], "big.json"));
+    const response = await fetch(url, { method: "POST", credentials: "include", body });
+    return { status: response.status, body: (await response.json()) as unknown };
+  }, `${api.apiOrigin}/upload`);
+  expect(answer).toEqual({ status: 415, body: { error: "This file type isn't supported." } });
+  expect(api.uploads).toHaveLength(1);
+});

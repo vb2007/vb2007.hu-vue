@@ -129,6 +129,15 @@ export class Limits {
     ] as const satisfies readonly ApiKeyScope[];
   };
 
+  static readonly Upload = class {
+    /**
+     * The API's `UPLOAD_JSON_VALIDATION_MAX_BYTES` (vb2007/vb2007.hu-api#529): a file it would store
+     * as `.json` (by its trimmed name) over this many bytes isn't read, and gets the unsupported
+     * type's 415.
+     */
+    static readonly jsonMaxBytes: number = 1024 * 1024;
+  };
+
   /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */
   static readonly FileName = class {
     static readonly minLength: number = 1;

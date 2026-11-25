@@ -138,6 +138,10 @@ export const validateFile = (
   if (usage.usedBytes + pendingBytes + file.size > usage.quotaBytes) {
     return Messages.Uploads.quotaExceeded;
   }
+  // After the cap and the quota, like the API's 415 that this stands in for.
+  if (extension === ".json" && file.size > Limits.Upload.jsonMaxBytes) {
+    return Messages.Uploads.jsonTooLarge(formatBytes(Limits.Upload.jsonMaxBytes));
+  }
   return "";
 };
 
