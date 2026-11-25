@@ -50,6 +50,9 @@ const gateMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("gateMess
 /** Which uploader each of ShareX's Destinations slots takes, in ShareX's order. */
 const slots = Sharex.uploaders.flatMap(({ name, slots }) => slots.map((slot) => ({ slot, name })));
 
+/** Set once the page goes: no key is created after it, and one answered after it makes no files. */
+let left = false;
+
 const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenResponse>> => {
   const results = await Promise.all(
     Sharex.uploaders.map(({ id }) =>
@@ -61,7 +64,7 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
     // One reason whatever went wrong (offline, or a 404 from an API without these routes yet): the
     // user needs to know no key was made. The status stays, so a 429 still holds the key.
     if (!result.ok) return { ...result, error: Messages.Sharex.filesUnavailable };
-    if (result.data.Headers?.Authorization !== `Bearer ${Sharex.tokenPlaceholder}`) {
+    if (result.data.Headers?.Authorization !== Sharex.authorization()) {
       return {
         ok: false,
         kind: "http",
@@ -72,6 +75,8 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
     }
     uploaders.push(result.data);
   }
+  // Left while the files loaded: a key now would be one nobody sees, costing a notice and a slot.
+  if (left) return { ok: false, kind: "aborted", status: 0, error: Messages.requestAborted };
 
   const result = await apiRequest(Endpoints.User.createApiKey, {
     body: { ...body, name: Sharex.keyName, scopes: [...Sharex.keyScopes] },
@@ -95,6 +100,8 @@ const forgetFiles = () => {
  * Octet-stream, so no browser renames a `.sxcu` file to match a JSON type.
  */
 const showFiles = async (uploaders: SharexUploader[], data: ApiKeyTokenResponse) => {
+  // The page went while the key was made: nothing would ever free the token's Blob URLs.
+  if (left) return;
   const { token } = data.apiKey;
   confirming.value = false;
   notice.value = "";
@@ -102,7 +109,7 @@ const showFiles = async (uploaders: SharexUploader[], data: ApiKeyTokenResponse)
   files.value = Sharex.uploaders.map(({ id }, i) => {
     const file = {
       ...uploaders[i],
-      Headers: { ...uploaders[i].Headers, Authorization: `Bearer ${token}` }
+      Headers: { ...uploaders[i].Headers, Authorization: Sharex.authorization(token) }
     };
     return {
       id,
@@ -156,7 +163,10 @@ watch(isLoggedIn, (loggedIn) => {
 // on show has it: that matters more.
 watch(sessionEnded, (ended) => ended && !created.value && focusAction());
 
-onBeforeUnmount(forgetFiles);
+onBeforeUnmount(() => {
+  left = true;
+  forgetFiles();
+});
 </script>
 
 <template>
