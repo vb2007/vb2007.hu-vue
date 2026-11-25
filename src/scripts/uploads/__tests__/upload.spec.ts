@@ -116,6 +116,17 @@ describe("validateFile", () => {
     );
   });
 
+  it("rejects a .json file over the size the API validates, by its trimmed name", () => {
+    const usage = someUsage({
+      allowedTypes: [{ mimeType: "application/json", extension: ".json", category: "document" }]
+    });
+    expect(validateFile(aFile("data.json", MB, "application/json"), usage)).toBe("");
+    expect(validateFile(aFile("data.JSON ", MB + 1, "application/json"), usage)).toBe(
+      "JSON files can be at most 1 MB. Zip a larger one to upload it."
+    );
+    expect(validateFile(aFile("data.json.txt", MB + 1, "text/plain"), someUsage())).toBe("");
+  });
+
   it("counts what's already queued against the upload cap, which the API checks first", () => {
     const usage = someUsage({ count: 9998 });
     expect(validateFile(aFile("a.png"), usage, 0, 1)).toBe("");

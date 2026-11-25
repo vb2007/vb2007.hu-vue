@@ -112,6 +112,9 @@ export const validateFile = (
   if (!known) {
     return Messages.Uploads.unsupportedType;
   }
+  if (extensionOf(file.name.trim()) === ".json" && file.size > Limits.Upload.jsonMaxBytes) {
+    return Messages.Uploads.jsonTooLarge(formatBytes(Limits.Upload.jsonMaxBytes));
+  }
   if (file.size > usage.maxFileSizeBytes) {
     return Messages.Uploads.tooLarge(formatBytes(usage.maxFileSizeBytes));
   }

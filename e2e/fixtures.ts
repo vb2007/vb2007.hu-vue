@@ -369,6 +369,7 @@ const ALLOWED_TYPES: { mimeType: string; extension: string; category: UploadCate
   { mimeType: "audio/mpeg", extension: ".mp3", category: "audio" },
   { mimeType: "application/pdf", extension: ".pdf", category: "document" },
   { mimeType: "text/plain", extension: ".txt", category: "document" },
+  { mimeType: "application/json", extension: ".json", category: "document" },
   { mimeType: "application/zip", extension: ".zip", category: "archive" }
 ];
 const CATEGORIES: UploadCategory[] = ["image", "video", "audio", "document", "archive"];
@@ -3314,7 +3315,11 @@ export class MockApi {
       return { status: 413, body: { error: "This upload would go over your storage quota." } };
     }
     const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
-    if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
+    // `UPLOAD_JSON_VALIDATION_MAX_BYTES` (vb2007/vb2007.hu-api#529): a larger .json isn't read, so it isn't a type either.
+    if (
+      !ALLOWED_TYPES.some((type) => type.extension === extension) ||
+      (extension === ".json" && part.size > MB)
+    ) {
       return { status: 415, body: { error: "This file type isn't supported." } };
     }
     const upload = this.hasUpload(part.fileName, {
