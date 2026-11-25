@@ -148,6 +148,44 @@ describe("ShortenPanel", () => {
     vi.restoreAllMocks();
   });
 
+  describe("at the account's cap", () => {
+    const CAP = "An account can have at most 10000 short URLs: delete one first.";
+    const hitCap = async (path?: string) => {
+      isLoggedIn.value = true;
+      mockFetch().mockResolvedValueOnce(jsonResponse(409, { error: CAP }));
+      const { wrapper } = await mountWithRouter(ShortenPanel, { attachTo: document.body }, path);
+      await wrapper.find("input").setValue("https://example.com/new");
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+      return wrapper;
+    };
+
+    it("leads to the user's links to delete one", async () => {
+      const wrapper = await hitCap();
+
+      expect(wrapper.find(".field__error").text()).toBe(`${CAP} Go to your links`);
+      expect(wrapper.find(".field__error a").attributes("href")).toBe("/shorten#your-links");
+      expect(wrapper.emitted("created")).toBeUndefined();
+      // Focus is back on the field, so the error and its link are read out.
+      expect(document.activeElement).toBe(wrapper.find("input").element);
+
+      // A URL the check refuses is the field's problem now, so the link goes.
+      const input = wrapper.find("input");
+      await input.setValue("example.com");
+      await input.trigger("blur");
+      expect(wrapper.find(".field__error").text()).toBe("Invalid URL / URI format.");
+      wrapper.unmount();
+    });
+
+    it("leaves the link out where the list is on the page", async () => {
+      const wrapper = await hitCap("/shorten");
+
+      expect(wrapper.find(".field__error").text()).toBe(CAP);
+      expect(wrapper.find(".field__error a").exists()).toBe(false);
+      wrapper.unmount();
+    });
+  });
+
   it("checks the URL once it's left", async () => {
     isLoggedIn.value = true;
     const { wrapper } = await mountWithRouter(ShortenPanel);

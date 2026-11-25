@@ -130,6 +130,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * nothing (the API answers before it looks); without an address, or one of only whitespace, it answers 400 first.
  * A password reset only mails `api.passwordResetCode` to an account's address, any the login knows, and not to a suspended `hasUser(...)` one. Without an address, or with one of only whitespace, it answers 400 before recording or mailing anything.
  * The code works once, for 30 minutes, and confirms the address for the account's next login.
+ * `POST /shortenUrl` refuses a new link with the API's 409 once the user has `api.capsShortLinksAt(n)` of them (10000 by default, like
+ * `SHORT_URLS_PER_USER_MAX`, vb2007/vb2007.hu-api#587); a URL they already shortened still gets its link back with a 200.
  * `GET /shortenUrls` lists the logged-in user's short links (`hasShortLink(..., addedBy)` files one under another username), and
  * `DELETE /shortenUrl/:shortenedUrl` deletes the user's own, or any for the superuser; `api.shortLinks.delete(code)` takes one away behind the page's back.
  * `GET /admin/short-urls` lists every account's links from the same store for the superuser, with a `null` owner for an `addedBy` no account has.
@@ -748,6 +750,8 @@ export class MockApi {
   /** Account `_id` -> e-mail change codes mailed since `since`, like the API's `emailChangeSends`. */
   private emailChangeSends = new Map<string, { count: number; since: number }>();
   private shortCode = "e2e123";
+  /** How many short links one user can have, like the API's `SHORT_URLS_PER_USER_MAX`. */
+  private shortLinkCap = 10000;
   /** Short code -> link, oldest first, filled by shortening and by `hasShortLink`; `addedBy` is a username. */
   readonly shortLinks = new Map<string, { target: string; addedBy: string; addedOn: string }>();
   /** In-memory paste store, oldest first. */
@@ -1461,6 +1465,10 @@ export class MockApi {
 
   shortenReturns(code: string) {
     this.shortCode = code;
+  }
+
+  capsShortLinksAt(count: number) {
+    this.shortLinkCap = count;
   }
 
   hasShortLink(
@@ -4100,7 +4108,7 @@ export class MockApi {
   /**
    * `POST /shortenUrl`, per user like the API (vb2007/vb2007.hu-api#247): the same user's URL again gets
    * their link back with a 200, anyone else's link to it doesn't count. A new link takes `shortenReturns`' code,
-   * or that code numbered when it's taken.
+   * or that code numbered when it's taken. Past the existing link, a user with `shortLinkCap` links gets the 409.
    */
   private shorten(url: unknown): MockResponse {
     if (!this.user) {
@@ -4128,6 +4136,17 @@ export class MockApi {
       ([, link]) => link.target === url && sameUsername(link.addedBy, username)
     );
     if (existing) return answer(200, "You've already shortened this URL.", existing[0]);
+    const owned = [...this.shortLinks.values()].filter((link) =>
+      sameUsername(link.addedBy, username)
+    ).length;
+    if (owned >= this.shortLinkCap) {
+      return {
+        status: 409,
+        body: {
+          error: `An account can have at most ${this.shortLinkCap} short URLs: delete one first.`
+        }
+      };
+    }
 
     let code = this.shortCode;
     for (let n = 2; this.shortLinks.has(code); n++) code = `${this.shortCode}${n}`;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useTemplateRef } from "vue";
+import { nextTick, useTemplateRef } from "vue";
+import { useRoute } from "vue-router";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useShortener } from "@/composables/useShortener";
@@ -26,9 +27,12 @@ const {
   isLoading,
   errorMessage,
   alreadyShortened,
+  atCap,
   shorten,
   reset
 } = useShortener();
+// At the cap, the way out is deleting a link. On /shorten the list is already on the page.
+const route = useRoute();
 
 const form = useTemplateRef("form");
 const {
@@ -47,7 +51,13 @@ const {
 });
 
 const submit = async () => {
-  if (!(await validate(form.value)) || !(await shorten())) return;
+  if (!(await validate(form.value))) return;
+  if (!(await shorten())) {
+    // The key was busy while it sent, which dropped focus: back to the field, so its error is heard.
+    await nextTick();
+    form.value?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
+    return;
+  }
   // The shortened URL is gone from the field; that's not a problem to show. Also when the answer
   // is the same link again, so the code didn't change.
   resetChecks();
@@ -68,7 +78,11 @@ const submit = async () => {
         required
         :error="errors.url || errorMessage"
         @blur="leave('url')"
-      />
+      >
+        <template v-if="atCap && !errors.url && route.name !== 'shorten'" #error>
+          {{ errorMessage }} <RouterLink to="/shorten#your-links">Go to your links</RouterLink>
+        </template>
+      </BaseInput>
       <BaseButton type="submit" block :loading="isLoading" :blocked="!isValid">
         {{ isLoading ? "Shortening" : "Shorten" }}
       </BaseButton>

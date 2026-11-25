@@ -83,6 +83,29 @@ describe("useShortener", () => {
     expect(shortener.isLoading.value).toBe(false);
   });
 
+  it("marks the account's cap without logging it, until the next try", async () => {
+    const CAP = "An account can have at most 10000 short URLs: delete one first.";
+    fetchMock.mockResolvedValueOnce(jsonResponse(409, { error: CAP }));
+    const shortener = useShortener();
+    shortener.originalUrl.value = "https://example.com/new";
+
+    expect(await shortener.shorten()).toBe(false);
+
+    expect(shortener.errorMessage.value).toBe(CAP);
+    expect(shortener.atCap.value).toBe(true);
+    expect(shortener.alreadyShortened.value).toBe(false);
+    expect(console.error).not.toHaveBeenCalled();
+
+    // A URL the check refuses is a different problem.
+    shortener.originalUrl.value = "example.com";
+    await shortener.shorten();
+    expect(shortener.atCap.value).toBe(false);
+
+    shortener.atCap.value = true;
+    shortener.reset();
+    expect(shortener.atCap.value).toBe(false);
+  });
+
   it("falls back to the status when the API sends no error", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500));
     const shortener = useShortener();
