@@ -410,7 +410,7 @@ test("the storage meter splits use by type and warns when nearly full", async ({
   expect(api.uploads).toHaveLength(2);
 });
 
-test("the storage board counts files against the upload cap, which stops uploads past it", async ({
+test("the storage board counts files against the upload cap, which stops uploads past it until one is deleted", async ({
   page,
   api
 }) => {
@@ -418,34 +418,42 @@ test("the storage board counts files against the upload cap, which stops uploads
   api.uploadCapIs(2);
   api.hasUpload("one.png");
   await page.goto("/upload");
-
-  const storage = board(page, "Storage");
-  await expect(storage.getByText("1 of 2 files")).toBeVisible();
-
-  // Another upload lands elsewhere after the page counted: the API's 409 is what stops this one.
-  api.hasUpload("two.png");
-  const file = { name: "three.png", mimeType: "image/png", buffer: Buffer.alloc(1024) };
-  await page.getByLabel("Files to upload").setInputFiles(file);
-  const queue = page.getByRole("region", { name: "On the way" });
-  await expect(
-    queue.getByText("An account can have at most 2 uploads: delete one first.")
-  ).toBeVisible();
-  expect(api.uploads).toHaveLength(2);
-
-  // Once the page knows, the pre-check stops the file before anything is sent.
-  await page.reload();
-  await expect(storage.getByText("2 of 2 files")).toBeVisible();
-  await expect(
-    storage.getByText("You have the most files an account can have. Delete some uploads")
-  ).toBeVisible();
   const sent: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().endsWith("/upload")) sent.push(request.url());
   });
+
+  const storage = board(page, "Storage");
+  await expect(storage.getByText("1 of 2 files")).toBeVisible();
+
+  // Another upload lands elsewhere after the page counted: the API's 409 is what stops this one,
+  // and the meter catches up.
+  api.hasUpload("two.png");
+  const file = { name: "three.png", mimeType: "image/png", buffer: Buffer.alloc(1024) };
   await page.getByLabel("Files to upload").setInputFiles(file);
-  await expect(
-    queue.getByText("An account can have at most 2 uploads: delete one first.")
-  ).toBeVisible();
-  expect(sent).toEqual([]);
+  const queue = page.getByRole("region", { name: "On the way" });
+  const refusal = queue.getByText("An account can have at most 2 uploads: delete one first.");
+  await expect(refusal).toBeVisible();
+  expect(sent).toHaveLength(1);
   expect(api.uploads).toHaveLength(2);
+  await expect(storage.getByText("2 of 2 files")).toBeVisible();
+  await expect(
+    storage.getByText("You've reached the 2-file limit. Delete some uploads to make room")
+  ).toBeVisible();
+
+  // Now the page knows, the pre-check stops the next file before anything is sent.
+  await page.getByLabel("Files to upload").setInputFiles({ ...file, name: "four.png" });
+  await expect(refusal).toHaveCount(2);
+  expect(sent).toHaveLength(1);
+
+  // Deleting an upload makes room, and the refused file can be tried again.
+  const list = board(page, "Your uploads");
+  await list.getByRole("button", { name: "one.png" }).click();
+  await list.getByRole("button", { name: "Delete", exact: true }).click();
+  await list.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(storage.getByText("1 of 2 files")).toBeVisible();
+  await queue.getByRole("button", { name: "Retry" }).first().click();
+  await expect(queue.getByText(/^Uploaded/)).toBeVisible();
+  expect(sent).toHaveLength(2);
+  expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["two.png", "three.png"]);
 });

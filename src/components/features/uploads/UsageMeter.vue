@@ -77,7 +77,7 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
           <AppIcon class="split__icon" :name="CATEGORY_ICONS[part.category]" :size="18" />
           <span class="split__name">{{ CATEGORY_LABELS[part.category] }}</span>
           <span class="split__count">
-            {{ part.count }} {{ part.count === 1 ? "file" : "files" }}
+            {{ part.count.toLocaleString() }} {{ part.count === 1 ? "file" : "files" }}
           </span>
           <span class="split__bytes">{{ formatBytes(part.bytes) }}</span>
           <span class="split__rail" aria-hidden="true">
@@ -91,7 +91,8 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
         of {{ usage.maxCount.toLocaleString() }} files
       </p>
       <StatusMessage v-if="usage.count >= usage.maxCount" tone="error">
-        You have the most files an account can have. Delete some uploads to make room for new ones.
+        You've reached the {{ usage.maxCount.toLocaleString() }}-file limit. Delete some uploads to
+        make room for new ones.
       </StatusMessage>
     </template>
   </StationBoard>
@@ -225,6 +226,7 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
   padding: 0;
   list-style: none;
   border-top: var(--edge) solid var(--c-hairline);
+  container-type: inline-size;
 }
 
 .split__row {
@@ -262,6 +264,17 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
   font-weight: 600;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Narrow (a 320px screen), the count goes under the name so the two don't run together. */
+@container (max-width: 18rem) {
+  .split__row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon name bytes"
+      ". count ."
+      "bar bar bar";
+  }
 }
 
 /* Each type's share of what you use, as a run along its own rail, ending in a stop. */

@@ -204,6 +204,14 @@ describe("views", () => {
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "https://api.test/uploads/usage"
     ]);
+
+    // The API refused one for the cap or the quota: only the meter needs catching up.
+    fetchMock.mockClear();
+    wrapper.findComponent(UploadComposer).vm.$emit("refused");
+    await flushPromises();
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.test/uploads/usage"
+    ]);
   });
 
   const asSuperuser = () => {

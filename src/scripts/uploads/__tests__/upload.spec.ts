@@ -168,12 +168,13 @@ describe("sendUpload", () => {
     expect(onProgress).toHaveBeenLastCalledWith(1);
   });
 
-  it("rejects with the API's error message", async () => {
+  it("rejects with the API's error message and status", async () => {
     const requests = mockXhr();
     const sent = sendUpload(aFile("a.png"), "private", vi.fn());
     requests[0].respond(415, { error: "This file type isn't supported." });
 
     await expect(sent).rejects.toEqual(new UploadError("This file type isn't supported."));
+    await expect(sent).rejects.toMatchObject({ cancelled: false, status: 415 });
   });
 
   it("tells the client about an ended session before it rejects, like apiRequest", async () => {
