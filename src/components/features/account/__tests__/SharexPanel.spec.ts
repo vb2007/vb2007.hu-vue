@@ -176,6 +176,9 @@ describe("SharexPanel", () => {
     expect(panel.find(".token__usage").exists()).toBe(false);
     expect(document.activeElement).toBe(panel.find(".token__title").element);
     expect(panel.find(".reauth").exists()).toBe(false);
+    // One token at a time: another key would replace this one before it's saved.
+    expect(key(panel, "Set up ShareX")).toBeUndefined();
+    expect(panel.find(".intro").exists()).toBe(false);
     expect(console.error).not.toHaveBeenCalled();
     expect(window.location.href).not.toContain(TOKEN);
     expect(JSON.stringify({ ...sessionStorage, ...localStorage })).not.toContain(TOKEN);

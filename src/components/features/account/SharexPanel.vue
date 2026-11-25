@@ -165,8 +165,8 @@ onBeforeUnmount(forgetFiles);
       @done="onSaved"
     >
       <p class="note">
-        The three files below have it filled in, and your browser should have downloaded them. If it
-        held any back, download them here:
+        Your browser should have downloaded these three files, with the token filled in. If it held
+        any back, download them here. Then import them as shown under “In ShareX”, below.
       </p>
       <ul ref="downloads" class="downloads" aria-label="Your ShareX files">
         <li v-for="file in files" :key="file.id">
@@ -184,42 +184,51 @@ onBeforeUnmount(forgetFiles);
     </ApiKeyTokenPanel>
 
     <template v-if="isLoggedIn">
-      <p class="intro">
-        Send screenshots, files, text and links from ShareX on Windows to your account. Setting it
-        up creates an API key named “{{ Sharex.keyName }}” that can only upload files, create pastes
-        and shorten links, and downloads three uploader files with its token in them. Creating the
-        key mails you a security notice. What ShareX uploads is public to anyone with its link.
-      </p>
+      <!-- Gone while a token is on show, so the steps it leads to come right under it. -->
+      <template v-if="!created">
+        <p class="intro">
+          Send screenshots, files, text and links from ShareX on Windows to your account. What
+          ShareX uploads is public to anyone with its link.
+        </p>
+        <p class="intro">
+          Setting it up creates an API key named “{{ Sharex.keyName }}” that can only upload files,
+          create pastes and shorten links, and downloads three uploader files with its token in
+          them. Creating the key mails you a security notice.
+        </p>
+      </template>
       <StatusMessage v-if="oauthError" tone="error">{{ oauthError }}</StatusMessage>
       <StatusMessage v-if="notice" tone="info">{{ notice }}</StatusMessage>
 
-      <div v-if="full" class="cap">
-        <p ref="capLine" class="intro" tabindex="-1">
-          {{ Messages.ApiKeys.atCap(Limits.ApiKeys.perAccount) }}
-        </p>
-        <BaseButton to="/account/api-keys" size="sm" variant="secondary">
-          Manage API keys <AppIcon name="arrow" :size="16" />
+      <!-- Not while a token is on show: another run would make a second key and replace it. -->
+      <template v-if="!created">
+        <div v-if="full" class="cap">
+          <p ref="capLine" class="intro" tabindex="-1">
+            {{ Messages.ApiKeys.atCap(Limits.ApiKeys.perAccount) }}
+          </p>
+          <BaseButton to="/account/api-keys" size="sm" variant="secondary">
+            Manage API keys <AppIcon name="arrow" :size="16" />
+          </BaseButton>
+        </div>
+        <ReauthForm
+          v-else-if="confirming"
+          :send="send"
+          submit-label="Create key"
+          busy-label="Creating"
+          hint="Confirms it's you. The key's token then shows only once, and the three files download with it."
+          :github-return="PATH"
+          @done="onCreated"
+          @cancel="cancel"
+        />
+        <BaseButton v-else ref="opener" class="open" @click="start">
+          <AppIcon name="download" :size="18" /> Set up ShareX
         </BaseButton>
-      </div>
-      <ReauthForm
-        v-else-if="confirming"
-        :send="send"
-        submit-label="Create key"
-        busy-label="Creating"
-        hint="Confirms it's you. The key's token then shows only once, and the three files download with it."
-        :github-return="PATH"
-        @done="onCreated"
-        @cancel="cancel"
-      />
-      <BaseButton v-else ref="opener" class="open" @click="start">
-        <AppIcon name="download" :size="18" /> Set up ShareX
-      </BaseButton>
+      </template>
 
       <h2 class="title">In ShareX</h2>
       <ol class="steps">
         <li>
-          Import each file: double-click it, or in ShareX open Destinations → Custom uploader
-          settings → Import.
+          Import the three .sxcu files: double-click each, or in ShareX open Destinations → Custom
+          uploader settings → Import.
         </li>
         <li>
           Under Destinations, pick the uploader for each slot:
@@ -229,16 +238,16 @@ onBeforeUnmount(forgetFiles);
               <dd>{{ each.name }}</dd>
             </div>
           </dl>
+          <p class="warning">
+            <AppIcon name="alert" :size="18" />
+            <span
+              >Set all four: a slot left on another uploader makes ShareX fail with “Unsupported
+              request format JSON”.</span
+            >
+          </p>
         </li>
         <li>Try each one with Test in Custom uploader settings.</li>
       </ol>
-      <p class="warning">
-        <AppIcon name="alert" :size="18" />
-        <span
-          >A slot left on another uploader sends the wrong request: ShareX then says “Unsupported
-          request format JSON”.</span
-        >
-      </p>
     </template>
 
     <div v-else class="gate">
@@ -277,6 +286,8 @@ onBeforeUnmount(forgetFiles);
    than widening the panel at 320 px. */
 .downloads :deep(.btn) {
   max-width: 100%;
+  justify-content: flex-start;
+  text-align: start;
   font-family: var(--font-code);
   font-size: var(--fs-sm);
   letter-spacing: 0;
@@ -339,6 +350,7 @@ onBeforeUnmount(forgetFiles);
 
 .warning {
   display: flex;
+  margin-top: var(--sp-3);
   align-items: flex-start;
   gap: var(--sp-2);
   font-size: var(--fs-sm);
