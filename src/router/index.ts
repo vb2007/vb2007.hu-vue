@@ -168,6 +168,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: "API keys" },
     component: () => import("../views/AccountApiKeysView.vue")
   },
+  // ShareX's uploaders with a key made for them (vb2007/vb2007.hu-api#573), linked from "API keys".
+  {
+    path: "/account/sharex",
+    name: "account-sharex",
+    meta: { title: "ShareX" },
+    component: () => import("../views/AccountSharexView.vue")
+  },
   {
     path: "/login",
     name: "login",

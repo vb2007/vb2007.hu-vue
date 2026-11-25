@@ -327,9 +327,14 @@ const onRecoveryCodesSaved = async () => {
           <p class="login__note">
             Let your scripts and programs use the API as you, each with only the scopes you pick.
           </p>
-          <BaseButton to="/account/api-keys" size="sm" variant="secondary">
-            Manage API keys <AppIcon name="arrow" :size="16" />
-          </BaseButton>
+          <div class="login__keys">
+            <BaseButton to="/account/api-keys" size="sm" variant="secondary">
+              Manage API keys <AppIcon name="arrow" :size="16" />
+            </BaseButton>
+            <BaseButton to="/account/sharex" size="sm" variant="secondary">
+              Set up ShareX <AppIcon name="arrow" :size="16" />
+            </BaseButton>
+          </div>
         </div>
       </div>
     </section>
@@ -506,6 +511,7 @@ const onRecoveryCodesSaved = async () => {
   gap: var(--sp-4);
 }
 
+.login__keys,
 .gate__keys {
   display: flex;
   flex-wrap: wrap;

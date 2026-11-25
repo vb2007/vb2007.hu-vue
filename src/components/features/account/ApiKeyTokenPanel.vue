@@ -18,6 +18,8 @@ defineProps<{
   token: string;
   /** A rotated key's new token, rather than a new key's. */
   rotated?: boolean;
+  /** The key that closes it, for a page that hands the token on in files. */
+  doneLabel?: string;
 }>();
 const emit = defineEmits<{ done: [] }>();
 
@@ -44,17 +46,20 @@ onMounted(() => title.value?.focus());
     <p class="token__value">
       <span class="visually-hidden">Token: </span><span class="token__text">{{ token }}</span>
     </p>
-    <p class="token__note">
-      Send it in the Authorization header, never in a URL. With the account:read scope, this shows
-      your account:
-    </p>
-    <code class="token__usage">{{ usage }}</code>
+    <!-- How to use it; a page that hands the token on some other way says so here instead. -->
+    <slot>
+      <p class="token__note">
+        Send it in the Authorization header, never in a URL. With the account:read scope, this shows
+        your account:
+      </p>
+      <code class="token__usage">{{ usage }}</code>
+    </slot>
     <div class="token__actions">
       <BaseButton size="sm" variant="secondary" @click="copy(token)">
         <AppIcon :name="copied ? 'check' : 'copy'" :size="16" />
         {{ copied ? "Copied" : "Copy token" }}
       </BaseButton>
-      <BaseButton size="sm" @click="emit('done')">I've saved it</BaseButton>
+      <BaseButton size="sm" @click="emit('done')">{{ doneLabel ?? "I've saved it" }}</BaseButton>
     </div>
     <p class="visually-hidden" role="status">
       {{ copied ? "Token copied." : failed ? "Couldn't copy: select the token instead." : "" }}
