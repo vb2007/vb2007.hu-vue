@@ -1,5 +1,6 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { createRouter, createWebHistory, parseQuery, type RouteRecordRaw } from "vue-router";
 import { ADMIN_SECTIONS, AdminPaths, AdminRoutes, type AdminSectionId } from "@/constants/admin";
+import { ApiKeyLinkQuery } from "@/constants/auth";
 import { OauthQuery } from "@/constants/oauth";
 import { pageTitle } from "@/constants/site";
 import { TOOLS_LINE, type ToolId } from "@/constants/stops";
@@ -141,12 +142,22 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: "Account" },
     component: () => import("../views/AccountView.vue"),
     // The GitHub relink always comes back here; one started from another page goes on to it, with
-    // `?github=linked` or `?oauthError=`. Read on every visit, so an abandoned one doesn't linger.
+    // `?github=linked` or `?oauthError=`, and the query it had (an API key deep link's). Read on
+    // every visit, so an abandoned one doesn't linger. The API key deep link goes on to its page.
     beforeEnter: (to) => {
       const back = takeGithubReturn();
-      return back.startsWith("/account/") &&
+      if (
+        back.startsWith("/account/") &&
         (OauthQuery.github in to.query || OauthQuery.error in to.query)
-        ? { path: back, query: to.query, replace: true }
+      ) {
+        // Its own query and the relink's; a `#` (encoded in query values) starts a hash, dropped.
+        const [url] = back.split("#");
+        const [path] = url.split("?");
+        const query = { ...parseQuery(url.slice(path.length + 1)), ...to.query };
+        return { path, query, replace: true };
+      }
+      return ApiKeyLinkQuery.open in to.query
+        ? { name: "account-api-keys", query: to.query, replace: true }
         : true;
     }
   },
@@ -156,6 +167,13 @@ export const routes: RouteRecordRaw[] = [
     name: "account-api-keys",
     meta: { title: "API keys" },
     component: () => import("../views/AccountApiKeysView.vue")
+  },
+  // ShareX's uploaders with a key made for them (vb2007/vb2007.hu-api#573), linked from "API keys".
+  {
+    path: "/account/sharex",
+    name: "account-sharex",
+    meta: { title: "ShareX" },
+    component: () => import("../views/AccountSharexView.vue")
   },
   {
     path: "/login",

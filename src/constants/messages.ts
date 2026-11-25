@@ -430,6 +430,9 @@ export class Messages {
     /** In place of the API's "E-mail MFA turned on/off", in the account page's own words. */
     static readonly emailOn: string =
       "E-mail codes are on: each login now also takes a code or link from your inbox.";
+    /** With an authenticator app or a passkey, which the login opens on: e-mail is another way. */
+    static readonly emailOnBesideOthers: string =
+      "E-mail codes are on: each login can now also take a code or link from your inbox.";
     static readonly emailOff: string =
       "E-mail codes are off: logins no longer ask for a mailed code.";
     static readonly emailOnFailed: string = "Failed to turn on e-mail codes";
@@ -554,6 +557,29 @@ export class Messages {
     /** In place of "Create an API key" once the account has the API's maximum. */
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;
+    }
+    /** On a form the deep link filled in: the scopes it asked for that it can't tick. */
+    static scopesLeftOut(scopes: string[]): string {
+      return `The link asked for scopes it can't set, so they're left out: ${scopes.join(", ")}.`;
+    }
+  };
+
+  /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */
+  static readonly Sharex = class {
+    /** Logged by `apiRequest`; the page shows `filesUnavailable` whatever the reason. */
+    static readonly filesFailed: string = "Failed to load the ShareX files";
+    static readonly filesUnavailable: string =
+      "Couldn't load the ShareX files, so no key was created. Try again later.";
+    /** A file without `Sharex.tokenPlaceholder`: checked before the key is created, so none is. */
+    static readonly placeholderMissing: string =
+      "The ShareX files have no place for the token, so no key was created. Try again later.";
+    /** Back from GitHub, which "Confirm with GitHub" on this page sent the user to. */
+    static githubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Set up ShareX within ${minutes} minutes.`;
+    }
+    /** The key's lifetime: the API's default, as the page sends none. */
+    static keyLifetime(days: number): string {
+      return `The key works for ${days} days. After that, set ShareX up again here and delete the old key under API keys.`;
     }
   };
 

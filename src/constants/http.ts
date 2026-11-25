@@ -76,6 +76,8 @@ export class Header {
 
 export class ContentType {
   static readonly Json = "application/json";
+  /** Raw bytes: a download the browser saves under its own name, extension untouched. */
+  static readonly OctetStream = "application/octet-stream";
 }
 
 /** Whether a status is a success (2xx), like `Response.ok`; for XMLHttpRequest, which has no `ok`. */

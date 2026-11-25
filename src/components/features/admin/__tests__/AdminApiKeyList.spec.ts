@@ -23,7 +23,7 @@ describe("AdminApiKeyList", () => {
     expect(row.find(".key__scopes").text()).toBe("pastes:read, pastes:write, uploads:read");
     // Dots for the eye, commas for screen readers.
     expect(row.find(".key__dates").text()).toBe(
-      `Created ${formatDate(key.createdAt)} · , Expires ${formatDate(key.expiresAt!)} · , Last used ${formatDate(key.lastUsedAt!)}`
+      `Created ${formatDate(key.createdAt)},  ·\u00a0Expires ${formatDate(key.expiresAt!)},  ·\u00a0Last used ${formatDate(key.lastUsedAt!)}`
     );
     expect(row.find(".key__expired").exists()).toBe(false);
     expect(wrapper.find("button").exists()).toBe(false);
@@ -36,7 +36,7 @@ describe("AdminApiKeyList", () => {
     ]);
     const [forever, expired] = wrapper.findAll(".key__dates");
 
-    expect(forever.text()).toMatch(/· , Never expires · , Never used$/);
+    expect(forever.text()).toMatch(/,  ·\u00a0Never expires,  ·\u00a0Never used$/);
     expect(expired.find(".key__expired").text()).toBe(
       `Expired ${formatDate("2001-01-01T00:00:00.000Z")}`
     );

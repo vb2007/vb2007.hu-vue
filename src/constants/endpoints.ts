@@ -54,6 +54,7 @@ import type {
   TotpConfirmBody,
   TotpSetupResponse
 } from "@/types/api/mfa";
+import type { SharexUploader } from "@/types/api/sharex";
 import type {
   CreatePasteBody,
   PasteDeletedResponse,
@@ -489,6 +490,28 @@ export class Endpoints {
       method: HttpMethod.Delete,
       path: "/upload/:id",
       credentials: true
+    });
+  };
+
+  /**
+   * The ShareX custom uploaders (vb2007/vb2007.hu-api#573), keyed like `Sharex.uploaders`: public,
+   * each with the token's placeholder, which the site fills in. The token never goes to them.
+   */
+  static readonly Sharex = class {
+    static readonly upload = defineEndpoint<undefined, SharexUploader>()({
+      method: HttpMethod.Get,
+      path: "/sharex/upload.sxcu",
+      credentials: false
+    });
+    static readonly paste = defineEndpoint<undefined, SharexUploader>()({
+      method: HttpMethod.Get,
+      path: "/sharex/paste.sxcu",
+      credentials: false
+    });
+    static readonly shorten = defineEndpoint<undefined, SharexUploader>()({
+      method: HttpMethod.Get,
+      path: "/sharex/shorten.sxcu",
+      credentials: false
     });
   };
 

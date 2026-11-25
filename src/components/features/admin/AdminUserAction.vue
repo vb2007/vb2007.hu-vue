@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * One row of the account page's Actions: a tile with its mark, the name, a note on what it does,
- * then its key (`#key`). A form or confirmation that opens in place goes in `#panel`, under the key
- * and stretched to the row's width, like the Account board's rows.
+ * One row of the account page's Actions: a tile with its mark, the name, a note on what it does
+ * (when given), then its key (`#key`). A form or confirmation that opens in place goes in `#panel`,
+ * under the key and stretched to the row's width, like the Account board's rows.
  */
 import AppIcon, { type IconName } from "@/components/ui/AppIcon.vue";
 
@@ -14,7 +14,7 @@ defineProps<{ title: string; icon: IconName }>();
     <span class="action__mark"><AppIcon :name="icon" :size="26" /></span>
     <div class="action__main">
       <h3 class="action__name">{{ title }}</h3>
-      <p class="action__note"><slot /></p>
+      <p v-if="$slots.default" class="action__note"><slot /></p>
       <div v-if="$slots.key" class="action__keys"><slot name="key" /></div>
       <slot name="panel" />
     </div>

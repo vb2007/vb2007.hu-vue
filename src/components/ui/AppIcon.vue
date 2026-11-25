@@ -47,6 +47,12 @@ export type IconName = keyof typeof ICONS | keyof typeof MARKS;
 
 const props = defineProps<{ name: IconName; size?: number }>();
 
+// In rem, so icons grow with the reader's text size; the attributes give the same at a 16px root.
+const scaled = computed(() => {
+  const side = `${(props.size ?? 20) / 16}rem`;
+  return { width: side, height: side };
+});
+
 const mark = computed(() =>
   props.name in MARKS ? MARKS[props.name as keyof typeof MARKS] : undefined
 );
@@ -57,6 +63,7 @@ const mark = computed(() =>
     v-if="mark"
     :width="size ?? 20"
     :height="size ?? 20"
+    :style="scaled"
     :viewBox="mark.viewBox"
     fill="currentColor"
     aria-hidden="true"
@@ -68,6 +75,7 @@ const mark = computed(() =>
     v-else
     :width="size ?? 20"
     :height="size ?? 20"
+    :style="scaled"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"

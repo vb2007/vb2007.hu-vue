@@ -274,6 +274,9 @@ for (const [name, width] of [
     await page.goto("/account");
     await expect(page.getByRole("button", { name: "Set up authenticator app" })).toBeVisible();
     await fits();
+    // Icons grow with the text: the rows' 26 px marks are 52 px at a 32 px font size.
+    const mark = page.getByRole("region", { name: "Two-step login" }).locator(".login__mark svg");
+    expect(await mark.first().boundingBox()).toMatchObject({ width: 52, height: 52 });
 
     await page.getByRole("button", { name: "Set up authenticator app" }).click();
     await page.getByLabel("Password").fill(MOCK_PASSWORD);
@@ -341,6 +344,36 @@ for (const [name, fontSize, width] of [
     await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
     await page.getByRole("button", { name: "Rotate Nightly backup of every paste" }).click();
     await expect(page.getByText("It expires 90 days from now again.")).toBeVisible();
+    await expectReflow(page);
+  });
+}
+
+for (const [name, fontSize, width] of [
+  ["a 320 px window", 0, 320],
+  ["a 32 px browser font size", 32, 640]
+] as const) {
+  test(`the ShareX page, its form, the cap and a new token fit ${name}`, async ({ page, api }) => {
+    if (fontSize) await browserFontSize(page, fontSize);
+    await page.setViewportSize({ width, height: 900 });
+    api.loggedInAs(MOCK_EMAIL, "e2e");
+    await page.goto("/account");
+    await expectReflow(page);
+    await page.getByRole("link", { name: "Set up ShareX" }).click();
+    await page.getByRole("button", { name: "Set up ShareX" }).click();
+    await expect(page.getByLabel("Password")).toBeFocused();
+    await expectReflow(page);
+
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Create key" }).click();
+    await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
+    await expectReflow(page);
+
+    for (let i = 1; i <= 9; i++) api.hasApiKey(`Key ${i}`);
+    await page.getByRole("button", { name: "I've saved the files" }).click();
+    await page.getByRole("button", { name: "Set up ShareX" }).click();
+    await page.getByLabel("Password").fill(MOCK_PASSWORD);
+    await page.getByRole("button", { name: "Create key" }).click();
+    await expect(page.getByText(/^You have 10 API keys/)).toBeFocused();
     await expectReflow(page);
   });
 }

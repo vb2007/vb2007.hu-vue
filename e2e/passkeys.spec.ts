@@ -110,7 +110,7 @@ test("a passkey answers the second step, offered before the e-mail code", async 
 
   await expect(page.getByRole("heading", { name: "Passkey" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Use an e-mail code" })).toBeVisible();
-  await page.getByRole("button", { name: "Use a passkey" }).click();
+  await page.getByRole("button", { name: "Log in with a passkey" }).click();
 
   await expect(page.getByText("Login successful!")).toBeVisible();
 });
