@@ -150,8 +150,10 @@ export const routes: RouteRecordRaw[] = [
         back.startsWith("/account/") &&
         (OauthQuery.github in to.query || OauthQuery.error in to.query)
       ) {
-        const [path] = back.split("?");
-        const query = { ...parseQuery(back.slice(path.length + 1)), ...to.query };
+        // Its own query and the relink's; a `#` (encoded in query values) starts a hash, dropped.
+        const [url] = back.split("#");
+        const [path] = url.split("?");
+        const query = { ...parseQuery(url.slice(path.length + 1)), ...to.query };
         return { path, query, replace: true };
       }
       return ApiKeyLinkQuery.open in to.query

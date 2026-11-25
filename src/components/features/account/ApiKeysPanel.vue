@@ -18,12 +18,7 @@ import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import { apiRequest } from "@/scripts/api/client";
 import { apiKeyLink, type ApiKeyPrefill } from "@/scripts/authentication/apiKeys";
-import {
-  isLoggedIn,
-  isSessionChecked,
-  isSuperuser,
-  sessionEnded
-} from "@/scripts/authentication/authState";
+import { isLoggedIn, isSessionChecked, sessionEnded } from "@/scripts/authentication/authState";
 import ApiKeyForm from "@/components/features/account/ApiKeyForm.vue";
 import ApiKeyRow from "@/components/features/account/ApiKeyRow.vue";
 import ApiKeyTokenPanel from "@/components/features/account/ApiKeyTokenPanel.vue";
@@ -79,19 +74,21 @@ const load = async () => {
   else error.value = result.error;
 };
 
+/** The deep link's details, once the list is in: a form opened while it loads starts empty. */
+const linked = () => (loaded.value ? apiKeyLink(route.query) : undefined);
+
 /**
- * The deep link opens the create form filled in, unless the account is at the cap or the form is
- * open already. Once per login: the session (whether it's the superuser's) and the list are known.
+ * The deep link opens the create form filled in once per login, when the list shows the account
+ * below the cap, unless the form is open already. At the cap, Create fills it in later instead.
  */
 const openLinked = () => {
-  if (!loaded.value || creating.value || apiKeys.value.length >= Limits.ApiKeys.perAccount) return;
-  prefill.value = apiKeyLink(route.query, isSuperuser.value);
-  if (prefill.value) creating.value = true;
+  if (creating.value || apiKeys.value.length >= Limits.ApiKeys.perAccount) return;
+  prefill.value = linked();
+  creating.value = !!prefill.value;
 };
 
 /** The create form closed: the deep link is used up, so its query goes and the rest stays. */
 const dropLink = () => {
-  prefill.value = undefined;
   const query = { ...route.query };
   for (const name of [ApiKeyLinkQuery.open, ApiKeyLinkQuery.keyName, ApiKeyLinkQuery.scopes]) {
     delete query[name];
@@ -177,6 +174,7 @@ const onTokenSaved = async (id: string) => {
 };
 
 const startCreate = () => {
+  prefill.value = linked();
   creating.value = true;
   onStart();
 };

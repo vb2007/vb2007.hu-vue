@@ -7,7 +7,8 @@
  * The deep link's `prefill` fills a new key's name and scopes in, and names the scopes left out.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { ApiKeyLinkQuery } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus, REAUTH_QUIET_STATUSES } from "@/constants/http";
 import { Limits } from "@/constants/limits";
@@ -47,6 +48,7 @@ const emit = defineEmits<{
 }>();
 
 const route = useRoute();
+const router = useRouter();
 const rotating = !!props.apiKey;
 const step = ref<"details" | "confirm">("details");
 const name = ref(props.prefill?.name ?? "");
@@ -55,6 +57,7 @@ const choice = ref<LifetimeChoice>(rotating ? "keep" : "days");
 const days = ref(String(Limits.ApiKeys.expiryDefaultDays));
 const form = useTemplateRef("form");
 const scopesErrorId = useId();
+const leftOutId = useId();
 
 // A select rather than segmented keys: three of them don't fit a key's row at 320 px.
 const choices: { value: LifetimeChoice; label: string }[] = [
@@ -70,6 +73,23 @@ const kept = computed(() => {
     ? "It still never expires."
     : `It expires ${lifetime} ${lifetime === 1 ? "day" : "days"} from now again.`;
 });
+
+/**
+ * Where "Confirm with GitHub" comes back to: this page, and for a create its deep link built from
+ * the details as they are, so the form opens again as it was left (its lifetime back at the default).
+ */
+const githubReturn = computed(() =>
+  rotating
+    ? route.fullPath
+    : router.resolve({
+        query: {
+          ...route.query,
+          [ApiKeyLinkQuery.open]: "1",
+          [ApiKeyLinkQuery.keyName]: name.value,
+          [ApiKeyLinkQuery.scopes]: scopes.value.join()
+        }
+      }).fullPath
+);
 
 /** Each area's scopes this account may give, the areas without any left out. */
 const areas = SCOPE_AREAS.map(({ area, label }) => ({
@@ -168,13 +188,17 @@ onMounted(focusFirst);
       />
       <fieldset
         class="key-form__scopes"
-        :aria-describedby="errors.scopes ? scopesErrorId : undefined"
+        :aria-describedby="
+          [prefill?.dropped.length && leftOutId, errors.scopes && scopesErrorId]
+            .filter(Boolean)
+            .join(' ') || undefined
+        "
       >
         <legend class="key-form__legend">Scopes</legend>
         <p class="key-form__note">
           Each lets the key make one kind of request. Write doesn't include read.
         </p>
-        <StatusMessage v-if="prefill?.dropped.length" tone="info">{{
+        <StatusMessage v-if="prefill?.dropped.length" :id="leftOutId" tone="info">{{
           Messages.ApiKeys.scopesLeftOut(prefill.dropped)
         }}</StatusMessage>
         <div
@@ -238,7 +262,7 @@ onMounted(focusFirst);
         ? 'Confirms it\'s you. The current token stops working at once, and the new one shows only once.'
         : 'Confirms it\'s you. The key\'s token then shows only once.'
     "
-    :github-return="route.fullPath"
+    :github-return="githubReturn"
     @done="emit('done', $event)"
     @cancel="back"
   />

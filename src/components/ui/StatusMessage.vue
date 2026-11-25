@@ -49,8 +49,10 @@ defineProps<{
   margin-top: 0.15rem;
 }
 
+/* Breaks anywhere: a message can repeat text from a link or a field, e.g. a long scope name. */
 .status__text {
   max-width: none;
+  overflow-wrap: anywhere;
   color: var(--c-ink);
 }
 

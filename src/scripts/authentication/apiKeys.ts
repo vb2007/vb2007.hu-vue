@@ -54,12 +54,16 @@ export const isAdminScope = (scope: ApiKeyScope) => scope.startsWith("admin:");
 export const grantableScopes = (superuser: boolean) =>
   Limits.ApiKeys.scopes.filter((scope) => superuser || !isAdminScope(scope));
 
+/** A scope's shape, e.g. `uploads:write`: what the deep link's notice may name, never other text. */
+const SCOPE_SHAPE = /^(?=.{1,40}$)[a-z][A-Za-z]*:[a-z]+$/;
+
 /**
  * What the deep link (see `ApiKeyLinkQuery`) fills "Create an API key" in with, `undefined` without
- * it. The name is kept as given, for the form to check. Of the scopes, the ones this account may
- * give a key, in the API's order, and the rest (unknown, or `admin:` ones), which are left out.
+ * it. The name is kept as given, for the form to check. Of the scopes, the ones any account may give
+ * a key, in the API's order (never an `admin:` one, which no app needs, even for the superuser), and
+ * the rest, left out: named when shaped like a scope, so a link can't put its own text on the page.
  */
-export const apiKeyLink = (query: LocationQuery, superuser: boolean) => {
+export const apiKeyLink = (query: LocationQuery) => {
   if (!(ApiKeyLinkQuery.open in query)) return undefined;
   const wanted = new Set(
     [query[ApiKeyLinkQuery.scopes]]
@@ -69,11 +73,13 @@ export const apiKeyLink = (query: LocationQuery, superuser: boolean) => {
       .map((scope) => scope.trim())
       .filter(Boolean)
   );
-  const scopes = grantableScopes(superuser).filter((scope) => wanted.has(scope));
+  const scopes = grantableScopes(false).filter((scope) => wanted.has(scope));
   return {
     name: [query[ApiKeyLinkQuery.keyName]].flat()[0] ?? "",
     scopes,
-    dropped: [...wanted].filter((scope) => !scopes.some((kept) => kept === scope))
+    dropped: [...wanted].filter(
+      (scope) => SCOPE_SHAPE.test(scope) && !scopes.some((kept) => kept === scope)
+    )
   };
 };
 
