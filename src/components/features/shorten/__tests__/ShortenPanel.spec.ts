@@ -153,7 +153,7 @@ describe("ShortenPanel", () => {
     const hitCap = async (path?: string) => {
       isLoggedIn.value = true;
       mockFetch().mockResolvedValueOnce(jsonResponse(409, { error: CAP }));
-      const { wrapper } = await mountWithRouter(ShortenPanel, {}, path);
+      const { wrapper } = await mountWithRouter(ShortenPanel, { attachTo: document.body }, path);
       await wrapper.find("input").setValue("https://example.com/new");
       await wrapper.find("form").trigger("submit");
       await flushPromises();
@@ -163,15 +163,18 @@ describe("ShortenPanel", () => {
     it("leads to the user's links to delete one", async () => {
       const wrapper = await hitCap();
 
-      expect(wrapper.find(".field__error").text()).toBe(`${CAP} Manage your links`);
-      expect(wrapper.find(".field__error a").attributes("href")).toBe("/shorten");
+      expect(wrapper.find(".field__error").text()).toBe(`${CAP} Go to your links`);
+      expect(wrapper.find(".field__error a").attributes("href")).toBe("/shorten#your-links");
       expect(wrapper.emitted("created")).toBeUndefined();
+      // Focus is back on the field, so the error and its link are read out.
+      expect(document.activeElement).toBe(wrapper.find("input").element);
 
       // A URL the check refuses is the field's problem now, so the link goes.
       const input = wrapper.find("input");
       await input.setValue("example.com");
       await input.trigger("blur");
       expect(wrapper.find(".field__error").text()).toBe("Invalid URL / URI format.");
+      wrapper.unmount();
     });
 
     it("leaves the link out where the list is on the page", async () => {
@@ -179,6 +182,7 @@ describe("ShortenPanel", () => {
 
       expect(wrapper.find(".field__error").text()).toBe(CAP);
       expect(wrapper.find(".field__error a").exists()).toBe(false);
+      wrapper.unmount();
     });
   });
 

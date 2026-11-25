@@ -231,7 +231,9 @@ test("at the account's cap, the form leads to the user's links to make room", as
   };
 
   await shorten("https://example.com/three");
-  await expect(url).toHaveAccessibleDescription(`${cap} Manage your links`);
+  await expect(url).toHaveAccessibleDescription(`${cap} Go to your links`);
+  // Focus is back on the field, so a screen reader hears the error and its link.
+  await expect(url).toBeFocused();
   expect(api.shortLinks.has("new333")).toBe(false);
 
   // A URL the user already shortened still gets its link back.
@@ -240,8 +242,8 @@ test("at the account's cap, the form leads to the user's links to make room", as
   await page.getByRole("button", { name: "Shorten another" }).click();
 
   await shorten("https://example.com/three");
-  await page.getByRole("link", { name: "Manage your links" }).click();
-  await expect(page).toHaveURL(/\/shorten$/);
+  await page.getByRole("link", { name: "Go to your links" }).click();
+  await expect(page).toHaveURL(/\/shorten#your-links$/);
   const yourLinks = page
     .locator(".board")
     .filter({ has: page.getByRole("heading", { name: "Your links" }) });
