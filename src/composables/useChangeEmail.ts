@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref, watch } from "vue";
 import { Endpoints } from "@/constants/endpoints";
-import { HttpStatus } from "@/constants/http";
+import { ErrorReason, HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import {
@@ -64,8 +64,22 @@ export const useChangeEmail = () => {
     note: computed(() => longer().note.value)
   };
 
-  /** Once the waiting change is gone, the API takes a new address straight away. */
+  /**
+   * The daily cap's hold (`ErrorReason.EmailChangeLimit`) runs, also after a reload: no new code
+   * can be sent before it ends, whatever becomes of the waiting change.
+   */
+  const capped = computed(
+    () => cooldown.active.value && cooldown.note.value === Messages.Account.emailChangeLimit
+  );
+
+  /**
+   * Once the waiting change is gone, the API takes a new address straight away, unless the hold is
+   * a rate limiter's or the daily cap's (anything but the code's own cooldown: a sent code started
+   * it with no note, or its 429 with `Messages.EmailCode.cooldown`), which outlast the change.
+   */
   const endCooldown = () => {
+    const note = cooldown.note.value;
+    if (note && note !== Messages.EmailCode.cooldown) return;
     cooldown.stop();
     removeSaved(COOLDOWN_STORAGE_KEY);
   };
@@ -73,17 +87,12 @@ export const useChangeEmail = () => {
   /**
    * The code's own cooldown ends with the change it was for, however that went: e.g. a password
    * change, here or in another tab (vb2007/vb2007.hu-api#474), or a reset, which logs the page out
-   * first, so this also looks as the form mounts again. That cooldown is the count a sent code
-   * started (no note) or the cooldown's 429 (its message as the note). A hold with any other note
-   * (a rate limiter's, or one that can come with no change waiting at all) isn't about the change,
-   * so it stays.
+   * first, so this also looks as the form mounts again. Any other hold stays (see `endCooldown`).
    */
   watch(
     pendingEmail,
     (waiting) => {
-      const note = cooldown.note.value;
-      const isCodeCooldown = !note || note === Messages.EmailCode.cooldown;
-      if (!waiting && isLoggedIn.value && cooldown.active.value && isCodeCooldown) endCooldown();
+      if (!waiting && isLoggedIn.value && cooldown.active.value) endCooldown();
     },
     { immediate: true }
   );
@@ -172,15 +181,20 @@ export const useChangeEmail = () => {
         userEmail.value = normalizeEmail(email);
       }
     } else if (result.status === HttpStatus.TooManyRequests) {
-      // The one-code-a-minute cooldown, or a rate limiter (wrong passwords, too many e-mails):
-      // both count the API's retryAfter down on the key, but only the cooldown means a code went out.
+      // The one-code-a-minute cooldown, the account's daily cap on codes (up to a day) or a rate
+      // limiter (wrong passwords, e-mails from the IP): each counts the API's retryAfter down on
+      // the key, but only the cooldown means a code went out.
       const isCooldown = codeCooldownOf(result) !== undefined;
+      const isCap = result.body?.reason === ErrorReason.EmailChangeLimit;
       changeError.value = isCooldown
         ? Messages.EmailCode.cooldown
-        : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
+        : isCap
+          ? Messages.Account.emailChangeLimit
+          : (apiErrorOf(result) ?? Messages.Account.tooManyRequests);
       cooldown.start(retryAfterFrom(result.body), account(), changeError.value);
-      // The code it waits for may have been asked for elsewhere, e.g. in another tab.
-      if (isCooldown) await fetchUserDetails();
+      // The code it waits for may have been asked for elsewhere, e.g. in another tab. The cap's
+      // message says whether a waiting code still works, so it needs the change as it is now.
+      if (isCooldown || isCap) await fetchUserDetails();
     } else if (isLoggedOutAnswer(result.status, apiErrorOf(result))) {
       // The password or session stopped holding between the API's check and its store, so it kept
       // and mailed nothing (vb2007/vb2007.hu-api#466). The client's recheck (`onSessionRefused`)
@@ -291,6 +305,11 @@ export const useChangeEmail = () => {
 
     if (changed) {
       endCooldown();
+      // A hold that outlasts the change (the daily cap's, a rate limiter's) is the account's, so
+      // it's kept under the new address too, or a reload wouldn't find it.
+      if (cooldown.active.value) {
+        cooldown.start(cooldown.remaining.value, account(), cooldown.note.value);
+      }
       // Only now, so it doesn't sit next to the waiting address it replaces.
       changeMessage.value = (result.ok ? result.data.message : "") || Messages.Account.emailUpdated;
     }
@@ -310,6 +329,7 @@ export const useChangeEmail = () => {
     confirm,
     cooldown,
     budget,
+    capped,
     sendWait,
     showWait,
     confirmHold

@@ -1813,6 +1813,25 @@ test("the superuser lifts a log-in lockout from one IP, or from every IP with th
   await expect(notice).toHaveCount(0);
 });
 
+test("clearing an address empties its account's count of e-mail change codes while it counts", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.mailedEmailChangeCodes(10);
+  await page.goto("/admin/system");
+  const clear = () =>
+    callApi(page, api, "DELETE", "/admin/rate-limits", { email: "VB2007@example.com" });
+
+  expect((await clear()).body).toMatchObject({ cleared: ["emailChangeSends"] });
+  expect((await clear()).body).toMatchObject({ cleared: [] });
+
+  // A count whose 24 hours are over is emptied too, but isn't named: it no longer counted.
+  api.mailedEmailChangeCodes(3);
+  api.clockRunsFor(24 * 60 * 60 * 1000);
+  expect((await clear()).body).toMatchObject({ cleared: [] });
+});
+
 test("the superuser clears an account's own limits and daily caps with its e-mail, not with an IP", async ({
   page,
   api
@@ -1829,6 +1848,8 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     api.countsRateLimit("mfaEmailSends", { email });
     api.countsRateLimit("mfaCodeFailures", { email });
   };
+  // `emailChangeSends` counts for an account, like the codes `PATCH /user/email` mails.
+  api.hasUser("anna");
   arrange("anna@example.com");
   api.countsRateLimit("passwordResetCodeFailures", { email: "milo@example.com" });
   api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
