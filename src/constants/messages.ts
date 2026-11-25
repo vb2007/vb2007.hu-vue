@@ -703,6 +703,7 @@ export class Messages {
       apiKeyChecksPerIp: "Rejected API keys from the IP",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
+      emailChangeSends: `E-mail change codes mailed for the account, ${Limits.Code.emailChangeCodesPerDay}\u00a0a\u00a0day`,
       registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       mfaCodeFailures: `Wrong MFA codes, links and passkeys for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       mfaEmailSends: `MFA log-in e-mails to the account, ${Limits.Mfa.emailsPerDay}\u00a0a\u00a0day`,

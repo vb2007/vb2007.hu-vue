@@ -140,7 +140,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
  * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily caps on wrong codes and e-mails
  * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
- * `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
+ * `emailChangeSends`, `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
  * for an hour on the mock's clock (`?expires=<unix s>&sig=…`; `api.uploads` keeps the plain one), `GET /upload/:id` included, and the
@@ -478,6 +478,7 @@ const RATE_LIMITERS = {
   apiKeyChecksPerIp: ["ip"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
+  emailChangeSends: ["email"],
   registrationCodeFailures: ["email"],
   mfaCodeFailures: ["email"],
   mfaEmailSends: ["email"],
@@ -3284,7 +3285,10 @@ export class MockApi {
     };
   }
 
-  /** `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`. */
+  /**
+   * `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`,
+   * then the 400 to no file, the type's 415 and the quota's 413, and only then, as in the API's `uploadFile`, the 400 to a bad name.
+   */
   private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (!/boundary=.+$/.test(contentType)) {
@@ -3292,16 +3296,35 @@ export class MockApi {
     }
     if (!body?.length) return { status: 400, body: { error: "Unexpected end of form" } };
     const part = parseMultipart(body, contentType);
+    // Busboy keeps what follows the last "/" or "\" and turns "." and ".." into "", which multer skips as no file.
+    const base = part.fileName.slice(
+      Math.max(part.fileName.lastIndexOf("/"), part.fileName.lastIndexOf("\\")) + 1
+    );
     // `verifyUploadType` and `checkUploadQuota` pass a body without a file on to `uploadFile`, which refuses it.
-    if (!part.hasFile) return { status: 400, body: { error: "No file was provided." } };
-    const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
+    if (!part.hasFile || ["", ".", ".."].includes(base)) {
+      return { status: 400, body: { error: "No file was provided." } };
+    }
+    // Multer reverses the browser's escapes for LF, CR and `"`. The API types by the trimmed name (text types only; it
+    // sniffs binary ones), and `uploadFile` checks and stores it.
+    const fileName = base.replace(/%0A|%0D|%22/gi, (escape) => decodeURIComponent(escape)).trim();
+    const extension = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
     if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
       return { status: 415, body: { error: "This file type isn't supported." } };
     }
     if (this.usedBytes() + part.size > this.quotaBytes) {
       return { status: 413, body: { error: "This upload would go over your storage quota." } };
     }
-    const upload = this.hasUpload(part.fileName, {
+    // `isUploadFileName` (vb2007/vb2007.hu-api#552). The real API refuses raw C0 controls but tab, and DEL, earlier, as
+    // busboy's 400 "Malformed part header"; the composer never sends them.
+    if (fileName.length > 255 || /[/\\\u0000-\u001f\u007f]/.test(fileName)) {
+      return {
+        status: 400,
+        body: {
+          error: "File names must be 1–255 characters, without slashes or control characters."
+        }
+      };
+    }
+    const upload = this.hasUpload(fileName, {
       fileSize: part.size,
       visibility: part.visibility === "public" ? "public" : "private"
     });
