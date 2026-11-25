@@ -303,6 +303,11 @@ export const useChangeEmail = () => {
 
     if (changed) {
       endCooldown();
+      // A hold that outlasts the change (the daily cap's, a rate limiter's) is the account's, so
+      // it's kept under the new address too, or a reload wouldn't find it.
+      if (cooldown.active.value) {
+        cooldown.start(cooldown.remaining.value, account(), cooldown.note.value);
+      }
       // Only now, so it doesn't sit next to the waiting address it replaces.
       changeMessage.value = (result.ok ? result.data.message : "") || Messages.Account.emailUpdated;
     }

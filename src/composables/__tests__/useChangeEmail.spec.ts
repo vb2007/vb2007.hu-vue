@@ -581,7 +581,8 @@ describe("useChangeEmail", () => {
       expect(savedCooldown()).toBeNull();
     });
 
-    it("keeps the daily cap's hold when the change is confirmed", async () => {
+    it("keeps the daily cap's hold when the change is confirmed, under the new address", async () => {
+      vi.useFakeTimers();
       fetchMock
         .mockResolvedValueOnce(
           jsonResponse(200, { message: "E-mail address updated successfully." })
@@ -596,7 +597,14 @@ describe("useChangeEmail", () => {
 
       // The API's count of codes doesn't start over with a confirmed change.
       expect(email.capped.value).toBe(true);
-      expect(savedCooldown()).toMatchObject({ note: Messages.Account.emailChangeLimit });
+      expect(savedCooldown()).toEqual({
+        id: "new@example.com",
+        deadline: Date.now() + 86_000_000,
+        note: Messages.Account.emailChangeLimit
+      });
+      // So a reload, now on the new address, still holds the key.
+      expect(useEmail().capped.value).toBe(true);
+      vi.useRealTimers();
     });
 
     it("keeps a rate limiter's wait, which isn't about the change", async () => {

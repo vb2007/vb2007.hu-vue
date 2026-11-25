@@ -1078,6 +1078,14 @@ test("an 11th e-mail change code in 24 hours holds the key until the window ends
   await expect(page.getByText("Nothing yet? Check your spam folder.", { exact: false })).toHaveText(
     /Check your spam folder\.$/
   );
+
+  // The API's count goes on after the change is confirmed, and the hold follows the new address.
+  await page.getByLabel("Confirmation code").fill(MOCK_EMAIL_CODE);
+  await page.getByRole("button", { name: "Confirm code" }).click();
+  await expect(page.getByText(/Waiting for confirmation/)).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Change e-mail" }).click();
+  await expect(page.getByRole("button", { name: /^Send code in 2[34] hr/ })).toBeDisabled();
 });
 
 test("only the e-mail change codes actually mailed count toward the 24-hour cap", async ({
