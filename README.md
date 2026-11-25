@@ -146,15 +146,30 @@ The guard only stops a PR job once it reaches `prod`. As a second layer, `src/__
 
 Install the guard on vbServer, outside the runner directory and not writable by the runner user. The API repo's guard already lives on the same host at `/usr/local/lib/github-runner/host-job-guard.sh` and only allows that repo, so this one goes in its own folder. Run this from a checkout of `dev`; it is safe to run again. A new script takes effect on the next job, and only a changed `.env` needs the runner restart:
 
+A restart kills a running job, so first check that no Release & Deploy run is in progress (`gh run list --workflow release.yml --status in_progress`).
+
 ```bash
-sudo install -D -o root -g root -m 0755 .github/runner/host-job-guard.sh /usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh
 unit=actions.runner.vb2007-vb2007.hu-vue.vbServer.service
 env="$(systemctl show -p WorkingDirectory --value "$unit")/.env"
-grep -q '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$env" || echo 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh' >> "$env"
-sudo systemctl restart "$unit"
+if [ "$env" = /.env ] || [ ! -f "$env" ]; then
+  echo "No .env found for $unit: check the unit name."
+else
+  sudo install -D -o root -g root -m 0755 .github/runner/host-job-guard.sh /usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh
+  [ -z "$(tail -c 1 "$env")" ] || echo >> "$env"
+  grep -q '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$env" || echo 'ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh' >> "$env"
+  grep '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$env"
+  sudo systemctl restart "$unit"
+fi
 ```
 
-To roll back, delete the `ACTIONS_RUNNER_HOOK_JOB_STARTED=` line from that `.env` and restart the same unit.
+The last `grep` prints the hook line in effect. If it points anywhere but `/usr/local/lib/github-runner/vb2007.hu-vue/host-job-guard.sh`, fix that line by hand and restart the unit again.
+
+To remove the guard, with the same `unit` and `env` set as above:
+
+```bash
+sed -i '/^ACTIONS_RUNNER_HOOK_JOB_STARTED=/d' "$env"
+sudo systemctl restart "$unit"
+```
 
 Fork PRs must also keep needing approval: Settings → Actions → General → "Require approval for all external contributors" (`all_external_contributors`).
 
