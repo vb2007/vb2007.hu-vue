@@ -113,7 +113,8 @@ describe("AccountPanel's passkeys", () => {
     expect(requestOf(0)[0]).toBe("https://api.test/user/passkeys");
     const rows = section(panel).findAll("li");
     expect(rows.map((row) => row.find("h3").text())).toEqual(["Laptop", "Phone"]);
-    expect(rows[0].find(".passkey__dates").text()).toMatch(/^Added .*Never used$/);
+    // The dot holds on to what follows it, so a wrap never leaves it last on a line.
+    expect(rows[0].find(".passkey__dates").text()).toMatch(/^Added .* ·\u00a0Never used$/);
     expect(rows[1].find(".passkey__dates").text()).toMatch(/Last used/);
     expect(rows[0].findAll("button").map((button) => button.attributes("aria-label"))).toEqual([
       "Rename Laptop",

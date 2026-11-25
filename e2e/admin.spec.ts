@@ -737,9 +737,7 @@ test("the superuser resets a user's MFA after confirming, keeping their passkeys
   await expect(done).toBeFocused();
   await expect(mfa).toHaveText("Off · 2 passkeys");
   await expect(page.getByRole("list", { name: "anna's API keys" })).toHaveCount(0);
-  await expect(row.locator(".action__note")).toHaveText(
-    "anna has no MFA method on, so there's nothing to reset."
-  );
+  await expect(row.locator(".action__note")).toHaveText(/^For when anna lost their second factor/);
   await expect(row.getByRole("button")).toHaveCount(0);
   expect(api.loggedOutUsers).toEqual([anna.id]);
 

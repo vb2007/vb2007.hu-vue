@@ -59,7 +59,8 @@ const close = async () => {
 const onDone = (data: MfaTurnOnResponse) => {
   confirming.value = false;
   // The section's own words, rather than the API's "E-mail MFA turned on".
-  emit("done", turningOn.value ? Messages.Mfa.emailOn : Messages.Mfa.emailOff, data.recoveryCodes);
+  const on = mfa.value.totp ? Messages.Mfa.emailOnBesideTotp : Messages.Mfa.emailOn;
+  emit("done", turningOn.value ? on : Messages.Mfa.emailOff, data.recoveryCodes);
   void fetchUserDetails();
 };
 </script>
@@ -72,7 +73,9 @@ const onDone = (data: MfaTurnOnResponse) => {
     :busy-label="turningOn ? 'Turning on' : 'Turning off'"
     :hint="
       turningOn
-        ? 'Confirms it\'s you. Each login then also takes a code or link from your inbox.'
+        ? mfa.totp
+          ? 'Confirms it\'s you. Each login can then also take a code or link from your inbox.'
+          : 'Confirms it\'s you. Each login then also takes a code or link from your inbox.'
         : 'Confirms it\'s you. Without another second step, your recovery codes go too.'
     "
     :danger="!turningOn"

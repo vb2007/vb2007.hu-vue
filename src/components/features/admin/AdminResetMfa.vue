@@ -2,7 +2,8 @@
 /**
  * The account page's Reset MFA row, for a user who lost their second factor. The reset turns
  * every method and recovery code off, deletes the API keys and ends their session, so it asks first, in place, like
- * Suspend. With nothing on there's nothing to reset, and the row only says so. On the superuser's
+ * Suspend. With nothing on there's nothing to reset, and the row only says so (not right after a
+ * reset, whose own message says what happened). On the superuser's
  * own account, which the API refuses (409), the row only says where that MFA is managed.
  */
 import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
@@ -69,7 +70,8 @@ const confirm = async () => {
 <template>
   <AdminUserAction title="Reset MFA" icon="shield">
     <template v-if="user.isSuperuser">{{ Messages.Admin.superuserMfaNotResettable }}</template>
-    <template v-else-if="hasMfa">
+    <!-- After a reset the row still says what it does: the success message below says it's done. -->
+    <template v-else-if="hasMfa || done">
       For when {{ user.username }} lost their second factor: turns off every MFA method and recovery
       code, deletes their API keys and ends their session. Their passkeys stay.
     </template>
