@@ -239,7 +239,7 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
   expect(api.uploads[0].originalFileName).toBe("annual report.pdf");
 
   await list.getByRole("button", { name: "Make public" }).click();
-  await expect(list.getByText("Anyone with the link, while it's public")).toBeVisible();
+  await expect(list.getByText("Anyone, even without the link (while it's public)")).toBeVisible();
   expect(api.uploads[0].visibility).toBe("public");
 
   await list.getByRole("button", { name: "Delete", exact: true }).click();

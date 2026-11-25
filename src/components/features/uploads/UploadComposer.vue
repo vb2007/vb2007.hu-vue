@@ -45,9 +45,8 @@ const hint = computed(() =>
 
     <div v-else-if="isSessionChecked" class="gate">
       <StatusMessage tone="info">
-        Only logged-in users can upload files. Anyone with a public file's link can open it while it
-        stays public. Only you and the admin get a private file's link: anyone you share it with can
-        open the file until the link expires.
+        Only logged-in users can upload files. Anyone can find and open public files. Only you and
+        the admin get a private file's link, and it stops working when it expires.
       </StatusMessage>
       <div class="gate__actions">
         <BaseButton to="/register">Create a new account</BaseButton>
