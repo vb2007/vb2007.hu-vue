@@ -30,22 +30,22 @@ const {
   confirmError,
   confirm,
   budget,
+  capped,
   sendWait,
   showWait,
   confirmHold
 } = useChangeEmail();
 /**
- * Under the code field. While the day's mail is used up a new code can't be sent before it starts
- * over, so neither hint offers one then.
+ * Under the code field. While the day's mail is used up, or the account's daily codes, a new code
+ * can't be sent before the wait ends, so neither hint offers one then.
  */
+const noNewCode = computed(() => budget.active.value || capped.value);
 const codeHint = computed(
   () =>
-    `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder${budget.active.value ? "." : ", or get a new one with Change e-mail."}`
+    `The code works for ${Limits.Code.emailChangeValidMinutes} minutes from when it was sent. Nothing yet? Check your spam folder${noNewCode.value ? "." : ", or get a new one with Change e-mail."}`
 );
 const newEmailHint = computed(() =>
-  pendingEmail.value && !budget.active.value
-    ? "A new code replaces the one already sent."
-    : undefined
+  pendingEmail.value && !noNewCode.value ? "A new code replaces the one already sent." : undefined
 );
 const { remaining: waitSeconds, active: isWaiting } = sendWait;
 const isConfirmHeld = computed(() => confirmHold.isHeld());
@@ -99,6 +99,21 @@ const sendName = computed(() =>
 const errorIsWait = computed(
   () => isWaiting.value && !!changeError.value && changeError.value === sendWait.note.value
 );
+const isCapError = computed(() => changeError.value === Messages.Account.emailChangeLimit);
+/** The cap's message says what still works while a change waits. */
+const changeErrorText = computed(() =>
+  isCapError.value && pendingEmail.value
+    ? `${changeError.value} ${Messages.Account.emailChangeLimitWaiting}`
+    : changeError.value
+);
+/**
+ * The cap's wait in words, read out with its message: the key's hours aren't in its name
+ * (`spokenWait`). Fixed as the message shows, so the alert doesn't change every minute.
+ */
+const capSpoken = ref("");
+watch(isCapError, (isCap) => {
+  if (isCap) capSpoken.value = Messages.tryAgainSpoken(waitSeconds.value);
+});
 
 const key = useTemplateRef("key");
 const form = useTemplateRef("form");
@@ -297,9 +312,13 @@ watch(
       required
       @blur="leaveChange('password')"
     />
-    <StatusMessage v-if="changeError" :id="changeErrorId" tone="error">{{
-      changeError
-    }}</StatusMessage>
+    <StatusMessage
+      v-if="changeError"
+      :id="changeErrorId"
+      tone="error"
+      :spoken="isCapError && errorIsWait ? capSpoken : undefined"
+      >{{ changeErrorText }}</StatusMessage
+    >
     <div class="change__actions">
       <BaseButton
         type="submit"

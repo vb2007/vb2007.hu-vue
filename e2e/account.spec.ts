@@ -1045,7 +1045,7 @@ for (const [what, arrange, error, label] of [
   });
 }
 
-test("the day's last e-mail change code holds the key for the rest of the day", async ({
+test("an 11th e-mail change code in 24 hours holds the key until the window ends", async ({
   page,
   api
 }) => {
@@ -1055,18 +1055,53 @@ test("the day's last e-mail change code holds the key for the rest of the day", 
   await page.goto("/account");
 
   await page.getByRole("button", { name: "Change e-mail" }).click();
+  await expect(page.getByText("A new code replaces the one already sent.")).toBeVisible();
   await page.getByLabel("New e-mail").fill("new@example.com");
   await page.getByLabel("Current password").fill(MOCK_PASSWORD);
   await page.getByRole("button", { name: "Send code" }).click();
 
-  const error = "Too many confirmation codes were mailed for this account today: try again later.";
-  await expect(page.getByRole("alert")).toHaveText(error);
+  const error =
+    "No code was sent: this account has had 10 codes in the last 24 hours, the most it can get. The code already sent still works.";
+  // The key's hours aren't in its name, so the alert reads the wait out after the message.
+  await expect(page.getByRole("alert")).toHaveText(
+    new RegExp(`^${error} Try again in 2[34] hours`)
+  );
   // A day's wait, counted in hours ("Send code in 24 hr").
   const key = page.getByRole("button", { name: /^Send code in 2[34] hr/ });
   await expect(key).toBeDisabled();
   await expect(key).toHaveAccessibleDescription(error);
+  // No new code can go out, so the hints don't offer one.
+  await expect(page.getByText("A new code replaces the one already sent.")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   // Nothing was sent: the change that waited still does.
   await expect(page.getByText("Waiting for confirmation: old@example.com")).toBeVisible();
+  await expect(page.getByText("Nothing yet? Check your spam folder.", { exact: false })).toHaveText(
+    /Check your spam folder\.$/
+  );
+});
+
+test("only the e-mail change codes actually mailed count toward the 24-hour cap", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("me@example.com", "me");
+  api.mailedEmailChangeCodes(9);
+  api.failsNextMail();
+  await page.goto("/account");
+  const change = (email: string) =>
+    callApi(page, api, "PATCH", "/user/email", { email, password: MOCK_PASSWORD });
+
+  expect((await change("new@example.com")).status).toBe(503);
+  expect((await change("new@example.com")).status).toBe(202);
+  api.clockRunsFor(60_000);
+  expect(await change("newer@example.com")).toEqual({
+    status: 429,
+    body: {
+      error: "Too many confirmation codes were mailed for this account today: try again later.",
+      retryAfter: expect.any(Number),
+      reason: "emailChangeLimit"
+    }
+  });
 });
 
 test("the cooldown answers before the day's cap on e-mail change codes", async ({ page, api }) => {

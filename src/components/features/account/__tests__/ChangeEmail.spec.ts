@@ -9,6 +9,8 @@ import {
 } from "@/scripts/authentication/authState";
 import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
+import { ErrorReason } from "@/constants/http";
+import { Messages } from "@/constants/messages";
 
 /** `GET /user` after the change, shaped like the API's answer. */
 const refreshedUser = {
@@ -292,6 +294,72 @@ describe("ChangeEmail", () => {
       await flushPromises();
       expect(wrapper.find('[role="alert"]').text()).toBe(error);
       expect(button("Send code in 14 hr 14 min").attributes("disabled")).toBeDefined();
+    });
+  });
+
+  describe("once the account's codes of the last 24 hours are used up", () => {
+    const capped = `${Messages.Account.emailChangeLimit} ${Messages.Account.emailChangeLimitWaiting}`;
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("says the waiting code still works, reads the wait out, and offers no new code", async () => {
+      wrapper.unmount();
+      pendingEmail.value = "new@example.com";
+      wrapper = mount(ChangeEmail, { attachTo: document.body });
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, {
+          error: "Too many confirmation codes were mailed for this account today: try again later.",
+          retryAfter: 85_500,
+          reason: ErrorReason.EmailChangeLimit
+        })
+      );
+      await button("Change e-mail").trigger("click");
+      await flushPromises();
+      await fill("newer@example.com", "secret-password");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      // The key's hours aren't in its name, so the alert reads the wait out.
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${capped} Try again in 23 hours 45 minutes.`
+      );
+      const held = button("Send code in 23 hr 45 min");
+      expect(held.attributes("disabled")).toBeDefined();
+      expect(descriptionOf(held)).toBe(capped);
+      expect(wrapper.find(".field__hint").exists()).toBe(false);
+
+      await button("Cancel").trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".field__hint").text()).toBe(
+        "The code works for 15 minutes from when it was sent. Nothing yet? Check your spam folder."
+      );
+    });
+
+    it("says only that the codes are used up with no change waiting", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, {
+          error: "Too many.",
+          retryAfter: 600,
+          reason: ErrorReason.EmailChangeLimit
+        })
+      );
+      await openForm();
+      await fill("newer@example.com", "secret-password");
+
+      await wrapper.find("form").trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        `${Messages.Account.emailChangeLimit} Try again in 10 minutes.`
+      );
     });
   });
 

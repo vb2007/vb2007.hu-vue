@@ -379,6 +379,13 @@ export class Messages {
      */
     static readonly emailChangeInterrupted: string =
       "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password.";
+    /**
+     * In place of the API's 429 for its daily cap on e-mail change codes (`ErrorReason.EmailChangeLimit`),
+     * whose "today" would mislead: the 24 hours count from the account's first code.
+     */
+    static readonly emailChangeLimit: string = `No code was sent: this account has had ${Limits.Code.emailChangeCodesPerDay} codes in the last 24 hours, the most it can get.`;
+    /** After `emailChangeLimit` while a change waits: the cap doesn't touch its code. */
+    static readonly emailChangeLimitWaiting: string = "The code already sent still works.";
   };
 
   /** Two-step login (vb2007/vb2007.hu-api#448): the login's second step and its settings. */

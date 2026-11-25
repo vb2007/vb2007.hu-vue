@@ -45,8 +45,9 @@ export class ErrorReason {
    */
   static readonly MfaEmailLimit = "mfaEmailLimit";
   /**
-   * `PATCH /user/email`'s 429 once the account got its e-mail change codes of the day, with
-   * `retryAfter` up to a day: nothing was sent, and a waiting change still works.
+   * `PATCH /user/email`'s 429 once the account got `Limits.Code.emailChangeCodesPerDay` e-mail
+   * change codes in 24 hours, counted from the first, with `retryAfter` until those 24 hours end:
+   * nothing was sent, and a waiting change still works.
    */
   static readonly EmailChangeLimit = "emailChangeLimit";
   /** The MFA 403 (every `/auth/mfa*` endpoint) without the step's cookie, e.g. the mailed link opened in another browser. */

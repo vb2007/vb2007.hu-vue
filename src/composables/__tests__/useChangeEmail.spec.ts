@@ -10,6 +10,7 @@ import {
   useChangeEmail
 } from "@/composables/useChangeEmail";
 import { passwordChanges } from "@/composables/useChangePassword";
+import { ErrorReason } from "@/constants/http";
 import { Messages } from "@/constants/messages";
 import {
   emailVerified,
@@ -356,19 +357,13 @@ describe("useChangeEmail", () => {
     });
 
     it.each([
-      ["wrong passwords", "Too many failed attempts: try again later.", 900, undefined],
-      ["e-mails", "Too many e-mails requested: try again later.", 3600, undefined],
-      [
-        "codes today",
-        "Too many confirmation codes were mailed for this account today: try again later.",
-        86_399,
-        "emailChangeLimit"
-      ]
+      ["wrong passwords", "Too many failed attempts: try again later.", 900],
+      ["e-mails", "Too many e-mails requested: try again later.", 3600]
     ])(
-      "shows a 429 for too many %s, and waits its retryAfter",
-      async (_, error, retryAfter, reason) => {
+      "shows a rate limiter's 429 for too many %s, and waits its retryAfter",
+      async (_, error, retryAfter) => {
         vi.useFakeTimers();
-        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter, reason }));
+        fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter }));
         const email = useEmail();
 
         await email.change("new@example.com", "secret-password");
@@ -383,6 +378,34 @@ describe("useChangeEmail", () => {
         expect(email.changeError.value).toBe("");
       }
     );
+
+    it("says the account's codes of the last 24 hours are used up, and holds until they count again", async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(429, {
+          error: "Too many confirmation codes were mailed for this account today: try again later.",
+          retryAfter: 86_399,
+          reason: ErrorReason.EmailChangeLimit
+        })
+      );
+      const email = useEmail();
+
+      expect(await email.change("new@example.com", "secret-password")).toBe(false);
+
+      // Nothing was mailed, so the user isn't refreshed.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(email.changeError.value).toBe(Messages.Account.emailChangeLimit);
+      expect(email.capped.value).toBe(true);
+      expect(email.cooldown.remaining.value).toBe(86_399);
+      // A reload keeps the hold, and knows it's the cap's.
+      const reloaded = useEmail();
+      expect(reloaded.capped.value).toBe(true);
+
+      vi.advanceTimersByTime(86_399_000);
+      await nextTick();
+      expect(email.capped.value).toBe(false);
+      expect(email.changeError.value).toBe("");
+    });
 
     it("waits a minute after a 429 without a retryAfter", async () => {
       vi.useFakeTimers();
@@ -556,6 +579,24 @@ describe("useChangeEmail", () => {
 
       expect(email.cooldown.active.value).toBe(false);
       expect(savedCooldown()).toBeNull();
+    });
+
+    it("keeps the daily cap's hold when the change is confirmed", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { message: "E-mail address updated successfully." })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse(200, { ...waitingUser, email: "new@example.com", pendingEmail: null })
+        );
+      const email = useEmail();
+      email.cooldown.start(86_000, "old@example.com", Messages.Account.emailChangeLimit);
+
+      expect(await email.confirm("123456")).toBe(true);
+
+      // The API's count of codes doesn't start over with a confirmed change.
+      expect(email.capped.value).toBe(true);
+      expect(savedCooldown()).toMatchObject({ note: Messages.Account.emailChangeLimit });
     });
 
     it("keeps a rate limiter's wait, which isn't about the change", async () => {
