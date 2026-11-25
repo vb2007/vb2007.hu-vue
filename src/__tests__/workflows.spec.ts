@@ -20,36 +20,48 @@ const workflows: Workflow[] = readdirSync(workflowDir)
 
 // A top-level key's block: its line plus every following indented, blank or comment line.
 const topLevelSection = (source: string, key: string): string =>
-  source.match(new RegExp(`^["']?${key}["']?:.*(?:\\r?\\n(?:[ \\t#].*)?)*`, "m"))?.[0] ?? "";
+  source.match(new RegExp(`^["']?${key}["']?[ \\t]*:.*(?:\\r?\\n(?:[ \\t#].*)?)*`, "m"))?.[0] ?? "";
 
 const runsOnLines = (job: string): string[] =>
   (job.match(/^\s*runs-on:.*$/gm) ?? []).map((line) => line.trim());
 
-const runsOnByJob = (source: string): Record<string, string[]> =>
-  Object.fromEntries(
-    topLevelSection(source, "jobs")
-      .split(/^ {2}(?=[\w-]+:)/m)
-      .slice(1)
-      .map((job) => [job.split(":")[0], runsOnLines(job)])
-  );
+// Anything under `jobs:` that isn't a job, a comment or blank is kept under "(not a job)", so it fails.
+const runsOnByJob = (source: string): Record<string, string[]> => {
+  const [head, ...jobs] = topLevelSection(source, "jobs").split(/^ {2}(?=["']?[\w-]+["']?\s*:)/m);
+  const notJobs = head
+    .split(/\r?\n/)
+    .slice(1)
+    .filter((line) => !/^\s*(#.*)?$/.test(line));
+  return Object.fromEntries([
+    ...jobs.map((job) => [/[\w-]+/.exec(job)?.[0] ?? job, runsOnLines(job)]),
+    ...(notJobs.length ? [["(not a job)", notJobs]] : [])
+  ]);
+};
+
+// Not triggered by PRs, but the guard allows push on dev, so only this keeps them off `prod`.
+const prWorkerWorkflows = ["dev-to-main-pr.yml"];
 
 const pullRequestWorkflows = workflows.filter(({ source }) =>
   /\bpull_request/.test(topLevelSection(source, "on"))
 );
 
-describe("Workflows triggered by pull requests", () => {
+const checkedWorkflows = workflows.filter(
+  (workflow) => pullRequestWorkflows.includes(workflow) || prWorkerWorkflows.includes(workflow.file)
+);
+
+describe("Workflows that must stay on the pr-worker runners", () => {
   it("exist", () => {
     expect(pullRequestWorkflows.length).toBeGreaterThan(0);
+    expect(checkedWorkflows.map(({ file }) => file)).toEqual(
+      expect.arrayContaining(prWorkerWorkflows)
+    );
   });
 
-  it.each(pullRequestWorkflows)(
-    "$file runs every job on the pr-worker runners only",
-    ({ source }) => {
-      const runsOn = runsOnByJob(source);
-      const jobIds = Object.keys(runsOn);
+  it.each(checkedWorkflows)("$file runs every job on the pr-worker runners only", ({ source }) => {
+    const runsOn = runsOnByJob(source);
+    const jobIds = Object.keys(runsOn);
 
-      expect(jobIds.length).toBeGreaterThan(0);
-      expect(runsOn).toEqual(Object.fromEntries(jobIds.map((id) => [id, prRunsOn])));
-    }
-  );
+    expect(jobIds.length).toBeGreaterThan(0);
+    expect(runsOn).toEqual(Object.fromEntries(jobIds.map((id) => [id, prRunsOn])));
+  });
 });
