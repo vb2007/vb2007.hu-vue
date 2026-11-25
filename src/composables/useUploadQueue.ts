@@ -43,11 +43,16 @@ export const useUploadQueue = (
 
   const find = (id: number) => items.value.find((item) => item.id === id)!;
 
-  /** Bytes queued or in flight but not counted in `usage` yet. */
-  const pendingBytes = () =>
-    items.value
-      .filter((item) => item.status === "queued" || item.status === "uploading")
-      .reduce((sum, item) => sum + item.file.size, 0);
+  /** Files queued or in flight, not counted in `usage` yet. */
+  const pending = () =>
+    items.value.filter((item) => item.status === "queued" || item.status === "uploading");
+
+  /** `validateFile` with what's pending counted against the quota and the upload cap. */
+  const check = (file: File) => {
+    const files = pending();
+    const bytes = files.reduce((sum, item) => sum + item.file.size, 0);
+    return validateFile(file, usage.value, bytes, files.length);
+  };
 
   const run = async (id: number) => {
     const item = find(id);
@@ -86,7 +91,7 @@ export const useUploadQueue = (
 
   const add = (files: Iterable<File>, visibility: UploadVisibility) => {
     for (const file of files) {
-      const error = validateFile(file, usage.value, pendingBytes());
+      const error = check(file);
       items.value.push({
         id: nextId++,
         file,
@@ -113,7 +118,7 @@ export const useUploadQueue = (
   /** Tries a failed or cancelled file again, re-checking it first. */
   const retry = (id: number) => {
     const item = find(id);
-    const error = validateFile(item.file, usage.value, pendingBytes());
+    const error = check(item.file);
     item.error = error;
     item.status = error ? "rejected" : "queued";
     pump();

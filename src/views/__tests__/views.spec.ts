@@ -166,6 +166,7 @@ describe("views", () => {
       usedBytes: 10,
       quotaBytes: 100,
       count: 1,
+      maxCount: 10000,
       maxFileSizeBytes: 50,
       allowedTypes: [],
       byCategory: []

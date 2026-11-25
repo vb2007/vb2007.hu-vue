@@ -602,6 +602,10 @@ export class Messages {
     static readonly emptyFile: string = "This file is empty.";
     static readonly unsupportedType: string = "This file type isn't supported.";
     static readonly quotaExceeded: string = "This upload would go over your storage quota.";
+    /** The API's own 409 reads the same, with the number unformatted (vb2007/vb2007.hu-api#589). */
+    static tooManyUploads(max: number): string {
+      return `An account can have at most ${max.toLocaleString()} uploads: delete one first.`;
+    }
     /** `limit` is already formatted, e.g. "10 MB". */
     static tooLarge(limit: string): string {
       return `The file is larger than the ${limit} limit.`;

@@ -86,9 +86,15 @@ const extensionOf = (name: string) => {
 
 /**
  * Why a file can't be uploaded, or "" when it can. The API checks the real contents again;
- * this only catches what's obvious up front. `pendingBytes` is what's already queued.
+ * this only catches what's obvious up front. `pendingBytes` and `pendingCount` are what's already
+ * queued.
  */
-export const validateFile = (file: File, usage: UploadUsage | null, pendingBytes = 0) => {
+export const validateFile = (
+  file: File,
+  usage: UploadUsage | null,
+  pendingBytes = 0,
+  pendingCount = 0
+) => {
   if (file.size === 0) {
     return Messages.Uploads.emptyFile;
   }
@@ -108,6 +114,9 @@ export const validateFile = (file: File, usage: UploadUsage | null, pendingBytes
   }
   if (file.size > usage.maxFileSizeBytes) {
     return Messages.Uploads.tooLarge(formatBytes(usage.maxFileSizeBytes));
+  }
+  if (usage.count + pendingCount >= usage.maxCount) {
+    return Messages.Uploads.tooManyUploads(usage.maxCount);
   }
   if (usage.usedBytes + pendingBytes + file.size > usage.quotaBytes) {
     return Messages.Uploads.quotaExceeded;

@@ -409,3 +409,43 @@ test("the storage meter splits use by type and warns when nearly full", async ({
   await expect(page.getByText("This upload would go over your storage quota.")).toBeVisible();
   expect(api.uploads).toHaveLength(2);
 });
+
+test("the storage board counts files against the upload cap, which stops uploads past it", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  api.uploadCapIs(2);
+  api.hasUpload("one.png");
+  await page.goto("/upload");
+
+  const storage = board(page, "Storage");
+  await expect(storage.getByText("1 of 2 files")).toBeVisible();
+
+  // Another upload lands elsewhere after the page counted: the API's 409 is what stops this one.
+  api.hasUpload("two.png");
+  const file = { name: "three.png", mimeType: "image/png", buffer: Buffer.alloc(1024) };
+  await page.getByLabel("Files to upload").setInputFiles(file);
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(
+    queue.getByText("An account can have at most 2 uploads: delete one first.")
+  ).toBeVisible();
+  expect(api.uploads).toHaveLength(2);
+
+  // Once the page knows, the pre-check stops the file before anything is sent.
+  await page.reload();
+  await expect(storage.getByText("2 of 2 files")).toBeVisible();
+  await expect(
+    storage.getByText("You have the most files an account can have. Delete some uploads")
+  ).toBeVisible();
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/upload")) sent.push(request.url());
+  });
+  await page.getByLabel("Files to upload").setInputFiles(file);
+  await expect(
+    queue.getByText("An account can have at most 2 uploads: delete one first.")
+  ).toBeVisible();
+  expect(sent).toEqual([]);
+  expect(api.uploads).toHaveLength(2);
+});

@@ -755,6 +755,8 @@ export class MockApi {
   private readonly uploadOwners = new Map<string, string>();
   private nextUploadId = 1;
   private quotaBytes = DEFAULT_QUOTA;
+  /** The API's `UPLOADS_PER_ACCOUNT`; `uploadCapIs` lowers it so a spec can reach it. */
+  private maxUploads = 10000;
   /** Accounts the admin page lists, oldest first. */
   readonly users: MockListedUser[] = [];
   /** The upload usage `hasUser(..., { usedBytes, count })` arranged in place of the uploads an account owns. */
@@ -1428,6 +1430,10 @@ export class MockApi {
 
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
+  }
+
+  uploadCapIs(count: number) {
+    this.maxUploads = count;
   }
 
   shortenReturns(code: string) {
@@ -3270,6 +3276,7 @@ export class MockApi {
         usedBytes: this.usedBytes(),
         quotaBytes: this.quotaBytes,
         count: this.uploads.length,
+        maxCount: this.maxUploads,
         maxFileSizeBytes: 100 * MB,
         allowedTypes: ALLOWED_TYPES,
         byCategory: CATEGORIES.map((category) => {
@@ -3284,7 +3291,10 @@ export class MockApi {
     };
   }
 
-  /** `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`. */
+  /**
+   * `POST /upload`: `isAuthenticated` first, then multer's 400s to a body it can't read, as in the API's `handleUpload`,
+   * then `checkUploadQuota`'s 409 at the upload cap and 413 over the quota, and only then `verifyUploadType`'s 415.
+   */
   private receiveUpload(body: Buffer | null, contentType: string): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (!/boundary=.+$/.test(contentType)) {
@@ -3292,14 +3302,20 @@ export class MockApi {
     }
     if (!body?.length) return { status: 400, body: { error: "Unexpected end of form" } };
     const part = parseMultipart(body, contentType);
-    // `verifyUploadType` and `checkUploadQuota` pass a body without a file on to `uploadFile`, which refuses it.
+    // `checkUploadQuota` and `verifyUploadType` pass a body without a file on to `uploadFile`, which refuses it.
     if (!part.hasFile) return { status: 400, body: { error: "No file was provided." } };
-    const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
-    if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
-      return { status: 415, body: { error: "This file type isn't supported." } };
+    if (this.uploads.length + 1 > this.maxUploads) {
+      return {
+        status: 409,
+        body: { error: `An account can have at most ${this.maxUploads} uploads: delete one first.` }
+      };
     }
     if (this.usedBytes() + part.size > this.quotaBytes) {
       return { status: 413, body: { error: "This upload would go over your storage quota." } };
+    }
+    const extension = part.fileName.slice(part.fileName.lastIndexOf(".")).toLowerCase();
+    if (!ALLOWED_TYPES.some((type) => type.extension === extension)) {
+      return { status: 415, body: { error: "This file type isn't supported." } };
     }
     const upload = this.hasUpload(part.fileName, {
       fileSize: part.size,

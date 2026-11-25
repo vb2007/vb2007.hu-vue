@@ -85,6 +85,14 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
           </span>
         </li>
       </ul>
+
+      <p class="tally">
+        <span class="tally__count">{{ usage.count.toLocaleString() }}</span>
+        of {{ usage.maxCount.toLocaleString() }} files
+      </p>
+      <StatusMessage v-if="usage.count >= usage.maxCount" tone="error">
+        You have the most files an account can have. Delete some uploads to make room for new ones.
+      </StatusMessage>
     </template>
   </StationBoard>
 </template>
@@ -293,5 +301,18 @@ const remaining = computed(() => Math.max(0, props.usage!.quotaBytes - props.usa
 
 .split__row--empty .split__run {
   display: none;
+}
+
+/* The upload cap is a backstop few get near, so it's a figure rather than a second line. */
+.tally {
+  margin-top: calc(-1 * var(--sp-2));
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.tally__count {
+  color: var(--c-ink);
 }
 </style>

@@ -73,6 +73,22 @@ describe("useUploadQueue", () => {
     expect(api.items.value.map((item) => item.status)).toEqual(["uploading", "rejected"]);
   });
 
+  it("counts queued files against the upload cap", () => {
+    usage.value = someUsage({ count: 7, maxCount: 10 });
+    const { api } = mountQueue();
+    api.add([aFile("a.png"), aFile("b.png"), aFile("c.png"), aFile("d.png")], "private");
+
+    expect(api.items.value.map((item) => item.status)).toEqual([
+      "uploading",
+      "uploading",
+      "queued",
+      "rejected"
+    ]);
+    expect(api.items.value[3].error).toBe(
+      "An account can have at most 10 uploads: delete one first."
+    );
+  });
+
   it("keeps the API's error on a failed upload, and retries it", async () => {
     const { api } = mountQueue();
     api.add([aFile("a.png")], "private");

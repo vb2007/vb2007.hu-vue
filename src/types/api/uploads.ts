@@ -34,6 +34,8 @@ export interface UploadUsage {
   usedBytes: number;
   quotaBytes: number;
   count: number;
+  /** The most uploads an account can have (vb2007/vb2007.hu-api#589). */
+  maxCount: number;
   maxFileSizeBytes: number;
   allowedTypes: AllowedUploadType[];
   byCategory: { category: UploadCategory; bytes: number; count: number }[];
