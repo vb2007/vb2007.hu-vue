@@ -257,6 +257,22 @@ describe("SharexPanel", () => {
     expect(key(panel, "Try again in 60 seconds").attributes("disabled")).toBeDefined();
   });
 
+  it("creates no key once the page went while the files loaded", async () => {
+    const panel = await mountPanel();
+    const loads = FILES.map(() => deferResponse(fetchMock));
+    await key(panel, "Set up ShareX").trigger("click");
+    await panel.find('.reauth input[type="password"]').setValue("secret");
+    await panel.find(".reauth").trigger("submit");
+    await flushPromises();
+    panel.unmount();
+    wrapper = undefined;
+
+    loads.forEach((load, i) => load.respond(jsonResponse(200, FILES[i])));
+    await flushPromises();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
   it("makes no files for a key answered after the page went", async () => {
     const panel = await mountPanel();
     queueFiles(...FILES);
@@ -380,8 +396,10 @@ describe("SharexPanel", () => {
       await panel.find(".reauth").trigger("submit");
       await flushPromises();
       isLoggedIn.value = false;
+      sessionEnded.value = true;
       await flushPromises();
       expect(panel.find(".reauth").exists()).toBe(false);
+      expect(panel.text()).toContain(Messages.Auth.sessionEnded);
 
       create.respond(
         jsonResponse(201, { message: CREATED, apiKey: { id: "k1", name: "ShareX", token: TOKEN } })
@@ -391,7 +409,6 @@ describe("SharexPanel", () => {
       expect(document.activeElement).toBe(panel.find(".token__title").element);
       expect(made).toHaveLength(3);
       expect(clicked).toEqual(NAMES);
-      expect(panel.text()).toContain("Log in to set up ShareX.");
     });
 
     it("keeps a token on show above the gate until it's saved", async () => {

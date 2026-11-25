@@ -50,6 +50,9 @@ const gateMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("gateMess
 /** Which uploader each of ShareX's Destinations slots takes, in ShareX's order. */
 const slots = Sharex.uploaders.flatMap(({ name, slots }) => slots.map((slot) => ({ slot, name })));
 
+/** Set once the page goes: no key is created after it, and one answered after it makes no files. */
+let left = false;
+
 const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenResponse>> => {
   const results = await Promise.all(
     Sharex.uploaders.map(({ id }) =>
@@ -72,6 +75,8 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
     }
     uploaders.push(result.data);
   }
+  // Left while the files loaded: a key now would be one nobody sees, costing a notice and a slot.
+  if (left) return { ok: false, kind: "aborted", status: 0, error: Messages.requestAborted };
 
   const result = await apiRequest(Endpoints.User.createApiKey, {
     body: { ...body, name: Sharex.keyName, scopes: [...Sharex.keyScopes] },
@@ -84,9 +89,6 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
   else if (result.status === HttpStatus.Conflict) full.value = true;
   return result;
 };
-
-/** Set once the page goes, so a key answered after it makes no files. */
-let left = false;
 
 const forgetFiles = () => {
   files.value.forEach(({ url }) => URL.revokeObjectURL(url));
