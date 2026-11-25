@@ -1,3 +1,5 @@
+import type { LocationQuery } from "vue-router";
+import { ApiKeyLinkQuery } from "@/constants/auth";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { displayNameEarlyError, displayNameError } from "@/scripts/authentication/displayName";
@@ -51,6 +53,31 @@ export const isAdminScope = (scope: ApiKeyScope) => scope.startsWith("admin:");
 /** The scopes this account may give a key: the `admin:` ones only for the superuser, like the API. */
 export const grantableScopes = (superuser: boolean) =>
   Limits.ApiKeys.scopes.filter((scope) => superuser || !isAdminScope(scope));
+
+/**
+ * What the deep link (see `ApiKeyLinkQuery`) fills "Create an API key" in with, `undefined` without
+ * it. The name is kept as given, for the form to check. Of the scopes, the ones this account may
+ * give a key, in the API's order, and the rest (unknown, or `admin:` ones), which are left out.
+ */
+export const apiKeyLink = (query: LocationQuery, superuser: boolean) => {
+  if (!(ApiKeyLinkQuery.open in query)) return undefined;
+  const wanted = new Set(
+    [query[ApiKeyLinkQuery.scopes]]
+      .flat()
+      .join()
+      .split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean)
+  );
+  const scopes = grantableScopes(superuser).filter((scope) => wanted.has(scope));
+  return {
+    name: [query[ApiKeyLinkQuery.keyName]].flat()[0] ?? "",
+    scopes,
+    dropped: [...wanted].filter((scope) => !scopes.some((kept) => kept === scope))
+  };
+};
+
+export type ApiKeyPrefill = NonNullable<ReturnType<typeof apiKeyLink>>;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

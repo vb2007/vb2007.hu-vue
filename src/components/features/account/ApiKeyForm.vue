@@ -4,6 +4,7 @@
  * the details (a new key's name and scopes, and its lifetime), checked here before anything is
  * sent, then `ReauthForm`, whose key sends them with the password. Cancel on the confirmation goes
  * back to the details, kept. The answer carries the token, which `done` hands on to show once.
+ * The deep link's `prefill` fills a new key's name and scopes in, and names the scopes left out.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { useRoute } from "vue-router";
@@ -22,6 +23,7 @@ import {
   lifetimeError,
   lifetimeOf,
   SCOPE_AREAS,
+  type ApiKeyPrefill,
   type LifetimeChoice
 } from "@/scripts/authentication/apiKeys";
 import ReauthForm from "@/components/features/account/ReauthForm.vue";
@@ -29,11 +31,12 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseCheckbox from "@/components/ui/BaseCheckbox.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import BaseSelect from "@/components/ui/BaseSelect.vue";
+import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { ApiKey, ApiKeyScope, ApiKeyTokenResponse } from "@/types/api/apiKeys";
 import type { MfaPasswordBody } from "@/types/api/mfa";
 
 /** Without `apiKey` it creates one. */
-const props = defineProps<{ apiKey?: ApiKey }>();
+const props = defineProps<{ apiKey?: ApiKey; prefill?: ApiKeyPrefill }>();
 const emit = defineEmits<{
   done: [data: ApiKeyTokenResponse];
   cancel: [];
@@ -46,8 +49,8 @@ const emit = defineEmits<{
 const route = useRoute();
 const rotating = !!props.apiKey;
 const step = ref<"details" | "confirm">("details");
-const name = ref("");
-const scopes = ref<ApiKeyScope[]>([]);
+const name = ref(props.prefill?.name ?? "");
+const scopes = ref<ApiKeyScope[]>(props.prefill?.scopes ?? []);
 const choice = ref<LifetimeChoice>(rotating ? "keep" : "days");
 const days = ref(String(Limits.ApiKeys.expiryDefaultDays));
 const form = useTemplateRef("form");
@@ -171,6 +174,9 @@ onMounted(focusFirst);
         <p class="key-form__note">
           Each lets the key make one kind of request. Write doesn't include read.
         </p>
+        <StatusMessage v-if="prefill?.dropped.length" tone="info">{{
+          Messages.ApiKeys.scopesLeftOut(prefill.dropped)
+        }}</StatusMessage>
         <div
           v-for="area in areas"
           :key="area.label"
@@ -232,7 +238,7 @@ onMounted(focusFirst);
         ? 'Confirms it\'s you. The current token stops working at once, and the new one shows only once.'
         : 'Confirms it\'s you. The key\'s token then shows only once.'
     "
-    :github-return="route.path"
+    :github-return="route.fullPath"
     @done="emit('done', $event)"
     @cancel="back"
   />

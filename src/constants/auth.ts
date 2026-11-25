@@ -22,3 +22,14 @@ export class AuthPaths {
   static readonly Login = "/login";
   static readonly ResetPassword = "/reset-password";
 }
+
+/**
+ * The deep link that opens "Create an API key" filled in, e.g. for an app that needs a key:
+ * `/account/api-keys?newApiKey=1&name=…&scopes=pastes:read,pastes:write` (`/account` forwards it).
+ */
+export class ApiKeyLinkQuery {
+  static readonly open = "newApiKey";
+  static readonly keyName = "name";
+  /** Comma-separated; the ones the account can't give a key are left out, and named. */
+  static readonly scopes = "scopes";
+}

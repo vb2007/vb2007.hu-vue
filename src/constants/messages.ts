@@ -555,6 +555,10 @@ export class Messages {
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;
     }
+    /** On a form the deep link filled in: the scopes it asked for that this account can't give. */
+    static scopesLeftOut(scopes: string[]): string {
+      return `The link also asked for scopes this account can't give a key, so they're left out: ${scopes.join(", ")}.`;
+    }
   };
 
   static readonly Uploads = class {

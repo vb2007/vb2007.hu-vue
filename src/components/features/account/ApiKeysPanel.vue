@@ -2,9 +2,12 @@
 /**
  * The account's API keys (vb2007/vb2007.hu-api#511), on a page of their own: the list, "Create an
  * API key" under it, and new tokens at the top, each shown once. Visitors get a gate once the
- * session is known, like the account page; a token on show stays above it until it's saved.
+ * session is known, like the account page; a token on show stays above it until it's saved. The
+ * deep link (see `ApiKeyLinkQuery`) opens "Create an API key" filled in once the list is in.
  */
 import { nextTick, ref, useTemplateRef, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { ApiKeyLinkQuery } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
@@ -14,7 +17,13 @@ import { useLatestRequest } from "@/composables/useLatestRequest";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import { apiRequest } from "@/scripts/api/client";
-import { isLoggedIn, isSessionChecked, sessionEnded } from "@/scripts/authentication/authState";
+import { apiKeyLink, type ApiKeyPrefill } from "@/scripts/authentication/apiKeys";
+import {
+  isLoggedIn,
+  isSessionChecked,
+  isSuperuser,
+  sessionEnded
+} from "@/scripts/authentication/authState";
 import ApiKeyForm from "@/components/features/account/ApiKeyForm.vue";
 import ApiKeyRow from "@/components/features/account/ApiKeyRow.vue";
 import ApiKeyTokenPanel from "@/components/features/account/ApiKeyTokenPanel.vue";
@@ -44,6 +53,9 @@ const tokens = ref<
   { id: string; name: string; message: string; token: string; rotated: boolean }[]
 >([]);
 const creating = ref(false);
+const prefill = ref<ApiKeyPrefill>();
+const route = useRoute();
+const router = useRouter();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
 const endedMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("endedMessage");
 const gateMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("gateMessage");
@@ -67,10 +79,30 @@ const load = async () => {
   else error.value = result.error;
 };
 
+/**
+ * The deep link opens the create form filled in, unless the account is at the cap. Once per login:
+ * the session (whether it's the superuser's) and the list are known by then.
+ */
+const openLinked = () => {
+  if (!loaded.value || apiKeys.value.length >= Limits.ApiKeys.perAccount) return;
+  prefill.value = apiKeyLink(route.query, isSuperuser.value);
+  creating.value = !!prefill.value;
+};
+
+/** The create form closed: the deep link is used up, so its query goes and the rest stays. */
+const dropLink = () => {
+  prefill.value = undefined;
+  const query = { ...route.query };
+  for (const name of [ApiKeyLinkQuery.open, ApiKeyLinkQuery.keyName, ApiKeyLinkQuery.scopes]) {
+    delete query[name];
+  }
+  return router.replace({ query, hash: route.hash });
+};
+
 watch(
   isLoggedIn,
   (loggedIn) => {
-    if (loggedIn) return load();
+    if (loggedIn) return load().then(openLinked);
     latest.next();
     apiKeys.value = [];
     loaded.value = false;
@@ -125,6 +157,7 @@ const onGone = (id: string, text: string, tone: "success" | "info") => {
 const onToken = (data: ApiKeyTokenResponse, rotated = false) => {
   const { id, name, token } = data.apiKey;
   creating.value = false;
+  dropLink();
   onStart();
   tokens.value = [
     { id, name, message: data.message, token, rotated },
@@ -149,6 +182,7 @@ const startCreate = () => {
 
 const closeCreate = async () => {
   creating.value = false;
+  dropLink();
   await nextTick();
   focusCreateArea();
 };
@@ -204,6 +238,7 @@ const closeCreate = async () => {
     <ApiKeyForm
       v-if="creating"
       ref="createForm"
+      :prefill="prefill"
       @done="onToken"
       @cancel="closeCreate"
       @full="load"
