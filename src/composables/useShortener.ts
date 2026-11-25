@@ -15,6 +15,8 @@ export const useShortener = () => {
   const errorMessage = ref("");
   /** The link shown is one the user made before for the same URL (a 200), not a new one. */
   const alreadyShortened = ref(false);
+  /** The API refused a new link: the account has as many as it can (a 409). */
+  const atCap = ref(false);
 
   /** Short links live on this site (/r/:code), which is shorter than going through the API host. */
   const shortenedLink = () => (shortenedCode.value ? shortLink(shortenedCode.value) : "");
@@ -26,6 +28,7 @@ export const useShortener = () => {
 
   /** Whether the API gave back a link: a new one, or the user's own for the same URL. */
   const shorten = async () => {
+    atCap.value = false;
     const invalid = validateShortUrl(originalUrl.value);
     if (invalid) {
       errorMessage.value = invalid;
@@ -37,10 +40,12 @@ export const useShortener = () => {
 
     const result = await apiRequest(Endpoints.ShortUrl.create, {
       body: { url: originalUrl.value },
-      failure: Messages.ShortUrl.shortenFailed
+      failure: Messages.ShortUrl.shortenFailed,
+      quietStatuses: [HttpStatus.Conflict]
     });
 
     alreadyShortened.value = result.ok && result.status === HttpStatus.Ok;
+    atCap.value = !result.ok && result.status === HttpStatus.Conflict;
     if (result.ok) {
       shortenedCode.value = result.data.data.shortenedUrl;
       originalUrl.value = "";
@@ -55,6 +60,7 @@ export const useShortener = () => {
     shortenedCode.value = "";
     errorMessage.value = "";
     alreadyShortened.value = false;
+    atCap.value = false;
   };
 
   return {
@@ -64,6 +70,7 @@ export const useShortener = () => {
     isLoading,
     errorMessage,
     alreadyShortened,
+    atCap,
     shorten,
     reset
   };

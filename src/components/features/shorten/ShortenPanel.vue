@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTemplateRef } from "vue";
+import { useRoute } from "vue-router";
 import { isLoggedIn, isSessionChecked } from "@/scripts/authentication/authState";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useShortener } from "@/composables/useShortener";
@@ -26,9 +27,12 @@ const {
   isLoading,
   errorMessage,
   alreadyShortened,
+  atCap,
   shorten,
   reset
 } = useShortener();
+// At the cap, the way out is deleting a link. On /shorten the list is already on the page.
+const route = useRoute();
 
 const form = useTemplateRef("form");
 const {
@@ -68,7 +72,11 @@ const submit = async () => {
         required
         :error="errors.url || errorMessage"
         @blur="leave('url')"
-      />
+      >
+        <template v-if="atCap && !errors.url && route.path !== '/shorten'" #error>
+          {{ errorMessage }} <RouterLink to="/shorten">Manage your links</RouterLink>
+        </template>
+      </BaseInput>
       <BaseButton type="submit" block :loading="isLoading" :blocked="!isValid">
         {{ isLoading ? "Shortening" : "Shorten" }}
       </BaseButton>
