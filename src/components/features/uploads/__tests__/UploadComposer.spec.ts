@@ -34,6 +34,7 @@ describe("UploadComposer", () => {
 
     expect(wrapper.find("h1").text()).toBe("Upload");
     expect(wrapper.find(".gate").text()).toContain("Only logged-in users can upload files.");
+    expect(wrapper.find(".gate").text()).toContain("Anyone can find and open public files.");
     expect(wrapper.findAll(".gate a").map((link) => link.attributes("href"))).toEqual([
       "/register",
       "/login"
