@@ -1821,6 +1821,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   const arrange = (email: string) => {
     api.countsRateLimit("registrationCodeFailures", { email });
     api.countsRateLimit("emailChangeCodeFailures", { email });
+    api.countsRateLimit("emailChangeSends", { email });
     api.countsRateLimit("passwordResetCodeFailures", { email });
     api.countsRateLimit("passwordChecksPerAccount", { email });
     api.countsRateLimit("accountCodeChecksPerAccount", { email });
@@ -1865,6 +1866,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     "Rejected API keys from the IP.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
+    "E-mail change codes mailed for the account, 10 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day.",
     "Wrong MFA codes, links and passkeys for the account, 20 a day.",
     "MFA log-in e-mails to the account, 10 a day.",
@@ -1881,6 +1883,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     "Wrong passwords on the account page, per account.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
+    "E-mail change codes mailed for the account, 10 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day.",
     "Wrong MFA codes, links and passkeys for the account, 20 a day.",
     "MFA log-in e-mails to the account, 10 a day.",
