@@ -44,11 +44,14 @@ onMounted(() => title.value?.focus());
     <p class="token__value">
       <span class="visually-hidden">Token: </span><span class="token__text">{{ token }}</span>
     </p>
-    <p class="token__note">
-      Send it in the Authorization header, never in a URL. With the account:read scope, this shows
-      your account:
-    </p>
-    <code class="token__usage">{{ usage }}</code>
+    <!-- How to use it; a page that hands the token on some other way says so here instead. -->
+    <slot>
+      <p class="token__note">
+        Send it in the Authorization header, never in a URL. With the account:read scope, this shows
+        your account:
+      </p>
+      <code class="token__usage">{{ usage }}</code>
+    </slot>
     <div class="token__actions">
       <BaseButton size="sm" variant="secondary" @click="copy(token)">
         <AppIcon :name="copied ? 'check' : 'copy'" :size="16" />

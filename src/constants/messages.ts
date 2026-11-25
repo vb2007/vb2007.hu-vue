@@ -557,6 +557,18 @@ export class Messages {
     }
   };
 
+  /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */
+  static readonly Sharex = class {
+    static readonly filesFailed: string = "Failed to load the ShareX files";
+    /** A file without `Sharex.tokenPlaceholder`: checked before the key is created, so none is. */
+    static readonly placeholderMissing: string =
+      "The ShareX files have no place for the token, so no key was created. Try again later.";
+    /** Back from GitHub, which "Confirm with GitHub" on this page sent the user to. */
+    static githubConfirmed(minutes: number): string {
+      return `GitHub confirmed it's you. Set up ShareX within ${minutes} minutes.`;
+    }
+  };
+
   static readonly Uploads = class {
     static readonly listFailed: string = "Failed to load your uploads";
     static readonly usageFailed: string = "Failed to load your storage";

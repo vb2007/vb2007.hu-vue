@@ -114,6 +114,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `POST /user/api-keys/:id/rotate` gives the key a new token with `createdAt` now and keeps its lifetime when `expiresInDays` is left
  * out; it and `DELETE /user/api-keys/:id` (no confirmation) answer 404 for a key the account doesn't have. `api.usesUpSecurityNotices()`
  * answers create and rotate with the day's used-up security notices' 429 (`retryAfter` 7200), and `api.apiKeysOf()` lists the logged-in account's keys.
+ * `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` (vb2007/vb2007.hu-api#573) answer anyone with ShareX's custom uploader as JSON,
+ * shaped like the API's `sharexUploaders`, its `Authorization` header holding `SHAREX_TOKEN_PLACEHOLDER` for the key's token; `api.sharexFileFails(name)`
+ * answers that one's file with a 500 instead.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
  * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries
  * (vb2007/vb2007.hu-api#494: a wrong code answers `attemptsLeft`, a setup that's gone `reason`, and `api.endsTotpSetup(how)` ends one); `DELETE /user/mfa/totp` turns it off.
@@ -250,7 +253,11 @@ const NOT_LOGGED_IN = {
  * middleware), so a session it has replaced still gets through, as a guest. Every other route refuses that session first.
  * `GET /e2e-github/authorize` stands in for the public `GET /auth/github/callback`.
  */
+/** The API's `sharexTokenPlaceholder`: what a ShareX file's `Authorization` header holds until the token replaces it. */
+export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
+
 const PUBLIC_ROUTES = [
+  /^GET \/sharex\/(upload|paste|shorten)\.sxcu$/,
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
   /^GET \/auth\/(username-available|github\/link)$/,
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
@@ -814,6 +821,7 @@ export class MockApi {
   private statsDown = false;
   /** The API host the app was built against, known once the app has called it. */
   apiOrigin = "";
+  private failingSharexFile = "";
   /** The code every password reset "mails"; the addresses asked for go to `passwordResets`, trimmed like the API reads them. */
   readonly passwordResetCode = "123456";
   readonly passwordResets: string[] = [];
@@ -1371,6 +1379,53 @@ export class MockApi {
     this.statsDown = down;
   }
 
+  sharexFileFails(name: string) {
+    this.failingSharexFile = name;
+  }
+
+  /** The API's `sharexUploaders`: ShareX's uploader for one of the three, pointing at the API it came from. */
+  private sharexFile(name: string): MockResponse {
+    if (name === this.failingSharexFile)
+      return { status: 500, body: { error: "Internal server error." } };
+    const uploader = {
+      upload: {
+        Name: "vb2007.hu upload",
+        DestinationType: "ImageUploader, FileUploader",
+        RequestURL: `${this.apiOrigin}/upload`,
+        Body: "MultipartFormData",
+        FileFormName: "file",
+        Arguments: { visibility: "public" },
+        URL: "{json:upload.url}"
+      },
+      paste: {
+        Name: "vb2007.hu paste",
+        DestinationType: "TextUploader",
+        RequestURL: `${this.apiOrigin}/paste`,
+        Body: "JSON",
+        Data: '{"paste": "{input}"}',
+        URL: `${this.appOrigin}/pastebin/{json:paste._id}`
+      },
+      shorten: {
+        Name: "vb2007.hu shortener",
+        DestinationType: "URLShortener",
+        RequestURL: `${this.apiOrigin}/shortenUrl`,
+        Body: "JSON",
+        Data: '{"url": "{input}"}',
+        URL: `${this.apiOrigin}/r/{json:data.shortenedUrl}`
+      }
+    }[name];
+    return {
+      status: 200,
+      body: {
+        Version: "17.0.0",
+        RequestMethod: "POST",
+        Headers: { Authorization: `Bearer ${SHAREX_TOKEN_PLACEHOLDER}` },
+        ErrorMessage: "{json:error}",
+        ...uploader
+      }
+    };
+  }
+
   quotaIs(bytes: number) {
     this.quotaBytes = bytes;
   }
@@ -1489,6 +1544,8 @@ export class MockApi {
      */
     sessionUser: MockUser | null
   ): MockResponse | undefined {
+    const sharexRoute = endpoint.match(/^GET \/sharex\/(upload|paste|shorten)\.sxcu$/);
+    if (sharexRoute) return this.sharexFile(sharexRoute[1]);
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));

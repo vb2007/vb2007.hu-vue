@@ -98,14 +98,16 @@ describe("AccountPanel", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
-  it("links to the API keys' own page, without asking for them", async () => {
+  it("links to the API keys' own page and ShareX's, without asking for them", async () => {
     logIn();
     const { wrapper } = await mountWithRouter(AccountPanel);
 
     const section = wrapper.find('[aria-labelledby="api-keys-title"]');
     expect(section.find("h2").text()).toBe("API keys");
-    expect(section.find("a").attributes("href")).toBe("/account/api-keys");
-    expect(section.find("a").text()).toBe("Manage API keys");
+    expect(section.findAll("a").map((link) => [link.attributes("href"), link.text()])).toEqual([
+      ["/account/api-keys", "Manage API keys"],
+      ["/account/sharex", "Set up ShareX"]
+    ]);
   });
 
   /** A row of the log-in details, by its name. */
