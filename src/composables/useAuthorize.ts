@@ -1,4 +1,4 @@
-import { onScopeDispose, ref } from "vue";
+import { onScopeDispose, ref, watch } from "vue";
 import type { LocationQuery } from "vue-router";
 import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
@@ -7,14 +7,15 @@ import { AuthorizeQuery } from "@/constants/oauth";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
 import { apiRequest } from "@/scripts/api/client";
-import { isLoggedIn } from "@/scripts/authentication/authState";
+import { isLoggedIn, userId } from "@/scripts/authentication/authState";
 import { clearGithubReturn } from "@/scripts/authentication/githubReturn";
+import { fetchUserDetails } from "@/scripts/authentication/user";
 import type { AuthorizeParams, OauthClient } from "@/types/api/oauth";
 
-const PROBLEMS: Record<string, string> = {
-  [AuthorizeQuery.invalidClient]: Messages.OAuth.invalidClient,
-  [AuthorizeQuery.invalidRedirectUri]: Messages.OAuth.invalidRedirectUri
-};
+const PROBLEMS = new Map([
+  [AuthorizeQuery.invalidClient, Messages.OAuth.invalidClient],
+  [AuthorizeQuery.invalidRedirectUri, Messages.OAuth.invalidRedirectUri]
+]);
 
 /** The request's parameters, when each is there once; anything else in the query stays out. */
 const paramsOf = (query: LocationQuery): AuthorizeParams | undefined => {
@@ -32,6 +33,10 @@ const paramsOf = (query: LocationQuery): AuthorizeParams | undefined => {
  * answer. `problem` is a request that can't go on (an unknown app or redirect URI, a missing
  * parameter, the API's `400`): it gets no answer and never sends the browser anywhere. `error`
  * is a failed answer that may work again; the `429` holds both keys for its `retryAfter`.
+ *
+ * The answer is the account's that's logged in when it's sent, which another tab may have changed:
+ * the session is looked up again before each answer and whenever the page is shown again, and a
+ * changed account gets the question again, never an answer it didn't see.
  *
  * The browser only ever goes to the `redirectTo` the API answers, never to the query's
  * `redirect_uri`, which nobody has vetted here. `navigate` is only swapped out by tests.
@@ -52,7 +57,8 @@ export const useAuthorize = (
 
   if (handedError !== undefined) {
     problem.value =
-      (typeof handedError === "string" && PROBLEMS[handedError]) || Messages.OAuth.invalidRequest;
+      (typeof handedError === "string" && PROBLEMS.get(handedError)) ||
+      Messages.OAuth.invalidRequest;
   } else if (typeof clientId !== "string" || !clientId) {
     problem.value = Messages.OAuth.invalidClient;
   } else if (!params) {
@@ -80,19 +86,56 @@ export const useAuthorize = (
     if (!event.persisted) return;
     clearGithubReturn();
     sending.value = "";
+    onReturn();
   };
   window.addEventListener("pageshow", onPageShow);
   onScopeDispose(() => window.removeEventListener("pageshow", onPageShow));
+
+  // The API limits answers per account, and an error is about the account that got it.
+  watch(
+    userId,
+    () => {
+      hold.stop();
+      error.value = "";
+    },
+    { flush: "sync" }
+  );
+
+  /**
+   * Looks the session up again: whether the account the question shows is still the one logged in.
+   * Logged out meanwhile, the login takes over; another account is said, and asked again. A lookup
+   * that fails says nothing about the session, so the answer goes ahead.
+   */
+  const isSameAccount = async () => {
+    const shown = userId.value;
+    await fetchUserDetails();
+    if (!isLoggedIn.value) return false;
+    if (userId.value === shown) return true;
+    error.value = Messages.OAuth.accountChanged;
+    return false;
+  };
+
+  const onReturn = () => {
+    if (document.hidden || sending.value || !isLoggedIn.value) return;
+    void isSameAccount();
+  };
+  document.addEventListener("visibilitychange", onReturn);
+  onScopeDispose(() => document.removeEventListener("visibilitychange", onReturn));
 
   /** Approves or denies; returns whether the browser is on its way back to the app. */
   const answer = async (approve: boolean) => {
     if (!params || problem.value || sending.value || hold.isHeld()) return false;
     sending.value = approve ? "approve" : "deny";
     error.value = "";
+    if (!(await isSameAccount())) {
+      sending.value = "";
+      return false;
+    }
     const result = await apiRequest(Endpoints.OAuth.authorize, {
       body: { ...params, approve },
       failure: Messages.OAuth.authorizeFailed,
-      quietStatuses: [HttpStatus.BadRequest, HttpStatus.TooManyRequests]
+      // The logged-out 403 (an ended session, a suspended account) logs the page out.
+      quietStatuses: [HttpStatus.BadRequest, HttpStatus.Forbidden, HttpStatus.TooManyRequests]
     });
     if (result.ok) {
       navigate(result.data.redirectTo);

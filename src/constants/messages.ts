@@ -571,7 +571,6 @@ export class Messages {
     }
   };
 
-  /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */
   /** The `/authorize` page, where first-party apps sign users in (vb2007/vb2007.hu-api#575). */
   static readonly OAuth = class {
     static readonly clientFailed: string = "Failed to load the app";
@@ -598,6 +597,9 @@ export class Messages {
     static consentNote(app: string): string {
       return `${app} learns your account's id, username and e-mail address, whether the address is confirmed, and whether you're the site's admin. Never your password.`;
     }
+    /** Another account logged in meanwhile (another tab): the question shows it now, unanswered. */
+    static readonly accountChanged: string =
+      "You're logged in as another account now, maybe from another tab, so nothing was sent. Check the account below, then answer again.";
     static loginLead(app: string): string {
       return `Log in to continue to ${app}.`;
     }
@@ -607,6 +609,7 @@ export class Messages {
     }
   };
 
+  /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */
   static readonly Sharex = class {
     /** Logged by `apiRequest`; the page shows `filesUnavailable` whatever the reason. */
     static readonly filesFailed: string = "Failed to load the ShareX files";

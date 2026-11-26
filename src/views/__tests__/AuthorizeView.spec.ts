@@ -7,15 +7,22 @@ import {
   isSessionChecked,
   sessionEnded,
   userEmail,
+  userId,
   username
 } from "@/scripts/authentication/authState";
 import { takeGithubReturn } from "@/scripts/authentication/githubReturn";
-import { logout, restoreSession } from "@/scripts/authentication/user";
+import {
+  fetchUserDetails,
+  loginStatus,
+  logout,
+  restoreSession
+} from "@/scripts/authentication/user";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
 vi.mock("@/scripts/authentication/user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/scripts/authentication/user")>()),
+  fetchUserDetails: vi.fn(),
   logout: vi.fn(),
   restoreSession: vi.fn()
 }));
@@ -50,6 +57,7 @@ describe("AuthorizeView", () => {
     isLoggedIn.value = true;
     username.value = name;
     userEmail.value = "anna@example.com";
+    userId.value = `id-${name}`;
   };
 
   const key = (wrapper: Awaited<ReturnType<typeof open>>, label: RegExp) =>
@@ -61,11 +69,14 @@ describe("AuthorizeView", () => {
     vi.stubGlobal("location", { ...window.location, assign });
     vi.mocked(logout).mockReset();
     vi.mocked(restoreSession).mockReset();
+    // The session is as the test arranged it.
+    vi.mocked(fetchUserDetails).mockReset().mockResolvedValue(true);
   });
 
   afterEach(() => {
     document.body.innerHTML = "";
     sessionStorage.clear();
+    loginStatus.value = "";
   });
 
   it("waits for the app and the session, looking the session up", async () => {
@@ -221,5 +232,34 @@ describe("AuthorizeView", () => {
     expect(wrapper.find(".status").text()).toBe(Messages.OAuth.sessionEnded("spotdl-web"));
     expect(document.activeElement).toBe(wrapper.find("input[type=email]").element);
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("asks again as the account another tab logged in, without answering", async () => {
+    loggedIn();
+    const wrapper = await open();
+    vi.mocked(fetchUserDetails).mockImplementationOnce(async () => {
+      loggedIn("bob");
+      return true;
+    });
+
+    await key(wrapper, /^Continue$/).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".account__name").text()).toBe("bob");
+    expect(wrapper.find(".outcome").text()).toBe(Messages.OAuth.accountChanged);
+    expect(document.activeElement).toBe(wrapper.find(".outcome").element);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(key(wrapper, /^Continue$/).attributes("disabled")).toBeUndefined();
+  });
+
+  it("drops the session-ended note once a new login has its answer", async () => {
+    isSessionChecked.value = true;
+    sessionEnded.value = true;
+    const wrapper = await open();
+
+    loginStatus.value = "This account is suspended.";
+    await flushPromises();
+
+    expect(wrapper.findAll(".status")[0].text()).toBe(Messages.OAuth.loginLead("spotdl-web"));
   });
 });

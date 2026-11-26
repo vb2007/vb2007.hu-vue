@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** The way into GitHub login: an "or" rule under the password form, then a key to the API. */
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
 import { apiUrl } from "@/scripts/api/client";
 import { saveGithubReturn } from "@/scripts/authentication/githubReturn";
 import AppIcon from "@/components/ui/AppIcon.vue";
@@ -10,7 +11,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 const props = defineProps<{ label: string; returnTo?: string }>();
 
 const keepReturn = () => {
-  if (props.returnTo) saveGithubReturn(props.returnTo);
+  if (props.returnTo) saveGithubReturn(props.returnTo, Limits.Github.loginMinutes);
 };
 
 const githubLogin = apiUrl(Endpoints.Auth.github);

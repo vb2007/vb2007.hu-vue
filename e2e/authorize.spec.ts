@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import {
+  callApi,
   expect,
   INVALID_AUTHORIZE_REQUEST,
   MOCK_EMAIL,
@@ -203,4 +204,32 @@ test("a session that ended meanwhile brings back the login, and nothing goes to 
   ).toBeVisible();
   await expect(page.getByLabel("E-mail")).toBeFocused();
   expect(new URL(page.url()).pathname).toBe("/authorize");
+});
+
+test("another account logged in from another tab gets the question again, not an answer", async ({
+  page,
+  api
+}) => {
+  await servesApp(page);
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasUser("bob");
+  await page.goto(authorizePath());
+  await expect(page.getByRole("main").getByText("e2e", { exact: true })).toBeVisible();
+
+  // What another tab of this browser does: its login replaces this one's session.
+  await callApi(page, api, "POST", "/auth/login", {
+    email: "bob@example.com",
+    password: MOCK_PASSWORD
+  });
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You're logged in as another account now" })
+  ).toBeFocused();
+  await expect(page.getByRole("main").getByText("bob", { exact: true })).toBeVisible();
+  expect(api.authorizations).toEqual([]);
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(callback({ code: MOCK_OAUTH_CODE, state: PARAMS.state }));
+  expect(api.authorizations).toHaveLength(1);
 });

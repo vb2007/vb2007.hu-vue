@@ -17,7 +17,7 @@ import {
   userEmail,
   username
 } from "@/scripts/authentication/authState";
-import { logout, restoreSession } from "@/scripts/authentication/user";
+import { loginStatus, logout, restoreSession } from "@/scripts/authentication/user";
 import LoginForm from "@/components/features/auth/LoginForm.vue";
 import PageSection from "@/components/layout/PageSection.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -137,8 +137,11 @@ watch(isLoggedIn, async (loggedIn) => {
     </StationBoard>
 
     <LoginForm v-else ref="loginForm" :github-return="route.fullPath">
+      <!-- Why the login is back, until a new try has its own answer (a suspended account's, say). -->
       <StatusMessage tone="info">{{
-        sessionEnded ? Messages.OAuth.sessionEnded(app.name) : Messages.OAuth.loginLead(app.name)
+        sessionEnded && !loginStatus
+          ? Messages.OAuth.sessionEnded(app.name)
+          : Messages.OAuth.loginLead(app.name)
       }}</StatusMessage>
     </LoginForm>
   </PageSection>

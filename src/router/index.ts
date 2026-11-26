@@ -2,7 +2,9 @@ import {
   createRouter,
   createWebHistory,
   parseQuery,
+  START_LOCATION,
   type LocationQuery,
+  type RouteLocationNormalized,
   type RouteRecordRaw
 } from "vue-router";
 import { ADMIN_SECTIONS, AdminPaths, AdminRoutes, type AdminSectionId } from "@/constants/admin";
@@ -50,11 +52,19 @@ const goBackTo = (back: string, query: LocationQuery) => {
 /**
  * A GitHub login started on the authorize page (vb2007/vb2007.hu-api#575) lands on `/`, or on
  * `/login` with `?mfa=required` or `?oauthError=`: each goes back to that page, with the query the
- * login form reads there. Read on every visit, so an abandoned one doesn't linger.
+ * login form reads there. The API's redirect is a page load, so only the first navigation follows
+ * it: a return left behind (GitHub opened in another tab, or left by typing an address) can't
+ * bounce a later visit. Read on every visit, so an abandoned one doesn't linger.
  */
-const backToAuthorize = (landed: boolean, query: LocationQuery = {}) => {
+const backToAuthorize = (
+  from: RouteLocationNormalized,
+  landed: boolean,
+  query: LocationQuery = {}
+) => {
   const back = takeGithubReturn();
-  return landed && back.startsWith(`${AuthPaths.Authorize}?`) ? goBackTo(back, query) : true;
+  return from === START_LOCATION && landed && back.startsWith(`${AuthPaths.Authorize}?`)
+    ? goBackTo(back, query)
+    : true;
 };
 
 /** What a GitHub login brings `/login`: the second step's or the failure's query. */
@@ -70,7 +80,7 @@ export const routes: RouteRecordRaw[] = [
     path: "/",
     name: "home",
     component: HomeView,
-    beforeEnter: () => backToAuthorize(true)
+    beforeEnter: (_to, from) => backToAuthorize(from, true)
   },
   {
     path: "/shorten",
@@ -211,9 +221,9 @@ export const routes: RouteRecordRaw[] = [
     name: "login",
     meta: { title: "Log in" },
     component: () => import("../views/LoginView.vue"),
-    beforeEnter: (to) => {
+    beforeEnter: (to, from) => {
       const landing = githubLanding(to.query);
-      return backToAuthorize(Object.keys(landing).length > 0, landing);
+      return backToAuthorize(from, Object.keys(landing).length > 0, landing);
     }
   },
   // The second step's mailed link, `/login/mfa#token=…` (vb2007/vb2007.hu-api#448): one-off, so

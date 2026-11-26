@@ -12,12 +12,12 @@ import { readSaved, removeSaved, writeSaved } from "@/scripts/utility/savedForOw
  */
 export const GITHUB_RETURN_STORAGE_KEY = "account-github-return";
 
-/** Keeps that GitHub was opened to confirm something done at `path` (a full path, with its query). */
-export const saveGithubReturn = (path: string) =>
-  writeSaved(GITHUB_RETURN_STORAGE_KEY, {
-    id: path,
-    deadline: Date.now() + Limits.Github.reauthMinutes * 60 * 1000
-  });
+/**
+ * Keeps that GitHub was opened from `path` (a full path, with its query), for as long as what it
+ * was opened for lasts: a confirmation by default, a login's `Limits.Github.loginMinutes`.
+ */
+export const saveGithubReturn = (path: string, minutes = Limits.Github.reauthMinutes) =>
+  writeSaved(GITHUB_RETURN_STORAGE_KEY, { id: path, deadline: Date.now() + minutes * 60 * 1000 });
 
 /** Forgets it: GitHub was opened for something on the account page itself. */
 export const clearGithubReturn = () => removeSaved(GITHUB_RETURN_STORAGE_KEY);
