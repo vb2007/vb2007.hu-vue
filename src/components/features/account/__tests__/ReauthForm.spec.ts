@@ -141,7 +141,7 @@ describe("ReauthForm", () => {
     const form = mountForm(send);
     expect(form.find("input").exists()).toBe(false);
     expect(form.find(".reauth__note").text()).toBe(
-      "Confirms it's you. Unless you logged in with GitHub in the last 10 minutes, GitHub confirms it's you first."
+      "Confirms it's you. Unless you logged in with GitHub or relinked it in the last 10 minutes, GitHub confirms it's you first."
     );
     const submit = form.find('button[type="submit"]');
     expect(document.activeElement).toBe(submit.element);
@@ -211,6 +211,9 @@ describe("ReauthForm", () => {
     expect(assign).not.toHaveBeenCalled();
     expect(form.find('[role="status"]').text()).toBe(REAUTH);
     expect(form.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
+    expect(descriptionOf(form.find("button"))).toBe(
+      `${REAUTH} GitHub login isn't available right now.`
+    );
     expect(document.activeElement).toBe(form.find("button").element);
     expect(takeGithubReturn()).toBe("/account/api-keys");
   });

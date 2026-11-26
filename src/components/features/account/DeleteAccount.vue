@@ -65,6 +65,11 @@ const {
 /** A start that hasn't stalled: one that should have left by now may be tried again. */
 const isLeaving = computed(() => isLinking.value && !isStalled.value);
 const isLinkHeld = computed(() => linkHold.isHeld());
+const linkErrorId = useId();
+/** The GitHub key reads its step's message, and why the start failed while that shows. */
+const githubDescribedBy = computed(() =>
+  linkHold.shown() ? `${statusTextId(errorId)} ${statusTextId(linkErrorId)}` : statusTextId(errorId)
+);
 const describedBy = computed(
   () =>
     [githubConfirmed.value && confirmedId, shownError.value && statusTextId(errorId)]
@@ -214,6 +219,7 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
       >
       <StatusMessage
         v-if="needsGithub && linkHold.shown()"
+        :id="linkErrorId"
         tone="error"
         :spoken="linkHold.spokenFor()"
         >{{ linkHold.shown() }}</StatusMessage
@@ -224,7 +230,7 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
           ref="githubKey"
           size="sm"
           :aria-label="isLinkHeld ? linkHold.name.value : undefined"
-          :aria-describedby="statusTextId(errorId)"
+          :aria-describedby="githubDescribedBy"
           :loading="isLeaving"
           :disabled="isLinkHeld"
           @click="confirmWithGithub"

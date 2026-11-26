@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import SetPasswordForm from "@/components/features/account/SetPasswordForm.vue";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { saveDeleteIntent, takeDeleteIntent } from "@/scripts/authentication/deleteIntent";
+import { descriptionOf } from "@/__tests__/helpers/description";
 import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 const REAUTH =
@@ -36,7 +37,7 @@ describe("SetPasswordForm", () => {
     const wrapper = mount(SetPasswordForm);
 
     expect(wrapper.find(".password__note").text().replace(/\s+/g, " ")).toBe(
-      "This account has no password yet: you log in with GitHub. Set one to also log in with your e-mail address, and to be able to unlink GitHub. Unless you logged in with GitHub in the last 10 minutes, GitHub confirms it's you first."
+      "This account has no password yet: you log in with GitHub. Set one to also log in with your e-mail address, and to be able to unlink GitHub. Unless you logged in with GitHub or relinked it in the last 10 minutes, GitHub confirms it's you first."
     );
   });
 
@@ -232,6 +233,9 @@ describe("SetPasswordForm", () => {
     expect(sessionStorage.length).toBe(1);
     expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
     expect(wrapper.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
+    expect(descriptionOf(wrapper.find("button"))).toBe(
+      `${REAUTH} GitHub login isn't available right now.`
+    );
     expect(document.activeElement).toBe(wrapper.find("button").element);
 
     fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
@@ -254,6 +258,8 @@ describe("SetPasswordForm", () => {
     expect(confirm.text()).toBe("Try again in 15 min");
     expect(confirm.attributes("disabled")).toBeDefined();
     expect(document.activeElement).toBe(wrapper.find('input[type="password"]').element);
+    // The reauth 403 and the limiter's 429 are answers the form handles, not faults.
+    expect(console.error).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

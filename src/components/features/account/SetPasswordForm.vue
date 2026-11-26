@@ -21,6 +21,7 @@ import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
+import { statusTextId } from "@/components/ui/statusMessage";
 
 const passwordHint = Messages.Auth.lengthHint(Limits.Password.minLength, Limits.Password.maxLength);
 
@@ -45,6 +46,11 @@ const {
 /** A start that hasn't stalled: one that should have left by now may be tried again. */
 const isLeaving = computed(() => isLinking.value && !isStalled.value);
 const isLinkHeld = computed(() => linkHold.isHeld());
+const linkErrorId = useId();
+/** The GitHub key reads its step's message, and why the start failed while that shows. */
+const githubDescribedBy = computed(() =>
+  linkHold.shown() ? `${errorId} ${statusTextId(linkErrorId)}` : errorId
+);
 const { isSetting, setError, needsGithub, setPassword } = useSetPassword();
 
 const form = useTemplateRef("form");
@@ -128,6 +134,7 @@ const confirmWithGithub = async () => {
       }}</StatusMessage>
       <StatusMessage
         v-if="needsGithub && linkHold.shown()"
+        :id="linkErrorId"
         tone="error"
         :spoken="linkHold.spokenFor()"
         >{{ linkHold.shown() }}</StatusMessage
@@ -137,7 +144,7 @@ const confirmWithGithub = async () => {
         ref="githubKey"
         class="password__key"
         :aria-label="isLinkHeld ? linkHold.name.value : undefined"
-        :aria-describedby="errorId"
+        :aria-describedby="githubDescribedBy"
         :loading="isLeaving"
         :disabled="isLinkHeld"
         @click="confirmWithGithub"

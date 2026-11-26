@@ -420,6 +420,9 @@ describe("DeleteAccount", () => {
     expect(sessionStorage.length).toBe(0);
     expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
     expect(wrapper.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
+    expect(descriptionOf(githubKey(wrapper))).toBe(
+      `${REAUTH} GitHub login isn't available right now.`
+    );
     expect(githubKey(wrapper).text()).toBe("Confirm with GitHub");
     expect(document.activeElement).toBe(githubKey(wrapper).element);
 
@@ -446,6 +449,8 @@ describe("DeleteAccount", () => {
     expect(githubKey(wrapper).text()).toBe("Try again in 15 min");
     expect(githubKey(wrapper).attributes("aria-label")).toContain("15 minutes");
     expect(document.activeElement).toBe(wrapper.find("input").element);
+    // The reauth 403 and the limiter's 429 are answers the form handles, not faults.
+    expect(console.error).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -617,7 +622,7 @@ describe("DeleteAccount", () => {
     const { wrapper } = await mountPanel();
 
     expect(wrapper.find(".delete__note").text()).toBe(
-      "Deleting your account also deletes your pastes, short links and uploads. It can't be undone. Unless you logged in with GitHub in the last 10 minutes, GitHub confirms it's you first."
+      "Deleting your account also deletes your pastes, short links and uploads. It can't be undone. Unless you logged in with GitHub or relinked it in the last 10 minutes, GitHub confirms it's you first."
     );
     wrapper.unmount();
   });

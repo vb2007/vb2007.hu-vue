@@ -425,7 +425,6 @@ test("confirming with GitHub on an API without GitHub says it isn't available", 
   await expect(github).toBeFocused();
 
   // The start failed, so nothing waits for the way back: a later relink doesn't open the delete.
-  await page.keyboard.press("Escape");
   await page.goto("/account?github=linked");
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Within 10 minutes, set your password, change two-step login, or create or rotate an API key."
@@ -2184,15 +2183,18 @@ test("a delete left on GitHub doesn't take over the password's own GitHub confir
   await deletion.getByLabel("Username").fill("me");
   await deletion.getByRole("button", { name: "Delete account" }).click();
 
-  // Left on GitHub with Back, the delete is still remembered.
+  // GitHub never comes back (a 204 to the navigation keeps this page), so the delete is still
+  // remembered when the password's own confirmation starts.
   await page.route(
     (url) => url.pathname === "/e2e-github/authorize",
-    (route) => route.fulfill({ contentType: "text/html", body: "<title>GitHub</title>" }),
+    (route) => route.fulfill({ status: 204 }),
     { times: 1 }
   );
+  const leftForGithub = page.waitForResponse((response) =>
+    response.url().includes("/e2e-github/authorize")
+  );
   await deletion.getByRole("button", { name: "Confirm with GitHub" }).click();
-  await expect(page).toHaveTitle("GitHub");
-  await page.goBack();
+  await leftForGithub;
   await expect(page).toHaveURL("/account");
 
   await page.getByLabel("New password").fill("correct horse battery");

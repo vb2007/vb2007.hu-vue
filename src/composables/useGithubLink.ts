@@ -66,6 +66,8 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
     const result = await apiRequest(Endpoints.Auth.githubStartLink, {
       body: password === undefined ? undefined : { password },
       failure: Messages.Account.githubLinkFailed,
+      // The limiter's hold is shown on the key. A 503 stays logged: a proxy's would look the same.
+      quietStatuses: [HttpStatus.TooManyRequests],
       signal
     });
 
