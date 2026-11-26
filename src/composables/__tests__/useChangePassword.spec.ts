@@ -44,6 +44,40 @@ describe("useChangePassword", () => {
     expect(password.isChanging.value).toBe(false);
   });
 
+  it("revokes the API keys too when asked, and says so before a cancelled e-mail change", async () => {
+    isLoggedIn.value = true;
+    pendingEmail.value = "new@example.com";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, USER));
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("old-password", "new-password", true)).toBe(true);
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+      currentPassword: "old-password",
+      newPassword: "new-password",
+      revokeApiKeys: true
+    });
+    expect(password.changed.value).toBe(
+      CANCELLED.replace(". ", ". Any API keys you had were revoked. ")
+    );
+  });
+
+  it("leaves revokeApiKeys out of the body unless it's asked for", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, USER));
+    const password = mountComposable(useChangePassword).api;
+
+    expect(await password.change("old-password", "new-password", false)).toBe(true);
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).not.toHaveProperty(
+      "revokeApiKeys"
+    );
+    expect(password.changed.value).toBe("Password changed successfully.");
+  });
+
   it("says a waiting e-mail change was cancelled, as the refresh no longer has it", async () => {
     isLoggedIn.value = true;
     pendingEmail.value = "new@example.com";
