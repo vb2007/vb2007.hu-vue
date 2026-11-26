@@ -32,6 +32,8 @@ describe("AdminRateLimits", () => {
     expect(field(wrapper, "IP address").props("hint")).toContain(
       "An IPv6 address clears its whole network block"
     );
+    expect(lead.text()).toContain("an address, an IP or an OAuth client");
+    expect(field(wrapper, "OAuth client id").props("hint")).toContain("e.g. spotdl");
     expect(field(wrapper, "E-mail").find("input").attributes("aria-describedby")).toBe(
       lead.attributes("id")
     );
@@ -72,6 +74,34 @@ describe("AdminRateLimits", () => {
     await email.setValue("");
     await email.trigger("blur");
     expect(field(wrapper, "E-mail").props("error")).toBe(Messages.Admin.rateLimitTargetMissing);
+  });
+
+  it("takes an OAuth client id alone, and shows the API's refusal of an unknown one", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(400, { error: "clientId must be the id of a registered OAuth client." })
+      )
+      .mockResolvedValueOnce(cleared(["tokenExchangesPerClient"]));
+    const wrapper = mount(AdminRateLimits);
+    const clientId = field(wrapper, "OAuth client id").find("input");
+
+    await clientId.setValue("nope");
+    expect(wrapper.find("button[type=submit]").attributes("aria-disabled")).toBeUndefined();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ clientId: "nope" }));
+    expect(wrapper.find(".status--error").text()).toBe(
+      "clientId must be the id of a registered OAuth client."
+    );
+
+    await clientId.setValue("spotdl");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find(".status--error").exists()).toBe(false);
+    expect(wrapper.find(".status--success").text()).toContain("Cleared for spotdl:");
+    expect(wrapper.find(".cleared__item").text()).toBe(
+      "Failed token exchanges by the OAuth client."
+    );
   });
 
   it("lists what it cleared, one limiter a line", async () => {

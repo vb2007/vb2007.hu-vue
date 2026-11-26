@@ -215,7 +215,9 @@ export interface PendingRegistrationsResponse {
  * e-mail only (vb2007/vb2007.hu-api#384): the account's, or a registration waiting for the address.
  * The passkey limiters and the MFA and security-notice counts came with vb2007/vb2007.hu-api#493,
  * the API key one (`apiKeyChecksPerIp`) with vb2007/vb2007.hu-api#514, the e-mail change codes
- * mailed for the account (`emailChangeSends`) with vb2007/vb2007.hu-api#524.
+ * mailed for the account (`emailChangeSends`) with vb2007/vb2007.hu-api#524, the OAuth ones
+ * with vb2007/vb2007.hu-api#617: `clientChecksPerIp` keyed by the IP, `authorizationsPerAccount` by
+ * the account, and the `…PerClient` ones by the OAuth client's id.
  */
 export type RateLimitName =
   | "loginPerIp"
@@ -233,6 +235,11 @@ export type RateLimitName =
   | "passkeyOptionsPerIp"
   | "passkeyLoginsPerIp"
   | "apiKeyChecksPerIp"
+  | "clientChecksPerIp"
+  | "accountStatusPerClient"
+  | "authorizationsPerAccount"
+  | "tokenExchangesPerClient"
+  | "inactiveIntrospectionsPerClient"
   | "passwordResetCodeFailures"
   | "emailChangeCodeFailures"
   | "emailChangeSends"
@@ -241,10 +248,12 @@ export type RateLimitName =
   | "mfaEmailSends"
   | "securityNotices";
 
-/** `DELETE /admin/rate-limits`: at least one of the two. */
+/** `DELETE /admin/rate-limits`: at least one of the three. */
 export interface ClearRateLimitsBody {
   email?: string;
   ip?: string;
+  /** A registered OAuth client's id, else `400`. */
+  clientId?: string;
 }
 
 /** `DELETE /admin/rate-limits` */
