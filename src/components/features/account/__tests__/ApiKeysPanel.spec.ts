@@ -44,6 +44,8 @@ const GONE = "There is no such API key on this account.";
 const CHANGED =
   "The API key was changed by another request at the same time: list the keys and try again.";
 const CAP = "An account can have at most 10 API keys: delete one first.";
+const SPOTDL = jsonResponse(200, { id: "spotdl", name: "spotdl-web", scopes: ["spotdl:submit"] });
+const NO_CLIENT = jsonResponse(404, { error: "There is no such OAuth client." });
 
 let fetchMock: ReturnType<typeof mockFetch>;
 let wrapper: VueWrapper | undefined;
@@ -462,8 +464,10 @@ describe("ApiKeysPanel", () => {
     const linked = (scopes: string) =>
       `/account/api-keys?newApiKey=1&name=Bot&scopes=${encodeURIComponent(scopes)}`;
 
-    const mountLinked = async (path: string, ...apiKeys: ApiKey[]) => {
+    /** `lookups` answers the link's apps' `GET /oauth/clients/:clientId`, in the link's order. */
+    const mountLinked = async (path: string, apiKeys: ApiKey[] = [], ...lookups: Response[]) => {
       fetchMock.mockResolvedValueOnce(list(...apiKeys));
+      for (const lookup of lookups) fetchMock.mockResolvedValueOnce(lookup);
       const mounted = await mountWithRouter(ApiKeysPanel, { attachTo: document.body }, path);
       wrapper = mounted.wrapper;
       await flushPromises();
@@ -505,17 +509,119 @@ describe("ApiKeysPanel", () => {
     });
 
     it("leaves out, and names, the admin and unknown scopes for an account that isn't the superuser", async () => {
-      const { wrapper: panel } = await mountLinked(linked("admin:read,spotdl:submit,uploads:read"));
+      const { wrapper: panel } = await mountLinked(
+        linked("admin:read,spotdl:submit,uploads:read"),
+        [],
+        NO_CLIENT
+      );
 
       expect(ticked(panel)).toEqual(["Uploads Read"]);
       expect(panel.find('[role="group"][aria-label="Admin"]').exists()).toBe(false);
       expect(leftOut(panel).text()).toBe(
-        Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"])
+        Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"], 0)
       );
       // Already there when the form opens, so the fieldset says it rather than a live region.
       expect(panel.find(".key-form__scopes").attributes("aria-describedby")).toBe(
         leftOut(panel).attributes("id")
       );
+    });
+
+    it("offers the app scopes the API knows, ticked and labelled with the app's name", async () => {
+      const { wrapper: panel } = await mountLinked(
+        linked("spotdl:submit,uploads:read,spotdl:read,kiwix:search,admin:read"),
+        [],
+        SPOTDL,
+        NO_CLIENT
+      );
+
+      // One lookup per app, without the session cookie; never one for a built-in area.
+      expect(fetchMock.mock.calls.slice(1).map(([url]) => url)).toEqual([
+        "https://api.test/oauth/clients/spotdl",
+        "https://api.test/oauth/clients/kiwix"
+      ]);
+      expect(fetchMock.mock.calls[1][1]!.credentials).toBeUndefined();
+      expect(ticked(panel)).toEqual(["Uploads Read", "Apps spotdl-web: submit"]);
+      const apps = panel.find('[role="group"][aria-label="Apps"]');
+      expect(panel.get(`#${apps.attributes("aria-describedby")}`).text()).toBe(
+        "Each only lets that app check the key and see your username and e-mail. It grants nothing on vb2007.hu."
+      );
+      expect(leftOut(panel).text()).toBe(
+        Messages.ApiKeys.scopesLeftOut(["spotdl:read", "kiwix:search", "admin:read"], 0)
+      );
+      expect(console.error).not.toHaveBeenCalled();
+
+      // Ticking an area's box keeps the app's, which goes last, like the API lists it.
+      await checkbox(panel, "Uploads", "Read").setValue(false);
+      await checkbox(panel, "Pastes", "Write").setValue(true);
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(withToken(DEPLOY, CREATED));
+      fetchMock.mockResolvedValueOnce(list(DEPLOY));
+      await confirm(panel);
+
+      expect(bodyOf(3).scopes).toEqual(["pastes:write", "spotdl:submit"]);
+    });
+
+    it("creates a key with only an app scope, once its box is ticked again", async () => {
+      const { wrapper: panel } = await mountLinked(linked("spotdl:submit"), [], SPOTDL);
+      const app = panel.find('[role="group"][aria-label="Apps"] input');
+      await app.setValue(false);
+      await panel.find(".key-form").trigger("submit");
+      expect(panel.find(".key-form__error").text()).toBe(Messages.ApiKeys.scopesMissing);
+      await app.setValue(true);
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(withToken(DEPLOY, CREATED));
+      fetchMock.mockResolvedValueOnce(list(DEPLOY));
+      await confirm(panel);
+
+      expect(bodyOf(2).scopes).toEqual(["spotdl:submit"]);
+    });
+
+    it("leaves out the apps whose lookup failed, saying so apart from an unknown one", async () => {
+      fetchMock
+        .mockResolvedValueOnce(list())
+        .mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }))
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValueOnce(NO_CLIENT);
+      ({ wrapper } = await mountWithRouter(
+        ApiKeysPanel,
+        { attachTo: document.body },
+        linked("spotdl:submit,kiwix:search,nobody:x,pastes:read")
+      ));
+      await flushPromises();
+
+      expect(ticked(wrapper!)).toEqual(["Pastes Read"]);
+      expect(wrapper!.find('[role="group"][aria-label="Apps"]').exists()).toBe(false);
+      expect(leftOut(wrapper!).text()).toBe(
+        `${Messages.ApiKeys.scopesLeftOut(["nobody:x"], 0)} ${Messages.ApiKeys.appsUnchecked(2, 3)}`
+      );
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    it("keeps a form opened by hand while an app is looked up empty", async () => {
+      fetchMock.mockResolvedValueOnce(list());
+      const pending = deferResponse(fetchMock);
+      ({ wrapper } = await mountWithRouter(
+        ApiKeysPanel,
+        { attachTo: document.body },
+        linked("spotdl:submit")
+      ));
+      await flushPromises();
+      await key(wrapper!, "Create an API key").trigger("click");
+      pending.respond(SPOTDL);
+      await flushPromises();
+
+      expect(ticked(wrapper!)).toEqual([]);
+      expect(leftOut(wrapper!).exists()).toBe(false);
+    });
+
+    it("offers no app scopes without the link", async () => {
+      const panel = await mountPanel();
+      await key(panel, "Create an API key").trigger("click");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(panel.find('[role="group"][aria-label="Apps"]').exists()).toBe(false);
     });
 
     it("never ticks an admin scope, even the superuser's", async () => {
@@ -524,7 +630,7 @@ describe("ApiKeysPanel", () => {
 
       expect(panel.find('[role="group"][aria-label="Admin"]').exists()).toBe(true);
       expect(ticked(panel)).toEqual(["Uploads Read"]);
-      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["admin:read"]));
+      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["admin:read"], 0));
     });
 
     it.each(["/account/api-keys", LINK])(
@@ -543,7 +649,7 @@ describe("ApiKeysPanel", () => {
 
     it("is ignored at the cap, its query kept", async () => {
       const ten = Array.from({ length: 10 }, (_, i) => ({ ...DEPLOY, id: `${i}`.repeat(32) }));
-      const { wrapper: panel, router } = await mountLinked(LINK, ...ten);
+      const { wrapper: panel, router } = await mountLinked(LINK, ten);
 
       expect(panel.find(".key-form").exists()).toBe(false);
       expect(panel.text()).toContain(Messages.ApiKeys.atCap(10));
@@ -552,7 +658,7 @@ describe("ApiKeysPanel", () => {
 
     it("fills in Create once a key deleted at the cap makes room", async () => {
       const ten = Array.from({ length: 10 }, (_, i) => ({ ...DEPLOY, id: `${i}`.repeat(32) }));
-      const panel = (await mountLinked(LINK, ...ten)).wrapper;
+      const panel = (await mountLinked(LINK, ten)).wrapper;
       const remove = () => rows(panel)[0].find(".api-key__keys button:last-child");
       await remove().trigger("click");
       fetchMock
@@ -578,7 +684,7 @@ describe("ApiKeysPanel", () => {
     });
 
     it("goes with Cancel, which drops its query, and the next form opens empty", async () => {
-      const { wrapper: panel, router } = await mountLinked(linked("spotdl:submit"));
+      const { wrapper: panel, router } = await mountLinked(linked("spotdl:submit"), [], NO_CLIENT);
       await panel.find(".key-form").trigger("submit");
       await flushPromises();
       const errorId = panel.find(".key-form__error").attributes("id");
@@ -593,6 +699,33 @@ describe("ApiKeysPanel", () => {
       expect((panel.find(".key-form input").element as HTMLInputElement).value).toBe("");
       expect(ticked(panel)).toEqual([]);
       expect(leftOut(panel).exists()).toBe(false);
+    });
+
+    it("keeps the app scopes through a GitHub confirmation", async () => {
+      hasPassword.value = false;
+      const { wrapper: panel, router } = await mountLinked(
+        linked("spotdl:submit,pastes:read"),
+        [],
+        SPOTDL
+      );
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(403, {
+          error:
+            "Confirm it's you first: log in with GitHub again (or relink it), then create or rotate the API key within 10 minutes."
+        })
+      );
+      await panel.find(".reauth").trigger("submit");
+      await flushPromises();
+      vi.stubGlobal("location", { ...window.location, assign: vi.fn() });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: "https://github.com/login" }));
+      await panel.find(".reauth__actions button").trigger("click");
+      await flushPromises();
+
+      expect(router.resolve(takeGithubReturn()).query).toMatchObject({
+        scopes: "pastes:read,spotdl:submit"
+      });
     });
 
     it("comes back from a GitHub confirmation as the user left it", async () => {
@@ -624,7 +757,7 @@ describe("ApiKeysPanel", () => {
     });
 
     it("stays through a rotate, which closes the form", async () => {
-      const { wrapper: panel, router } = await mountLinked(LINK, DEPLOY);
+      const { wrapper: panel, router } = await mountLinked(LINK, [DEPLOY]);
       await key(panel, "Rotate Deploy bot").trigger("click");
       await flushPromises();
       await panel.find(".api-key .key-form").trigger("submit");
