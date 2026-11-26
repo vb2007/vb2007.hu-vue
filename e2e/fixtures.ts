@@ -121,6 +121,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` (vb2007/vb2007.hu-api#573) answer anyone with ShareX's custom uploader as JSON,
  * shaped like the API's `sharexUploaders`, its `Authorization` header holding `SHAREX_TOKEN_PLACEHOLDER` for the key's token; `api.sharexFileFails(name)`
  * answers that one's file with a 500 instead.
+ * `GET /oauth/clients/:clientId` (public) answers the clients of `OAUTH_CLIENTS` (`spotdl`, named "spotdl-web", with `spotdl:submit`)
+ * and 404 for any other id, or one without redirect URIs; `POST /user/api-keys` takes their app scopes next to the built-in ones.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
  * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries
  * (vb2007/vb2007.hu-api#494: a wrong code answers `attemptsLeft`, a setup that's gone `reason`, and `api.endsTotpSetup(how)` ends one); `DELETE /user/mfa/totp` turns it off.
@@ -264,6 +266,7 @@ export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
  */
 const PUBLIC_ROUTES = [
   /^GET \/sharex\/(upload|paste|shorten)\.sxcu$/,
+  /^GET \/oauth\/clients\/[^/]+$/,
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
   /^GET \/auth\/(username-available|github\/link)$/,
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
@@ -696,6 +699,23 @@ const API_KEY_SCOPES = [
   "admin:read",
   "admin:write"
 ];
+/**
+ * The API's `OAUTH_CLIENTS` registry (vb2007/vb2007.hu-api#577), without the secrets: each scope makes
+ * the app scope `<id>:<scope>` a key can hold. `GET /oauth/clients/:clientId` answers 404 for one
+ * without redirect URIs, like an unknown one.
+ */
+const OAUTH_CLIENTS = [
+  {
+    id: "spotdl",
+    name: "spotdl-web",
+    scopes: ["submit"],
+    redirectUris: ["https://spotdl.e2e.invalid/"]
+  },
+  { id: "no-redirects", name: "No redirects", scopes: ["read"], redirectUris: [] }
+];
+const APP_SCOPES = OAUTH_CLIENTS.flatMap(({ id, scopes }) =>
+  scopes.map((scope) => `${id}:${scope}`)
+);
 const API_KEY_NOT_FOUND: MockResponse = {
   status: 404,
   body: { error: "There is no such API key on this account." }
@@ -1589,6 +1609,20 @@ export class MockApi {
   ): MockResponse | undefined {
     const sharexRoute = endpoint.match(/^GET \/sharex\/(upload|paste|shorten)\.sxcu$/);
     if (sharexRoute) return this.sharexFile(sharexRoute[1]);
+    const clientRoute = endpoint.match(/^GET \/oauth\/clients\/([^/]+)$/);
+    if (clientRoute) {
+      const client = OAUTH_CLIENTS.find(({ id }) => id === decodeURIComponent(clientRoute[1]));
+      return client?.redirectUris.length
+        ? {
+            status: 200,
+            body: {
+              id: client.id,
+              name: client.name,
+              scopes: client.scopes.map((scope) => `${client.id}:${scope}`)
+            }
+          }
+        : { status: 404, body: { error: "There is no such OAuth client." } };
+    }
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
@@ -1598,10 +1632,7 @@ export class MockApi {
             status: 200,
             body: {
               originalUrl: link.target,
-              addedBy: {
-                ...this.populatedOwner(link.addedBy),
-                createdAt: "2026-07-31T17:16:07.516Z"
-              },
+              addedBy: this.populatedSharer(link.addedBy),
               addedOn: link.addedOn
             }
           }
@@ -1913,7 +1944,9 @@ export class MockApi {
           status: 201,
           body: {
             message: "Paste created successfully.",
-            paste: this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            paste: this.populatedPaste(
+              this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            )
           }
         };
       default:
@@ -2526,12 +2559,12 @@ export class MockApi {
       !Array.isArray(scopes) ||
       !scopes.length ||
       new Set(scopes).size !== scopes.length ||
-      !scopes.every((scope) => API_KEY_SCOPES.includes(scope))
+      !scopes.every((scope) => API_KEY_SCOPES.includes(scope) || APP_SCOPES.includes(scope))
     ) {
       return {
         status: 400,
         body: {
-          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`
+          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}, or a registered app's <client>:<scope>.`
         }
       };
     }
@@ -3294,13 +3327,7 @@ export class MockApi {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
     }
     const paste = this.pastes[index];
-    if (method === "GET") {
-      // Populated like the real API does since vb2007/vb2007.hu-api#124, with the owner's current name.
-      return {
-        status: 200,
-        body: { paste: { ...paste, addedBy: this.populatedOwner(paste.addedBy) } }
-      };
-    }
+    if (method === "GET") return { status: 200, body: { paste: this.populatedPaste(paste) } };
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
     if (
       !sameUsername(paste.addedBy, this.user!.username) &&
@@ -3318,11 +3345,14 @@ export class MockApi {
         };
       }
       paste.language = language;
-      return { status: 200, body: { message: "Paste updated successfully.", paste } };
+      return {
+        status: 200,
+        body: { message: "Paste updated successfully.", paste: this.populatedPaste(paste) }
+      };
     }
     this.pastes.splice(index, 1);
     // Like the API's `deletePaste`, which sends only the deleted paste's ID.
-    return { status: 200, body: { message: "Paste deleted successfully.", paste: { id } } };
+    return { status: 200, body: { message: "Paste deleted successfully.", paste: { _id: id } } };
   }
 
   private usedBytes() {
@@ -3581,12 +3611,23 @@ export class MockApi {
   }
 
   /**
-   * The owner of content filed under `name` as the API populates it (`populate("addedBy", "username")`): the
-   * account's current name (see `ownerNamed`), or the name it was filed under when no account has it.
+   * The owner of content filed under `name` as the API's `toPasteOwner` answers it: the account's id and current
+   * name (see `ownerNamed`), or `null` once no account has it.
    */
   private populatedOwner(name: string) {
     const owner = this.ownerNamed(name);
-    return { _id: owner?.id ?? "u1", username: owner?.username ?? name };
+    return owner && { _id: owner.id, username: owner.username };
+  }
+
+  /** A paste as every paste route answers it since vb2007/vb2007.hu-api#554, its owner populated. */
+  private populatedPaste(paste: MockPaste) {
+    return { ...paste, addedBy: this.populatedOwner(paste.addedBy) };
+  }
+
+  /** A short link's owner as `POST /shortenUrl` and the lookup answer it (vb2007/vb2007.hu-api#554), or `null`. */
+  private populatedSharer(name: string) {
+    const owner = this.populatedOwner(name);
+    return owner && { ...owner, createdAt: "2026-07-31T17:16:07.516Z" };
   }
 
   /** Whose an upload is (see `ownerNamed`). */
@@ -4144,7 +4185,12 @@ export class MockApi {
         status,
         body: {
           message,
-          data: { shortenedUrl: code, originalUrl: url, addedOn: link.addedOn, addedBy: "u1" }
+          data: {
+            shortenedUrl: code,
+            originalUrl: url,
+            addedOn: link.addedOn,
+            addedBy: this.populatedSharer(link.addedBy)
+          }
         }
       };
     };
@@ -4320,7 +4366,7 @@ export class MockApi {
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: this.populatedOwner(paste.addedBy) })),
+          .map((paste) => this.populatedPaste(paste)),
         pagination: {
           limit,
           page,

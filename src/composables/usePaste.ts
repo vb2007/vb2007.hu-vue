@@ -76,8 +76,8 @@ export const usePaste = () => {
       saveError.value = result.error;
       return "failed";
     }
-    // Keep the loaded paste (its populated author) and only swap the language.
-    paste.value = { ...paste.value, language };
+    // Since vb2007/vb2007.hu-api#554 the answer is the whole paste, its owner populated.
+    paste.value = result.data.paste;
     return "saved";
   };
 
