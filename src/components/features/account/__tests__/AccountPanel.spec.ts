@@ -560,22 +560,6 @@ describe("AccountPanel", () => {
     wrapper.unmount();
   });
 
-  it("explains a link started without the password", async () => {
-    logIn();
-    hasPassword.value = true;
-    const { wrapper } = await mountWithRouter(
-      AccountPanel,
-      {},
-      "/account?oauthError=passwordRequired"
-    );
-    await flushPromises();
-
-    expect(wrapper.find('[role="alert"]').text()).toBe(
-      "Linking GitHub takes your password. Press Link GitHub on this page and enter it there."
-    );
-    expect(githubKey(wrapper).text()).toBe("Link GitHub");
-  });
-
   it("shows only the password change after setting the password", async () => {
     linkGithub("octocat", false);
     const { wrapper } = await mountWithRouter(AccountPanel, { attachTo: document.body });

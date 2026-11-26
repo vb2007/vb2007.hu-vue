@@ -148,7 +148,7 @@ test.describe("a request that can't go on says why and goes nowhere", () => {
       "This sign-in link would send you somewhere the app didn't register, so it stops here. Go back to the app and try again."
     ],
     ["an unknown client", authorizePath({ client_id: "nope" }), INVALID_CLIENT],
-    ["a server-to-server client", authorizePath({ client_id: "status-bot" }), INVALID_CLIENT],
+    ["a server-to-server client", authorizePath({ client_id: "no-redirects" }), INVALID_CLIENT],
     ["a missing parameter", authorizePath().replace(/&nonce=[^&]*/, ""), INVALID_REQUEST]
   ]) {
     test(what, async ({ page, api }) => {

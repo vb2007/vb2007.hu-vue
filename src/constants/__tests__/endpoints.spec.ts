@@ -18,7 +18,6 @@ describe("Endpoints", () => {
     [Endpoints.Auth.passwordResetConfirm, "POST", "/auth/password-reset/confirm", false],
     [Endpoints.Auth.passwordResetConfirmLink, "POST", "/auth/password-reset/confirm-link", false],
     [Endpoints.Auth.github, "GET", "/auth/github", false],
-    [Endpoints.Auth.githubLink, "GET", "/auth/github/link", true],
     [Endpoints.Auth.githubStartLink, "POST", "/auth/github/link", true],
     [Endpoints.Auth.githubUnlink, "DELETE", "/auth/github/link", true],
     [Endpoints.Auth.mfaMethods, "GET", "/auth/mfa", true],

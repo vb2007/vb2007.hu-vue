@@ -12,8 +12,6 @@ export class OauthError {
   static readonly githubAlreadyLinked = "githubAlreadyLinked";
   static readonly githubOtherLinked = "githubOtherLinked";
   static readonly notLoggedIn = "notLoggedIn";
-  /** A link started through `GET /auth/github/link` by an account with a password (vb2007/vb2007.hu-api#243). */
-  static readonly passwordRequired = "passwordRequired";
   /** A GitHub login into a suspended account, which starts no session (vb2007/vb2007.hu-api#273). */
   static readonly accountSuspended = "accountSuspended";
   /** A link callback sent with an `Authorization` header: linking takes the session alone, never an API key (vb2007/vb2007.hu-api#514). */

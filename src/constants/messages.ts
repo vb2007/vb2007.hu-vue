@@ -336,7 +336,7 @@ export class Messages {
       "Your password is set. You can log in with it from now on.";
     /** Why GitHub may come first, for an account without a password. */
     static githubReauthNote(minutes: number): string {
-      return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;
+      return `Unless you logged in with GitHub or relinked it in the last ${minutes} minutes, GitHub confirms it's you first.`;
     }
     /**
      * Back from GitHub, which confirmed it's the user, before setting the password or changing
@@ -565,13 +565,37 @@ export class Messages {
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;
     }
-    /** On a form the deep link filled in: the scopes it asked for that it can't tick. */
-    static scopesLeftOut(scopes: string[]): string {
-      return `The link asked for scopes it can't set, so they're left out: ${scopes.join(", ")}.`;
+    /**
+     * On a form the deep link filled in: the scopes it asked for that it can't tick, those safe to
+     * show by name, then how many more.
+     */
+    static scopesLeftOut(named: string[], more: number): string {
+      if (!named.length) {
+        return more === 1
+          ? "The link asked for a scope it can't set, so it's left out."
+          : `The link asked for ${more} scopes it can't set, so they're left out.`;
+      }
+      if (named.length === 1 && !more) {
+        return `The link asked for a scope it can't set, so it's left out: ${named[0]}.`;
+      }
+      return `The link asked for scopes it can't set, so they're left out: ${named.join(", ")}${more ? `, and ${more} more` : ""}.`;
+    }
+    /**
+     * The `count` apps the deep link names that couldn't be looked up (not an unknown app's `404`),
+     * out of the `apps` it names.
+     */
+    static appsUnchecked(count: number, apps: number): string {
+      if (count > 1) {
+        return `Couldn't check ${count} of the link's apps right now, so their scopes are left out: reload to try again.`;
+      }
+      return `Couldn't check ${apps === 1 ? "the link's app" : "one of the link's apps"} right now, so its scopes are left out: reload to try again.`;
     }
   };
 
-  /** The `/authorize` page, where first-party apps sign users in (vb2007/vb2007.hu-api#575). */
+  /**
+   * First-party apps (vb2007/vb2007.hu-api#575): the API key form's app scopes, and the `/authorize`
+   * page, where they sign users in.
+   */
   static readonly OAuth = class {
     static readonly clientFailed: string = "Failed to load the app";
     static readonly authorizeFailed: string = "Failed to answer the app's sign-in";

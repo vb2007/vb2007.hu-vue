@@ -177,18 +177,9 @@ export class Endpoints {
       credentials: false
     });
     /**
-     * Relinks GitHub on an account without a password, so GitHub confirms it's them before they set
-     * one (vb2007/vb2007.hu-api#183): a browser navigation, not a fetch call. An account with a
-     * password comes back with `?oauthError=passwordRequired` (#243) and links with `githubStartLink`.
-     */
-    static readonly githubLink = defineEndpoint()({
-      method: HttpMethod.Get,
-      path: "/auth/github/link",
-      credentials: true
-    });
-    /**
      * Starts linking GitHub (vb2007/vb2007.hu-api#243): an account with a password sends it, and
-     * gets back the GitHub URL to navigate to.
+     * gets back the GitHub URL to navigate to. An account without one sends none, and relinks so
+     * GitHub confirms it's them (vb2007/vb2007.hu-api#534).
      */
     static readonly githubStartLink = defineEndpoint<
       GithubPasswordBody | NoBody,
@@ -494,9 +485,9 @@ export class Endpoints {
     });
   };
 
-  /** "Sign in with vb2007.hu" for first-party apps (vb2007/vb2007.hu-api#575). */
+  /** First-party apps (vb2007/vb2007.hu-api#575, #577): app scopes and "Sign in with vb2007.hu". */
   static readonly OAuth = class {
-    /** A client's display name for the authorize page; public, `404` for an unknown client. */
+    /** An OAuth client's public details, its name and app scopes; `404` for an unknown client. */
     static readonly client = defineEndpoint<undefined, OauthClient>()({
       method: HttpMethod.Get,
       path: "/oauth/clients/:clientId",

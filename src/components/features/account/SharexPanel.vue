@@ -81,7 +81,8 @@ const send = async (body: MfaPasswordBody): Promise<ApiResult<ApiKeyTokenRespons
   const result = await apiRequest(Endpoints.User.createApiKey, {
     body: { ...body, name: Sharex.keyName, scopes: [...Sharex.keyScopes] },
     failure: Messages.ApiKeys.createFailed,
-    quietStatuses: REAUTH_QUIET_STATUSES
+    // The day's mail for its notice used up (`mailBudgetOf`): an answer, not a fault.
+    quietStatuses: [...REAUTH_QUIET_STATUSES, HttpStatus.ServiceUnavailable]
   });
   // Shown from here rather than on the form's `done`: a session that ends meanwhile takes the form
   // away, and its `done` with it, but not this page or the token the API won't show again.
