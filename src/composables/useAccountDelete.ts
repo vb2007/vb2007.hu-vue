@@ -29,7 +29,9 @@ export const useAccountDelete = () => {
 
     const result = await apiRequest(Endpoints.User.remove, {
       body: withPassword ? { password: confirmation } : { username: confirmation },
-      failure: Messages.Account.deleteFailed
+      failure: Messages.Account.deleteFailed,
+      // A wrong password or username, GitHub's reauth or an ended session: each is shown or handled.
+      quietStatuses: [HttpStatus.Forbidden]
     });
 
     if (!result.ok) {

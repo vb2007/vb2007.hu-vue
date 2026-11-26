@@ -21,7 +21,12 @@ const mountPanel = (props: { reopen?: boolean } = {}) =>
 const REAUTH =
   "Confirm it's you first: log in with GitHub again (or relink it), then delete the account within 10 minutes.";
 
-const githubKey = (wrapper: Wrapper) => wrapper.find('a[href="https://api.test/auth/github/link"]');
+const AUTHORIZE_URL = "https://github.com/login/oauth/authorize?state=xyz";
+
+/** The key that has GitHub confirm it's them, in place of the delete key. */
+const githubKey = (wrapper: Wrapper) =>
+  wrapper.find('.confirm__actions > button:first-child:not([type="submit"])');
+const cancelKey = (wrapper: Wrapper) => wrapper.find(".confirm__actions > button:last-child");
 
 const deleteKey = (wrapper: Wrapper) => wrapper.find('button[type="submit"]');
 
@@ -32,9 +37,12 @@ const open = async (wrapper: Wrapper) => {
 
 describe("DeleteAccount", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
+  let assign: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     fetchMock = mockFetch();
+    assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
     vi.spyOn(console, "error").mockImplementation(() => {});
     isLoggedIn.value = true;
     username.value = "me";
@@ -364,21 +372,85 @@ describe("DeleteAccount", () => {
     expect(wrapper.find("input").attributes("aria-describedby")).toBe(
       `${statusTextId(info.attributes("id")!)} ${hintId}`
     );
-    expect(wrapper.findAll("button").map((button) => button.text())).toEqual(["Cancel"]);
+    expect(wrapper.findAll("button").map((button) => button.text())).toEqual([
+      "Confirm with GitHub",
+      "Cancel"
+    ]);
     expect(isLoggedIn.value).toBe(true);
     expect(router.currentRoute.value.fullPath).toBe("/account");
     wrapper.unmount();
   });
 
-  it("remembers the delete for the way back when GitHub is opened", async () => {
+  it("starts the relink without a password, and remembers the delete just before leaving", async () => {
     const { wrapper } = await sendUsername(403, REAUTH);
-    expect(sessionStorage.length).toBe(0);
-    // jsdom can't leave the page; the click is what counts.
-    githubKey(wrapper).element.addEventListener("click", (event) => event.preventDefault());
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
 
     await githubKey(wrapper).trigger("click");
 
+    expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/auth/github/link", {
+      method: "POST",
+      credentials: "include",
+      signal: expect.any(AbortSignal)
+    });
+    expect(githubKey(wrapper).text()).toBe("Opening GitHub");
+    expect(githubKey(wrapper).attributes("aria-busy")).toBe("true");
+    expect(cancelKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(sessionStorage.length).toBe(0);
+    // Escape waits too: the browser is about to leave for GitHub.
+    await wrapper.find("form").trigger("keydown", { key: "Escape" });
+    expect(wrapper.find("form").exists()).toBe(true);
+
+    answer(jsonResponse(200, { url: AUTHORIZE_URL }));
+    await flushPromises();
+
+    expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
     expect(takeDeleteIntent()).toBe("me");
+    wrapper.unmount();
+  });
+
+  it("says why GitHub couldn't open, remembering nothing, and offers it again", async () => {
+    const { wrapper } = await sendUsername(403, REAUTH);
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "notConfigured" }));
+
+    await githubKey(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+    expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
+    expect(wrapper.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
+    expect(descriptionOf(githubKey(wrapper))).toBe(
+      `${REAUTH} GitHub login isn't available right now.`
+    );
+    expect(githubKey(wrapper).text()).toBe("Confirm with GitHub");
+    expect(document.activeElement).toBe(githubKey(wrapper).element);
+
+    await cancelKey(wrapper).trigger("click");
+    await open(wrapper);
+    await wrapper.find("input").setValue("me");
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("holds the GitHub key after the API's 429, with the cursor back in the field", async () => {
+    const error = "Too many failed attempts. Please try again later.";
+    const { wrapper } = await sendUsername(403, REAUTH);
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+
+    await githubKey(wrapper).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
+    expect(githubKey(wrapper).attributes("disabled")).toBeDefined();
+    expect(githubKey(wrapper).text()).toBe("Try again in 15 min");
+    expect(githubKey(wrapper).attributes("aria-label")).toContain("15 minutes");
+    expect(document.activeElement).toBe(wrapper.find("input").element);
+    // The reauth 403 and the limiter's 429 are answers the form handles, not faults.
+    expect(console.error).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -407,7 +479,7 @@ describe("DeleteAccount", () => {
   });
 
   it.each([
-    ["Cancel", (wrapper: Wrapper) => wrapper.find("button").trigger("click")],
+    ["Cancel", (wrapper: Wrapper) => cancelKey(wrapper).trigger("click")],
     ["Escape", (wrapper: Wrapper) => githubKey(wrapper).trigger("keydown", { key: "Escape" })]
   ])("forgets the GitHub step and the remembered delete on %s", async (_name, close) => {
     const { wrapper } = await sendUsername(403, REAUTH);
@@ -550,7 +622,7 @@ describe("DeleteAccount", () => {
     const { wrapper } = await mountPanel();
 
     expect(wrapper.find(".delete__note").text()).toBe(
-      "Deleting your account also deletes your pastes, short links and uploads. It can't be undone. If you logged in more than 10 minutes ago, GitHub confirms it's you first."
+      "Deleting your account also deletes your pastes, short links and uploads. It can't be undone. Unless you logged in with GitHub or relinked it in the last 10 minutes, GitHub confirms it's you first."
     );
     wrapper.unmount();
   });
@@ -562,12 +634,16 @@ describe("DeleteAccount", () => {
   it("forgets a delete when the page comes back from GitHub without loading again", async () => {
     const { wrapper } = await mountPanel();
     saveDeleteIntent("me");
+    // The relink looks the account up again, since GitHub may have linked meanwhile.
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { email: "vb@example.com", username: "me" }));
 
     pageShow(false);
     expect(sessionStorage.length).toBe(1);
     pageShow(true);
 
     expect(takeDeleteIntent()).toBe("");
+    await flushPromises();
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/user", expect.anything());
     wrapper.unmount();
   });
 
