@@ -1072,7 +1072,7 @@ export class MockApi {
     return registration;
   }
 
-  /** A rate limiter counting for `email`, `ip`, `clientId` or both, as its key needs. */
+  /** A rate limiter counting for `email`, `ip`, `clientId` or several, as its key needs. */
   countsRateLimit(name: MockRateLimiter, { email, ip, clientId }: RateLimitKey) {
     if (name === "emailChangeSends") {
       // One store with what `PATCH /user/email` counts (see `mailedEmailChangeCodes`), kept per account.

@@ -96,7 +96,7 @@ describe("useClearRateLimits", () => {
       cleared: [
         "Rejected OAuth client credentials from the IP",
         "Account status lookups by the OAuth client",
-        "OAuth sign-in requests for the account",
+        "App sign-in approvals by the account",
         "Failed token exchanges by the OAuth client",
         "Inactive token checks by the OAuth client"
       ]

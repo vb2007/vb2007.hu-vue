@@ -719,7 +719,7 @@ export class Messages {
       apiKeyChecksPerIp: "Rejected API keys from the IP",
       clientChecksPerIp: "Rejected OAuth client credentials from the IP",
       accountStatusPerClient: "Account status lookups by the OAuth client",
-      authorizationsPerAccount: "OAuth sign-in requests for the account",
+      authorizationsPerAccount: "App sign-in approvals by the account",
       tokenExchangesPerClient: "Failed token exchanges by the OAuth client",
       inactiveIntrospectionsPerClient: "Inactive token checks by the OAuth client",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,

@@ -1838,7 +1838,8 @@ test("the superuser clears an OAuth client's limits by its id, with an address a
   ).toBeVisible();
 
   // The id alone clears that client's own limiters and spares the others.
-  await clientId.fill("spotdl");
+  // Typed with capitals, it goes lowercase, as every registered id is.
+  await clientId.fill(" SpotDL ");
   await clear.click();
   await expect(notice).toContainText("Cleared for spotdl:");
   await expect(notice.locator(".cleared__item")).toHaveText([
@@ -1856,7 +1857,7 @@ test("the superuser clears an OAuth client's limits by its id, with an address a
   await expect(notice).toContainText("Cleared for Anna@example.com, 203.0.113.7 and spotdl:");
   await expect(notice.locator(".cleared__item")).toHaveText([
     "Rejected OAuth client credentials from the IP.",
-    "OAuth sign-in requests for the account.",
+    "App sign-in approvals by the account.",
     "Inactive token checks by the OAuth client."
   ]);
 });

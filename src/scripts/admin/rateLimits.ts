@@ -41,12 +41,15 @@ export const ipError = (ip: string): string => {
 export const rateLimitTargetError = (email: string, ip: string, clientId: string): string =>
   email.trim() || ip.trim() || clientId.trim() ? "" : Messages.Admin.rateLimitTargetMissing;
 
-/** What to send: each field trimmed, and left out while it's empty, as the API refuses a blank one. */
+/**
+ * What to send: each field trimmed, and left out while it's empty, as the API refuses a blank one.
+ * The client id is lowercased too: the API matches it exactly, and a registered id has no capitals.
+ */
 export const rateLimitBody = (email: string, ip: string, clientId: string): ClearRateLimitsBody => {
   const body: ClearRateLimitsBody = {};
   if (email.trim()) body.email = email.trim();
   if (ip.trim()) body.ip = ip.trim();
-  if (clientId.trim()) body.clientId = clientId.trim();
+  if (clientId.trim()) body.clientId = clientId.trim().toLowerCase();
   return body;
 };
 

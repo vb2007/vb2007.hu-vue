@@ -75,6 +75,8 @@ describe("rateLimitBody", () => {
     expect(rateLimitBody("anna@example.com", " ", "")).toEqual({ email: "anna@example.com" });
     expect(rateLimitBody("", "::1", "")).toEqual({ ip: "::1" });
     expect(rateLimitBody("", "", "spotdl")).toEqual({ clientId: "spotdl" });
+    // The API's ids are lowercase and matched exactly.
+    expect(rateLimitBody("", "", " SpotDL ")).toEqual({ clientId: "spotdl" });
   });
 });
 
