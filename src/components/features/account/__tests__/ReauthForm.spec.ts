@@ -119,6 +119,31 @@ describe("ReauthForm", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it("holds the key through the day's used-up mail, but not through another 503", async () => {
+    const budget = {
+      ...refused(503, "No more e-mails can be sent today.", 3600),
+      body: { error: "No more e-mails can be sent today.", retryAfter: 3600, reason: "mailBudget" }
+    };
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce(refused(503, "Down for a moment."))
+      .mockResolvedValueOnce(budget);
+    const form = mountForm(send);
+    await form.find('input[type="password"]').setValue("secret");
+
+    await form.find("form").trigger("submit");
+    await flushPromises();
+    expect(form.find('button[type="submit"]').text()).toBe("Turn off");
+
+    await form.find("form").trigger("submit");
+    await flushPromises();
+    const key = form.find('button[type="submit"]');
+    expect(key.text()).toBe("Try again in 1 hr");
+    expect(key.attributes("disabled")).toBeDefined();
+    expect(form.find('[role="alert"]').text()).toContain("No more e-mails can be sent today.");
+    expect((form.find('input[type="password"]').element as HTMLInputElement).value).toBe("secret");
+  });
+
   it("sends no password for an account made with GitHub, and offers GitHub when it must confirm", async () => {
     hasPassword.value = false;
     saveDeleteIntent("vb");

@@ -14,6 +14,7 @@ import { takeGithubReturn } from "@/scripts/authentication/githubReturn";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 
+const BUDGET = "No more e-mails can be sent today: please try again after the daily limit resets.";
 const TOKEN = `vbk_${"A".repeat(39)}Zz9_`;
 const CREATED = "API key created: store the token somewhere safe, it isn't shown again.";
 const CAP = "An account can have at most 10 API keys: delete one first.";
@@ -320,6 +321,19 @@ describe("SharexPanel", () => {
 
     expect(panel.find(".reauth").text()).toContain("Too many security notices…");
     expect(key(panel, "Try again in 1 hr").attributes("disabled")).toBeDefined();
+  });
+
+  it("holds the key quietly through the day's used-up mail", async () => {
+    const panel = await mountPanel();
+    queueFiles(...FILES);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(503, { error: BUDGET, retryAfter: 3600, reason: "mailBudget" })
+    );
+    await confirm(panel);
+
+    expect(panel.find(".reauth").text()).toContain(BUDGET);
+    expect(key(panel, "Try again in 1 hr").attributes("disabled")).toBeDefined();
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("cancels back to the key that opened it", async () => {
