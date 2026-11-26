@@ -1778,7 +1778,9 @@ test("the superuser lifts a log-in lockout from one IP, or from every IP with th
   // Blocked until the form passes, but pressing it shows why.
   await expect(clear).toHaveAttribute("aria-disabled", "true");
   await clear.click({ force: true });
-  await expect(page.getByText("Enter an e-mail address, an IP or both.")).toBeVisible();
+  await expect(
+    page.getByText("Enter an e-mail address, an IP, an OAuth client id or several of them.")
+  ).toBeVisible();
   await expect(email).toBeFocused();
 
   await email.fill("Anna@example.com");
@@ -1811,6 +1813,52 @@ test("the superuser lifts a log-in lockout from one IP, or from every IP with th
     page.getByText("Nothing was counting for Anna@example.com, so there was nothing to clear.")
   ).toBeVisible();
   await expect(notice).toHaveCount(0);
+});
+
+test("the superuser clears an OAuth client's limits by its id, with an address and an IP too", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.countsRateLimit("accountStatusPerClient", { clientId: "spotdl" });
+  api.countsRateLimit("tokenExchangesPerClient", { clientId: "spotdl" });
+  api.countsRateLimit("inactiveIntrospectionsPerClient", { clientId: "spotdl-dev" });
+
+  await page.goto("/admin/system");
+  await expect(page.getByText("an address, an IP or an OAuth client")).toBeVisible();
+  const clientId = page.getByLabel("OAuth client id");
+  const clear = page.getByRole("button", { name: "Clear rate limits" });
+  const notice = page.locator(".status--success");
+
+  // An id the API doesn't have is its refusal, shown above the key.
+  await clientId.fill("nope");
+  await clear.click();
+  await expect(
+    page.getByText("clientId must be the id of a registered OAuth client.")
+  ).toBeVisible();
+
+  // The id alone clears that client's own limiters and spares the others.
+  await clientId.fill("spotdl");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for spotdl:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Account status lookups by the OAuth client.",
+    "Failed token exchanges by the OAuth client."
+  ]);
+
+  // With an address and an IP, the OAuth limiters keyed by them go too, in the API's order.
+  api.countsRateLimit("clientChecksPerIp", { ip: "203.0.113.7" });
+  api.countsRateLimit("authorizationsPerAccount", { email: "anna@example.com" });
+  api.countsRateLimit("inactiveIntrospectionsPerClient", { clientId: "spotdl" });
+  await page.getByLabel("E-mail", { exact: true }).fill("Anna@example.com");
+  await page.getByLabel("IP address").fill("203.0.113.7");
+  await clear.click();
+  await expect(notice).toContainText("Cleared for Anna@example.com, 203.0.113.7 and spotdl:");
+  await expect(notice.locator(".cleared__item")).toHaveText([
+    "Rejected OAuth client credentials from the IP.",
+    "OAuth sign-in requests for the account.",
+    "Inactive token checks by the OAuth client."
+  ]);
 });
 
 test("clearing an address empties its account's count of e-mail change codes while it counts", async ({

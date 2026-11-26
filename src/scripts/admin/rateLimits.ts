@@ -37,18 +37,21 @@ export const ipError = (ip: string): string => {
   return value && !isIpAddress(value) ? Messages.Admin.invalidIp : "";
 };
 
-/** The e-mail field's problem: the API needs one of the two fields. */
-export const rateLimitTargetError = (email: string, ip: string): string =>
-  email.trim() || ip.trim() ? "" : Messages.Admin.rateLimitTargetMissing;
+/** The e-mail field's problem: the API needs at least one of the three fields. */
+export const rateLimitTargetError = (email: string, ip: string, clientId: string): string =>
+  email.trim() || ip.trim() || clientId.trim() ? "" : Messages.Admin.rateLimitTargetMissing;
 
 /** What to send: each field trimmed, and left out while it's empty, as the API refuses a blank one. */
-export const rateLimitBody = (email: string, ip: string): ClearRateLimitsBody => {
+export const rateLimitBody = (email: string, ip: string, clientId: string): ClearRateLimitsBody => {
   const body: ClearRateLimitsBody = {};
   if (email.trim()) body.email = email.trim();
   if (ip.trim()) body.ip = ip.trim();
+  if (clientId.trim()) body.clientId = clientId.trim();
   return body;
 };
 
-/** What a clear was for, e.g. "anna@example.com and 203.0.113.7". */
-export const rateLimitTarget = ({ email, ip }: ClearRateLimitsBody): string =>
-  [email, ip].filter(Boolean).join(" and ");
+/** What a clear was for, e.g. "anna@example.com, 203.0.113.7 and spotdl". */
+export const rateLimitTarget = ({ email, ip, clientId }: ClearRateLimitsBody): string => {
+  const parts = [email, ip, clientId].filter(Boolean);
+  return [parts.slice(0, -1).join(", "), ...parts.slice(-1)].filter(Boolean).join(" and ");
+};
