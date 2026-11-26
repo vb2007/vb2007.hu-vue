@@ -142,7 +142,8 @@ const save = async () => {
         :describedby="revokeHintId"
       />
       <p :id="revokeHintId" class="change__hint">
-        Deletes all of them, so scripts using one stop working. Do it if a key may have leaked.
+        Deletes all of them, so scripts, ShareX and apps using one stop working. Do it if your
+        password or a key may have leaked.
       </p>
     </div>
     <!-- A held key keeps its reason, also once Cancel cleared the error and the form opened again. -->
@@ -186,8 +187,10 @@ const save = async () => {
   gap: var(--sp-4);
 }
 
+/* Start-aligned, so only the box and its label tick it, not the blank row beside them. */
 .change__revoke {
   display: grid;
+  justify-items: start;
   gap: var(--sp-1);
 }
 

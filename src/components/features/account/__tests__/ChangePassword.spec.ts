@@ -73,7 +73,7 @@ describe("ChangePassword", () => {
     expect(document.activeElement).toBe(inputs()[0].element);
     expect(revoke().element.checked).toBe(false);
     expect(descriptionOf(revoke())).toBe(
-      "Deletes all of them, so scripts using one stop working. Do it if a key may have leaked."
+      "Deletes all of them, so scripts, ShareX and apps using one stop working. Do it if your password or a key may have leaked."
     );
   });
 
@@ -188,7 +188,7 @@ describe("ChangePassword", () => {
       })
     });
     expect(wrapper.find('[role="status"]').text()).toBe(
-      "Password changed successfully. Your API keys were revoked."
+      "Password changed successfully. Any API keys you had were revoked."
     );
 
     await open();

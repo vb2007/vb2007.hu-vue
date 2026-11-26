@@ -59,7 +59,9 @@ describe("useChangePassword", () => {
       newPassword: "new-password",
       revokeApiKeys: true
     });
-    expect(password.changed.value).toBe(CANCELLED.replace(". ", ". Your API keys were revoked. "));
+    expect(password.changed.value).toBe(
+      CANCELLED.replace(". ", ". Any API keys you had were revoked. ")
+    );
   });
 
   it("leaves revokeApiKeys out of the body unless it's asked for", async () => {

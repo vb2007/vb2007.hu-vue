@@ -16,11 +16,16 @@ test("a password change revokes the API keys only when its box is ticked", async
     const box = details.getByRole("checkbox", { name: "Also revoke my API keys" });
     await expect(box).not.toBeChecked();
     await expect(box).toHaveAccessibleDescription(
-      "Deletes all of them, so scripts using one stop working. Do it if a key may have leaked."
+      "Deletes all of them, so scripts, ShareX and apps using one stop working. Do it if your password or a key may have leaked."
     );
     await details.getByLabel("Current password").fill(current);
     await details.getByLabel("New password", { exact: true }).fill(next);
     await details.getByLabel("Confirm new password").fill(next);
+    // Only the box and its label tick it, not the blank space right of the label.
+    const row = details.locator(".change__revoke");
+    const { width } = (await row.boundingBox())!;
+    await row.click({ position: { x: width - 4, y: 8 } });
+    await expect(box).not.toBeChecked();
     if (revoke) await box.check({ force: true });
     await details.getByRole("button", { name: "Save password" }).click();
   };
@@ -31,7 +36,7 @@ test("a password change revokes the API keys only when its box is ticked", async
 
   await changePassword("a-new-password", "another-password", true);
   await expect(details.getByRole("status")).toHaveText(
-    "Password changed successfully. Your API keys were revoked."
+    "Password changed successfully. Any API keys you had were revoked."
   );
   expect(api.apiKeysOf()).toHaveLength(0);
 
