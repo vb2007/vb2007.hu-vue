@@ -575,13 +575,20 @@ export class Messages {
           ? "The link asked for a scope it can't set, so it's left out."
           : `The link asked for ${more} scopes it can't set, so they're left out.`;
       }
+      if (named.length === 1 && !more) {
+        return `The link asked for a scope it can't set, so it's left out: ${named[0]}.`;
+      }
       return `The link asked for scopes it can't set, so they're left out: ${named.join(", ")}${more ? `, and ${more} more` : ""}.`;
     }
-    /** The apps the deep link names that couldn't be looked up (not an unknown app's `404`). */
-    static appsUnchecked(count: number): string {
-      return count === 1
-        ? "Couldn't check the link's app right now, so its scopes are left out: reload to try again."
-        : `Couldn't check ${count} of the link's apps right now, so their scopes are left out: reload to try again.`;
+    /**
+     * The `count` apps the deep link names that couldn't be looked up (not an unknown app's `404`),
+     * out of the `apps` it names.
+     */
+    static appsUnchecked(count: number, apps: number): string {
+      if (count > 1) {
+        return `Couldn't check ${count} of the link's apps right now, so their scopes are left out: reload to try again.`;
+      }
+      return `Couldn't check ${apps === 1 ? "the link's app" : "one of the link's apps"} right now, so its scopes are left out: reload to try again.`;
     }
   };
 

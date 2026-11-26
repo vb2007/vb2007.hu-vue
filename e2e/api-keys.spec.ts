@@ -274,7 +274,7 @@ test("a deep link's app scope is offered ticked, kept through GitHub, and listed
     "Each only lets that app check the key and see your username and e-mail. It grants nothing on vb2007.hu."
   );
   await expect(page.getByRole("status")).toHaveText(
-    "The link asked for scopes it can't set, so they're left out: spotdl:admin."
+    "The link asked for a scope it can't set, so it's left out: spotdl:admin."
   );
   await expect
     .poll(() => page.locator("html").evaluate((html) => html.scrollWidth - html.clientWidth))
@@ -331,7 +331,7 @@ test("a deep link names only scope-shaped values, wrapped within 320 px", async 
   );
 
   await expect(page.getByRole("status")).toHaveText(
-    `The link asked for scopes it can't set, so they're left out: ${long}.`
+    `The link asked for a scope it can't set, so it's left out: ${long}.`
   );
   // Neither the page scrolls sideways nor the notice's text runs out of its box.
   await expect

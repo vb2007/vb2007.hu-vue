@@ -588,7 +588,7 @@ describe("ApiKeysPanel", () => {
       expect(ticked(wrapper!)).toEqual(["Pastes Read"]);
       expect(wrapper!.find('[role="group"][aria-label="Apps"]').exists()).toBe(false);
       expect(leftOut(wrapper!).text()).toBe(
-        `${Messages.ApiKeys.scopesLeftOut(["nobody:x"], 0)} ${Messages.ApiKeys.appsUnchecked(2)}`
+        `${Messages.ApiKeys.scopesLeftOut(["nobody:x"], 0)} ${Messages.ApiKeys.appsUnchecked(2, 3)}`
       );
       expect(console.error).toHaveBeenCalled();
     });

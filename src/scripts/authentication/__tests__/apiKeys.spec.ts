@@ -211,10 +211,16 @@ describe("apiKeyLink", () => {
       name: "",
       scopes: ["uploads:read"],
       apps: [],
-      leftOut: `${Messages.ApiKeys.scopesLeftOut(["nobody:x"], 0)} ${Messages.ApiKeys.appsUnchecked(2)}`
+      leftOut:
+        "The link asked for a scope it can't set, so it's left out: nobody:x. Couldn't check 2 of the link's apps right now, so their scopes are left out: reload to try again."
     });
     expect(apiKeyLink({ newApiKey: "1", scopes: "spotdl:submit" }, [], ["spotdl"])!.leftOut).toBe(
-      Messages.ApiKeys.appsUnchecked(1)
+      "Couldn't check the link's app right now, so its scopes are left out: reload to try again."
+    );
+    expect(
+      apiKeyLink({ newApiKey: "1", scopes: "spotdl:submit,kiwix:search" }, [], ["spotdl"])!.leftOut
+    ).toBe(
+      "The link asked for a scope it can't set, so it's left out: kiwix:search. Couldn't check one of the link's apps right now, so its scopes are left out: reload to try again."
     );
   });
 

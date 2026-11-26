@@ -134,7 +134,8 @@ export const apiKeyLink = (
     /** What the form says of the scopes it left out, "" when it left out none. */
     leftOut: [
       dropped.length && Messages.ApiKeys.scopesLeftOut(named, more),
-      unchecked.length && Messages.ApiKeys.appsUnchecked(unchecked.length)
+      unchecked.length &&
+        Messages.ApiKeys.appsUnchecked(unchecked.length, linkedAppIds(query).length)
     ]
       .filter(Boolean)
       .join(" ")
