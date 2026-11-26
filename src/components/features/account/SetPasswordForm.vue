@@ -3,11 +3,9 @@
  * Sets a first password on an account made with GitHub; the API may want GitHub to confirm it's
  * them first. It hides itself once the account has a password but stays mounted to tell the panel.
  */
-import { nextTick, ref, useId, useTemplateRef } from "vue";
-import { Endpoints } from "@/constants/endpoints";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { clearDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import {
@@ -17,6 +15,7 @@ import {
   passwordMatchError
 } from "@/scripts/authentication/register";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { useGithubLink } from "@/composables/useGithubLink";
 import { useSetPassword } from "@/composables/useSetPassword";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
@@ -31,7 +30,21 @@ const password = ref("");
 const confirmPassword = ref("");
 const errorId = useId();
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
-const githubLink = apiUrl(Endpoints.Auth.githubLink);
+/** The relink that has GitHub confirm it's them, back to this form rather than a delete left unconfirmed. */
+const {
+  isLinking,
+  isStalled,
+  linkError,
+  link,
+  stop,
+  hold: linkHold
+} = useGithubLink((url) => {
+  clearDeleteIntent();
+  window.location.assign(url);
+});
+/** A start that hasn't stalled: one that should have left by now may be tried again. */
+const isLeaving = computed(() => isLinking.value && !isStalled.value);
+const isLinkHeld = computed(() => linkHold.isHeld());
 const { isSetting, setError, needsGithub, setPassword } = useSetPassword();
 
 const form = useTemplateRef("form");
@@ -50,6 +63,7 @@ const { errors, isValid, leave, validate } = useFormValidation({
 
 const onSubmit = async () => {
   if (!(await validate(form.value))) return;
+  linkError.value = "";
 
   if (await setPassword(password.value)) {
     emit("set");
@@ -57,6 +71,17 @@ const onSubmit = async () => {
     await nextTick();
     githubKey.value?.$el.focus();
   }
+};
+
+const confirmWithGithub = async () => {
+  // A start that stalled is given up on first, so this one can begin.
+  stop();
+  if (await link()) return;
+  // The key disabled while it worked, which dropped the focus; a held key stays disabled.
+  await nextTick();
+  if (isLinkHeld.value)
+    form.value?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
+  else githubKey.value?.$el.focus();
 };
 </script>
 
@@ -101,16 +126,27 @@ const onSubmit = async () => {
       <StatusMessage v-if="setError" :id="errorId" :tone="needsGithub ? 'info' : 'error'">{{
         setError
       }}</StatusMessage>
+      <StatusMessage
+        v-if="needsGithub && linkHold.shown()"
+        tone="error"
+        :spoken="linkHold.spokenFor()"
+        >{{ linkHold.shown() }}</StatusMessage
+      >
       <BaseButton
         v-if="needsGithub"
         ref="githubKey"
         class="password__key"
+        :aria-label="isLinkHeld ? linkHold.name.value : undefined"
         :aria-describedby="errorId"
-        :href="githubLink"
-        @click="clearDeleteIntent"
+        :loading="isLeaving"
+        :disabled="isLinkHeld"
+        @click="confirmWithGithub"
       >
-        <AppIcon name="github" :size="20" />
-        Confirm with GitHub
+        <template v-if="isLinkHeld">{{ linkHold.label.value }}</template>
+        <template v-else>
+          <AppIcon name="github" :size="20" />
+          {{ isLeaving ? "Opening GitHub" : "Confirm with GitHub" }}
+        </template>
       </BaseButton>
       <BaseButton
         v-else

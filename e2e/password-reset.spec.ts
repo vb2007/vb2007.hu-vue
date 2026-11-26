@@ -813,7 +813,7 @@ test("setting a password voids a reset code asked for before", async ({ page, ap
   await page.getByLabel("New password").fill("correct horse battery");
   await page.getByLabel("Confirm password").fill("correct horse battery");
   await page.getByRole("button", { name: "Set password" }).click();
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
   await expect(page).toHaveURL("/account");
   await page.getByLabel("New password").fill("correct horse battery");
   await page.getByLabel("Confirm password").fill("correct horse battery");

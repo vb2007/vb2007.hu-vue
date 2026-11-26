@@ -7,6 +7,7 @@ import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 const REAUTH =
   "Confirm it's you first: log in with GitHub again (or relink it), then set the password within 10 minutes.";
+const AUTHORIZE_URL = "https://github.com/login/oauth/authorize?state=xyz";
 
 const fill = async (
   wrapper: ReturnType<typeof mount>,
@@ -20,9 +21,12 @@ const fill = async (
 
 describe("SetPasswordForm", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
+  let assign: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     fetchMock = mockFetch();
+    assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
     vi.spyOn(console, "error").mockImplementation(() => {});
     userEmail.value = "me@example.com";
     sessionStorage.clear();
@@ -32,7 +36,7 @@ describe("SetPasswordForm", () => {
     const wrapper = mount(SetPasswordForm);
 
     expect(wrapper.find(".password__note").text().replace(/\s+/g, " ")).toBe(
-      "This account has no password yet: you log in with GitHub. Set one to also log in with your e-mail address, and to be able to unlink GitHub. If you logged in more than 10 minutes ago, GitHub confirms it's you first."
+      "This account has no password yet: you log in with GitHub. Set one to also log in with your e-mail address, and to be able to unlink GitHub. Unless you logged in with GitHub in the last 10 minutes, GitHub confirms it's you first."
     );
   });
 
@@ -172,7 +176,7 @@ describe("SetPasswordForm", () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
     expect(wrapper.find('button[type="submit"]').exists()).toBe(false);
-    const confirm = wrapper.find('a[href="https://api.test/auth/github/link"]');
+    const confirm = wrapper.find("button");
     expect(confirm.text()).toBe("Confirm with GitHub");
     expect(document.activeElement).toBe(confirm.element);
     expect(confirm.attributes("aria-describedby")).toBe(
@@ -182,20 +186,74 @@ describe("SetPasswordForm", () => {
     wrapper.unmount();
   });
 
-  it("forgets a delete left unconfirmed, so coming back from GitHub is about the password", async () => {
+  /** Sends a password the API wants GitHub to confirm first. */
+  const askForGithub = async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
     const wrapper = mount(SetPasswordForm, { attachTo: document.body });
     await fill(wrapper, "correct horse");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
+    return wrapper;
+  };
+
+  it("relinks without a password, forgetting a delete left unconfirmed just before leaving", async () => {
+    const wrapper = await askForGithub();
     saveDeleteIntent("me");
-    const confirm = wrapper.find('a[href="https://api.test/auth/github/link"]');
-    // jsdom can't leave the page; the click is what counts.
-    confirm.element.addEventListener("click", (event) => event.preventDefault());
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+    const confirm = wrapper.find("button");
 
     await confirm.trigger("click");
+    expect(fetchMock).toHaveBeenLastCalledWith("https://api.test/auth/github/link", {
+      method: "POST",
+      credentials: "include",
+      signal: expect.any(AbortSignal)
+    });
+    expect(confirm.text()).toBe("Opening GitHub");
+    expect(confirm.attributes("aria-busy")).toBe("true");
+    answer(jsonResponse(200, { url: AUTHORIZE_URL }));
+    await flushPromises();
 
+    expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
+    // Coming back from GitHub is about the password.
     expect(takeDeleteIntent()).toBe("");
+    wrapper.unmount();
+  });
+
+  it("says why GitHub couldn't open, until the password is sent again", async () => {
+    const wrapper = await askForGithub();
+    saveDeleteIntent("me");
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "notConfigured" }));
+
+    await wrapper.find("button").trigger("click");
+    await flushPromises();
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(1);
+    expect(wrapper.find('[role="status"]').text()).toBe(REAUTH);
+    expect(wrapper.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
+    expect(document.activeElement).toBe(wrapper.find("button").element);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: REAUTH }));
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("holds the GitHub key after the API's 429, with the cursor back in the password", async () => {
+    const error = "Too many failed attempts. Please try again later.";
+    const wrapper = await askForGithub();
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error, retryAfter: 900 }));
+
+    await wrapper.find("button").trigger("click");
+    await flushPromises();
+
+    const confirm = wrapper.find("button");
+    expect(wrapper.find('[role="alert"]').text()).toBe(`${error} Try again in 15 minutes.`);
+    expect(confirm.text()).toBe("Try again in 15 min");
+    expect(confirm.attributes("disabled")).toBeDefined();
+    expect(document.activeElement).toBe(wrapper.find('input[type="password"]').element);
     wrapper.unmount();
   });
 });

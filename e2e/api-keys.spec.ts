@@ -159,7 +159,7 @@ test("an account without a password confirms with GitHub and comes back to its A
   await expect(page.getByText(/^Confirm it's you first: log in with GitHub again/)).toBeVisible();
 
   // The form comes back as it was left, through the deep link's query.
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
   await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Create or rotate the API key within 10 minutes."
@@ -215,7 +215,7 @@ test("a deep link's form comes back filled in from a GitHub confirmation", async
   await page.goto("/account/api-keys?newApiKey=1&name=Deploy%20bot&scopes=pastes:read");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create key" }).click();
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
 
   await expect(
     page.getByRole("status").filter({
