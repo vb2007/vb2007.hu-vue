@@ -336,7 +336,7 @@ export class Messages {
       "Your password is set. You can log in with it from now on.";
     /** Why GitHub may come first, for an account without a password. */
     static githubReauthNote(minutes: number): string {
-      return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;
+      return `Unless you logged in with GitHub or relinked it in the last ${minutes} minutes, GitHub confirms it's you first.`;
     }
     /**
      * Back from GitHub, which confirmed it's the user, before setting the password or changing
@@ -365,6 +365,11 @@ export class Messages {
     static notConfirmed(address: string, error: string): string {
       return `${address} wasn't confirmed. ${error}`;
     }
+    /**
+     * After the API's own "password changed" message, which stays the same when `revokeApiKeys`
+     * deleted the keys too (vb2007/vb2007.hu-api#597).
+     */
+    static readonly apiKeysRevoked: string = "Any API keys you had were revoked.";
     /**
      * After the API's own "password changed" message, when a change waited: changing the password
      * drops it, and its code with it (vb2007/vb2007.hu-api#474).
@@ -565,9 +570,71 @@ export class Messages {
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;
     }
-    /** On a form the deep link filled in: the scopes it asked for that it can't tick. */
-    static scopesLeftOut(scopes: string[]): string {
-      return `The link asked for scopes it can't set, so they're left out: ${scopes.join(", ")}.`;
+    /**
+     * On a form the deep link filled in: the scopes it asked for that it can't tick, those safe to
+     * show by name, then how many more.
+     */
+    static scopesLeftOut(named: string[], more: number): string {
+      if (!named.length) {
+        return more === 1
+          ? "The link asked for a scope it can't set, so it's left out."
+          : `The link asked for ${more} scopes it can't set, so they're left out.`;
+      }
+      if (named.length === 1 && !more) {
+        return `The link asked for a scope it can't set, so it's left out: ${named[0]}.`;
+      }
+      return `The link asked for scopes it can't set, so they're left out: ${named.join(", ")}${more ? `, and ${more} more` : ""}.`;
+    }
+    /**
+     * The `count` apps the deep link names that couldn't be looked up (not an unknown app's `404`),
+     * out of the `apps` it names.
+     */
+    static appsUnchecked(count: number, apps: number): string {
+      if (count > 1) {
+        return `Couldn't check ${count} of the link's apps right now, so their scopes are left out: reload to try again.`;
+      }
+      return `Couldn't check ${apps === 1 ? "the link's app" : "one of the link's apps"} right now, so its scopes are left out: reload to try again.`;
+    }
+  };
+
+  /**
+   * First-party apps (vb2007/vb2007.hu-api#575): the API key form's app scopes, and the `/authorize`
+   * page, where they sign users in.
+   */
+  static readonly OAuth = class {
+    static readonly clientFailed: string = "Failed to load the app";
+    static readonly authorizeFailed: string = "Failed to answer the app's sign-in";
+    /** `?error=invalid_client`, no `client_id`, or the client lookup's 404. */
+    static readonly invalidClient: string =
+      "This sign-in link is for an app vb2007.hu doesn't know, so it stops here. Go back to the app and try again.";
+    /** `?error=invalid_redirect_uri`: the app would get the answer somewhere it didn't register. */
+    static readonly invalidRedirectUri: string =
+      "This sign-in link would send you somewhere the app didn't register, so it stops here. Go back to the app and try again.";
+    /**
+     * A parameter missing, or the API's `400`: its texts are for the app's developer, and a request
+     * it won't vet can't be retried from here, so no answer goes to the app.
+     */
+    static readonly invalidRequest: string =
+      "This sign-in link isn't valid, so nothing was sent to the app. Go back to the app and sign in again.";
+    /** The client lookup failed without an answer about the client (offline, a 500). */
+    static readonly clientUnavailable: string =
+      "Couldn't load which app is asking. Reload the page to try again.";
+    /** The `429` (30 answers a minute per account), in the page's words: the API says "authorization". */
+    static readonly tooManyRequests: string =
+      "Too many sign-in answers from this account: try again later.";
+    /** What `POST /oauth/token` gives the app: `sub`, `email`, `email_verified`, `username`, `isSuperuser`. */
+    static consentNote(app: string): string {
+      return `${app} learns your account's id, username and e-mail address, whether the address is confirmed, and whether you're the site's admin. Never your password.`;
+    }
+    /** Another account logged in meanwhile (another tab): the question shows it now, unanswered. */
+    static readonly accountChanged: string =
+      "You're logged in as another account now, maybe from another tab, so nothing was sent. Check the account shown, then answer again.";
+    static loginLead(app: string): string {
+      return `Log in to continue to ${app}.`;
+    }
+    /** The session ended while the page waited, e.g. at the answer's `403`: the login takes over. */
+    static sessionEnded(app: string): string {
+      return `Your session ended, so nothing was sent to ${app}. Log in again to continue.`;
     }
   };
 
@@ -692,8 +759,9 @@ export class Messages {
     static readonly removePendingRegistrationFailed: string =
       "Failed to remove the pending registration";
     static readonly clearRateLimitsFailed: string = "Failed to clear the rate limits";
-    /** The API wants an e-mail, an IP or both; it says so too, but nothing is sent without one. */
-    static readonly rateLimitTargetMissing: string = "Enter an e-mail address, an IP or both.";
+    /** The API wants an e-mail, an IP, a client id or several; it says so too, but nothing is sent without one. */
+    static readonly rateLimitTargetMissing: string =
+      "Enter an e-mail address, an IP, an OAuth client id or several of them.";
     static readonly invalidIp: string = "That isn't an IPv4 or IPv6 address.";
     /**
      * What each of the API's rate limiters counts, for the notice of what was cleared. A cap's
@@ -716,6 +784,11 @@ export class Messages {
       passkeyOptionsPerIp: "Passkey requests from the IP",
       passkeyLoginsPerIp: "Failed passkey log-ins from the IP",
       apiKeyChecksPerIp: "Rejected API keys from the IP",
+      clientChecksPerIp: "Rejected OAuth client credentials from the IP",
+      accountStatusPerClient: "Account status lookups by the OAuth client",
+      authorizationsPerAccount: "App sign-in approvals by the account",
+      tokenExchangesPerClient: "Failed token exchanges by the OAuth client",
+      inactiveIntrospectionsPerClient: "Inactive token checks by the OAuth client",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeSends: `E-mail change codes mailed for the account, ${Limits.Code.emailChangeCodesPerDay}\u00a0a\u00a0day`,
@@ -728,7 +801,7 @@ export class Messages {
     static rateLimitName(name: string): string {
       return Messages.Admin.rateLimitNames[name as RateLimitName] ?? name;
     }
-    /** `target` names what was cleared, e.g. "anna@example.com and 203.0.113.7". */
+    /** `target` names what was cleared, e.g. "anna@example.com, 203.0.113.7 and spotdl". */
     static rateLimitsCleared(target: string): string {
       return `Cleared for ${target}:`;
     }

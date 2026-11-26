@@ -1,11 +1,18 @@
 <script setup lang="ts">
 /** The way into GitHub login: an "or" rule under the password form, then a key to the API. */
 import { Endpoints } from "@/constants/endpoints";
+import { Limits } from "@/constants/limits";
 import { apiUrl } from "@/scripts/api/client";
+import { saveGithubReturn } from "@/scripts/authentication/githubReturn";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 
-defineProps<{ label: string }>();
+/** `returnTo`: the page to come back to after GitHub, which itself lands on `/` or `/login`. */
+const props = defineProps<{ label: string; returnTo?: string }>();
+
+const keepReturn = () => {
+  if (props.returnTo) saveGithubReturn(props.returnTo, Limits.Github.loginMinutes);
+};
 
 const githubLogin = apiUrl(Endpoints.Auth.github);
 </script>
@@ -13,7 +20,7 @@ const githubLogin = apiUrl(Endpoints.Auth.github);
 <template>
   <div class="github">
     <p class="github__or">or</p>
-    <BaseButton :href="githubLogin" variant="secondary" block>
+    <BaseButton :href="githubLogin" variant="secondary" block @click="keepReturn">
       <AppIcon name="github" :size="20" />
       {{ label }}
     </BaseButton>

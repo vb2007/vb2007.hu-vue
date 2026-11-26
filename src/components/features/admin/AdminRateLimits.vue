@@ -1,5 +1,8 @@
 <script setup lang="ts">
-/** Clears the API's rate-limit counters of an e-mail address, an IP or both, e.g. after a lockout. */
+/**
+ * Clears the API's rate-limit counters of an e-mail address, an IP, an OAuth client or several,
+ * e.g. after a lockout.
+ */
 import { ref, useId, useTemplateRef } from "vue";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
@@ -13,29 +16,33 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 
 const email = ref("");
 const ip = ref("");
+const clientId = ref("");
 const noteId = useId();
 const { isClearing, clearError, outcome, clear } = useClearRateLimits();
 
 const form = useTemplateRef("form");
 const { errors, isValid, leave, validate } = useFormValidation({
-  email: { value: email, check: () => rateLimitTargetError(email.value, ip.value) },
+  email: {
+    value: email,
+    check: () => rateLimitTargetError(email.value, ip.value, clientId.value)
+  },
   ip: { value: ip, check: () => ipError(ip.value) }
 });
 
 const onSubmit = async () => {
   if (!(await validate(form.value))) return;
-  await clear(email.value, ip.value);
+  await clear(email.value, ip.value, clientId.value);
 };
 </script>
 
 <template>
   <StationBoard title="Rate limits">
     <p :id="noteId" class="lead">
-      Clears what the API counted against an address or an IP, such as failed log-ins. Giving an
-      address also lifts its log-in lockout from every IP, and clears its account's limits and daily
-      caps on wrong codes and e-mails, and those of a sign-up waiting for it. Add an IP to lift the
-      lockout from that IP only: those limits and caps are cleared either way, and an IP alone
-      leaves them.
+      Clears what the API counted against an address, an IP or an OAuth client, such as failed
+      log-ins. Giving an address also lifts its log-in lockout from every IP, and clears its
+      account's limits and daily caps on wrong codes and e-mails, and those of a sign-up waiting for
+      it. Add an IP to lift the lockout from that IP only: those limits and caps are cleared either
+      way, and an IP alone leaves them.
     </p>
 
     <form ref="form" class="form" novalidate @submit.prevent="onSubmit">
@@ -58,6 +65,14 @@ const onSubmit = async () => {
         mono
         :error="errors.ip"
         @blur="leave('ip')"
+      />
+      <BaseInput
+        v-model="clientId"
+        label="OAuth client id"
+        hint="A registered app's id, e.g. spotdl. Clears the limits on its server's calls, such as failed token exchanges."
+        autocomplete="off"
+        autocapitalize="off"
+        mono
       />
       <StatusMessage v-if="clearError" tone="error">{{ clearError }}</StatusMessage>
       <BaseButton class="form__key" type="submit" :loading="isClearing" :blocked="!isValid">

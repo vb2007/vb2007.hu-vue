@@ -57,29 +57,38 @@ describe("ipError", () => {
 });
 
 describe("rateLimitTargetError", () => {
-  it("wants an e-mail, an IP or both", () => {
-    expect(rateLimitTargetError(" ", "")).toBe(Messages.Admin.rateLimitTargetMissing);
-    expect(rateLimitTargetError("anna@example.com", "")).toBe("");
-    expect(rateLimitTargetError("", "::1")).toBe("");
+  it("wants an e-mail, an IP, a client id or several", () => {
+    expect(rateLimitTargetError(" ", "", " ")).toBe(Messages.Admin.rateLimitTargetMissing);
+    expect(rateLimitTargetError("anna@example.com", "", "")).toBe("");
+    expect(rateLimitTargetError("", "::1", "")).toBe("");
+    expect(rateLimitTargetError("", "", "spotdl")).toBe("");
   });
 });
 
 describe("rateLimitBody", () => {
   it("trims each field and leaves an empty one out", () => {
-    expect(rateLimitBody(" Anna@example.com ", " ::1 ")).toEqual({
+    expect(rateLimitBody(" Anna@example.com ", " ::1 ", " spotdl ")).toEqual({
       email: "Anna@example.com",
-      ip: "::1"
+      ip: "::1",
+      clientId: "spotdl"
     });
-    expect(rateLimitBody("anna@example.com", " ")).toEqual({ email: "anna@example.com" });
-    expect(rateLimitBody("", "::1")).toEqual({ ip: "::1" });
+    expect(rateLimitBody("anna@example.com", " ", "")).toEqual({ email: "anna@example.com" });
+    expect(rateLimitBody("", "::1", "")).toEqual({ ip: "::1" });
+    expect(rateLimitBody("", "", "spotdl")).toEqual({ clientId: "spotdl" });
+    // The API's ids are lowercase and matched exactly.
+    expect(rateLimitBody("", "", " SpotDL ")).toEqual({ clientId: "spotdl" });
   });
 });
 
 describe("rateLimitTarget", () => {
   it("names what was sent", () => {
+    expect(rateLimitTarget({ email: "anna@example.com", ip: "::1", clientId: "spotdl" })).toBe(
+      "anna@example.com, ::1 and spotdl"
+    );
     expect(rateLimitTarget({ email: "anna@example.com", ip: "::1" })).toBe(
       "anna@example.com and ::1"
     );
     expect(rateLimitTarget({ ip: "::1" })).toBe("::1");
+    expect(rateLimitTarget({ clientId: "spotdl" })).toBe("spotdl");
   });
 });

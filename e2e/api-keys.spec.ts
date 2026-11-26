@@ -1,7 +1,56 @@
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import {
+  ACCOUNT_BUDGET_ERROR,
+  BUDGET_WAIT,
+  expect,
+  MOCK_EMAIL,
+  MOCK_PASSWORD,
+  test
+} from "./fixtures";
 
 const TOKEN = /^vbk_[\w-]{43}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+test("a password change revokes the API keys only when its box is ticked", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasApiKey("Deploy bot");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  const changePassword = async (current: string, next: string, revoke: boolean) => {
+    await details.getByRole("button", { name: "Change password" }).click();
+    const box = details.getByRole("checkbox", { name: "Also revoke my API keys" });
+    await expect(box).not.toBeChecked();
+    await expect(box).toHaveAccessibleDescription(
+      "Deletes all of them, so scripts, ShareX and apps using one stop working. Do it if your password or a key may have leaked."
+    );
+    await details.getByLabel("Current password").fill(current);
+    await details.getByLabel("New password", { exact: true }).fill(next);
+    await details.getByLabel("Confirm new password").fill(next);
+    // Only the box and its label tick it, not the blank space right of the label.
+    const row = details.locator(".change__revoke");
+    const { width } = (await row.boundingBox())!;
+    await row.click({ position: { x: width - 4, y: 8 } });
+    await expect(box).not.toBeChecked();
+    if (revoke) await box.check({ force: true });
+    await details.getByRole("button", { name: "Save password" }).click();
+  };
+
+  await changePassword(MOCK_PASSWORD, "a-new-password", false);
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  expect(api.apiKeysOf()).toHaveLength(1);
+
+  await changePassword("a-new-password", "another-password", true);
+  await expect(details.getByRole("status")).toHaveText(
+    "Password changed successfully. Any API keys you had were revoked."
+  );
+  expect(api.apiKeysOf()).toHaveLength(0);
+
+  // The list loads whenever its page opens, so it's empty from the start.
+  await page.getByRole("link", { name: "Manage API keys" }).click();
+  await expect(page.getByText("No API keys yet.")).toBeVisible();
+});
 
 test("an API key is created from the account page and its token shown once", async ({
   page,
@@ -142,6 +191,50 @@ test("the cap and the used-up security notices hold creating back", async ({ pag
   expect(api.apiKeysOf()).toHaveLength(9);
 });
 
+test("the day's used-up mail holds creating and rotating, keeping what was typed", async ({
+  page,
+  api
+}) => {
+  await page.clock.install({ time: api.clockAtMiddayUtc() });
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasApiKey("Old");
+  api.sentMailToday(200);
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/account/api-keys");
+
+  await page.getByRole("button", { name: "Create an API key" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Deploy bot");
+  await page.getByRole("group", { name: "Pastes" }).getByLabel("Read").check({ force: true });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Create key" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    new RegExp(`^${ACCOUNT_BUDGET_ERROR} Try again in (12 hours|11 hours \\d+ minutes?)\\.$`)
+  );
+  const held = page.getByRole("button", { name: /^Try again in/ });
+  await expect(held).toHaveText(new RegExp(`^Try again in ${BUDGET_WAIT.source}`));
+  await expect(held).toBeDisabled();
+  await expect(page.getByLabel("Password")).toHaveValue(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Deploy bot");
+  await expect(page.getByRole("group", { name: "Pastes" }).getByLabel("Read")).toBeChecked();
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  const list = page.getByRole("list", { name: "Your API keys" });
+  await list.getByRole("button", { name: "Rotate Old" }).click();
+  await list.getByRole("button", { name: "Continue" }).click();
+  await list.getByLabel("Password").fill(MOCK_PASSWORD);
+  await list.getByRole("button", { name: "Rotate key" }).click();
+  await expect(list.getByRole("alert")).toContainText(ACCOUNT_BUDGET_ERROR);
+  await expect(list.getByRole("button", { name: /^Try again in/ })).toBeDisabled();
+  expect(api.apiKeysOf()).toHaveLength(1);
+  // An answer, not a fault: nothing logged beyond the browser's own line for the 503.
+  expect(errors.filter((error) => !error.startsWith("Failed to load resource"))).toEqual([]);
+});
+
 test("an account without a password confirms with GitHub and comes back to its API keys", async ({
   page,
   api
@@ -159,7 +252,7 @@ test("an account without a password confirms with GitHub and comes back to its A
   await expect(page.getByText(/^Confirm it's you first: log in with GitHub again/)).toBeVisible();
 
   // The form comes back as it was left, through the deep link's query.
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
   await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Create or rotate the API key within 10 minutes."
@@ -176,13 +269,13 @@ test("an account without a password confirms with GitHub and comes back to its A
   await expect(page).toHaveURL("/account");
 });
 
-test("a deep link fills in the create form, leaving out the scopes it can't give", async ({
+test("a deep link fills in the create form, leaving out the scopes and apps it can't give", async ({
   page,
   api
 }) => {
   api.loggedInAs(MOCK_EMAIL, "e2e");
   await page.goto(
-    "/account?newApiKey=1&name=spotdl%20extension&scopes=uploads:write,admin:read,spotdl:submit"
+    "/account?newApiKey=1&name=spotdl%20extension&scopes=uploads:write,admin:read,nobody:submit,no-redirects:read"
   );
   await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
   const name = page.getByLabel("Name", { exact: true });
@@ -192,8 +285,9 @@ test("a deep link fills in the create form, leaving out the scopes it can't give
   await expect(page.getByRole("group", { name: "Uploads" }).getByLabel("Read")).not.toBeChecked();
   await expect(page.getByRole("group", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("status")).toHaveText(
-    "The link asked for scopes it can't set, so they're left out: admin:read, spotdl:submit."
+    "The link asked for scopes it can't set, so they're left out: admin:read, nobody:submit, and 1 more."
   );
+  await expect(page.getByRole("group", { name: "Apps" })).toHaveCount(0);
   await expect(page.getByLabel("Days from now")).toHaveValue("90");
 
   await page.getByRole("button", { name: "Continue" }).click();
@@ -207,6 +301,42 @@ test("a deep link fills in the create form, leaving out the scopes it can't give
   await expect(page).toHaveURL("/account/api-keys");
 });
 
+test("a deep link's app scope is offered ticked, kept through GitHub, and listed on the key", async ({
+  page,
+  api
+}) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  api.loggedInAs("me@example.com", "me", { password: false });
+  await page.goto(
+    "/account/api-keys?newApiKey=1&name=spotdl%20extension&scopes=spotdl:submit,spotdl:admin"
+  );
+  const apps = page.getByRole("group", { name: "Apps" });
+  await expect(apps.getByLabel("spotdl-web: submit")).toBeChecked();
+  await expect(apps).toHaveAccessibleDescription(
+    "Each only lets that app check the key and see your username and e-mail. It grants nothing on vb2007.hu."
+  );
+  await expect(page.getByRole("status")).toHaveText(
+    "The link asked for a scope it can't set, so it's left out: spotdl:admin."
+  );
+  await expect
+    .poll(() => page.locator("html").evaluate((html) => html.scrollWidth - html.clientWidth))
+    .toBe(0);
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Create key" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
+  await expect(
+    page.getByRole("group", { name: "Apps" }).getByLabel("spotdl-web: submit")
+  ).toBeChecked();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Create key" }).click();
+  await expect(page.getByRole("heading", { name: "Your new API key" })).toBeFocused();
+  expect(api.apiKeysOf()[0].scopes).toEqual(["spotdl:submit"]);
+  await expect(
+    page.getByRole("list", { name: "Scopes of spotdl extension" }).getByRole("listitem")
+  ).toHaveText(["spotdl:submit"]);
+});
+
 test("a deep link's form comes back filled in from a GitHub confirmation", async ({
   page,
   api
@@ -215,7 +345,7 @@ test("a deep link's form comes back filled in from a GitHub confirmation", async
   await page.goto("/account/api-keys?newApiKey=1&name=Deploy%20bot&scopes=pastes:read");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create key" }).click();
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
 
   await expect(
     page.getByRole("status").filter({
@@ -243,7 +373,7 @@ test("a deep link names only scope-shaped values, wrapped within 320 px", async 
   );
 
   await expect(page.getByRole("status")).toHaveText(
-    `The link asked for scopes it can't set, so they're left out: ${long}.`
+    `The link asked for a scope it can't set, so it's left out: ${long}.`
   );
   // Neither the page scrolls sideways nor the notice's text runs out of its box.
   await expect

@@ -54,6 +54,7 @@ import type {
   TotpConfirmBody,
   TotpSetupResponse
 } from "@/types/api/mfa";
+import type { AuthorizeBody, AuthorizeResponse, OauthClient } from "@/types/api/oauth";
 import type { SharexUploader } from "@/types/api/sharex";
 import type {
   CreatePasteBody,
@@ -176,18 +177,9 @@ export class Endpoints {
       credentials: false
     });
     /**
-     * Relinks GitHub on an account without a password, so GitHub confirms it's them before they set
-     * one (vb2007/vb2007.hu-api#183): a browser navigation, not a fetch call. An account with a
-     * password comes back with `?oauthError=passwordRequired` (#243) and links with `githubStartLink`.
-     */
-    static readonly githubLink = defineEndpoint()({
-      method: HttpMethod.Get,
-      path: "/auth/github/link",
-      credentials: true
-    });
-    /**
      * Starts linking GitHub (vb2007/vb2007.hu-api#243): an account with a password sends it, and
-     * gets back the GitHub URL to navigate to.
+     * gets back the GitHub URL to navigate to. An account without one sends none, and relinks so
+     * GitHub confirms it's them (vb2007/vb2007.hu-api#534).
      */
     static readonly githubStartLink = defineEndpoint<
       GithubPasswordBody | NoBody,
@@ -489,6 +481,25 @@ export class Endpoints {
     static readonly remove = defineEndpoint<undefined, UploadDeletedResponse>()({
       method: HttpMethod.Delete,
       path: "/upload/:id",
+      credentials: true
+    });
+  };
+
+  /** First-party apps (vb2007/vb2007.hu-api#575, #577): app scopes and "Sign in with vb2007.hu". */
+  static readonly OAuth = class {
+    /** An OAuth client's public details, its name and app scopes; `404` for an unknown client. */
+    static readonly client = defineEndpoint<undefined, OauthClient>()({
+      method: HttpMethod.Get,
+      path: "/oauth/clients/:clientId",
+      credentials: false
+    });
+    /**
+     * The user's answer on the authorize page, session only: `redirectTo` is where the browser goes
+     * next (the app's vetted `redirect_uri`), `400` for a request the API won't vet.
+     */
+    static readonly authorize = defineEndpoint<AuthorizeBody, AuthorizeResponse>()({
+      method: HttpMethod.Post,
+      path: "/oauth/authorize",
       credentials: true
     });
   };

@@ -21,7 +21,9 @@ export const useSetPassword = () => {
 
     const result = await apiRequest(Endpoints.User.setPassword, {
       body: { password },
-      failure: Messages.Account.setPasswordFailed
+      failure: Messages.Account.setPasswordFailed,
+      // GitHub's reauth or an ended session: both are handled.
+      quietStatuses: [HttpStatus.Forbidden]
     });
 
     let set = false;

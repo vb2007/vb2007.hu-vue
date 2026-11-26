@@ -47,7 +47,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * password reset mails nothing (still 200, keeping the code from before); at 250 every mail is refused, and `PATCH /user/email`
  * answers that 503 too with `ACCOUNT_BUDGET_ERROR` (vb2007/vb2007.hu-api#476), keeping the change that waited before. Addresses on
  * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
- * resend's check, which comes before it looks at the address.
+ * resend's check, which comes before it looks at the address, and by an API key create or rotate, refused before it does.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out, and `api.clockAtMiddayUtc()`
  * sets it to 12:00 UTC today (for `page.clock.install({ time })` too), so the budget's wait is about 12 hours whenever the test runs.
@@ -56,8 +56,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.usernameChecks` counts how often it was asked.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
- * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
- * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
+ * For a GitHub-only account that relink also confirms the user for setting a password or deleting the account.
+ * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` is gone (vb2007/vb2007.hu-api#534): a visit gets the API's
+ * unknown-route redirect to the site's `/apierror` page. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
@@ -115,9 +116,13 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `POST /user/api-keys/:id/rotate` gives the key a new token with `createdAt` now and keeps its lifetime when `expiresInDays` is left
  * out; it and `DELETE /user/api-keys/:id` (no confirmation) answer 404 for a key the account doesn't have. `api.usesUpSecurityNotices()`
  * answers create and rotate with the day's used-up security notices' 429 (`retryAfter` 7200), and `api.apiKeysOf()` lists the logged-in account's keys.
+ * Create and rotate then take their notice's mail of the day's budget (see below), which stops at the registration share like the API's
+ * security notices: from `api.sentMailToday(200)` on they answer the budget 503 with `ACCOUNT_BUDGET_ERROR` and change nothing (vb2007/vb2007.hu-api#612).
  * `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` (vb2007/vb2007.hu-api#573) answer anyone with ShareX's custom uploader as JSON,
  * shaped like the API's `sharexUploaders`, its `Authorization` header holding `SHAREX_TOKEN_PLACEHOLDER` for the key's token; `api.sharexFileFails(name)`
  * answers that one's file with a 500 instead.
+ * `GET /oauth/clients/:clientId` (public) answers the clients of `OAUTH_CLIENTS` (`spotdl`, named "spotdl-web", with `spotdl:submit`)
+ * and 404 for any other id, or one without redirect URIs; `POST /user/api-keys` takes their app scopes next to the built-in ones.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
  * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries
  * (vb2007/vb2007.hu-api#494: a wrong code answers `attemptsLeft`, a setup that's gone `reason`, and `api.endsTotpSetup(how)` ends one); `DELETE /user/mfa/totp` turns it off.
@@ -138,11 +143,11 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
  * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
  * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused as invalid, a resend sends
- * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key (`emailChangeSends` the account's own count of e-mail change codes, see `mailedEmailChangeCodes`);
+ * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip, clientId })` arranges a limiter counting for a key (`emailChangeSends` the account's own count of e-mail change codes, see `mailedEmailChangeCodes`);
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given, answers their names in the API's order
- * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
+ * (vb2007/vb2007.hu-api#284), and checks the body like the API (a `clientId` must be one of `OAUTH_CLIENTS`, vb2007/vb2007.hu-api#617). An e-mail alone also empties `loginPerAccount` from every IP, and an IP
  * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily caps on wrong codes and e-mails
- * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
+ * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `authorizationsPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
  * `emailChangeSends`, `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
@@ -150,6 +155,10 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * cdn answers a private file without a link that's still live with a 404. Public links stay plain.
  * The admin can rename a `hasUser(...)` account (what it owns goes along), log it out (`api.loggedOutUsers` lists the ids; the
  * admin's own row, at the logged-in address, ends this session too) and delete it with what it owns (the admin's own row answers 409).
+ * "Sign in with vb2007.hu" (vb2007/vb2007.hu-api#575) signs in to `MOCK_OAUTH_CLIENT`, the registry's `spotdl`, whose redirect URI it uses.
+ * `POST /oauth/authorize` takes the session, records each body in `api.authorizations`, answers the API's 400s in its order
+ * and a `redirectTo` on the app's redirect URI, with `MOCK_OAUTH_CODE` or `error=access_denied` and the `state`;
+ * `api.limitsAuthorizations()` makes it the 429 instead. A spec routes the app's own host itself.
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
  * never reach a real server. Add a case to `respond` when the app starts calling a new endpoint.
@@ -251,6 +260,34 @@ const NOT_LOGGED_IN = {
   body: { error: "You must be logged in to perform this action." }
 } satisfies MockResponse;
 
+/**
+ * The API's `OAUTH_CLIENTS` registry (vb2007/vb2007.hu-api#575, #577), without the secrets: one app users sign in to,
+ * and one server-to-server client without redirect URIs, which `GET /oauth/clients/:clientId` answers 404 like an unknown
+ * one. Each scope makes the app scope `<id>:<scope>` a key can hold.
+ */
+export const MOCK_OAUTH_CLIENT = {
+  id: "spotdl",
+  name: "spotdl-web",
+  redirectUri: "https://spotdl.example/login/callback",
+  scopes: ["submit"]
+};
+const OAUTH_CLIENTS = [
+  {
+    id: MOCK_OAUTH_CLIENT.id,
+    name: MOCK_OAUTH_CLIENT.name,
+    redirectUris: [MOCK_OAUTH_CLIENT.redirectUri],
+    scopes: MOCK_OAUTH_CLIENT.scopes
+  },
+  { id: "no-redirects", name: "No redirects", redirectUris: [] as string[], scopes: ["read"] }
+];
+/** The code every approval the mock answers carries, in place of the API's random one. */
+export const MOCK_OAUTH_CODE = "e2e-oauth-code";
+/** The API's `Responses.OAuth.invalidAuthorizeRequest`. */
+export const INVALID_AUTHORIZE_REQUEST =
+  "Send response_type=code, code_challenge_method=S256, a code_challenge of 43 base64url characters, state and nonce of 1-512 characters each, and approve as true or false.";
+const OAUTH_PARAM = (value: unknown): value is string =>
+  typeof value === "string" && value.length >= 1 && value.length <= 512;
+
 /** The API's `sharexTokenPlaceholder`: what a ShareX file's `Authorization` header holds until the token replaces it. */
 export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
 
@@ -261,6 +298,7 @@ export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
  */
 const PUBLIC_ROUTES = [
   /^GET \/sharex\/(upload|paste|shorten)\.sxcu$/,
+  /^GET \/oauth\/clients\/[^/]+$/,
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
   /^GET \/auth\/(username-available|github\/link)$/,
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
@@ -425,7 +463,7 @@ const MAIL_PASSWORD_RESET_STOPS_AT = 225;
 /** The API sends nothing to these top-level domains (RFC 6761) and counts nothing for them, whatever the budget. */
 const RESERVED_TLDS = ["test", "example", "invalid", "localhost"];
 /** Which share of the day's mails a mail draws on (see `sendsMail`). */
-type MailKind = "registration" | "passwordReset" | "account";
+type MailKind = "registration" | "passwordReset" | "securityNotice" | "account";
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
@@ -480,6 +518,11 @@ const RATE_LIMITERS = {
   passkeyOptionsPerIp: ["ip"],
   passkeyLoginsPerIp: ["ip"],
   apiKeyChecksPerIp: ["ip"],
+  clientChecksPerIp: ["ip"],
+  accountStatusPerClient: ["clientId"],
+  authorizationsPerAccount: ["email"],
+  tokenExchangesPerClient: ["clientId"],
+  inactiveIntrospectionsPerClient: ["clientId"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
   emailChangeSends: ["email"],
@@ -489,7 +532,7 @@ const RATE_LIMITERS = {
   securityNotices: ["email"]
 } as const;
 export type MockRateLimiter = keyof typeof RATE_LIMITERS;
-type RateLimitKey = { email?: string; ip?: string };
+type RateLimitKey = { email?: string; ip?: string; clientId?: string };
 const normalizeCode = (code?: string) => code?.replace(/\s/g, "");
 
 /** The API's refusal of an address's domain, if it has one. */
@@ -693,6 +736,9 @@ const API_KEY_SCOPES = [
   "admin:read",
   "admin:write"
 ];
+const APP_SCOPES = OAUTH_CLIENTS.flatMap(({ id, scopes }) =>
+  scopes.map((scope) => `${id}:${scope}`)
+);
 const API_KEY_NOT_FOUND: MockResponse = {
   status: 404,
   body: { error: "There is no such API key on this account." }
@@ -1065,8 +1111,8 @@ export class MockApi {
     return registration;
   }
 
-  /** A rate limiter counting for `email`, `ip` or both, as its key needs. */
-  countsRateLimit(name: MockRateLimiter, { email, ip }: RateLimitKey) {
+  /** A rate limiter counting for `email`, `ip`, `clientId` or several, as its key needs. */
+  countsRateLimit(name: MockRateLimiter, { email, ip, clientId }: RateLimitKey) {
     if (name === "emailChangeSends") {
       // One store with what `PATCH /user/email` counts (see `mailedEmailChangeCodes`), kept per account.
       const account = this.storedAccounts().find(
@@ -1076,7 +1122,7 @@ export class MockApi {
       this.emailChangeSends.set(account.id, { count: 1, since: this.now() });
       return;
     }
-    this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip });
+    this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip, clientId });
   }
 
   /** Stores a paste as if `username` had created it, in `language` if given, and returns it. */
@@ -1231,6 +1277,7 @@ export class MockApi {
     const stopsAt = {
       registration: MAIL_REGISTRATION_STOPS_AT,
       passwordReset: MAIL_PASSWORD_RESET_STOPS_AT,
+      securityNotice: MAIL_REGISTRATION_STOPS_AT,
       account: MAIL_DAILY_LIMIT
     }[kind];
     return this.mailSentToday >= stopsAt;
@@ -1379,6 +1426,15 @@ export class MockApi {
     this.loginLockout = { retryAfter, email: email && normalizeEmail(email) };
   }
 
+  /** The bodies `POST /oauth/authorize` was sent, in order, whatever it answered. */
+  readonly authorizations: Record<string, unknown>[] = [];
+  private authorizationsLimited = false;
+
+  /** Answers every `POST /oauth/authorize` with the API's 429 (30 a minute per account), as if the minute's were used. */
+  limitsAuthorizations() {
+    this.authorizationsLimited = true;
+  }
+
   /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
   githubIsNotConfigured() {
     this.githubUnconfigured = true;
@@ -1411,6 +1467,68 @@ export class MockApi {
 
   sharexFileFails(name: string) {
     this.failingSharexFile = name;
+  }
+
+  /** The API's `getOauthClient`: only a client users can sign in to (one with redirect URIs) is answered. */
+  private oauthClient(id: string): MockResponse {
+    const client = OAUTH_CLIENTS.find((each) => each.id === id && each.redirectUris.length);
+    return client
+      ? {
+          status: 200,
+          body: {
+            id: client.id,
+            name: client.name,
+            scopes: client.scopes.map((scope) => `${client.id}:${scope}`)
+          }
+        }
+      : { status: 404, body: { error: "There is no such OAuth client." } };
+  }
+
+  /**
+   * `POST /oauth/authorize` after `isAuthenticated` (a 403 without a session) and its limiter, which counts every
+   * answer: the client and its redirect URI, then the other parameters and `approve`, like the API's `authorize`.
+   */
+  private authorize(body: Record<string, unknown> | null): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const sent = body ?? {};
+    this.authorizations.push(sent);
+    if (this.authorizationsLimited) {
+      return {
+        status: 429,
+        body: {
+          error: "Too many authorization requests from this account: try again later.",
+          retryAfter: 42
+        }
+      };
+    }
+    const client = OAUTH_CLIENTS.find((each) => each.id === sent.client_id);
+    if (!client) {
+      return { status: 400, body: { error: "client_id isn't a registered OAuth client." } };
+    }
+    const redirectUri = sent.redirect_uri;
+    if (typeof redirectUri !== "string" || !client.redirectUris.includes(redirectUri)) {
+      return {
+        status: 400,
+        body: { error: "redirect_uri isn't one of this client's redirect URIs." }
+      };
+    }
+    const valid =
+      sent.response_type === "code" &&
+      sent.code_challenge_method === "S256" &&
+      typeof sent.code_challenge === "string" &&
+      /^[A-Za-z0-9_-]{43}$/.test(sent.code_challenge) &&
+      OAUTH_PARAM(sent.state) &&
+      OAUTH_PARAM(sent.nonce) &&
+      typeof sent.approve === "boolean";
+    if (!valid) return { status: 400, body: { error: INVALID_AUTHORIZE_REQUEST } };
+    const answer: Record<string, string> = sent.approve
+      ? { code: MOCK_OAUTH_CODE, state: sent.state as string }
+      : { error: "access_denied", state: sent.state as string };
+    const separator = redirectUri.includes("?") ? "&" : "?";
+    return {
+      status: 200,
+      body: { redirectTo: `${redirectUri}${separator}${new URLSearchParams(answer)}` }
+    };
   }
 
   /** The API's `sharexUploaders`: ShareX's uploader for one of the three, pointing at the API it came from. */
@@ -1566,6 +1684,7 @@ export class MockApi {
       quotaBytes?: number | null;
       currentPassword?: string;
       newPassword?: string;
+      revokeApiKeys?: unknown;
       username?: string;
       token?: string;
       method?: string;
@@ -1584,6 +1703,10 @@ export class MockApi {
   ): MockResponse | undefined {
     const sharexRoute = endpoint.match(/^GET \/sharex\/(upload|paste|shorten)\.sxcu$/);
     if (sharexRoute) return this.sharexFile(sharexRoute[1]);
+    const oauthClientRoute = endpoint.match(/^GET \/oauth\/clients\/([^/]+)$/);
+    if (oauthClientRoute) return this.oauthClient(decodeURIComponent(oauthClientRoute[1]));
+    if (endpoint === "POST /oauth/authorize")
+      return this.authorize(body as Record<string, unknown> | null);
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
@@ -1593,10 +1716,7 @@ export class MockApi {
             status: 200,
             body: {
               originalUrl: link.target,
-              addedBy: {
-                ...this.populatedOwner(link.addedBy),
-                createdAt: "2026-07-31T17:16:07.516Z"
-              },
+              addedBy: this.populatedSharer(link.addedBy),
               addedOn: link.addedOn
             }
           }
@@ -1800,21 +1920,11 @@ export class MockApi {
         if (sessionUser) this.user = null;
         return { status: 200 };
       case "GET /auth/github/link":
-        if (!sessionUser) {
-          return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
-        }
-        // Only an account without a password may link through a plain navigation (vb2007/vb2007.hu-api#243).
-        if (sessionUser.hasPassword) {
-          return {
-            status: 302,
-            location: `${this.appOrigin}/account?oauthError=passwordRequired`
-          };
-        }
-        // Checked after the session and the password, like the API's `githubLink`.
-        if (this.githubUnconfigured) {
-          return { status: 302, location: `${this.appOrigin}/account?oauthError=notConfigured` };
-        }
-        return this.linkGithub();
+        // Removed (vb2007/vb2007.hu-api#534): a visit gets the API's unknown-route redirect.
+        return {
+          status: 302,
+          location: `${this.appOrigin}/apierror?url=%2Fauth%2Fgithub%2Flink`
+        };
       case "POST /auth/github/link":
         return this.startGithubLink(body?.password);
       case "GET /e2e-github/authorize":
@@ -1857,7 +1967,7 @@ export class MockApi {
         if (this.user && this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.confirmEmail(body?.code);
       case "PATCH /user/password":
-        return this.changePassword(body?.currentPassword, body?.newPassword);
+        return this.changePassword(body?.currentPassword, body?.newPassword, body?.revokeApiKeys);
       case "GET /auth/username-available": {
         this.usernameChecks++;
         if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
@@ -1918,7 +2028,9 @@ export class MockApi {
           status: 201,
           body: {
             message: "Paste created successfully.",
-            paste: this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            paste: this.populatedPaste(
+              this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            )
           }
         };
       default:
@@ -2495,7 +2607,15 @@ export class MockApi {
     };
   }
 
-  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice. */
+  /** An API key's notice takes its mail before the key is written: the API's `reserveSecurityNoticeMail`. */
+  private apiKeyMailRefusal(): MockResponse | undefined {
+    // Refused before the reserved domains are skipped, like the API's `reserveShare`.
+    if (this.mailRefused("securityNotice")) return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
+    if (this.countsMail(this.user!.email)) this.mailSentToday++;
+    return undefined;
+  }
+
+  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice and its mail. */
   private createApiKey(body: Record<string, unknown> | null): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
@@ -2523,12 +2643,12 @@ export class MockApi {
       !Array.isArray(scopes) ||
       !scopes.length ||
       new Set(scopes).size !== scopes.length ||
-      !scopes.every((scope) => API_KEY_SCOPES.includes(scope))
+      !scopes.every((scope) => API_KEY_SCOPES.includes(scope) || APP_SCOPES.includes(scope))
     ) {
       return {
         status: 400,
         body: {
-          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`
+          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}, or a registered app's <client>:<scope>.`
         }
       };
     }
@@ -2554,6 +2674,8 @@ export class MockApi {
     }
     const noticesRefusal = this.securityNoticesRefusal();
     if (noticesRefusal) return noticesRefusal;
+    const mailRefusal = this.apiKeyMailRefusal();
+    if (mailRefusal) return mailRefusal;
     const expiresInDays =
       body?.expiresInDays === undefined ? 90 : (body.expiresInDays as number | null);
     const apiKey = this.newApiKey(name.trim(), scopes, this.now(), expiresInDays);
@@ -2592,6 +2714,8 @@ export class MockApi {
     }
     const noticesRefusal = this.securityNoticesRefusal();
     if (noticesRefusal) return noticesRefusal;
+    const mailRefusal = this.apiKeyMailRefusal();
+    if (mailRefusal) return mailRefusal;
     const kept =
       previous.expiresAt === null
         ? null
@@ -3048,7 +3172,8 @@ export class MockApi {
     return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
-  private changePassword(currentPassword?: string, newPassword?: string) {
+  /** `revokeApiKeys: true` deletes the account's keys with it (vb2007/vb2007.hu-api#597). */
+  private changePassword(currentPassword?: string, newPassword?: string, revokeApiKeys?: unknown) {
     if (!this.user) {
       return NOT_LOGGED_IN;
     }
@@ -3060,6 +3185,9 @@ export class MockApi {
         status: 400,
         body: { error: "You must provide the current password and a new password." }
       };
+    }
+    if (revokeApiKeys !== undefined && typeof revokeApiKeys !== "boolean") {
+      return { status: 400, body: { error: "revokeApiKeys must be true or false." } };
     }
     const length = [...newPassword].length;
     if (length < 8 || length > 128) {
@@ -3083,6 +3211,7 @@ export class MockApi {
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.voidResetCode(this.user.email);
     this.voidsEmailChangeOf(this.user.email, this.user._id);
+    if (revokeApiKeys === true) this.userApiKeys.delete(this.user._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
@@ -3282,13 +3411,7 @@ export class MockApi {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
     }
     const paste = this.pastes[index];
-    if (method === "GET") {
-      // Populated like the real API does since vb2007/vb2007.hu-api#124, with the owner's current name.
-      return {
-        status: 200,
-        body: { paste: { ...paste, addedBy: this.populatedOwner(paste.addedBy) } }
-      };
-    }
+    if (method === "GET") return { status: 200, body: { paste: this.populatedPaste(paste) } };
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
     if (
       !sameUsername(paste.addedBy, this.user!.username) &&
@@ -3306,11 +3429,14 @@ export class MockApi {
         };
       }
       paste.language = language;
-      return { status: 200, body: { message: "Paste updated successfully.", paste } };
+      return {
+        status: 200,
+        body: { message: "Paste updated successfully.", paste: this.populatedPaste(paste) }
+      };
     }
     this.pastes.splice(index, 1);
     // Like the API's `deletePaste`, which sends only the deleted paste's ID.
-    return { status: 200, body: { message: "Paste deleted successfully.", paste: { id } } };
+    return { status: 200, body: { message: "Paste deleted successfully.", paste: { _id: id } } };
   }
 
   private usedBytes() {
@@ -3569,12 +3695,23 @@ export class MockApi {
   }
 
   /**
-   * The owner of content filed under `name` as the API populates it (`populate("addedBy", "username")`): the
-   * account's current name (see `ownerNamed`), or the name it was filed under when no account has it.
+   * The owner of content filed under `name` as the API's `toPasteOwner` answers it: the account's id and current
+   * name (see `ownerNamed`), or `null` once no account has it.
    */
   private populatedOwner(name: string) {
     const owner = this.ownerNamed(name);
-    return { _id: owner?.id ?? "u1", username: owner?.username ?? name };
+    return owner && { _id: owner.id, username: owner.username };
+  }
+
+  /** A paste as every paste route answers it since vb2007/vb2007.hu-api#554, its owner populated. */
+  private populatedPaste(paste: MockPaste) {
+    return { ...paste, addedBy: this.populatedOwner(paste.addedBy) };
+  }
+
+  /** A short link's owner as `POST /shortenUrl` and the lookup answer it (vb2007/vb2007.hu-api#554), or `null`. */
+  private populatedSharer(name: string) {
+    const owner = this.populatedOwner(name);
+    return owner && { ...owner, createdAt: "2026-07-31T17:16:07.516Z" };
   }
 
   /** Whose an upload is (see `ownerNamed`). */
@@ -3936,14 +4073,16 @@ export class MockApi {
   }
 
   /** The API's `clearRateLimitLockouts`: each limiter whose whole key is given, in its order. */
-  private clearRateLimits(body: { email?: unknown; ip?: unknown } | null) {
+  private clearRateLimits(body: { email?: unknown; ip?: unknown; clientId?: unknown } | null) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
-    const { email, ip } = body ?? {};
-    if (email === undefined && ip === undefined) {
+    const { email, ip, clientId } = body ?? {};
+    if (email === undefined && ip === undefined && clientId === undefined) {
       return {
         status: 400,
-        body: { error: "Send an email, an ip or both to clear their rate limits." }
+        body: {
+          error: "Send an email, an ip, a clientId or several of them to clear their rate limits."
+        }
       };
     }
     if (email !== undefined && (typeof email !== "string" || !email.trim())) {
@@ -3952,9 +4091,19 @@ export class MockApi {
     if (ip !== undefined && (typeof ip !== "string" || !isIP(ip))) {
       return { status: 400, body: { error: "ip must be a valid IPv4 or IPv6 address." } };
     }
+    if (
+      clientId !== undefined &&
+      (typeof clientId !== "string" || !OAUTH_CLIENTS.some(({ id }) => id === clientId))
+    ) {
+      return {
+        status: 400,
+        body: { error: "clientId must be the id of a registered OAuth client." }
+      };
+    }
     const key: RateLimitKey = {
       email: email === undefined ? undefined : normalizeEmail(email),
-      ip
+      ip,
+      clientId
     };
     // `loginPerAccount` is found by the e-mail alone (from every IP, vb2007/vb2007.hu-api#365); an IP only narrows it.
     const matches = (count: RateLimitKey & { name: MockRateLimiter }) =>
@@ -4132,7 +4281,12 @@ export class MockApi {
         status,
         body: {
           message,
-          data: { shortenedUrl: code, originalUrl: url, addedOn: link.addedOn, addedBy: "u1" }
+          data: {
+            shortenedUrl: code,
+            originalUrl: url,
+            addedOn: link.addedOn,
+            addedBy: this.populatedSharer(link.addedBy)
+          }
         }
       };
     };
@@ -4308,7 +4462,7 @@ export class MockApi {
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: this.populatedOwner(paste.addedBy) })),
+          .map((paste) => this.populatedPaste(paste)),
         pagination: {
           limit,
           page,

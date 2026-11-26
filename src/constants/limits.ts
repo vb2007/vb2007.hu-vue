@@ -80,6 +80,8 @@ export class Limits {
      * to GitHub to confirm is remembered for as long.
      */
     static readonly reauthMinutes: number = 10;
+    /** How long a GitHub login started here can come back (the API's `GITHUB_OAUTH_MINUTES`). */
+    static readonly loginMinutes: number = 10;
   };
 
   static readonly Mfa = class {

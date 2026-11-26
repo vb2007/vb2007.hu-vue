@@ -15,15 +15,14 @@ import {
   watch
 } from "vue";
 import { useRouter } from "vue-router";
-import { Endpoints } from "@/constants/endpoints";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { apiUrl } from "@/scripts/api/client";
 import { hasPassword, username } from "@/scripts/authentication/authState";
 import { clearDeleteIntent, saveDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { clearSession } from "@/scripts/authentication/user";
 import { useAccountDelete } from "@/composables/useAccountDelete";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { useGithubLink } from "@/composables/useGithubLink";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
@@ -51,7 +50,26 @@ const form = useTemplateRef("form");
 const field = useTemplateRef("field");
 const opener = useTemplateRef("opener");
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
-const githubLink = apiUrl(Endpoints.Auth.githubLink);
+/** The relink that has GitHub confirm it's them: the delete is remembered just before leaving. */
+const {
+  isLinking,
+  isStalled,
+  linkError,
+  link,
+  stop,
+  hold: linkHold
+} = useGithubLink((url) => {
+  saveDeleteIntent(username.value);
+  window.location.assign(url);
+});
+/** A start that hasn't stalled: one that should have left by now may be tried again. */
+const isLeaving = computed(() => isLinking.value && !isStalled.value);
+const isLinkHeld = computed(() => linkHold.isHeld());
+const linkErrorId = useId();
+/** The GitHub key reads its step's message, and why the start failed while that shows. */
+const githubDescribedBy = computed(() =>
+  linkHold.shown() ? `${statusTextId(errorId)} ${statusTextId(linkErrorId)}` : statusTextId(errorId)
+);
 const describedBy = computed(
   () =>
     [githubConfirmed.value && confirmedId, shownError.value && statusTextId(errorId)]
@@ -87,10 +105,11 @@ const open = async () => {
 };
 
 const cancel = async () => {
-  if (isDeleting.value) return;
+  if (isDeleting.value || isLeaving.value) return;
   confirming.value = false;
   confirmation.value = "";
   deleteError.value = "";
+  linkError.value = "";
   needsGithub.value = false;
   githubConfirmed.value = false;
   clearDeleteIntent();
@@ -99,8 +118,15 @@ const cancel = async () => {
   opener.value!.$el.focus();
 };
 
-/** Remembers the delete for the way back, before the link leaves for GitHub. */
-const confirmWithGithub = () => saveDeleteIntent(username.value);
+const confirmWithGithub = async () => {
+  // A start that stalled is given up on first, so this one can begin.
+  stop();
+  if (await link()) return;
+  // The key disabled while it worked, which dropped the focus; a held key stays disabled.
+  await nextTick();
+  if (isLinkHeld.value) focusField();
+  else githubKey.value?.$el.focus();
+};
 
 const submit = async () => {
   if (isHeld.value) return;
@@ -191,17 +217,29 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
         :spoken="hold.spokenFor()"
         >{{ shownError }}</StatusMessage
       >
+      <StatusMessage
+        v-if="needsGithub && linkHold.shown()"
+        :id="linkErrorId"
+        tone="error"
+        :spoken="linkHold.spokenFor()"
+        >{{ linkHold.shown() }}</StatusMessage
+      >
       <div class="confirm__actions">
         <BaseButton
           v-if="needsGithub"
           ref="githubKey"
           size="sm"
-          :aria-describedby="statusTextId(errorId)"
-          :href="githubLink"
+          :aria-label="isLinkHeld ? linkHold.name.value : undefined"
+          :aria-describedby="githubDescribedBy"
+          :loading="isLeaving"
+          :disabled="isLinkHeld"
           @click="confirmWithGithub"
         >
-          <AppIcon name="github" :size="16" />
-          Confirm with GitHub
+          <template v-if="isLinkHeld">{{ linkHold.label.value }}</template>
+          <template v-else>
+            <AppIcon name="github" :size="16" />
+            {{ isLeaving ? "Opening GitHub" : "Confirm with GitHub" }}
+          </template>
         </BaseButton>
         <BaseButton
           v-else
@@ -216,7 +254,7 @@ onBeforeUnmount(() => window.removeEventListener("pageshow", onPageShow));
         >
           {{ isDeleting ? "Deleting" : isHeld ? hold.label.value : "Delete account" }}
         </BaseButton>
-        <BaseButton size="sm" variant="ghost" :disabled="isDeleting" @click="cancel">
+        <BaseButton size="sm" variant="ghost" :disabled="isDeleting || isLeaving" @click="cancel">
           Cancel
         </BaseButton>
       </div>

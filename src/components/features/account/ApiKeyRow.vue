@@ -201,6 +201,8 @@ const remove = async () => {
   font-family: var(--font-code);
   font-size: var(--fs-sm);
   line-height: 1.6;
+  /* An app's scope can be as long as the row is wide at 320 px. */
+  overflow-wrap: anywhere;
 }
 
 .api-key__dates {
