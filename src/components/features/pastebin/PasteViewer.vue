@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { isSuperuser, username } from "@/scripts/authentication/authState";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
 import { pasteLanguage } from "@/scripts/pastebin/detect";
 import { MARKDOWN, PASTE_LANGUAGES, languageLabel } from "@/scripts/pastebin/languages";
 import { pasteLink, pasteSize } from "@/scripts/pastebin/paste";
@@ -36,9 +36,9 @@ const views = [
 /** Numbered, unwrapped lines suit code; a single line of prose reads better wrapped. */
 const showLineNumbers = ref(false);
 
-/** The owner, or the superuser for anyone's paste (like the API's `isPasteOwner`). */
+/** The owner by id, or the superuser for anyone's paste, like the API's `isPasteOwner`. */
 const canEdit = computed(
-  () => isSuperuser.value || paste.value?.addedBy?.username === username.value
+  () => isSuperuser.value || (Boolean(userId.value) && paste.value?.addedBy?._id === userId.value)
 );
 const languageOptions = PASTE_LANGUAGES.map(({ id, label }) => ({ value: id, label }));
 /** Announced once a change is saved. */

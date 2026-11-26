@@ -1,4 +1,12 @@
-import { callApi, expect, getFromApi, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import {
+  callApi,
+  expect,
+  getFromApi,
+  MOCK_EMAIL,
+  MOCK_PASSWORD,
+  MOCK_SUPERUSER_EMAIL,
+  test
+} from "./fixtures";
 
 test("a user creates, opens, lists and deletes a paste", async ({ page, api, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -172,6 +180,24 @@ test("the owner changes a paste's language; others can't", async ({ page, api })
   await page.goto(`/pastebin/${theirs._id}`);
   await expect(page.getByLabel("Paste content")).toHaveText("someone else's words");
   await expect(page.getByLabel("Language")).toHaveCount(0);
+});
+
+test("a paste whose account is gone shows, and only the superuser can change it", async ({
+  page,
+  api
+}) => {
+  // No account has the name, so the API answers `addedBy: null`.
+  const orphan = api.hasPaste("left behind", "gone", "plaintext");
+  await page.goto(`/pastebin/${orphan._id}`);
+  await expect(page.getByLabel("Paste content")).toHaveText("left behind");
+  await expect(page.getByLabel("Language")).toHaveCount(0);
+  expect((await getFromApi(page, api, `/paste/${orphan._id}`)).body).toMatchObject({
+    paste: { addedBy: null }
+  });
+
+  api.loggedInAs(MOCK_SUPERUSER_EMAIL, "admin");
+  await page.goto(`/pastebin/${orphan._id}`);
+  await expect(page.getByLabel("Language")).toBeVisible();
 });
 
 test("content shows its owner's current name, whatever case it was filed under", async ({

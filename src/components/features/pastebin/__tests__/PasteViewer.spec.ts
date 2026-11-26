@@ -4,7 +4,7 @@ import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
-import { isSuperuser, username } from "@/scripts/authentication/authState";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
 
 const paste = (id: string, content = "line one\n  line two") => ({
   _id: id,
@@ -191,7 +191,7 @@ describe("PasteViewer", () => {
     });
 
     it("lets the owner change the language, showing the pick while it saves", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       const fetchMock = mockFetch();
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
@@ -216,7 +216,7 @@ describe("PasteViewer", () => {
     });
 
     it("shows the next paste as it is when a change lands after moving to it", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       const fetchMock = mockFetch();
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
@@ -241,7 +241,7 @@ describe("PasteViewer", () => {
     });
 
     it("keeps the next paste's pick while the previous paste's change lands", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       const fetchMock = mockFetch();
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
@@ -273,7 +273,7 @@ describe("PasteViewer", () => {
 
     it("goes back to the stored language when the change fails", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
-      username.value = "someone";
+      userId.value = "u9";
       isSuperuser.value = true;
       const fetchMock = mockFetch();
       fetchMock
@@ -291,7 +291,7 @@ describe("PasteViewer", () => {
     });
 
     it("hides the language select from everyone else", async () => {
-      username.value = "bela";
+      userId.value = "u2";
       mockFetch().mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
       await flushPromises();
@@ -300,7 +300,7 @@ describe("PasteViewer", () => {
     });
 
     it("shows a paste whose account is gone, editable only by the superuser", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       mockFetch().mockResolvedValueOnce(
         jsonResponse(200, { paste: { ...owned(), addedBy: null } })
       );

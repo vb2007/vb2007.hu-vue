@@ -26,7 +26,7 @@ export interface ShortenUrlResponse extends MessageResponse {
 export interface ShortUrlSharer {
   _id: string;
   username: string;
-  createdAt?: string;
+  createdAt: string;
 }
 
 /** `GET /shortenUrl/:shortenedUrl` (vb2007/vb2007.hu-api#75); older APIs leave the sharer out. */

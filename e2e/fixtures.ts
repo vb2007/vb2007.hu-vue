@@ -3565,12 +3565,12 @@ export class MockApi {
   }
 
   /**
-   * The owner of content filed under `name` as the API populates it (`populate("addedBy", "username")`): the
-   * account's current name (see `ownerNamed`), or the name it was filed under when no account has it.
+   * The owner of content filed under `name` as the API's `toPasteOwner` answers it: the account's id and current
+   * name (see `ownerNamed`), or `null` once no account has it.
    */
   private populatedOwner(name: string) {
     const owner = this.ownerNamed(name);
-    return { _id: owner?.id ?? "u1", username: owner?.username ?? name };
+    return owner && { _id: owner.id, username: owner.username };
   }
 
   /** A paste as every paste route answers it since vb2007/vb2007.hu-api#554, its owner populated. */
@@ -3578,9 +3578,10 @@ export class MockApi {
     return { ...paste, addedBy: this.populatedOwner(paste.addedBy) };
   }
 
-  /** A short link's owner as `POST /shortenUrl` and the lookup answer it (vb2007/vb2007.hu-api#554). */
+  /** A short link's owner as `POST /shortenUrl` and the lookup answer it (vb2007/vb2007.hu-api#554), or `null`. */
   private populatedSharer(name: string) {
-    return { ...this.populatedOwner(name), createdAt: "2026-07-31T17:16:07.516Z" };
+    const owner = this.populatedOwner(name);
+    return owner && { ...owner, createdAt: "2026-07-31T17:16:07.516Z" };
   }
 
   /** Whose an upload is (see `ownerNamed`). */
