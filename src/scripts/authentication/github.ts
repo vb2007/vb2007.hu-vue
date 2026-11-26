@@ -22,8 +22,6 @@ const OAUTH_ERRORS: Record<OauthErrorCode, string> = {
   [OauthError.notLoggedIn]:
     "Your session ended before GitHub could be linked. Log in, then link GitHub again.",
   [OauthError.notConfigured]: "GitHub login isn't available right now.",
-  [OauthError.passwordRequired]:
-    "Linking GitHub takes your password. Press Link GitHub on this page and enter it there.",
   [OauthError.accountSuspended]: Messages.Auth.githubAccountSuspended,
   [OauthError.apiKeyNotAccepted]:
     "Linking GitHub needs your logged-in session: API keys aren't accepted for it. Link it from this page in your browser instead."

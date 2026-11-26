@@ -91,7 +91,7 @@ test("an account without a password confirms with GitHub and comes back to Share
   await expect(page.getByText(/^Confirm it's you first: log in with GitHub again/)).toBeVisible();
   expect(api.apiKeysOf()).toHaveLength(0);
 
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
   await expect(page).toHaveURL("/account/sharex");
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Set up ShareX within 10 minutes."

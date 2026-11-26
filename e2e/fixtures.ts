@@ -56,8 +56,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.usernameChecks` counts how often it was asked.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
- * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
- * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
+ * For a GitHub-only account that relink also confirms the user for setting a password or deleting the account.
+ * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` is gone (vb2007/vb2007.hu-api#534): a visit gets the API's
+ * unknown-route redirect to the site's `/apierror` page. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
@@ -1837,21 +1838,11 @@ export class MockApi {
         if (sessionUser) this.user = null;
         return { status: 200 };
       case "GET /auth/github/link":
-        if (!sessionUser) {
-          return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
-        }
-        // Only an account without a password may link through a plain navigation (vb2007/vb2007.hu-api#243).
-        if (sessionUser.hasPassword) {
-          return {
-            status: 302,
-            location: `${this.appOrigin}/account?oauthError=passwordRequired`
-          };
-        }
-        // Checked after the session and the password, like the API's `githubLink`.
-        if (this.githubUnconfigured) {
-          return { status: 302, location: `${this.appOrigin}/account?oauthError=notConfigured` };
-        }
-        return this.linkGithub();
+        // Removed (vb2007/vb2007.hu-api#534): a visit gets the API's unknown-route redirect.
+        return {
+          status: 302,
+          location: `${this.appOrigin}/apierror?url=%2Fauth%2Fgithub%2Flink`
+        };
       case "POST /auth/github/link":
         return this.startGithubLink(body?.password);
       case "GET /e2e-github/authorize":
