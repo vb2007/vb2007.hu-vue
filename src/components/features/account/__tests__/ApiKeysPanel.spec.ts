@@ -410,8 +410,14 @@ describe("ApiKeysPanel", () => {
       await flushPromises();
 
       expect(bodyOf(1)).not.toHaveProperty("password");
-      expect(panel.find(".reauth a").text()).toContain("Confirm with GitHub");
-      await panel.find(".reauth a").trigger("click");
+      const github = panel.find(".reauth__actions button");
+      expect(github.text()).toContain("Confirm with GitHub");
+      const assign = vi.fn();
+      vi.stubGlobal("location", { ...window.location, assign });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: "https://github.com/login" }));
+      await github.trigger("click");
+      await flushPromises();
+      expect(assign).toHaveBeenCalledWith("https://github.com/login");
       const back = router.resolve(takeGithubReturn());
       expect(back.path).toBe("/account/api-keys");
       expect(back.query).toEqual({
@@ -604,7 +610,10 @@ describe("ApiKeysPanel", () => {
       );
       await panel.find(".reauth").trigger("submit");
       await flushPromises();
-      await panel.find(".reauth a").trigger("click");
+      vi.stubGlobal("location", { ...window.location, assign: vi.fn() });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: "https://github.com/login" }));
+      await panel.find(".reauth__actions button").trigger("click");
+      await flushPromises();
 
       expect(router.resolve(takeGithubReturn()).query).toEqual({
         newApiKey: "1",

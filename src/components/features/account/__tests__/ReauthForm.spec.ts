@@ -7,11 +7,13 @@ import { saveGithubReturn, takeGithubReturn } from "@/scripts/authentication/git
 import type { ApiResult } from "@/scripts/api/client";
 import type { MessageResponse } from "@/types/api/common";
 import { descriptionOf } from "@/__tests__/helpers/description";
+import { jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 
 const REAUTH =
   "Confirm it's you first: log in with GitHub again (or relink it), then change MFA settings within 10 minutes.";
 const WRONG = "The provided password is incorrect.";
 const TOO_MANY = "Too many failed attempts: try again later.";
+const AUTHORIZE_URL = "https://github.com/login/oauth/authorize?state=xyz";
 
 const ok = (message: string): ApiResult<MessageResponse> => ({
   ok: true,
@@ -32,14 +34,19 @@ const refused = (
 
 let wrapper: VueWrapper | undefined;
 
-const mountForm = (send: (body: object) => Promise<ApiResult<MessageResponse>>, danger = false) => {
+const mountForm = (
+  send: (body: object) => Promise<ApiResult<MessageResponse>>,
+  danger = false,
+  githubReturn?: string
+) => {
   wrapper = mount(ReauthForm, {
     props: {
       send,
       submitLabel: "Turn off",
       busyLabel: "Turning off",
       hint: "Confirms it's you.",
-      danger
+      danger,
+      githubReturn
     },
     attachTo: document.body
   });
@@ -47,7 +54,14 @@ const mountForm = (send: (body: object) => Promise<ApiResult<MessageResponse>>, 
 };
 
 describe("ReauthForm", () => {
+  let fetchMock: ReturnType<typeof mockFetch>;
+  let assign: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
+    fetchMock = mockFetch();
+    assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    vi.spyOn(console, "error").mockImplementation(() => {});
     hasPassword.value = true;
     sessionStorage.clear();
   });
@@ -152,7 +166,7 @@ describe("ReauthForm", () => {
     const form = mountForm(send);
     expect(form.find("input").exists()).toBe(false);
     expect(form.find(".reauth__note").text()).toBe(
-      "Confirms it's you. If you logged in more than 10 minutes ago, GitHub confirms it's you first."
+      "Confirms it's you. Unless you logged in with GitHub or relinked it in the last 10 minutes, GitHub confirms it's you first."
     );
     const submit = form.find('button[type="submit"]');
     expect(document.activeElement).toBe(submit.element);
@@ -163,16 +177,88 @@ describe("ReauthForm", () => {
 
     expect(send).toHaveBeenCalledWith({});
     expect(form.find('[role="status"]').text()).toBe(REAUTH);
-    const github = form.find("a");
+    const github = form.find("button");
     expect(github.text()).toBe("Confirm with GitHub");
-    expect(github.attributes("href")).toBe("https://api.test/auth/github/link");
     expect(document.activeElement).toBe(github.element);
-    // The relink is for this setting, not a delete remembered from before.
-    github.element.addEventListener("click", (event) => event.preventDefault());
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answer = resolve)));
+
     await github.trigger("click");
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/github/link", {
+      method: "POST",
+      credentials: "include",
+      signal: expect.any(AbortSignal)
+    });
+    expect(github.text()).toBe("Opening GitHub");
+    expect(github.attributes("aria-busy")).toBe("true");
+    // Cancel waits too: the browser is about to leave for GitHub.
+    await form.find("form").trigger("keydown", { key: "Escape" });
+    expect(form.emitted("cancel")).toBeUndefined();
+    // Nothing is forgotten before it's sure to leave.
+    expect(sessionStorage.length).toBe(2);
+    answer(jsonResponse(200, { url: AUTHORIZE_URL }));
+    await flushPromises();
+
+    expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
+    // The relink is for this setting, not a delete remembered from before.
     expect(sessionStorage.getItem(DELETE_INTENT_STORAGE_KEY)).toBeNull();
     // Nor a return to another page: this form has none, so the relink comes back here.
     expect(takeGithubReturn()).toBe("");
+  });
+
+  it("keeps where to come back to from GitHub, once the relink starts", async () => {
+    hasPassword.value = false;
+    const send = vi.fn().mockResolvedValueOnce(refused(403, REAUTH));
+    const form = mountForm(send, false, "/account/api-keys?scopes=pastes%3Aread");
+    await form.find("form").trigger("submit");
+    await flushPromises();
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: AUTHORIZE_URL }));
+
+    await form.find("button").trigger("click");
+    await flushPromises();
+
+    expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL);
+    expect(takeGithubReturn()).toBe("/account/api-keys?scopes=pastes%3Aread");
+  });
+
+  it("says why GitHub couldn't open, leaving the way back as it was", async () => {
+    hasPassword.value = false;
+    saveGithubReturn("/account/api-keys");
+    const send = vi.fn().mockResolvedValueOnce(refused(403, REAUTH));
+    const form = mountForm(send, false, "/account/sharex");
+    await form.find("form").trigger("submit");
+    await flushPromises();
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "notConfigured" }));
+
+    await form.find("button").trigger("click");
+    await flushPromises();
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(form.find('[role="status"]').text()).toBe(REAUTH);
+    expect(form.find('[role="alert"]').text()).toBe("GitHub login isn't available right now.");
+    expect(descriptionOf(form.find("button"))).toBe(
+      `${REAUTH} GitHub login isn't available right now.`
+    );
+    expect(document.activeElement).toBe(form.find("button").element);
+    expect(takeGithubReturn()).toBe("/account/api-keys");
+  });
+
+  it("holds the GitHub key after the API's 429, with the focus on Cancel", async () => {
+    hasPassword.value = false;
+    const send = vi.fn().mockResolvedValueOnce(refused(403, REAUTH));
+    const form = mountForm(send);
+    await form.find("form").trigger("submit");
+    await flushPromises();
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: TOO_MANY, retryAfter: 900 }));
+
+    await form.find("button").trigger("click");
+    await flushPromises();
+
+    const github = form.find("button");
+    expect(form.find('[role="alert"]').text()).toBe(`${TOO_MANY} Try again in 15 minutes.`);
+    expect(github.text()).toBe("Try again in 15 min");
+    expect(github.attributes("disabled")).toBeDefined();
+    expect(document.activeElement).toBe(form.findAll("button").at(-1)!.element);
   });
 
   it("puts the cursor back on the key after a GitHub-only refusal that isn't GitHub's", async () => {

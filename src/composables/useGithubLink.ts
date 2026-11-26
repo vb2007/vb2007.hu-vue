@@ -21,7 +21,9 @@ export const LEAVING_GRACE_MS = 5000;
  * password confirms with it, then the browser goes on to GitHub. A second start would replace the
  * first one's proof, so `isLinking` stays on from the request until the page is gone, or `stop()`
  * gives up on it; `isStalled` says the browser should have left by now, so it may be given up on.
- * `navigate` is only swapped out by tests; jsdom can't follow a real navigation.
+ * An account without a password relinks this way so GitHub confirms it's them (vb2007/vb2007.hu-api#534).
+ * `navigate` runs only once the start succeeded: a form keeps there what the way back needs before
+ * it leaves, and tests swap it out, since jsdom can't follow a real navigation.
  */
 export const useGithubLink = (navigate = (url: string) => window.location.assign(url)) => {
   const isLinking = ref(false);
@@ -64,6 +66,8 @@ export const useGithubLink = (navigate = (url: string) => window.location.assign
     const result = await apiRequest(Endpoints.Auth.githubStartLink, {
       body: password === undefined ? undefined : { password },
       failure: Messages.Account.githubLinkFailed,
+      // The limiter's hold is shown on the key. A 503 stays logged: a proxy's would look the same.
+      quietStatuses: [HttpStatus.TooManyRequests],
       signal
     });
 

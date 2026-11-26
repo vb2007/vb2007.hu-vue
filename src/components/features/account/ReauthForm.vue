@@ -11,14 +11,14 @@
  * (vb2007/vb2007.hu-api#612), hold the key for their wait: the API changed nothing.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
-import { Endpoints } from "@/constants/endpoints";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { mailBudgetOf, retryAfterFrom } from "@/composables/useCountdown";
 import { useFormValidation } from "@/composables/useFormValidation";
+import { useGithubLink } from "@/composables/useGithubLink";
 import { useRetryHold } from "@/composables/useRetryHold";
-import { apiUrl, type ApiResult } from "@/scripts/api/client";
+import type { ApiResult } from "@/scripts/api/client";
 import { hasPassword, userEmail } from "@/scripts/authentication/authState";
 import { clearDeleteIntent } from "@/scripts/authentication/deleteIntent";
 import { clearGithubReturn, saveGithubReturn } from "@/scripts/authentication/githubReturn";
@@ -55,7 +55,31 @@ const errorId = useId();
 const hintId = useId();
 const form = useTemplateRef("form");
 const githubKey = useTemplateRef<InstanceType<typeof BaseButton>>("githubKey");
-const githubLink = apiUrl(Endpoints.Auth.githubLink);
+/**
+ * The relink that has GitHub confirm it's them. Only this form's confirmation is remembered for the
+ * way back, just before leaving.
+ */
+const {
+  isLinking,
+  isStalled,
+  linkError,
+  link,
+  stop,
+  hold: linkHold
+} = useGithubLink((url) => {
+  clearDeleteIntent();
+  if (props.githubReturn) saveGithubReturn(props.githubReturn);
+  else clearGithubReturn();
+  window.location.assign(url);
+});
+/** A start that hasn't stalled: one that should have left by now may be tried again. */
+const isLeaving = computed(() => isLinking.value && !isStalled.value);
+const isLinkHeld = computed(() => linkHold.isHeld());
+const linkErrorId = useId();
+/** The GitHub key reads its step's message, and why the start failed while that shows. */
+const githubDescribedBy = computed(() =>
+  linkHold.shown() ? `${statusTextId(errorId)} ${statusTextId(linkErrorId)}` : statusTextId(errorId)
+);
 
 const { errors, isValid, leave, validate } = useFormValidation({
   password: {
@@ -71,7 +95,7 @@ const focusFirst = () =>
 const submit = async () => {
   if (isHeld.value || isSending.value || !(await validate(form.value))) return;
   isSending.value = true;
-  error.value = "";
+  error.value = linkError.value = "";
   needsGithub.value = false;
   const result = await props.send(hasPassword.value ? { password: password.value } : {});
   isSending.value = false;
@@ -96,15 +120,18 @@ const submit = async () => {
   else if (!form.value?.querySelector(":focus:not(:disabled)")) focusFirst();
 };
 
-/** Off to GitHub: only this form's confirmation is remembered, for the way back. */
-const toGithub = () => {
-  clearDeleteIntent();
-  if (props.githubReturn) saveGithubReturn(props.githubReturn);
-  else clearGithubReturn();
+const confirmWithGithub = async () => {
+  // A start that stalled is given up on first, so this one can begin.
+  stop();
+  if (await link()) return;
+  // The key disabled while it worked, which dropped the focus; a held key stays disabled.
+  await nextTick();
+  if (isLinkHeld.value) focusFirst();
+  else githubKey.value?.$el.focus();
 };
 
 const cancel = () => {
-  if (!isSending.value) emit("cancel");
+  if (!isSending.value && !isLeaving.value) emit("cancel");
 };
 
 onMounted(focusFirst);
@@ -145,17 +172,29 @@ onMounted(focusFirst);
       :spoken="hold.spokenFor()"
       >{{ shownError }}</StatusMessage
     >
+    <StatusMessage
+      v-if="needsGithub && linkHold.shown()"
+      :id="linkErrorId"
+      tone="error"
+      :spoken="linkHold.spokenFor()"
+      >{{ linkHold.shown() }}</StatusMessage
+    >
     <div class="reauth__actions">
       <BaseButton
         v-if="needsGithub"
         ref="githubKey"
         size="sm"
-        :aria-describedby="statusTextId(errorId)"
-        :href="githubLink"
-        @click="toGithub"
+        :aria-label="isLinkHeld ? linkHold.name.value : undefined"
+        :aria-describedby="githubDescribedBy"
+        :loading="isLeaving"
+        :disabled="isLinkHeld"
+        @click="confirmWithGithub"
       >
-        <AppIcon name="github" :size="16" />
-        Confirm with GitHub
+        <template v-if="isLinkHeld">{{ linkHold.label.value }}</template>
+        <template v-else>
+          <AppIcon name="github" :size="16" />
+          {{ isLeaving ? "Opening GitHub" : "Confirm with GitHub" }}
+        </template>
       </BaseButton>
       <BaseButton
         v-else
@@ -170,7 +209,7 @@ onMounted(focusFirst);
       >
         {{ isSending ? busyLabel : isHeld ? hold.label.value : submitLabel }}
       </BaseButton>
-      <BaseButton size="sm" variant="ghost" :disabled="isSending" @click="cancel">
+      <BaseButton size="sm" variant="ghost" :disabled="isSending || isLeaving" @click="cancel">
         Cancel
       </BaseButton>
     </div>
