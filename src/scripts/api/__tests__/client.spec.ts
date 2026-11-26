@@ -135,7 +135,12 @@ describe("apiRequest", () => {
   });
 
   it("returns the typed body on success", async () => {
-    const paste = { _id: "a", content: "hi", addedBy: "u", addedOn: "2026-01-01" };
+    const paste = {
+      _id: "a",
+      content: "hi",
+      addedBy: { _id: "u", username: "anna" },
+      addedOn: "2026-01-01"
+    };
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste }));
 
     const result = await apiRequest(Endpoints.Pastebin.get, { params: { id: "a" }, failure });

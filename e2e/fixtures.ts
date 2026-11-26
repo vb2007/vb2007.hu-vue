@@ -1679,6 +1679,7 @@ export class MockApi {
       quotaBytes?: number | null;
       currentPassword?: string;
       newPassword?: string;
+      revokeApiKeys?: unknown;
       username?: string;
       token?: string;
       method?: string;
@@ -1710,10 +1711,7 @@ export class MockApi {
             status: 200,
             body: {
               originalUrl: link.target,
-              addedBy: {
-                ...this.populatedOwner(link.addedBy),
-                createdAt: "2026-07-31T17:16:07.516Z"
-              },
+              addedBy: this.populatedSharer(link.addedBy),
               addedOn: link.addedOn
             }
           }
@@ -1964,7 +1962,7 @@ export class MockApi {
         if (this.user && this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.confirmEmail(body?.code);
       case "PATCH /user/password":
-        return this.changePassword(body?.currentPassword, body?.newPassword);
+        return this.changePassword(body?.currentPassword, body?.newPassword, body?.revokeApiKeys);
       case "GET /auth/username-available": {
         this.usernameChecks++;
         if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
@@ -2025,7 +2023,9 @@ export class MockApi {
           status: 201,
           body: {
             message: "Paste created successfully.",
-            paste: this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            paste: this.populatedPaste(
+              this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            )
           }
         };
       default:
@@ -3167,7 +3167,8 @@ export class MockApi {
     return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
-  private changePassword(currentPassword?: string, newPassword?: string) {
+  /** `revokeApiKeys: true` deletes the account's keys with it (vb2007/vb2007.hu-api#597). */
+  private changePassword(currentPassword?: string, newPassword?: string, revokeApiKeys?: unknown) {
     if (!this.user) {
       return NOT_LOGGED_IN;
     }
@@ -3179,6 +3180,9 @@ export class MockApi {
         status: 400,
         body: { error: "You must provide the current password and a new password." }
       };
+    }
+    if (revokeApiKeys !== undefined && typeof revokeApiKeys !== "boolean") {
+      return { status: 400, body: { error: "revokeApiKeys must be true or false." } };
     }
     const length = [...newPassword].length;
     if (length < 8 || length > 128) {
@@ -3202,6 +3206,7 @@ export class MockApi {
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.voidResetCode(this.user.email);
     this.voidsEmailChangeOf(this.user.email, this.user._id);
+    if (revokeApiKeys === true) this.userApiKeys.delete(this.user._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 
@@ -3401,13 +3406,7 @@ export class MockApi {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
     }
     const paste = this.pastes[index];
-    if (method === "GET") {
-      // Populated like the real API does since vb2007/vb2007.hu-api#124, with the owner's current name.
-      return {
-        status: 200,
-        body: { paste: { ...paste, addedBy: this.populatedOwner(paste.addedBy) } }
-      };
-    }
+    if (method === "GET") return { status: 200, body: { paste: this.populatedPaste(paste) } };
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
     if (
       !sameUsername(paste.addedBy, this.user!.username) &&
@@ -3425,11 +3424,14 @@ export class MockApi {
         };
       }
       paste.language = language;
-      return { status: 200, body: { message: "Paste updated successfully.", paste } };
+      return {
+        status: 200,
+        body: { message: "Paste updated successfully.", paste: this.populatedPaste(paste) }
+      };
     }
     this.pastes.splice(index, 1);
     // Like the API's `deletePaste`, which sends only the deleted paste's ID.
-    return { status: 200, body: { message: "Paste deleted successfully.", paste: { id } } };
+    return { status: 200, body: { message: "Paste deleted successfully.", paste: { _id: id } } };
   }
 
   private usedBytes() {
@@ -3688,12 +3690,23 @@ export class MockApi {
   }
 
   /**
-   * The owner of content filed under `name` as the API populates it (`populate("addedBy", "username")`): the
-   * account's current name (see `ownerNamed`), or the name it was filed under when no account has it.
+   * The owner of content filed under `name` as the API's `toPasteOwner` answers it: the account's id and current
+   * name (see `ownerNamed`), or `null` once no account has it.
    */
   private populatedOwner(name: string) {
     const owner = this.ownerNamed(name);
-    return { _id: owner?.id ?? "u1", username: owner?.username ?? name };
+    return owner && { _id: owner.id, username: owner.username };
+  }
+
+  /** A paste as every paste route answers it since vb2007/vb2007.hu-api#554, its owner populated. */
+  private populatedPaste(paste: MockPaste) {
+    return { ...paste, addedBy: this.populatedOwner(paste.addedBy) };
+  }
+
+  /** A short link's owner as `POST /shortenUrl` and the lookup answer it (vb2007/vb2007.hu-api#554), or `null`. */
+  private populatedSharer(name: string) {
+    const owner = this.populatedOwner(name);
+    return owner && { ...owner, createdAt: "2026-07-31T17:16:07.516Z" };
   }
 
   /** Whose an upload is (see `ownerNamed`). */
@@ -4251,7 +4264,12 @@ export class MockApi {
         status,
         body: {
           message,
-          data: { shortenedUrl: code, originalUrl: url, addedOn: link.addedOn, addedBy: "u1" }
+          data: {
+            shortenedUrl: code,
+            originalUrl: url,
+            addedOn: link.addedOn,
+            addedBy: this.populatedSharer(link.addedBy)
+          }
         }
       };
     };
@@ -4427,7 +4445,7 @@ export class MockApi {
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: this.populatedOwner(paste.addedBy) })),
+          .map((paste) => this.populatedPaste(paste)),
         pagination: {
           limit,
           page,

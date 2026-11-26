@@ -6,7 +6,7 @@ import { usePaste } from "@/composables/usePaste";
 const paste = {
   _id: "p1",
   content: "hello world",
-  addedBy: "u1",
+  addedBy: { _id: "u1", username: "anna" },
   addedOn: "2026-10-10T12:00:00.000Z"
 };
 
@@ -133,7 +133,7 @@ describe("usePaste", () => {
   });
 
   describe("setLanguage", () => {
-    const owned = { ...paste, addedBy: { _id: "u1", username: "anna" }, language: "plaintext" };
+    const owned = { ...paste, language: "plaintext" };
 
     const loaded = async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned }));
@@ -150,7 +150,7 @@ describe("usePaste", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("saves the language and keeps the rest of the paste", async () => {
+    it("saves the language and shows the paste as the API answers it", async () => {
       const single = await loaded();
       fetchMock.mockResolvedValueOnce(
         jsonResponse(200, { paste: { ...paste, language: "python" } })

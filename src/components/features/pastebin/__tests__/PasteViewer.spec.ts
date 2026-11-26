@@ -4,12 +4,12 @@ import PasteViewer from "@/components/features/pastebin/PasteViewer.vue";
 import AppIcon from "@/components/ui/AppIcon.vue";
 import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetch";
 import { mountWithRouter } from "@/__tests__/helpers/mount";
-import { isSuperuser, username } from "@/scripts/authentication/authState";
+import { isSuperuser, userId } from "@/scripts/authentication/authState";
 
 const paste = (id: string, content = "line one\n  line two") => ({
   _id: id,
   content,
-  addedBy: "u1",
+  addedBy: { _id: "u1", username: "anna" },
   addedOn: "2026-10-10T12:00:00.000Z"
 });
 
@@ -148,7 +148,6 @@ describe("PasteViewer", () => {
     const markdown = "# Notes\n\n- one\n- two";
     const owned = (content = "print('hi')", language?: string) => ({
       ...paste("p1", content),
-      addedBy: { _id: "u1", username: "anna" },
       language
     });
 
@@ -192,7 +191,7 @@ describe("PasteViewer", () => {
     });
 
     it("lets the owner change the language, showing the pick while it saves", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       const fetchMock = mockFetch();
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
@@ -217,7 +216,7 @@ describe("PasteViewer", () => {
     });
 
     it("shows the next paste as it is when a change lands after moving to it", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       const fetchMock = mockFetch();
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
@@ -242,7 +241,7 @@ describe("PasteViewer", () => {
     });
 
     it("keeps the next paste's pick while the previous paste's change lands", async () => {
-      username.value = "anna";
+      userId.value = "u1";
       const fetchMock = mockFetch();
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
@@ -274,7 +273,7 @@ describe("PasteViewer", () => {
 
     it("goes back to the stored language when the change fails", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
-      username.value = "someone";
+      userId.value = "u9";
       isSuperuser.value = true;
       const fetchMock = mockFetch();
       fetchMock
@@ -292,12 +291,29 @@ describe("PasteViewer", () => {
     });
 
     it("hides the language select from everyone else", async () => {
-      username.value = "bela";
+      userId.value = "u2";
       mockFetch().mockResolvedValueOnce(jsonResponse(200, { paste: owned() }));
       const wrapper = await mountViewer();
       await flushPromises();
 
       expect(wrapper.find("select").exists()).toBe(false);
+    });
+
+    it("shows a paste whose account is gone, editable only by the superuser", async () => {
+      userId.value = "u1";
+      mockFetch().mockResolvedValueOnce(
+        jsonResponse(200, { paste: { ...owned(), addedBy: null } })
+      );
+      const wrapper = await mountViewer();
+      await flushPromises();
+
+      expect(wrapper.find(".sheet__content").text()).toBe("print('hi')");
+      expect(wrapper.find("select").exists()).toBe(false);
+
+      isSuperuser.value = true;
+      await flushPromises();
+
+      expect(wrapper.find("select").exists()).toBe(true);
     });
   });
 });

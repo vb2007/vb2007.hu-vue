@@ -366,6 +366,11 @@ export class Messages {
       return `${address} wasn't confirmed. ${error}`;
     }
     /**
+     * After the API's own "password changed" message, which stays the same when `revokeApiKeys`
+     * deleted the keys too (vb2007/vb2007.hu-api#597).
+     */
+    static readonly apiKeysRevoked: string = "Any API keys you had were revoked.";
+    /**
      * After the API's own "password changed" message, when a change waited: changing the password
      * drops it, and its code with it (vb2007/vb2007.hu-api#474).
      */

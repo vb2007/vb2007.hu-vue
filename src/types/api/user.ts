@@ -47,6 +47,8 @@ export interface SetPasswordBody {
 export interface ChangePasswordBody {
   currentPassword: string;
   newPassword: string;
+  /** `true` also deletes every API key of the account, in the same write (vb2007/vb2007.hu-api#597). */
+  revokeApiKeys?: boolean;
 }
 
 /**
