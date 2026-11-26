@@ -243,7 +243,7 @@ test("a deep link fills in the create form, leaving out the scopes and apps it c
   await expect(page.getByRole("group", { name: "Uploads" }).getByLabel("Read")).not.toBeChecked();
   await expect(page.getByRole("group", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("status")).toHaveText(
-    "The link asked for scopes it can't set, so they're left out: admin:read, nobody:submit, no-redirects:read."
+    "The link asked for scopes it can't set, so they're left out: admin:read, nobody:submit, and 1 more."
   );
   await expect(page.getByRole("group", { name: "Apps" })).toHaveCount(0);
   await expect(page.getByLabel("Days from now")).toHaveValue("90");
@@ -271,7 +271,7 @@ test("a deep link's app scope is offered ticked, kept through GitHub, and listed
   const apps = page.getByRole("group", { name: "Apps" });
   await expect(apps.getByLabel("spotdl-web: submit")).toBeChecked();
   await expect(apps).toHaveAccessibleDescription(
-    "Each only lets that app check the key. It grants nothing on vb2007.hu."
+    "Each only lets that app check the key and see your username and e-mail. It grants nothing on vb2007.hu."
   );
   await expect(page.getByRole("status")).toHaveText(
     "The link asked for scopes it can't set, so they're left out: spotdl:admin."

@@ -200,7 +200,7 @@ onMounted(focusFirst);
       <fieldset
         class="key-form__scopes"
         :aria-describedby="
-          [prefill?.dropped.length && leftOutId, errors.scopes && scopesErrorId]
+          [prefill?.leftOut && leftOutId, errors.scopes && scopesErrorId]
             .filter(Boolean)
             .join(' ') || undefined
         "
@@ -209,8 +209,8 @@ onMounted(focusFirst);
         <p class="key-form__note">
           Each lets the key make one kind of request. Write doesn't include read.
         </p>
-        <StatusMessage v-if="prefill?.dropped.length" :id="leftOutId" tone="info">{{
-          Messages.ApiKeys.scopesLeftOut(prefill.dropped)
+        <StatusMessage v-if="prefill?.leftOut" :id="leftOutId" tone="info">{{
+          prefill.leftOut
         }}</StatusMessage>
         <div
           v-for="area in areas"
@@ -237,7 +237,8 @@ onMounted(focusFirst);
         >
           <span class="key-form__area-name" aria-hidden="true">Apps</span>
           <p :id="appsNoteId" class="key-form__note">
-            Each only lets that app check the key. It grants nothing on vb2007.hu.
+            Each only lets that app check the key and see your username and e-mail. It grants
+            nothing on vb2007.hu.
           </p>
           <BaseCheckbox
             v-for="app in apps"

@@ -565,9 +565,23 @@ export class Messages {
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;
     }
-    /** On a form the deep link filled in: the scopes it asked for that it can't tick. */
-    static scopesLeftOut(scopes: string[]): string {
-      return `The link asked for scopes it can't set, so they're left out: ${scopes.join(", ")}.`;
+    /**
+     * On a form the deep link filled in: the scopes it asked for that it can't tick, those safe to
+     * show by name, then how many more.
+     */
+    static scopesLeftOut(named: string[], more: number): string {
+      if (!named.length) {
+        return more === 1
+          ? "The link asked for a scope it can't set, so it's left out."
+          : `The link asked for ${more} scopes it can't set, so they're left out.`;
+      }
+      return `The link asked for scopes it can't set, so they're left out: ${named.join(", ")}${more ? `, and ${more} more` : ""}.`;
+    }
+    /** The apps the deep link names that couldn't be looked up (not an unknown app's `404`). */
+    static appsUnchecked(count: number): string {
+      return count === 1
+        ? "Couldn't check the link's app right now, so its scopes are left out: reload to try again."
+        : `Couldn't check ${count} of the link's apps right now, so their scopes are left out: reload to try again.`;
     }
   };
 

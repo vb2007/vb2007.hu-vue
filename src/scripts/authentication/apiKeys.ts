@@ -56,10 +56,14 @@ export const grantableScopes = (superuser: boolean) =>
   Limits.ApiKeys.scopes.filter((scope) => superuser || !isAdminScope(scope));
 
 /**
- * A scope's shape, built-in (`uploads:write`) or an app's (`spotdl:submit`), up to 40 characters:
- * what the deep link's notice may name, never other text.
+ * What the deep link's notice may name: letters and one colon, like `uploads:write` or
+ * `spotdl:submit`, up to 40 characters. No digits, hyphens or spaces, so a link can't put its own
+ * text on the page; other scopes it leaves out are only counted.
  */
-const SCOPE_SHAPE = /^(?=.{1,40}$)(?:[a-z][A-Za-z]*|[a-z0-9][a-z0-9-]*):[a-z0-9][a-z0-9-]*$/;
+const SCOPE_SHAPE = /^(?=.{1,40}$)[a-z][A-Za-z]*:[a-z]+$/;
+
+/** At most this many left-out scopes are named; the rest are counted. */
+const LEFT_OUT_NAMED_MAX = 5;
 
 /** An app scope as the API's registry names them: `<client>:<scope>`, each like `namePattern`. */
 const APP_SCOPE_SHAPE = /^([a-z0-9][a-z0-9-]{0,63}):[a-z0-9][a-z0-9-]{0,63}$/;
@@ -83,6 +87,7 @@ const linkScopes = (query: LocationQuery) =>
  * never a built-in scope's area, which the API keeps from clients.
  */
 export const linkedAppIds = (query: LocationQuery) => {
+  if (!(ApiKeyLinkQuery.open in query)) return [];
   const areas = SCOPE_AREAS.map(({ area }) => area.toLowerCase());
   const ids = [...linkScopes(query)]
     .map((scope) => APP_SCOPE_SHAPE.exec(scope)?.[1])
@@ -94,10 +99,15 @@ export const linkedAppIds = (query: LocationQuery) => {
  * What the deep link (see `ApiKeyLinkQuery`) fills "Create an API key" in with, `undefined` without
  * it. The name is kept as given, for the form to check. Of the scopes, the ones any account may give
  * a key, in the API's order (never an `admin:` one, which no app needs, even for the superuser), then
- * the scopes of the looked-up `apps` it names, labelled with the app's name, and the rest, left out: named
- * when shaped like a scope, so a link can't put its own text on the page.
+ * the scopes of the looked-up `apps` it names, labelled with the app's name, and the rest, left out
+ * and said so in `leftOut`: named when `SCOPE_SHAPE` allows, else counted. The scopes of the apps
+ * whose lookup failed (`unchecked`, not a `404`) are left out too, with a word of their own.
  */
-export const apiKeyLink = (query: LocationQuery, apps: readonly OauthClient[] = []) => {
+export const apiKeyLink = (
+  query: LocationQuery,
+  apps: readonly OauthClient[] = [],
+  unchecked: readonly string[] = []
+) => {
   if (!(ApiKeyLinkQuery.open in query)) return undefined;
   const wanted = linkScopes(query);
   const offered = apps.flatMap(({ name, scopes }) =>
@@ -109,13 +119,25 @@ export const apiKeyLink = (query: LocationQuery, apps: readonly OauthClient[] = 
     ...grantableScopes(false).filter((scope) => wanted.has(scope)),
     ...offered.map(({ scope }) => scope)
   ];
+  const dropped = [...wanted].filter(
+    (scope) =>
+      (SCOPE_SHAPE.test(scope) || APP_SCOPE_SHAPE.test(scope)) &&
+      !scopes.some((kept) => kept === scope) &&
+      !unchecked.includes(scope.slice(0, scope.indexOf(":")))
+  );
+  const named = dropped.filter((scope) => SCOPE_SHAPE.test(scope)).slice(0, LEFT_OUT_NAMED_MAX);
+  const more = dropped.length - named.length;
   return {
     name: [query[ApiKeyLinkQuery.keyName]].flat()[0] ?? "",
     scopes,
     apps: offered,
-    dropped: [...wanted].filter(
-      (scope) => SCOPE_SHAPE.test(scope) && !scopes.some((kept) => kept === scope)
-    )
+    /** What the form says of the scopes it left out, "" when it left out none. */
+    leftOut: [
+      dropped.length && Messages.ApiKeys.scopesLeftOut(named, more),
+      unchecked.length && Messages.ApiKeys.appsUnchecked(unchecked.length)
+    ]
+      .filter(Boolean)
+      .join(" ")
   };
 };
 

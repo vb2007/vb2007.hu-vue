@@ -31,6 +31,7 @@ import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { ApiKey, ApiKeyTokenResponse } from "@/types/api/apiKeys";
 import type { OauthClient } from "@/types/api/oauth";
 
+const APP_LOOKUP_MS = 10_000;
 const apiKeys = ref<ApiKey[]>([]);
 const loaded = ref(false);
 const error = ref("");
@@ -53,10 +54,10 @@ const tokens = ref<
 const creating = ref(false);
 const prefill = ref<ApiKeyPrefill>();
 /**
- * The apps whose scopes the deep link asks for, as the API knows them (the rest are left out):
- * `undefined` while they're looked up.
+ * The apps whose scopes the deep link asks for: those the API knows, and the ids whose lookup failed
+ * (an unknown app's `404` is neither). `undefined` while they're looked up.
  */
-const apps = ref<OauthClient[]>();
+const apps = ref<{ found: OauthClient[]; failed: string[] }>();
 const route = useRoute();
 const router = useRouter();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
@@ -82,26 +83,34 @@ const load = async () => {
   else error.value = result.error;
 };
 
-/** Looks up the deep link's apps; an unknown one (`404`) or a failed lookup is left out. */
+/** Looks up the deep link's apps, each given `APP_LOOKUP_MS` so a hung one can't hold the form. */
 const findApps = async () => {
   apps.value = undefined;
+  const ids = linkedAppIds(route.query);
   const results = await Promise.all(
-    linkedAppIds(route.query).map((clientId) =>
+    ids.map((clientId) =>
       apiRequest(Endpoints.OAuth.client, {
         params: { clientId },
         failure: Messages.OAuth.clientFailed,
-        quietStatuses: [HttpStatus.NotFound]
+        quietStatuses: [HttpStatus.NotFound],
+        signal: AbortSignal.timeout(APP_LOOKUP_MS)
       })
     )
   );
-  apps.value = results.flatMap((result) => (result.ok ? [result.data] : []));
+  apps.value = {
+    found: results.flatMap((result) => (result.ok ? [result.data] : [])),
+    failed: ids.filter((_, i) => !results[i].ok && results[i].status !== HttpStatus.NotFound)
+  };
 };
 
 /**
  * The deep link's details, once the list and its apps are in: a form opened while they load starts
  * empty.
  */
-const linked = () => (loaded.value && apps.value ? apiKeyLink(route.query, apps.value) : undefined);
+const linked = () =>
+  loaded.value && apps.value
+    ? apiKeyLink(route.query, apps.value.found, apps.value.failed)
+    : undefined;
 
 /**
  * The deep link opens the create form filled in once per login, when the list shows the account

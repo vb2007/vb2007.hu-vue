@@ -512,7 +512,7 @@ describe("ApiKeysPanel", () => {
       expect(ticked(panel)).toEqual(["Uploads Read"]);
       expect(panel.find('[role="group"][aria-label="Admin"]').exists()).toBe(false);
       expect(leftOut(panel).text()).toBe(
-        Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"])
+        Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"], 0)
       );
       // Already there when the form opens, so the fieldset says it rather than a live region.
       expect(panel.find(".key-form__scopes").attributes("aria-describedby")).toBe(
@@ -537,10 +537,10 @@ describe("ApiKeysPanel", () => {
       expect(ticked(panel)).toEqual(["Uploads Read", "Apps spotdl-web: submit"]);
       const apps = panel.find('[role="group"][aria-label="Apps"]');
       expect(panel.get(`#${apps.attributes("aria-describedby")}`).text()).toBe(
-        "Each only lets that app check the key. It grants nothing on vb2007.hu."
+        "Each only lets that app check the key and see your username and e-mail. It grants nothing on vb2007.hu."
       );
       expect(leftOut(panel).text()).toBe(
-        Messages.ApiKeys.scopesLeftOut(["spotdl:read", "kiwix:search", "admin:read"])
+        Messages.ApiKeys.scopesLeftOut(["spotdl:read", "kiwix:search", "admin:read"], 0)
       );
       expect(console.error).not.toHaveBeenCalled();
 
@@ -572,16 +572,24 @@ describe("ApiKeysPanel", () => {
       expect(bodyOf(2).scopes).toEqual(["spotdl:submit"]);
     });
 
-    it("leaves out, and names, an app whose lookup failed", async () => {
-      const { wrapper: panel } = await mountLinked(
-        linked("spotdl:submit,pastes:read"),
-        [],
-        jsonResponse(500, { error: "Something went wrong." })
-      );
+    it("leaves out the apps whose lookup failed, saying so apart from an unknown one", async () => {
+      fetchMock
+        .mockResolvedValueOnce(list())
+        .mockResolvedValueOnce(jsonResponse(500, { error: "Something went wrong." }))
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValueOnce(NO_CLIENT);
+      ({ wrapper } = await mountWithRouter(
+        ApiKeysPanel,
+        { attachTo: document.body },
+        linked("spotdl:submit,kiwix:search,nobody:x,pastes:read")
+      ));
+      await flushPromises();
 
-      expect(ticked(panel)).toEqual(["Pastes Read"]);
-      expect(panel.find('[role="group"][aria-label="Apps"]').exists()).toBe(false);
-      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["spotdl:submit"]));
+      expect(ticked(wrapper!)).toEqual(["Pastes Read"]);
+      expect(wrapper!.find('[role="group"][aria-label="Apps"]').exists()).toBe(false);
+      expect(leftOut(wrapper!).text()).toBe(
+        `${Messages.ApiKeys.scopesLeftOut(["nobody:x"], 0)} ${Messages.ApiKeys.appsUnchecked(2)}`
+      );
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -616,7 +624,7 @@ describe("ApiKeysPanel", () => {
 
       expect(panel.find('[role="group"][aria-label="Admin"]').exists()).toBe(true);
       expect(ticked(panel)).toEqual(["Uploads Read"]);
-      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["admin:read"]));
+      expect(leftOut(panel).text()).toBe(Messages.ApiKeys.scopesLeftOut(["admin:read"], 0));
     });
 
     it.each(["/account/api-keys", LINK])(

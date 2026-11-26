@@ -518,7 +518,7 @@ export class Endpoints {
 
   /** "Sign in with vb2007.hu" for first-party apps (vb2007/vb2007.hu-api#575). */
   static readonly OAuth = class {
-    /** A client's display name for the authorize page; public, `404` for an unknown client. */
+    /** An OAuth client's public details, its name and app scopes; `404` for an unknown client. */
     static readonly client = defineEndpoint<undefined, OauthClient>()({
       method: HttpMethod.Get,
       path: "/oauth/clients/:clientId",
