@@ -572,6 +572,37 @@ export class Messages {
   };
 
   /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */
+  /** The `/authorize` page, where first-party apps sign users in (vb2007/vb2007.hu-api#575). */
+  static readonly OAuth = class {
+    static readonly clientFailed: string = "Failed to load the app";
+    static readonly authorizeFailed: string = "Failed to answer the app's sign-in";
+    /** `?error=invalid_client`, no `client_id`, or the client lookup's 404. */
+    static readonly invalidClient: string =
+      "This sign-in link is for an app vb2007.hu doesn't know, so it stops here. Go back to the app and try again.";
+    /** `?error=invalid_redirect_uri`: the app would get the answer somewhere it didn't register. */
+    static readonly invalidRedirectUri: string =
+      "This sign-in link would send you somewhere the app didn't register, so it stops here. Go back to the app and try again.";
+    /**
+     * A parameter missing, or the API's `400`: its texts are for the app's developer, and a request
+     * it won't vet can't be retried from here, so no answer goes to the app.
+     */
+    static readonly invalidRequest: string =
+      "This sign-in link isn't valid, so nothing was sent to the app. Go back to the app and sign in again.";
+    /** The client lookup failed without an answer about the client (offline, a 500). */
+    static readonly clientUnavailable: string =
+      "Couldn't load which app is asking. Reload the page to try again.";
+    /** The `429` (30 answers a minute per account) without the API's message. */
+    static readonly tooManyRequests: string =
+      "Too many sign-in requests from this account: try again later.";
+    static loginLead(app: string): string {
+      return `Log in to continue to ${app}.`;
+    }
+    /** The session ended while the page waited, e.g. at the answer's `403`: the login takes over. */
+    static sessionEnded(app: string): string {
+      return `Your session ended, so nothing was sent to ${app}. Log in again to continue.`;
+    }
+  };
+
   static readonly Sharex = class {
     /** Logged by `apiRequest`; the page shows `filesUnavailable` whatever the reason. */
     static readonly filesFailed: string = "Failed to load the ShareX files";

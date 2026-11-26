@@ -21,6 +21,8 @@ export class RegisterStatus {
 export class AuthPaths {
   static readonly Login = "/login";
   static readonly ResetPassword = "/reset-password";
+  /** Where the API hands an app's sign-in (vb2007/vb2007.hu-api#575). */
+  static readonly Authorize = "/authorize";
 }
 
 /**

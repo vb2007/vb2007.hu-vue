@@ -1,6 +1,12 @@
-import { createRouter, createWebHistory, parseQuery, type RouteRecordRaw } from "vue-router";
+import {
+  createRouter,
+  createWebHistory,
+  parseQuery,
+  type LocationQuery,
+  type RouteRecordRaw
+} from "vue-router";
 import { ADMIN_SECTIONS, AdminPaths, AdminRoutes, type AdminSectionId } from "@/constants/admin";
-import { ApiKeyLinkQuery } from "@/constants/auth";
+import { ApiKeyLinkQuery, AuthPaths } from "@/constants/auth";
 import { OauthQuery } from "@/constants/oauth";
 import { pageTitle } from "@/constants/site";
 import { TOOLS_LINE, type ToolId } from "@/constants/stops";
@@ -31,11 +37,40 @@ const toolLabel = (id: ToolId) => TOOLS_LINE.stops.find((stop) => stop.id === id
 const sectionLabel = (id: AdminSectionId) =>
   ADMIN_SECTIONS.find((section) => section.id === id)!.label;
 
+/**
+ * Goes on to `back`, a path kept with its query (see `githubReturn.ts`), with `query` added over
+ * its own. A `#` (encoded in query values) starts a hash, dropped.
+ */
+const goBackTo = (back: string, query: LocationQuery) => {
+  const [url] = back.split("#");
+  const [path] = url.split("?");
+  return { path, query: { ...parseQuery(url.slice(path.length + 1)), ...query }, replace: true };
+};
+
+/**
+ * A GitHub login started on the authorize page (vb2007/vb2007.hu-api#575) lands on `/`, or on
+ * `/login` with `?mfa=required` or `?oauthError=`: each goes back to that page, with the query the
+ * login form reads there. Read on every visit, so an abandoned one doesn't linger.
+ */
+const backToAuthorize = (landed: boolean, query: LocationQuery = {}) => {
+  const back = takeGithubReturn();
+  return landed && back.startsWith(`${AuthPaths.Authorize}?`) ? goBackTo(back, query) : true;
+};
+
+/** What a GitHub login brings `/login`: the second step's or the failure's query. */
+const githubLanding = (query: LocationQuery): LocationQuery =>
+  Object.fromEntries(
+    [OauthQuery.mfa, OauthQuery.error]
+      .filter((name) => name in query)
+      .map((name) => [name, query[name]])
+  );
+
 export const routes: RouteRecordRaw[] = [
   {
     path: "/",
     name: "home",
-    component: HomeView
+    component: HomeView,
+    beforeEnter: () => backToAuthorize(true)
   },
   {
     path: "/shorten",
@@ -150,11 +185,7 @@ export const routes: RouteRecordRaw[] = [
         back.startsWith("/account/") &&
         (OauthQuery.github in to.query || OauthQuery.error in to.query)
       ) {
-        // Its own query and the relink's; a `#` (encoded in query values) starts a hash, dropped.
-        const [url] = back.split("#");
-        const [path] = url.split("?");
-        const query = { ...parseQuery(url.slice(path.length + 1)), ...to.query };
-        return { path, query, replace: true };
+        return goBackTo(back, to.query);
       }
       return ApiKeyLinkQuery.open in to.query
         ? { name: "account-api-keys", query: to.query, replace: true }
@@ -179,7 +210,11 @@ export const routes: RouteRecordRaw[] = [
     path: "/login",
     name: "login",
     meta: { title: "Log in" },
-    component: () => import("../views/LoginView.vue")
+    component: () => import("../views/LoginView.vue"),
+    beforeEnter: (to) => {
+      const landing = githubLanding(to.query);
+      return backToAuthorize(Object.keys(landing).length > 0, landing);
+    }
   },
   // The second step's mailed link, `/login/mfa#token=…` (vb2007/vb2007.hu-api#448): one-off, so
   // kept out of search results.
@@ -188,6 +223,14 @@ export const routes: RouteRecordRaw[] = [
     name: "login-mfa",
     meta: { title: "Log in", noindex: true },
     component: () => import("../views/LoginMfaView.vue")
+  },
+  // "Sign in with vb2007.hu": the API's `GET /oauth/authorize` hands an app's request here
+  // (vb2007/vb2007.hu-api#575). One-off, so kept out of search results.
+  {
+    path: AuthPaths.Authorize,
+    name: "authorize",
+    meta: { title: "Sign in", noindex: true },
+    component: () => import("../views/AuthorizeView.vue")
   },
   {
     path: "/register",

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { browserFontSize } from "./browser";
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import { expect, MOCK_EMAIL, MOCK_OAUTH_CLIENT, MOCK_PASSWORD, test } from "./fixtures";
 
 // WCAG 1.4.10 Reflow: at 320 CSS px (1280 px at 400% zoom), and with a large browser font size,
 // nothing scrolls sideways and nothing is cut off: columns shrink to the window, and keys and long
@@ -96,6 +96,27 @@ for (const [width, target, host] of [
     await expectReflow(page);
   });
 }
+
+test("an app's sign-in and its refusal fit a 320 px window", async ({ page, api }) => {
+  api.loggedInAs("someone.with.a.rather.long.address@example.com", "someone");
+  await page.setViewportSize({ width: 320, height: 800 });
+  const params = {
+    response_type: "code",
+    client_id: MOCK_OAUTH_CLIENT.id,
+    redirect_uri: MOCK_OAUTH_CLIENT.redirectUri,
+    state: "s",
+    code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    code_challenge_method: "S256",
+    nonce: "n"
+  };
+  await page.goto(`/authorize?${new URLSearchParams(params)}`);
+  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+  await expectReflow(page);
+
+  await page.goto("/authorize?error=invalid_redirect_uri");
+  await expect(page.getByRole("alert")).toBeFocused();
+  await expectReflow(page);
+});
 
 test("an upload's details show its whole link at 320 px", async ({ page, api }) => {
   api.loggedInAs();

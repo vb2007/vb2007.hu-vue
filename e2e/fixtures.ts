@@ -150,6 +150,11 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * cdn answers a private file without a link that's still live with a 404. Public links stay plain.
  * The admin can rename a `hasUser(...)` account (what it owns goes along), log it out (`api.loggedOutUsers` lists the ids; the
  * admin's own row, at the logged-in address, ends this session too) and delete it with what it owns (the admin's own row answers 409).
+ * "Sign in with vb2007.hu" (vb2007/vb2007.hu-api#575) knows one app, `MOCK_OAUTH_CLIENT` (`spotdl`, "spotdl-web"): the public
+ * `GET /oauth/clients/:clientId` answers it, and a 404 for any other id (a server-to-server client without redirect URIs too).
+ * `POST /oauth/authorize` takes the session, records each body in `api.authorizations`, answers the API's 400s in its order
+ * and a `redirectTo` on the app's redirect URI, with `MOCK_OAUTH_CODE` or `error=access_denied` and the `state`;
+ * `api.limitsAuthorizations()` makes it the 429 instead. A spec routes the app's own host itself.
  *
  * Requests this mock doesn't know are aborted and fail the test at teardown, so e2e runs can
  * never reach a real server. Add a case to `respond` when the app starts calling a new endpoint.
@@ -251,6 +256,33 @@ const NOT_LOGGED_IN = {
   body: { error: "You must be logged in to perform this action." }
 } satisfies MockResponse;
 
+/**
+ * The API's `OAUTH_CLIENTS` registry (vb2007/vb2007.hu-api#575): one app users sign in to, and one server-to-server
+ * client without redirect URIs, which `GET /oauth/clients/:clientId` doesn't answer.
+ */
+export const MOCK_OAUTH_CLIENT = {
+  id: "spotdl",
+  name: "spotdl-web",
+  redirectUri: "https://spotdl.example/login/callback",
+  scopes: ["submit"]
+};
+const OAUTH_CLIENTS = [
+  {
+    id: MOCK_OAUTH_CLIENT.id,
+    name: MOCK_OAUTH_CLIENT.name,
+    redirectUris: [MOCK_OAUTH_CLIENT.redirectUri],
+    scopes: MOCK_OAUTH_CLIENT.scopes
+  },
+  { id: "status-bot", name: "Status bot", redirectUris: [] as string[], scopes: [] as string[] }
+];
+/** The code every approval the mock answers carries, in place of the API's random one. */
+export const MOCK_OAUTH_CODE = "e2e-oauth-code";
+/** The API's `Responses.OAuth.invalidAuthorizeRequest`. */
+export const INVALID_AUTHORIZE_REQUEST =
+  "Send response_type=code, code_challenge_method=S256, a code_challenge of 43 base64url characters, state and nonce of 1-512 characters each, and approve as true or false.";
+const OAUTH_PARAM = (value: unknown): value is string =>
+  typeof value === "string" && value.length >= 1 && value.length <= 512;
+
 /** The API's `sharexTokenPlaceholder`: what a ShareX file's `Authorization` header holds until the token replaces it. */
 export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
 
@@ -261,6 +293,7 @@ export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
  */
 const PUBLIC_ROUTES = [
   /^GET \/sharex\/(upload|paste|shorten)\.sxcu$/,
+  /^GET \/oauth\/clients\/[^/]+$/,
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
   /^GET \/auth\/(username-available|github\/link)$/,
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
@@ -1379,6 +1412,15 @@ export class MockApi {
     this.loginLockout = { retryAfter, email: email && normalizeEmail(email) };
   }
 
+  /** The bodies `POST /oauth/authorize` was sent, in order, whatever it answered. */
+  readonly authorizations: Record<string, unknown>[] = [];
+  private authorizationsLimited = false;
+
+  /** Answers every `POST /oauth/authorize` with the API's 429 (30 a minute per account), as if the minute's were used. */
+  limitsAuthorizations() {
+    this.authorizationsLimited = true;
+  }
+
   /** Answers `POST /auth/github/link` with the API's 503 for a server without GitHub's OAuth app. */
   githubIsNotConfigured() {
     this.githubUnconfigured = true;
@@ -1411,6 +1453,68 @@ export class MockApi {
 
   sharexFileFails(name: string) {
     this.failingSharexFile = name;
+  }
+
+  /** The API's `getOauthClient`: only a client users can sign in to (one with redirect URIs) is answered. */
+  private oauthClient(id: string): MockResponse {
+    const client = OAUTH_CLIENTS.find((each) => each.id === id && each.redirectUris.length);
+    return client
+      ? {
+          status: 200,
+          body: {
+            id: client.id,
+            name: client.name,
+            scopes: client.scopes.map((scope) => `${client.id}:${scope}`)
+          }
+        }
+      : { status: 404, body: { error: "There is no such OAuth client." } };
+  }
+
+  /**
+   * `POST /oauth/authorize` after `isAuthenticated` (a 403 without a session) and its limiter, which counts every
+   * answer: the client and its redirect URI, then the other parameters and `approve`, like the API's `authorize`.
+   */
+  private authorize(body: Record<string, unknown> | null): MockResponse {
+    if (!this.user) return NOT_LOGGED_IN;
+    const sent = body ?? {};
+    this.authorizations.push(sent);
+    if (this.authorizationsLimited) {
+      return {
+        status: 429,
+        body: {
+          error: "Too many authorization requests from this account: try again later.",
+          retryAfter: 42
+        }
+      };
+    }
+    const client = OAUTH_CLIENTS.find((each) => each.id === sent.client_id);
+    if (!client) {
+      return { status: 400, body: { error: "client_id isn't a registered OAuth client." } };
+    }
+    const redirectUri = sent.redirect_uri;
+    if (typeof redirectUri !== "string" || !client.redirectUris.includes(redirectUri)) {
+      return {
+        status: 400,
+        body: { error: "redirect_uri isn't one of this client's redirect URIs." }
+      };
+    }
+    const valid =
+      sent.response_type === "code" &&
+      sent.code_challenge_method === "S256" &&
+      typeof sent.code_challenge === "string" &&
+      /^[A-Za-z0-9_-]{43}$/.test(sent.code_challenge) &&
+      OAUTH_PARAM(sent.state) &&
+      OAUTH_PARAM(sent.nonce) &&
+      typeof sent.approve === "boolean";
+    if (!valid) return { status: 400, body: { error: INVALID_AUTHORIZE_REQUEST } };
+    const answer: Record<string, string> = sent.approve
+      ? { code: MOCK_OAUTH_CODE, state: sent.state as string }
+      : { error: "access_denied", state: sent.state as string };
+    const separator = redirectUri.includes("?") ? "&" : "?";
+    return {
+      status: 200,
+      body: { redirectTo: `${redirectUri}${separator}${new URLSearchParams(answer)}` }
+    };
   }
 
   /** The API's `sharexUploaders`: ShareX's uploader for one of the three, pointing at the API it came from. */
@@ -1584,6 +1688,10 @@ export class MockApi {
   ): MockResponse | undefined {
     const sharexRoute = endpoint.match(/^GET \/sharex\/(upload|paste|shorten)\.sxcu$/);
     if (sharexRoute) return this.sharexFile(sharexRoute[1]);
+    const oauthClientRoute = endpoint.match(/^GET \/oauth\/clients\/([^/]+)$/);
+    if (oauthClientRoute) return this.oauthClient(decodeURIComponent(oauthClientRoute[1]));
+    if (endpoint === "POST /oauth/authorize")
+      return this.authorize(body as Record<string, unknown> | null);
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));

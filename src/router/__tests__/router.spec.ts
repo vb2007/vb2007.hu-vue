@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   isNavigationFailure,
   NavigationFailureType,
@@ -64,6 +64,7 @@ describe("router", () => {
     ["login", "/login"],
     ["register", "/register"],
     ["reset-password", "/reset-password"],
+    ["authorize", "/authorize"],
     ["api-error", "/apierror"]
   ])("resolves the %s route to %s", (name, path) => {
     expect(router.resolve({ name }).path).toBe(path);
@@ -251,12 +252,62 @@ describe("router", () => {
     expect(document.title).toBe("vb2007.hu");
   });
 
-  it("marks only the not-found pages and the mailed MFA link noindex", () => {
+  it("marks only the not-found pages and the one-off auth pages noindex", () => {
     const noindex = flatten(routes)
       .filter(([, route]) => route.meta?.noindex)
       .map(([, route]) => route.name);
 
-    expect(noindex).toEqual(["login-mfa", "api-error", "not-found"]);
+    expect(noindex).toEqual(["login-mfa", "authorize", "api-error", "not-found"]);
+  });
+
+  describe("back from a GitHub login started on the authorize page", () => {
+    const AUTHORIZE = "/authorize?client_id=spotdl&state=a%23b";
+
+    afterEach(() => sessionStorage.clear());
+
+    it("goes back to it from home, where a login lands", async () => {
+      await router.push("/shorten");
+      saveGithubReturn(AUTHORIZE);
+      await router.push("/");
+
+      expect(router.currentRoute.value.path).toBe("/authorize");
+      expect(router.currentRoute.value.query).toEqual({ client_id: "spotdl", state: "a#b" });
+      expect(takeGithubReturn()).toBe("");
+    });
+
+    it.each([
+      ["?mfa=required", { mfa: "required" }],
+      ["?oauthError=accessDenied&other=1", { oauthError: "accessDenied" }]
+    ])("goes back to it from /login%s, with only that", async (search, query) => {
+      await router.push("/shorten");
+      saveGithubReturn(AUTHORIZE);
+      await router.push(`/login${search}`);
+
+      expect(router.currentRoute.value.path).toBe("/authorize");
+      expect(router.currentRoute.value.query).toEqual({
+        client_id: "spotdl",
+        state: "a#b",
+        ...query
+      });
+    });
+
+    it("stays on a plain visit to Log in, forgetting the return", async () => {
+      await router.push("/shorten");
+      saveGithubReturn(AUTHORIZE);
+      await router.push("/login");
+
+      expect(router.currentRoute.value.path).toBe("/login");
+      expect(takeGithubReturn()).toBe("");
+    });
+
+    it("follows only the authorize page", async () => {
+      await router.push("/shorten");
+      saveGithubReturn("/account/api-keys");
+      await router.push("/");
+
+      expect(router.currentRoute.value.path).toBe("/");
+      expect(takeGithubReturn()).toBe("");
+    });
   });
 
   it.each(flatten(routes))("loads the component for %s", async (_path, route) => {

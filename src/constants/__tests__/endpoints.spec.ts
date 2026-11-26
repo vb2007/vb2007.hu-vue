@@ -68,6 +68,8 @@ describe("Endpoints", () => {
     [Endpoints.Sharex.upload, "GET", "/sharex/upload.sxcu", false],
     [Endpoints.Sharex.paste, "GET", "/sharex/paste.sxcu", false],
     [Endpoints.Sharex.shorten, "GET", "/sharex/shorten.sxcu", false],
+    [Endpoints.OAuth.client, "GET", "/oauth/clients/:clientId", false],
+    [Endpoints.OAuth.authorize, "POST", "/oauth/authorize", true],
     [Endpoints.Docs.index, "GET", "/docs", false],
     [Endpoints.Docs.admin, "GET", "/docs/admin", true],
     [Endpoints.Admin.users, "GET", "/admin/users", true],

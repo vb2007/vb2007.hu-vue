@@ -22,6 +22,27 @@ export class OauthError {
 
 export type OauthErrorCode = (typeof OauthError)[Exclude<keyof typeof OauthError, "prototype">];
 
+/**
+ * "Sign in with vb2007.hu" (vb2007/vb2007.hu-api#575): what the API's `GET /oauth/authorize` hands
+ * the `/authorize` page, either the request's parameters or, for a request that can't go back to
+ * the app, `?error=` with one of the codes below.
+ */
+export class AuthorizeQuery {
+  static readonly error = "error";
+  static readonly invalidClient = "invalid_client";
+  static readonly invalidRedirectUri = "invalid_redirect_uri";
+  /** The parameters the page sends back with the answer, each required once. */
+  static readonly params = [
+    "response_type",
+    "client_id",
+    "redirect_uri",
+    "state",
+    "code_challenge",
+    "code_challenge_method",
+    "nonce"
+  ] as const;
+}
+
 /** The query parameters the API's GitHub redirects come back with. */
 export class OauthQuery {
   /** Holds an `OauthError` code. */

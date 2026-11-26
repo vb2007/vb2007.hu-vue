@@ -34,6 +34,12 @@ import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { statusTextId } from "@/components/ui/statusMessage";
 
+/**
+ * `githubReturn`: a page that wraps the form (`/authorize`) and wants the GitHub login back on it.
+ * Its default slot opens the board, above every step.
+ */
+defineProps<{ githubReturn?: string }>();
+
 // Opened from Register with an address that has an account: it is filled in, and the cursor goes
 // to the password. Read before the validation starts watching the field, so it isn't "edited".
 const email = ref(emailFromHistory());
@@ -183,6 +189,7 @@ watch(isLoggedIn, (loggedIn) => {
 
 <template>
   <StationBoard title="Log in" as="h1">
+    <slot />
     <MfaStep v-if="!isLoggedIn && inMfa" :methods="mfaMethods" @back="leaveMfa" />
 
     <p v-else-if="!isLoggedIn && isLoadingMfa" role="status">Loading the second step…</p>
@@ -234,7 +241,7 @@ watch(isLoggedIn, (loggedIn) => {
           {{ isLoading ? "Logging in" : isHeld ? hold.label.value : "Log in" }}
         </BaseButton>
       </form>
-      <GithubLogin label="Log in with GitHub" />
+      <GithubLogin label="Log in with GitHub" :return-to="githubReturn" />
       <PasskeyLogin ref="passkeyKey" />
       <p class="alt">No account yet? <RouterLink to="/register">Register</RouterLink></p>
     </template>

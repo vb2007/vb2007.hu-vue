@@ -54,6 +54,7 @@ import type {
   TotpConfirmBody,
   TotpSetupResponse
 } from "@/types/api/mfa";
+import type { AuthorizeBody, AuthorizeResponse, OauthClient } from "@/types/api/oauth";
 import type { SharexUploader } from "@/types/api/sharex";
 import type {
   CreatePasteBody,
@@ -489,6 +490,25 @@ export class Endpoints {
     static readonly remove = defineEndpoint<undefined, UploadDeletedResponse>()({
       method: HttpMethod.Delete,
       path: "/upload/:id",
+      credentials: true
+    });
+  };
+
+  /** "Sign in with vb2007.hu" for first-party apps (vb2007/vb2007.hu-api#575). */
+  static readonly OAuth = class {
+    /** A client's display name for the authorize page; public, `404` for an unknown client. */
+    static readonly client = defineEndpoint<undefined, OauthClient>()({
+      method: HttpMethod.Get,
+      path: "/oauth/clients/:clientId",
+      credentials: false
+    });
+    /**
+     * The user's answer on the authorize page, session only: `redirectTo` is where the browser goes
+     * next (the app's vetted `redirect_uri`), `400` for a request the API won't vet.
+     */
+    static readonly authorize = defineEndpoint<AuthorizeBody, AuthorizeResponse>()({
+      method: HttpMethod.Post,
+      path: "/oauth/authorize",
       credentials: true
     });
   };

@@ -6,6 +6,8 @@ import { readSaved, removeSaved, writeSaved } from "@/scripts/utility/savedForOw
  * keys page, vb2007/vb2007.hu-api#511) keeps here where to go back to, for as long as GitHub's
  * confirmation lasts, and `/account`'s route guard sends the browser on with the relink's query
  * added to the one kept (an API key deep link's, which fills the create form in again).
+ * A GitHub login started on the authorize page (vb2007/vb2007.hu-api#575) keeps it the same way,
+ * and the routes it lands on (`/`, `/login`) send the browser back there.
  * It's in sessionStorage, so only this tab follows it, and it's read once whatever comes back.
  */
 export const GITHUB_RETURN_STORAGE_KEY = "account-github-return";
