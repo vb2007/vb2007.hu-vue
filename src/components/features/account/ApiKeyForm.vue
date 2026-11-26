@@ -5,6 +5,7 @@
  * sent, then `ReauthForm`, whose key sends them with the password. Cancel on the confirmation goes
  * back to the details, kept. The answer carries the token, which `done` hands on to show once.
  * The deep link's `prefill` fills a new key's name and scopes in, and names the scopes left out.
+ * Its apps' scopes are the only ones offered under Apps: without the link there are none.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -33,7 +34,7 @@ import BaseCheckbox from "@/components/ui/BaseCheckbox.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import BaseSelect from "@/components/ui/BaseSelect.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
-import type { ApiKey, ApiKeyScope, ApiKeyTokenResponse } from "@/types/api/apiKeys";
+import type { ApiKey, ApiKeyScope, ApiKeyTokenResponse, AppScope } from "@/types/api/apiKeys";
 import type { MfaPasswordBody } from "@/types/api/mfa";
 
 /** Without `apiKey` it creates one. */
@@ -52,12 +53,14 @@ const router = useRouter();
 const rotating = !!props.apiKey;
 const step = ref<"details" | "confirm">("details");
 const name = ref(props.prefill?.name ?? "");
-const scopes = ref<ApiKeyScope[]>(props.prefill?.scopes ?? []);
+const scopes = ref<(ApiKeyScope | AppScope)[]>(props.prefill?.scopes ?? []);
+const apps = props.prefill?.apps ?? [];
 const choice = ref<LifetimeChoice>(rotating ? "keep" : "days");
 const days = ref(String(Limits.ApiKeys.expiryDefaultDays));
 const form = useTemplateRef("form");
 const scopesErrorId = useId();
 const leftOutId = useId();
+const appsNoteId = useId();
 
 // A select rather than segmented keys: three of them don't fit a key's row at 320 px.
 const choices: { value: LifetimeChoice; label: string }[] = [
@@ -97,9 +100,15 @@ const areas = SCOPE_AREAS.map(({ area, label }) => ({
   scopes: grantableScopes(isSuperuser.value).filter((scope) => scope.startsWith(`${area}:`))
 })).filter(({ scopes }) => scopes.length);
 
-const toggle = (scope: ApiKeyScope, on: boolean) => {
+/** Every scope the form may send, in the order it sends them: the API's, then the apps'. */
+const order: (ApiKeyScope | AppScope)[] = [
+  ...Limits.ApiKeys.scopes,
+  ...apps.map(({ scope }) => scope)
+];
+
+const toggle = (scope: ApiKeyScope | AppScope, on: boolean) => {
   scopes.value = on
-    ? Limits.ApiKeys.scopes.filter((each) => each === scope || scopes.value.includes(each))
+    ? order.filter((each) => each === scope || scopes.value.includes(each))
     : scopes.value.filter((each) => each !== scope);
 };
 
@@ -219,6 +228,25 @@ onMounted(focusFirst);
             @update:model-value="toggle(scope, $event)"
           />
         </div>
+        <div
+          v-if="apps.length"
+          class="key-form__apps"
+          role="group"
+          aria-label="Apps"
+          :aria-describedby="appsNoteId"
+        >
+          <span class="key-form__area-name" aria-hidden="true">Apps</span>
+          <p :id="appsNoteId" class="key-form__note">
+            Each only lets that app check the key. It grants nothing on vb2007.hu.
+          </p>
+          <BaseCheckbox
+            v-for="app in apps"
+            :key="app.scope"
+            :label="app.label"
+            :model-value="scopes.includes(app.scope)"
+            @update:model-value="toggle(app.scope, $event)"
+          />
+        </div>
         <p v-if="errors.scopes" :id="scopesErrorId" class="key-form__error" role="alert">
           {{ errors.scopes }}
         </p>
@@ -313,6 +341,21 @@ onMounted(focusFirst);
 
 .key-form__area-name {
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The deep link's apps, under the areas: the name over its note, then a box a scope, each on its
+   own line, since an app's name and scope can be long. */
+.key-form__apps {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-bottom: var(--edge) solid var(--c-hairline);
+}
+
+.key-form__apps :deep(.check__label) {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 

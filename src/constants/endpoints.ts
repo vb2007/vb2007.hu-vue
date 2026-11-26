@@ -54,6 +54,7 @@ import type {
   TotpConfirmBody,
   TotpSetupResponse
 } from "@/types/api/mfa";
+import type { OauthClient } from "@/types/api/oauth";
 import type { SharexUploader } from "@/types/api/sharex";
 import type {
   CreatePasteBody,
@@ -511,6 +512,16 @@ export class Endpoints {
     static readonly shorten = defineEndpoint<undefined, SharexUploader>()({
       method: HttpMethod.Get,
       path: "/sharex/shorten.sxcu",
+      credentials: false
+    });
+  };
+
+  /** "Sign in with vb2007.hu" for first-party apps (vb2007/vb2007.hu-api#575). */
+  static readonly OAuth = class {
+    /** A client's display name for the authorize page; public, `404` for an unknown client. */
+    static readonly client = defineEndpoint<undefined, OauthClient>()({
+      method: HttpMethod.Get,
+      path: "/oauth/clients/:clientId",
       credentials: false
     });
   };

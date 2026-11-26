@@ -4,7 +4,8 @@ import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { displayNameEarlyError, displayNameError } from "@/scripts/authentication/displayName";
 import { formatDate } from "@/scripts/utility/dateUtil";
-import type { ApiKey, ApiKeyLifetime, ApiKeyScope } from "@/types/api/apiKeys";
+import type { ApiKey, ApiKeyLifetime, ApiKeyScope, AppScope } from "@/types/api/apiKeys";
+import type { OauthClient } from "@/types/api/oauth";
 
 /** An API key name's problem, "" when it has none, like the API's `apiKeyNameError`. */
 export const apiKeyNameError = (name: string) =>
@@ -54,18 +55,21 @@ export const isAdminScope = (scope: ApiKeyScope) => scope.startsWith("admin:");
 export const grantableScopes = (superuser: boolean) =>
   Limits.ApiKeys.scopes.filter((scope) => superuser || !isAdminScope(scope));
 
-/** A scope's shape, e.g. `uploads:write`: what the deep link's notice may name, never other text. */
-const SCOPE_SHAPE = /^(?=.{1,40}$)[a-z][A-Za-z]*:[a-z]+$/;
-
 /**
- * What the deep link (see `ApiKeyLinkQuery`) fills "Create an API key" in with, `undefined` without
- * it. The name is kept as given, for the form to check. Of the scopes, the ones any account may give
- * a key, in the API's order (never an `admin:` one, which no app needs, even for the superuser), and
- * the rest, left out: named when shaped like a scope, so a link can't put its own text on the page.
+ * A scope's shape, built-in (`uploads:write`) or an app's (`spotdl:submit`), up to 40 characters:
+ * what the deep link's notice may name, never other text.
  */
-export const apiKeyLink = (query: LocationQuery) => {
-  if (!(ApiKeyLinkQuery.open in query)) return undefined;
-  const wanted = new Set(
+const SCOPE_SHAPE = /^(?=.{1,40}$)(?:[a-z][A-Za-z]*|[a-z0-9][a-z0-9-]*):[a-z0-9][a-z0-9-]*$/;
+
+/** An app scope as the API's registry names them: `<client>:<scope>`, each like `namePattern`. */
+const APP_SCOPE_SHAPE = /^([a-z0-9][a-z0-9-]{0,63}):[a-z0-9][a-z0-9-]{0,63}$/;
+
+/** At most this many apps are looked up for one link, so a link can't make the page flood the API. */
+const LINKED_APPS_MAX = 5;
+
+/** The scopes the deep link names, trimmed, once each. */
+const linkScopes = (query: LocationQuery) =>
+  new Set(
     [query[ApiKeyLinkQuery.scopes]]
       .flat()
       .join()
@@ -73,10 +77,42 @@ export const apiKeyLink = (query: LocationQuery) => {
       .map((scope) => scope.trim())
       .filter(Boolean)
   );
-  const scopes = grantableScopes(false).filter((scope) => wanted.has(scope));
+
+/**
+ * The apps whose scopes the deep link asks for, for `GET /oauth/clients/:clientId`: the first few,
+ * never a built-in scope's area, which the API keeps from clients.
+ */
+export const linkedAppIds = (query: LocationQuery) => {
+  const areas = SCOPE_AREAS.map(({ area }) => area.toLowerCase());
+  const ids = [...linkScopes(query)]
+    .map((scope) => APP_SCOPE_SHAPE.exec(scope)?.[1])
+    .filter((id): id is string => id !== undefined && !areas.includes(id));
+  return [...new Set(ids)].slice(0, LINKED_APPS_MAX);
+};
+
+/**
+ * What the deep link (see `ApiKeyLinkQuery`) fills "Create an API key" in with, `undefined` without
+ * it. The name is kept as given, for the form to check. Of the scopes, the ones any account may give
+ * a key, in the API's order (never an `admin:` one, which no app needs, even for the superuser), then
+ * the scopes of the looked-up `apps` it names, labelled with the app's name, and the rest, left out: named
+ * when shaped like a scope, so a link can't put its own text on the page.
+ */
+export const apiKeyLink = (query: LocationQuery, apps: readonly OauthClient[] = []) => {
+  if (!(ApiKeyLinkQuery.open in query)) return undefined;
+  const wanted = linkScopes(query);
+  const offered = apps.flatMap(({ name, scopes }) =>
+    scopes
+      .filter((scope): scope is AppScope => wanted.has(scope))
+      .map((scope) => ({ scope, label: `${name}: ${scope.slice(scope.indexOf(":") + 1)}` }))
+  );
+  const scopes: (ApiKeyScope | AppScope)[] = [
+    ...grantableScopes(false).filter((scope) => wanted.has(scope)),
+    ...offered.map(({ scope }) => scope)
+  ];
   return {
     name: [query[ApiKeyLinkQuery.keyName]].flat()[0] ?? "",
     scopes,
+    apps: offered,
     dropped: [...wanted].filter(
       (scope) => SCOPE_SHAPE.test(scope) && !scopes.some((kept) => kept === scope)
     )

@@ -571,6 +571,11 @@ export class Messages {
     }
   };
 
+  /** First-party apps (vb2007/vb2007.hu-api#575), e.g. the API key form's app scopes. */
+  static readonly OAuth = class {
+    static readonly clientFailed: string = "Failed to load the app";
+  };
+
   /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */
   static readonly Sharex = class {
     /** Logged by `apiRequest`; the page shows `filesUnavailable` whatever the reason. */

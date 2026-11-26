@@ -3,12 +3,14 @@
  * The account's API keys (vb2007/vb2007.hu-api#511), on a page of their own: the list, "Create an
  * API key" under it, and new tokens at the top, each shown once. Visitors get a gate once the
  * session is known, like the account page; a token on show stays above it until it's saved. The
- * deep link (see `ApiKeyLinkQuery`) opens "Create an API key" filled in once the list is in.
+ * deep link (see `ApiKeyLinkQuery`) opens "Create an API key" filled in once the list is in, and
+ * the apps whose scopes it asks for are looked up.
  */
 import { nextTick, ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiKeyLinkQuery } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { OauthQuery } from "@/constants/oauth";
@@ -17,7 +19,7 @@ import { useLatestRequest } from "@/composables/useLatestRequest";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import { apiRequest } from "@/scripts/api/client";
-import { apiKeyLink, type ApiKeyPrefill } from "@/scripts/authentication/apiKeys";
+import { apiKeyLink, linkedAppIds, type ApiKeyPrefill } from "@/scripts/authentication/apiKeys";
 import { isLoggedIn, isSessionChecked, sessionEnded } from "@/scripts/authentication/authState";
 import ApiKeyForm from "@/components/features/account/ApiKeyForm.vue";
 import ApiKeyRow from "@/components/features/account/ApiKeyRow.vue";
@@ -27,6 +29,7 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { ApiKey, ApiKeyTokenResponse } from "@/types/api/apiKeys";
+import type { OauthClient } from "@/types/api/oauth";
 
 const apiKeys = ref<ApiKey[]>([]);
 const loaded = ref(false);
@@ -49,6 +52,8 @@ const tokens = ref<
 >([]);
 const creating = ref(false);
 const prefill = ref<ApiKeyPrefill>();
+/** The apps whose scopes the deep link asks for, as the API knows them; the rest are left out. */
+const apps = ref<OauthClient[]>([]);
 const route = useRoute();
 const router = useRouter();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
@@ -74,8 +79,22 @@ const load = async () => {
   else error.value = result.error;
 };
 
+/** Looks up the deep link's apps; an unknown one (`404`) or a failed lookup is left out. */
+const findApps = async () => {
+  const results = await Promise.all(
+    linkedAppIds(route.query).map((clientId) =>
+      apiRequest(Endpoints.OAuth.client, {
+        params: { clientId },
+        failure: Messages.OAuth.clientFailed,
+        quietStatuses: [HttpStatus.NotFound]
+      })
+    )
+  );
+  apps.value = results.flatMap((result) => (result.ok ? [result.data] : []));
+};
+
 /** The deep link's details, once the list is in: a form opened while it loads starts empty. */
-const linked = () => (loaded.value ? apiKeyLink(route.query) : undefined);
+const linked = () => (loaded.value ? apiKeyLink(route.query, apps.value) : undefined);
 
 /**
  * The deep link opens the create form filled in once per login, when the list shows the account
@@ -99,7 +118,7 @@ const dropLink = () => {
 watch(
   isLoggedIn,
   (loggedIn) => {
-    if (loggedIn) return load().then(openLinked);
+    if (loggedIn) return Promise.all([load(), findApps()]).then(openLinked);
     latest.next();
     apiKeys.value = [];
     loaded.value = false;

@@ -10,6 +10,7 @@ import {
   lifetimeDaysOf,
   lifetimeError,
   lifetimeOf,
+  linkedAppIds,
   SCOPE_AREAS
 } from "@/scripts/authentication/apiKeys";
 import type { ApiKeyScope } from "@/types/api/apiKeys";
@@ -109,6 +110,25 @@ describe("grantableScopes", () => {
   });
 });
 
+describe("linkedAppIds", () => {
+  it("names each app the link asks a scope of once, never a built-in area or a malformed one", () => {
+    expect(
+      linkedAppIds({
+        scopes:
+          "spotdl:submit,pastes:read,admin:x,shorturls:x,spotdl:read,Spotdl:x,app_1:x,kiwix-2:search"
+      })
+    ).toEqual(["spotdl", "kiwix-2"]);
+    expect(linkedAppIds({ scopes: `${"a".repeat(65)}:x,${"b".repeat(64)}:x` })).toEqual([
+      "b".repeat(64)
+    ]);
+  });
+
+  it("looks up at most 5 apps", () => {
+    const scopes = Array.from({ length: 7 }, (_, i) => `app${i}:x`).join();
+    expect(linkedAppIds({ scopes })).toEqual(["app0", "app1", "app2", "app3", "app4"]);
+  });
+});
+
 describe("apiKeyLink", () => {
   it("is nothing without newApiKey", () => {
     expect(apiKeyLink({ name: "Bot", scopes: "pastes:read" })).toBeUndefined();
@@ -132,6 +152,7 @@ describe("apiKeyLink", () => {
     expect(apiKeyLink({ newApiKey: "1", ...query })).toEqual({
       name: "",
       scopes,
+      apps: [],
       dropped: []
     });
   });
@@ -139,7 +160,33 @@ describe("apiKeyLink", () => {
   it("leaves out unknown and admin scopes, which a link never ticks, naming them", () => {
     expect(
       apiKeyLink({ newApiKey: "1", scopes: "admin:read,spotdl:submit,uploads:read,spotdl:submit" })
-    ).toEqual({ name: "", scopes: ["uploads:read"], dropped: ["admin:read", "spotdl:submit"] });
+    ).toEqual({
+      name: "",
+      scopes: ["uploads:read"],
+      apps: [],
+      dropped: ["admin:read", "spotdl:submit"]
+    });
+  });
+
+  it("ticks the scopes the looked-up apps have, after the API's, labelled with the app's name", () => {
+    const apps = [
+      { id: "spotdl", name: "spotdl-web", scopes: ["spotdl:submit", "spotdl:read"] },
+      { id: "kiwix-2", name: "Kiwix", scopes: ["kiwix-2:search"] }
+    ];
+    expect(
+      apiKeyLink(
+        { newApiKey: "1", scopes: "kiwix-2:search,spotdl:submit,spotdl:admin,uploads:read" },
+        apps
+      )
+    ).toEqual({
+      name: "",
+      scopes: ["uploads:read", "spotdl:submit", "kiwix-2:search"],
+      apps: [
+        { scope: "spotdl:submit", label: "spotdl-web: submit" },
+        { scope: "kiwix-2:search", label: "Kiwix: search" }
+      ],
+      dropped: ["spotdl:admin"]
+    });
   });
 
   it("names only what's shaped like a scope, never the link's own text", () => {
@@ -151,9 +198,16 @@ describe("apiKeyLink", () => {
       "spotdl:Submit",
       "<b>a:b</b>",
       "shortUrls:admin",
+      "-app:submit",
+      "app:-submit",
+      "app_1:submit",
+      "app-1:submit-2",
       "pastes:read"
     ];
-    expect(apiKeyLink({ newApiKey: "1", scopes })!.dropped).toEqual(["shortUrls:admin"]);
+    expect(apiKeyLink({ newApiKey: "1", scopes })!.dropped).toEqual([
+      "shortUrls:admin",
+      "app-1:submit-2"
+    ]);
     expect(
       apiKeyLink({ newApiKey: "1", scopes: `${"x".repeat(29)}:${"y".repeat(10)}` })!.dropped
     ).toHaveLength(1);
