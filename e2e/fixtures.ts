@@ -47,7 +47,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * password reset mails nothing (still 200, keeping the code from before); at 250 every mail is refused, and `PATCH /user/email`
  * answers that 503 too with `ACCOUNT_BUDGET_ERROR` (vb2007/vb2007.hu-api#476), keeping the change that waited before. Addresses on
  * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
- * resend's check, which comes before it looks at the address.
+ * resend's check, which comes before it looks at the address, and by an API key create or rotate, refused before it does.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out, and `api.clockAtMiddayUtc()`
  * sets it to 12:00 UTC today (for `page.clock.install({ time })` too), so the budget's wait is about 12 hours whenever the test runs.
@@ -2500,9 +2500,9 @@ export class MockApi {
 
   /** An API key's notice takes its mail before the key is written: the API's `reserveSecurityNoticeMail`. */
   private apiKeyMailRefusal(): MockResponse | undefined {
-    if (!this.countsMail(this.user!.email)) return undefined;
+    // Refused before the reserved domains are skipped, like the API's `reserveShare`.
     if (this.mailRefused("securityNotice")) return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
-    this.mailSentToday++;
+    if (this.countsMail(this.user!.email)) this.mailSentToday++;
     return undefined;
   }
 
