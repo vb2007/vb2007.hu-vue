@@ -257,9 +257,33 @@ describe("AuthorizeView", () => {
     sessionEnded.value = true;
     const wrapper = await open();
 
+    const note = () => wrapper.findAll(".status")[0].text();
+
+    loginStatus.value = "This account is suspended.";
+    await flushPromises();
+    expect(note()).toBe(Messages.OAuth.loginLead("spotdl-web"));
+
+    // The next try empties the status while it's out: the note stays as it is.
+    loginStatus.value = "";
+    await flushPromises();
+    expect(note()).toBe(Messages.OAuth.loginLead("spotdl-web"));
+  });
+
+  it("brings the session-ended note back only when a session ends again", async () => {
+    isSessionChecked.value = true;
+    sessionEnded.value = true;
+    const wrapper = await open();
+    const note = () => wrapper.findAll(".status")[0].text();
     loginStatus.value = "This account is suspended.";
     await flushPromises();
 
-    expect(wrapper.findAll(".status")[0].text()).toBe(Messages.OAuth.loginLead("spotdl-web"));
+    // Logged in, then out again here: no session was turned away.
+    sessionEnded.value = false;
+    await flushPromises();
+    expect(note()).toBe(Messages.OAuth.loginLead("spotdl-web"));
+
+    sessionEnded.value = true;
+    await flushPromises();
+    expect(note()).toBe(Messages.OAuth.sessionEnded("spotdl-web"));
   });
 });

@@ -65,6 +65,17 @@ const useAnotherAccount = async () => {
   await focusOutcome();
 };
 
+/**
+ * Why the login is back, from the session's end until a new try's first answer (a suspended
+ * account's, say), latched: each try empties `loginStatus` while it's out, and the note mustn't
+ * come back and be announced again then.
+ */
+const showEnded = ref(sessionEnded.value);
+watch(sessionEnded, (ended) => (showEnded.value = ended));
+watch(loginStatus, (status) => {
+  if (status) showEnded.value = false;
+});
+
 // Logged in on this page (or found logged in), the question takes the focus from the gone form.
 watch(isLoggedIn, async (loggedIn) => {
   if (!loggedIn) return;
@@ -139,9 +150,7 @@ watch(isLoggedIn, async (loggedIn) => {
     <LoginForm v-else ref="loginForm" :github-return="route.fullPath">
       <!-- Why the login is back, until a new try has its own answer (a suspended account's, say). -->
       <StatusMessage tone="info">{{
-        sessionEnded && !loginStatus
-          ? Messages.OAuth.sessionEnded(app.name)
-          : Messages.OAuth.loginLead(app.name)
+        showEnded ? Messages.OAuth.sessionEnded(app.name) : Messages.OAuth.loginLead(app.name)
       }}</StatusMessage>
     </LoginForm>
   </PageSection>

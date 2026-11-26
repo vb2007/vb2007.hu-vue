@@ -599,7 +599,7 @@ export class Messages {
     }
     /** Another account logged in meanwhile (another tab): the question shows it now, unanswered. */
     static readonly accountChanged: string =
-      "You're logged in as another account now, maybe from another tab, so nothing was sent. Check the account below, then answer again.";
+      "You're logged in as another account now, maybe from another tab, so nothing was sent. Check the account shown, then answer again.";
     static loginLead(app: string): string {
       return `Log in to continue to ${app}.`;
     }
