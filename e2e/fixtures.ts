@@ -121,6 +121,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` (vb2007/vb2007.hu-api#573) answer anyone with ShareX's custom uploader as JSON,
  * shaped like the API's `sharexUploaders`, its `Authorization` header holding `SHAREX_TOKEN_PLACEHOLDER` for the key's token; `api.sharexFileFails(name)`
  * answers that one's file with a 500 instead.
+ * `GET /oauth/clients/:clientId` (public) answers the clients of `OAUTH_CLIENTS` (`spotdl`, named "spotdl-web", with `spotdl:submit`)
+ * and 404 for any other id, or one without redirect URIs; `POST /user/api-keys` takes their app scopes next to the built-in ones.
  * `api.hasMfaTotp()` turns an authenticator app on instead (vb2007/vb2007.hu-api#447): `POST /auth/mfa/verify` then takes `{ method: "totp", code: MOCK_TOTP_CODE }`, nothing mailed.
  * `POST /user/mfa/totp` (confirmed like the e-mail toggle) answers `MOCK_TOTP_SECRET`, which `POST /user/mfa/totp/confirm` turns on with `MOCK_TOTP_CODE` within 5 tries
  * (vb2007/vb2007.hu-api#494: a wrong code answers `attemptsLeft`, a setup that's gone `reason`, and `api.endsTotpSetup(how)` ends one); `DELETE /user/mfa/totp` turns it off.
@@ -264,6 +266,7 @@ export const SHAREX_TOKEN_PLACEHOLDER = "vbk_YOUR_TOKEN";
  */
 const PUBLIC_ROUTES = [
   /^GET \/sharex\/(upload|paste|shorten)\.sxcu$/,
+  /^GET \/oauth\/clients\/[^/]+$/,
   /^GET \/(shortenUrl|r|paste)\/[^/]+$/,
   /^GET \/auth\/(username-available|github\/link)$/,
   /^POST \/auth\/(login|logout|register(\/resend|\/verify)?|password-reset(\/confirm|\/confirm-link)?)$/,
@@ -696,6 +699,23 @@ const API_KEY_SCOPES = [
   "admin:read",
   "admin:write"
 ];
+/**
+ * The API's `OAUTH_CLIENTS` registry (vb2007/vb2007.hu-api#577), without the secrets: each scope makes
+ * the app scope `<id>:<scope>` a key can hold. `GET /oauth/clients/:clientId` answers 404 for one
+ * without redirect URIs, like an unknown one.
+ */
+const OAUTH_CLIENTS = [
+  {
+    id: "spotdl",
+    name: "spotdl-web",
+    scopes: ["submit"],
+    redirectUris: ["https://spotdl.e2e.invalid/"]
+  },
+  { id: "no-redirects", name: "No redirects", scopes: ["read"], redirectUris: [] }
+];
+const APP_SCOPES = OAUTH_CLIENTS.flatMap(({ id, scopes }) =>
+  scopes.map((scope) => `${id}:${scope}`)
+);
 const API_KEY_NOT_FOUND: MockResponse = {
   status: 404,
   body: { error: "There is no such API key on this account." }
@@ -1588,6 +1608,20 @@ export class MockApi {
   ): MockResponse | undefined {
     const sharexRoute = endpoint.match(/^GET \/sharex\/(upload|paste|shorten)\.sxcu$/);
     if (sharexRoute) return this.sharexFile(sharexRoute[1]);
+    const clientRoute = endpoint.match(/^GET \/oauth\/clients\/([^/]+)$/);
+    if (clientRoute) {
+      const client = OAUTH_CLIENTS.find(({ id }) => id === decodeURIComponent(clientRoute[1]));
+      return client?.redirectUris.length
+        ? {
+            status: 200,
+            body: {
+              id: client.id,
+              name: client.name,
+              scopes: client.scopes.map((scope) => `${client.id}:${scope}`)
+            }
+          }
+        : { status: 404, body: { error: "There is no such OAuth client." } };
+    }
     const lookupRoute = endpoint.match(/^GET \/shortenUrl\/([^/]+)$/);
     if (lookupRoute) {
       const link = this.shortLinks.get(decodeURIComponent(lookupRoute[1]));
@@ -2524,12 +2558,12 @@ export class MockApi {
       !Array.isArray(scopes) ||
       !scopes.length ||
       new Set(scopes).size !== scopes.length ||
-      !scopes.every((scope) => API_KEY_SCOPES.includes(scope))
+      !scopes.every((scope) => API_KEY_SCOPES.includes(scope) || APP_SCOPES.includes(scope))
     ) {
       return {
         status: 400,
         body: {
-          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}.`
+          error: `scopes must be a non-empty list of distinct scopes out of: ${API_KEY_SCOPES.join(", ")}, or a registered app's <client>:<scope>.`
         }
       };
     }

@@ -10,6 +10,7 @@ import {
   lifetimeDaysOf,
   lifetimeError,
   lifetimeOf,
+  linkedAppIds,
   SCOPE_AREAS
 } from "@/scripts/authentication/apiKeys";
 import type { ApiKeyScope } from "@/types/api/apiKeys";
@@ -109,6 +110,36 @@ describe("grantableScopes", () => {
   });
 });
 
+describe("linkedAppIds", () => {
+  it("names each app the link asks a scope of once, never a built-in area or a malformed one", () => {
+    expect(
+      linkedAppIds({
+        newApiKey: "1",
+        scopes:
+          "spotdl:submit,pastes:read,admin:x,shorturls:x,spotdl:read,Spotdl:x,app_1:x,kiwix-2:search"
+      })
+    ).toEqual(["spotdl", "kiwix-2"]);
+    expect(
+      linkedAppIds({ newApiKey: "1", scopes: `${"a".repeat(65)}:x,${"b".repeat(64)}:x` })
+    ).toEqual(["b".repeat(64)]);
+  });
+
+  it("looks nothing up without newApiKey", () => {
+    expect(linkedAppIds({ scopes: "spotdl:submit" })).toEqual([]);
+  });
+
+  it("looks up at most 5 apps", () => {
+    const scopes = Array.from({ length: 7 }, (_, i) => `app${i}:x`).join();
+    expect(linkedAppIds({ newApiKey: "1", scopes })).toEqual([
+      "app0",
+      "app1",
+      "app2",
+      "app3",
+      "app4"
+    ]);
+  });
+});
+
 describe("apiKeyLink", () => {
   it("is nothing without newApiKey", () => {
     expect(apiKeyLink({ name: "Bot", scopes: "pastes:read" })).toBeUndefined();
@@ -132,31 +163,103 @@ describe("apiKeyLink", () => {
     expect(apiKeyLink({ newApiKey: "1", ...query })).toEqual({
       name: "",
       scopes,
-      dropped: []
+      apps: [],
+      leftOut: ""
     });
   });
 
   it("leaves out unknown and admin scopes, which a link never ticks, naming them", () => {
     expect(
       apiKeyLink({ newApiKey: "1", scopes: "admin:read,spotdl:submit,uploads:read,spotdl:submit" })
-    ).toEqual({ name: "", scopes: ["uploads:read"], dropped: ["admin:read", "spotdl:submit"] });
+    ).toEqual({
+      name: "",
+      scopes: ["uploads:read"],
+      apps: [],
+      leftOut: Messages.ApiKeys.scopesLeftOut(["admin:read", "spotdl:submit"], 0)
+    });
   });
 
-  it("names only what's shaped like a scope, never the link's own text", () => {
+  it("ticks the scopes the looked-up apps have, after the API's, labelled with the app's name", () => {
+    const apps = [
+      { id: "spotdl", name: "spotdl-web", scopes: ["spotdl:submit", "spotdl:read"] },
+      { id: "kiwix-2", name: "Kiwix", scopes: ["kiwix-2:search"] }
+    ];
+    expect(
+      apiKeyLink(
+        { newApiKey: "1", scopes: "kiwix-2:search,spotdl:submit,spotdl:admin,uploads:read" },
+        apps
+      )
+    ).toEqual({
+      name: "",
+      scopes: ["uploads:read", "spotdl:submit", "kiwix-2:search"],
+      apps: [
+        { scope: "spotdl:submit", label: "spotdl-web: submit" },
+        { scope: "kiwix-2:search", label: "Kiwix: search" }
+      ],
+      leftOut: Messages.ApiKeys.scopesLeftOut(["spotdl:admin"], 0)
+    });
+  });
+
+  it("leaves out the scopes of the apps it couldn't check, saying so apart", () => {
+    expect(
+      apiKeyLink(
+        { newApiKey: "1", scopes: "spotdl:submit,spotdl:read,kiwix:search,nobody:x,uploads:read" },
+        [],
+        ["spotdl", "kiwix"]
+      )
+    ).toEqual({
+      name: "",
+      scopes: ["uploads:read"],
+      apps: [],
+      leftOut:
+        "The link asked for a scope it can't set, so it's left out: nobody:x. Couldn't check 2 of the link's apps right now, so their scopes are left out: reload to try again."
+    });
+    expect(apiKeyLink({ newApiKey: "1", scopes: "spotdl:submit" }, [], ["spotdl"])!.leftOut).toBe(
+      "Couldn't check the link's app right now, so its scopes are left out: reload to try again."
+    );
+    expect(
+      apiKeyLink({ newApiKey: "1", scopes: "spotdl:submit,kiwix:search" }, [], ["spotdl"])!.leftOut
+    ).toBe(
+      "The link asked for a scope it can't set, so it's left out: kiwix:search. Couldn't check one of the link's apps right now, so its scopes are left out: reload to try again."
+    );
+  });
+
+  it("names only letters and a colon, counting the other scope-shaped values, so a link can't put its own text on the page", () => {
     const scopes = [
       "Your account is locked. Call +1 555 0100",
+      "your-account-is-locked:call-555-0100",
       "x".repeat(30) + ":" + "y".repeat(10),
       "Spotdl:submit",
       "spotdl:",
       "spotdl:Submit",
       "<b>a:b</b>",
       "shortUrls:admin",
+      "-app:submit",
+      "app:-submit",
+      "app_1:submit",
+      "app-1:submit-2",
       "pastes:read"
     ];
-    expect(apiKeyLink({ newApiKey: "1", scopes })!.dropped).toEqual(["shortUrls:admin"]);
+    expect(apiKeyLink({ newApiKey: "1", scopes })!.leftOut).toBe(
+      Messages.ApiKeys.scopesLeftOut(["shortUrls:admin"], 3)
+    );
     expect(
-      apiKeyLink({ newApiKey: "1", scopes: `${"x".repeat(29)}:${"y".repeat(10)}` })!.dropped
-    ).toHaveLength(1);
+      apiKeyLink({ newApiKey: "1", scopes: `${"x".repeat(29)}:${"y".repeat(10)}` })!.leftOut
+    ).toBe(Messages.ApiKeys.scopesLeftOut([`${"x".repeat(29)}:${"y".repeat(10)}`], 0));
+  });
+
+  it.each([
+    ["app-1:x", "The link asked for a scope it can't set, so it's left out."],
+    ["app-1:x,app-2:y", "The link asked for 2 scopes it can't set, so they're left out."]
+  ])("only counts %s", (scopes, leftOut) => {
+    expect(apiKeyLink({ newApiKey: "1", scopes })!.leftOut).toBe(leftOut);
+  });
+
+  it("names at most 5 left-out scopes, counting the rest", () => {
+    const scopes = Array.from({ length: 7 }, (_, i) => `app:${"abcdefg"[i]}`);
+    expect(apiKeyLink({ newApiKey: "1", scopes })!.leftOut).toBe(
+      Messages.ApiKeys.scopesLeftOut(scopes.slice(0, 5), 2)
+    );
   });
 
   it.each([
