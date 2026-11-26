@@ -171,7 +171,7 @@ describe("useAuthorize", () => {
 
     await request.answer(false);
 
-    expect(request.error.value).toBe("Too many authorization requests");
+    expect(request.error.value).toBe(Messages.OAuth.tooManyRequests);
     expect(request.hold.isHeld()).toBe(true);
     expect(request.hold.remaining.value).toBe(42);
     expect(await request.answer(true)).toBe(false);

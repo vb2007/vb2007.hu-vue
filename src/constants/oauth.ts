@@ -31,10 +31,12 @@ export class AuthorizeQuery {
   static readonly error = "error";
   static readonly invalidClient = "invalid_client";
   static readonly invalidRedirectUri = "invalid_redirect_uri";
+  /** The app's id, for `GET /oauth/clients/:clientId`. */
+  static readonly clientId = "client_id";
   /** The parameters the page sends back with the answer, each required once. */
   static readonly params = [
     "response_type",
-    "client_id",
+    AuthorizeQuery.clientId,
     "redirect_uri",
     "state",
     "code_challenge",

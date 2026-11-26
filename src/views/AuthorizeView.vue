@@ -38,9 +38,10 @@ const failure = computed(() => hold.shown());
 const isHeld = computed(() => hold.isHeld());
 const isBusy = computed(() => !!sending.value || isSwitching.value);
 
+/** Focuses what the page now says, or the login's address once the login took over. */
 const focusOutcome = async () => {
   await nextTick();
-  outcome.value?.$el.focus();
+  (outcome.value?.$el ?? loginForm.value?.$el.querySelector("input[type=email]"))?.focus();
 };
 
 // A request that can't go on is all the page has to say.
@@ -51,7 +52,8 @@ onMounted(() => {
 watch(problem, focusOutcome);
 
 const respond = async (approve: boolean) => {
-  // The pressed key was disabled while it worked, which drops the focus.
+  // The pressed key was disabled while it worked, which drops the focus; an ended session brought
+  // the login instead.
   if (!(await answer(approve))) await focusOutcome();
 };
 
@@ -60,8 +62,7 @@ const useAnotherAccount = async () => {
   isSwitching.value = true;
   await logout();
   isSwitching.value = false;
-  await nextTick();
-  loginForm.value?.$el.querySelector("input[type=email]")?.focus();
+  await focusOutcome();
 };
 
 // Logged in on this page (or found logged in), the question takes the focus from the gone form.
@@ -103,7 +104,7 @@ watch(isLoggedIn, async (loggedIn) => {
           </button>
         </p>
       </div>
-      <p class="note">{{ app.name }} gets your username and e-mail address, never your password.</p>
+      <p class="note">{{ Messages.OAuth.consentNote(app.name) }}</p>
       <StatusMessage
         v-if="failure"
         :id="failureId"

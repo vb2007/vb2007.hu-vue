@@ -591,9 +591,13 @@ export class Messages {
     /** The client lookup failed without an answer about the client (offline, a 500). */
     static readonly clientUnavailable: string =
       "Couldn't load which app is asking. Reload the page to try again.";
-    /** The `429` (30 answers a minute per account) without the API's message. */
+    /** The `429` (30 answers a minute per account), in the page's words: the API says "authorization". */
     static readonly tooManyRequests: string =
-      "Too many sign-in requests from this account: try again later.";
+      "Too many sign-in answers from this account: try again later.";
+    /** What `POST /oauth/token` gives the app: `sub`, `email`, `email_verified`, `username`, `isSuperuser`. */
+    static consentNote(app: string): string {
+      return `${app} learns your account's id, username and e-mail address, whether the address is confirmed, and whether you're the site's admin. Never your password.`;
+    }
     static loginLead(app: string): string {
       return `Log in to continue to ${app}.`;
     }

@@ -85,7 +85,7 @@ describe("AuthorizeView", () => {
     );
     expect(wrapper.find(".account__name").text()).toBe("anna");
     expect(wrapper.find(".account__email").text()).toBe("anna@example.com");
-    expect(wrapper.find(".note").text()).toContain("spotdl-web gets your username");
+    expect(wrapper.find(".note").text()).toBe(Messages.OAuth.consentNote("spotdl-web"));
 
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { redirectTo: APPROVED }));
     await key(wrapper, /^Continue$/).trigger("click");
@@ -130,7 +130,7 @@ describe("AuthorizeView", () => {
     await flushPromises();
 
     const message = wrapper.find(".outcome");
-    expect(message.text()).toContain("Too many authorization requests.");
+    expect(message.text()).toContain(Messages.OAuth.tooManyRequests);
     expect(document.activeElement).toBe(message.element);
     const held = key(wrapper, /^Try again in 42 sec$/);
     expect(held.attributes("disabled")).toBeDefined();
@@ -202,5 +202,24 @@ describe("AuthorizeView", () => {
     const wrapper = await open();
 
     expect(wrapper.find(".status").text()).toBe(Messages.OAuth.sessionEnded("spotdl-web"));
+  });
+
+  it("puts the cursor in the login when the answer found the session ended", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    loggedIn();
+    const wrapper = await open();
+    fetchMock.mockImplementationOnce(async () => {
+      // What the session check of the logged-out 403 does.
+      isLoggedIn.value = false;
+      sessionEnded.value = true;
+      return jsonResponse(403, { error: Messages.Auth.notLoggedIn });
+    });
+
+    await key(wrapper, /^Continue$/).trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".status").text()).toBe(Messages.OAuth.sessionEnded("spotdl-web"));
+    expect(document.activeElement).toBe(wrapper.find("input[type=email]").element);
+    expect(assign).not.toHaveBeenCalled();
   });
 });

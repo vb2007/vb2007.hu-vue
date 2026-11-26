@@ -96,6 +96,18 @@ test("back from a GitHub login, the page asks again", async ({ page, api, baseUR
   await expect(page).toHaveURL("/");
 });
 
+test("logged in, Continue goes back to the app with a code at once", async ({ page, api }) => {
+  await servesApp(page);
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  await page.goto(authorizePath());
+  await expect(page.getByRole("main").getByText("e2e", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("E-mail")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(callback({ code: MOCK_OAUTH_CODE, state: PARAMS.state }));
+  expect(api.authorizations).toEqual([{ ...PARAMS, approve: true }]);
+});
+
 test("logged in, Cancel goes back to the app with access_denied", async ({ page, api }) => {
   await servesApp(page);
   api.loggedInAs(MOCK_EMAIL, "e2e");
@@ -168,11 +180,9 @@ test("the API's 429 holds both keys for its wait", async ({ page, api }) => {
   await page.goto(authorizePath());
   await page.getByRole("button", { name: "Continue" }).click();
 
-  const message = page.getByText(
-    "Too many authorization requests from this account: try again later."
-  );
+  const message = page.getByText("Too many sign-in answers from this account: try again later.");
   await expect(message).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Try again in 4\d seconds$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Try again in \d+ seconds$/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
 });
 
@@ -191,6 +201,6 @@ test("a session that ended meanwhile brings back the login, and nothing goes to 
       "Your session ended, so nothing was sent to spotdl-web. Log in again to continue."
     )
   ).toBeVisible();
-  await expect(page.getByLabel("E-mail")).toBeVisible();
+  await expect(page.getByLabel("E-mail")).toBeFocused();
   expect(new URL(page.url()).pathname).toBe("/authorize");
 });

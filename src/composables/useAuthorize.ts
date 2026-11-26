@@ -6,7 +6,7 @@ import { Messages } from "@/constants/messages";
 import { AuthorizeQuery } from "@/constants/oauth";
 import { retryAfterFrom } from "@/composables/useCountdown";
 import { useRetryHold } from "@/composables/useRetryHold";
-import { apiErrorOf, apiRequest } from "@/scripts/api/client";
+import { apiRequest } from "@/scripts/api/client";
 import { isLoggedIn } from "@/scripts/authentication/authState";
 import { clearGithubReturn } from "@/scripts/authentication/githubReturn";
 import type { AuthorizeParams, OauthClient } from "@/types/api/oauth";
@@ -48,7 +48,7 @@ export const useAuthorize = (
   const hold = useRetryHold(error);
   const params = paramsOf(query);
   const handedError = query[AuthorizeQuery.error];
-  const clientId = query.client_id;
+  const clientId = query[AuthorizeQuery.clientId];
 
   if (handedError !== undefined) {
     problem.value =
@@ -105,7 +105,7 @@ export const useAuthorize = (
     if (result.status === HttpStatus.BadRequest) {
       problem.value = Messages.OAuth.invalidRequest;
     } else if (result.status === HttpStatus.TooManyRequests) {
-      error.value = apiErrorOf(result) ?? Messages.OAuth.tooManyRequests;
+      error.value = Messages.OAuth.tooManyRequests;
       hold.start(retryAfterFrom(result.body));
     } else {
       error.value = result.error;
