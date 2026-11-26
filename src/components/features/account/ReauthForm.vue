@@ -7,12 +7,14 @@
  * Every MFA setting takes the same check: turning a method on or off, new recovery codes, adding
  * or deleting a passkey; and so do creating and rotating an API key (vb2007/vb2007.hu-api#511),
  * whose `send` adds the key's details to the body. Each names its key and hint through the props.
+ * A limiter's 429, and the 503 of the day's used-up mail a key's notice needs
+ * (vb2007/vb2007.hu-api#612), hold the key for their wait: the API changed nothing.
  */
 import { computed, nextTick, onMounted, ref, useId, useTemplateRef } from "vue";
 import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
-import { retryAfterFrom } from "@/composables/useCountdown";
+import { mailBudgetOf, retryAfterFrom } from "@/composables/useCountdown";
 import { useFormValidation } from "@/composables/useFormValidation";
 import { useGithubLink } from "@/composables/useGithubLink";
 import { useRetryHold } from "@/composables/useRetryHold";
@@ -108,7 +110,11 @@ const submit = async () => {
     !hasPassword.value &&
     result.status === HttpStatus.Forbidden &&
     result.error.startsWith(Messages.Account.githubReauthPrefix);
-  if (result.status === HttpStatus.TooManyRequests) hold.start(retryAfterFrom(result.body));
+  const wait =
+    result.status === HttpStatus.TooManyRequests
+      ? retryAfterFrom(result.body)
+      : mailBudgetOf(result);
+  if (wait !== undefined) hold.start(wait);
   await nextTick();
   if (needsGithub.value) githubKey.value?.$el.focus();
   else if (!form.value?.querySelector(":focus:not(:disabled)")) focusFirst();
