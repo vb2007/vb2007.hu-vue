@@ -36,6 +36,7 @@ test("a preview shows where a link leads and who shared it, without going there"
   page,
   api
 }) => {
+  api.hasUser("test");
   api.hasShortLink("gh1", TARGET, "test");
 
   await page.goto("/r/gh1/preview");

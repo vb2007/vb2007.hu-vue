@@ -83,7 +83,7 @@ describe("useAdminPastes", () => {
 
     const pending = api.remove("p1");
     expect(api.deletingId.value).toBe("p1");
-    respond(jsonResponse(200, { message: "Paste deleted successfully.", paste: { id: "p1" } }));
+    respond(jsonResponse(200, { message: "Paste deleted successfully.", paste: { _id: "p1" } }));
     await pending;
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "https://api.test/paste/p1", {

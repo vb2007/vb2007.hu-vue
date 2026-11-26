@@ -6,7 +6,7 @@ import { AUTO_LANGUAGE, useNewPaste } from "@/composables/useNewPaste";
 const created = {
   _id: "p1",
   content: "hello world",
-  addedBy: "u1",
+  addedBy: { _id: "u1", username: "anna" },
   addedOn: "2026-10-10T12:00:00.000Z"
 };
 
