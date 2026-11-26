@@ -1822,7 +1822,7 @@ test("the superuser clears an OAuth client's limits by its id, with an address a
   api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
   api.countsRateLimit("accountStatusPerClient", { clientId: "spotdl" });
   api.countsRateLimit("tokenExchangesPerClient", { clientId: "spotdl" });
-  api.countsRateLimit("inactiveIntrospectionsPerClient", { clientId: "spotdl-dev" });
+  api.countsRateLimit("inactiveIntrospectionsPerClient", { clientId: "no-redirects" });
 
   await page.goto("/admin/system");
   await expect(page.getByText("an address, an IP or an OAuth client")).toBeVisible();

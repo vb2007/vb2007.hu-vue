@@ -2,14 +2,24 @@
 import { useId } from "vue";
 import AppIcon from "./AppIcon.vue";
 
-defineProps<{ label: string }>();
+defineProps<{
+  label: string;
+  /** Ids of elements outside the box that describe it, e.g. a hint under it. */
+  describedby?: string;
+}>();
 const model = defineModel<boolean>({ default: false });
 const id = useId();
 </script>
 
 <template>
   <label class="check" :for="id">
-    <input :id="id" v-model="model" class="check__input" type="checkbox" />
+    <input
+      :id="id"
+      v-model="model"
+      class="check__input"
+      type="checkbox"
+      :aria-describedby="describedby"
+    />
     <span class="check__box"><AppIcon name="check" :size="16" /></span>
     <span class="check__label">{{ label }}</span>
   </label>

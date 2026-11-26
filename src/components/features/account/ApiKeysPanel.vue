@@ -3,12 +3,14 @@
  * The account's API keys (vb2007/vb2007.hu-api#511), on a page of their own: the list, "Create an
  * API key" under it, and new tokens at the top, each shown once. Visitors get a gate once the
  * session is known, like the account page; a token on show stays above it until it's saved. The
- * deep link (see `ApiKeyLinkQuery`) opens "Create an API key" filled in once the list is in.
+ * deep link (see `ApiKeyLinkQuery`) opens "Create an API key" filled in once the list is in, and
+ * the apps whose scopes it asks for are looked up.
  */
 import { nextTick, ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiKeyLinkQuery } from "@/constants/auth";
 import { Endpoints } from "@/constants/endpoints";
+import { HttpStatus } from "@/constants/http";
 import { Limits } from "@/constants/limits";
 import { Messages } from "@/constants/messages";
 import { OauthQuery } from "@/constants/oauth";
@@ -17,7 +19,7 @@ import { useLatestRequest } from "@/composables/useLatestRequest";
 import { useOauthError } from "@/composables/useOauthError";
 import { useQueryNotice } from "@/composables/useQueryNotice";
 import { apiRequest } from "@/scripts/api/client";
-import { apiKeyLink, type ApiKeyPrefill } from "@/scripts/authentication/apiKeys";
+import { apiKeyLink, linkedAppIds, type ApiKeyPrefill } from "@/scripts/authentication/apiKeys";
 import { isLoggedIn, isSessionChecked, sessionEnded } from "@/scripts/authentication/authState";
 import ApiKeyForm from "@/components/features/account/ApiKeyForm.vue";
 import ApiKeyRow from "@/components/features/account/ApiKeyRow.vue";
@@ -27,7 +29,9 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 import StationBoard from "@/components/ui/StationBoard.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import type { ApiKey, ApiKeyTokenResponse } from "@/types/api/apiKeys";
+import type { OauthClient } from "@/types/api/oauth";
 
+const APP_LOOKUP_MS = 10_000;
 const apiKeys = ref<ApiKey[]>([]);
 const loaded = ref(false);
 const error = ref("");
@@ -49,6 +53,11 @@ const tokens = ref<
 >([]);
 const creating = ref(false);
 const prefill = ref<ApiKeyPrefill>();
+/**
+ * The apps whose scopes the deep link asks for: those the API knows, and the ids whose lookup failed
+ * (an unknown app's `404` is neither). `undefined` while they're looked up.
+ */
+const apps = ref<{ found: OauthClient[]; failed: string[] }>();
 const route = useRoute();
 const router = useRouter();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
@@ -74,8 +83,34 @@ const load = async () => {
   else error.value = result.error;
 };
 
-/** The deep link's details, once the list is in: a form opened while it loads starts empty. */
-const linked = () => (loaded.value ? apiKeyLink(route.query) : undefined);
+/** Looks up the deep link's apps, each given `APP_LOOKUP_MS` so a hung one can't hold the form. */
+const findApps = async () => {
+  apps.value = undefined;
+  const ids = linkedAppIds(route.query);
+  const results = await Promise.all(
+    ids.map((clientId) =>
+      apiRequest(Endpoints.OAuth.client, {
+        params: { clientId },
+        failure: Messages.OAuth.clientFailed,
+        quietStatuses: [HttpStatus.NotFound],
+        signal: AbortSignal.timeout(APP_LOOKUP_MS)
+      })
+    )
+  );
+  apps.value = {
+    found: results.flatMap((result) => (result.ok ? [result.data] : [])),
+    failed: ids.filter((_, i) => !results[i].ok && results[i].status !== HttpStatus.NotFound)
+  };
+};
+
+/**
+ * The deep link's details, once the list and its apps are in: a form opened while they load starts
+ * empty.
+ */
+const linked = () =>
+  loaded.value && apps.value
+    ? apiKeyLink(route.query, apps.value.found, apps.value.failed)
+    : undefined;
 
 /**
  * The deep link opens the create form filled in once per login, when the list shows the account
@@ -99,7 +134,7 @@ const dropLink = () => {
 watch(
   isLoggedIn,
   (loggedIn) => {
-    if (loggedIn) return load().then(openLinked);
+    if (loggedIn) return Promise.all([load(), findApps()]).then(openLinked);
     latest.next();
     apiKeys.value = [];
     loaded.value = false;

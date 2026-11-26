@@ -366,6 +366,11 @@ export class Messages {
       return `${address} wasn't confirmed. ${error}`;
     }
     /**
+     * After the API's own "password changed" message, which stays the same when `revokeApiKeys`
+     * deleted the keys too (vb2007/vb2007.hu-api#597).
+     */
+    static readonly apiKeysRevoked: string = "Any API keys you had were revoked.";
+    /**
      * After the API's own "password changed" message, when a change waited: changing the password
      * drops it, and its code with it (vb2007/vb2007.hu-api#474).
      */
@@ -565,10 +570,36 @@ export class Messages {
     static atCap(max: number): string {
       return `You have ${max} API keys, the most an account can have: delete one to create another.`;
     }
-    /** On a form the deep link filled in: the scopes it asked for that it can't tick. */
-    static scopesLeftOut(scopes: string[]): string {
-      return `The link asked for scopes it can't set, so they're left out: ${scopes.join(", ")}.`;
+    /**
+     * On a form the deep link filled in: the scopes it asked for that it can't tick, those safe to
+     * show by name, then how many more.
+     */
+    static scopesLeftOut(named: string[], more: number): string {
+      if (!named.length) {
+        return more === 1
+          ? "The link asked for a scope it can't set, so it's left out."
+          : `The link asked for ${more} scopes it can't set, so they're left out.`;
+      }
+      if (named.length === 1 && !more) {
+        return `The link asked for a scope it can't set, so it's left out: ${named[0]}.`;
+      }
+      return `The link asked for scopes it can't set, so they're left out: ${named.join(", ")}${more ? `, and ${more} more` : ""}.`;
     }
+    /**
+     * The `count` apps the deep link names that couldn't be looked up (not an unknown app's `404`),
+     * out of the `apps` it names.
+     */
+    static appsUnchecked(count: number, apps: number): string {
+      if (count > 1) {
+        return `Couldn't check ${count} of the link's apps right now, so their scopes are left out: reload to try again.`;
+      }
+      return `Couldn't check ${apps === 1 ? "the link's app" : "one of the link's apps"} right now, so its scopes are left out: reload to try again.`;
+    }
+  };
+
+  /** First-party apps (vb2007/vb2007.hu-api#575), e.g. the API key form's app scopes. */
+  static readonly OAuth = class {
+    static readonly clientFailed: string = "Failed to load the app";
   };
 
   /** The ShareX page (vb2007/vb2007.hu-api#573): its key's failures are `ApiKeys`'. */

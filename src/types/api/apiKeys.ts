@@ -14,13 +14,19 @@ export type ApiKeyScope =
   | "admin:read"
   | "admin:write";
 
+/**
+ * A registered app's scope, `<client>:<scope>` (vb2007/vb2007.hu-api#577): from the API's OAuth
+ * client registry, which no route lists in full. It allows no route, only that app's check of the key.
+ */
+export type AppScope = `${string}:${string}`;
+
 /** A key as `GET /user/api-keys` and `GET /admin/users/:id` list it: never its token or hash. */
 export interface ApiKey {
   id: string;
   name: string;
   /** The token's last 4 characters. */
   hint: string;
-  scopes: ApiKeyScope[];
+  scopes: (ApiKeyScope | AppScope)[];
   createdAt: string;
   /** `null` for a key that never expires. */
   expiresAt: string | null;
@@ -40,7 +46,7 @@ export type ApiKeyLifetime = number | null;
 /** `POST /user/api-keys`, confirmed like an MFA setting. */
 export interface CreateApiKeyBody extends MfaPasswordBody {
   name: string;
-  scopes: ApiKeyScope[];
+  scopes: (ApiKeyScope | AppScope)[];
   expiresInDays?: ApiKeyLifetime;
 }
 

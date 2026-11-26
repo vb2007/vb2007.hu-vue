@@ -26,15 +26,16 @@ export const useChangePassword = () => {
   /** After the password checks' 429 (too many wrong passwords), saving waits its `retryAfter`. */
   const hold = useRetryHold(changeError);
 
-  /** Returns whether it worked. */
-  const change = async (currentPassword: string, newPassword: string) => {
+  /** Returns whether it worked. `revokeApiKeys` also deletes every API key of the account. */
+  const change = async (currentPassword: string, newPassword: string, revokeApiKeys = false) => {
     isChanging.value = true;
     changeError.value = "";
     changed.value = "";
     const waiting = pendingEmail.value;
 
     const result = await apiRequest(Endpoints.User.changePassword, {
-      body: { currentPassword, newPassword },
+      // Left out unless it's true, so the body stays the one the API took before the field existed.
+      body: { currentPassword, newPassword, ...(revokeApiKeys && { revokeApiKeys }) },
       failure: Messages.Account.changePasswordFailed
     });
 
@@ -49,9 +50,13 @@ export const useChangePassword = () => {
         waiting &&
         !pendingEmail.value &&
         normalizeEmail(userEmail.value) !== normalizeEmail(waiting);
-      changed.value = cancelled
-        ? `${result.data.message} ${Messages.Account.emailChangeCancelled(waiting)}`
-        : result.data.message;
+      changed.value = [
+        result.data.message,
+        revokeApiKeys && Messages.Account.apiKeysRevoked,
+        cancelled && Messages.Account.emailChangeCancelled(waiting)
+      ]
+        .filter(Boolean)
+        .join(" ");
       passwordChanges.value++;
     } else {
       changeError.value = result.error;
