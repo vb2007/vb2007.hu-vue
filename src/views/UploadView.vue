@@ -31,7 +31,7 @@ const onUploaded = () => {
   <PageSection :width="isLoggedIn ? 'wide' : 'narrow'">
     <div class="workspace" :class="{ 'workspace--split': isLoggedIn }">
       <div class="workspace__send">
-        <UploadComposer as="h1" :usage="usage" @uploaded="onUploaded" />
+        <UploadComposer as="h1" :usage="usage" @uploaded="onUploaded" @refused="loadUsage" />
         <UsageMeter v-if="isLoggedIn" :usage="usage" :error-message="usageError" />
       </div>
       <UploadList v-if="isLoggedIn" ref="list" @changed="loadUsage" />

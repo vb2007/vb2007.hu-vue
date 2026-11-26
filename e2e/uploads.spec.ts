@@ -58,6 +58,65 @@ test("a user uploads files, copies the link and sees them listed", async ({
   await expect(queue).toHaveCount(0);
 });
 
+test("a name the API would refuse is refused before sending, a padded one is trimmed", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  await page.goto("/upload");
+  await expect(page.getByText("No uploads yet.")).toBeVisible();
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/upload") {
+      posts.push(request.url());
+    }
+  });
+
+  await page.getByLabel("Files to upload").setInputFiles([
+    { name: "   ", mimeType: "image/png", buffer: Buffer.alloc(16) },
+    { name: "tab\there.png", mimeType: "image/png", buffer: Buffer.alloc(16) },
+    { name: "  notes.txt  ", mimeType: "", buffer: Buffer.from("hi") }
+  ]);
+
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(queue.getByText("Uploaded · Private")).toBeVisible();
+  await expect(
+    queue.getByText("File names must be 1–255 characters, without slashes or control characters.")
+  ).toHaveCount(2);
+  expect(posts).toHaveLength(1);
+  expect(api.uploads).toHaveLength(1);
+  expect(api.uploads[0]).toMatchObject({ originalFileName: "notes.txt" });
+});
+
+test("the API refuses a name the composer would have caught", async ({ page, api }) => {
+  api.loggedInAs();
+  await page.goto("/upload");
+  await expect(page.getByText("No uploads yet.")).toBeVisible();
+
+  // Sent from the page past the composer, as another client could.
+  const send = (name: string) =>
+    page.evaluate(
+      async ([url, fileName]) => {
+        const body = new FormData();
+        body.append("visibility", "private");
+        body.append("file", new File(["hi"], fileName, { type: "image/png" }));
+        const response = await fetch(url, { method: "POST", credentials: "include", body });
+        return { status: response.status, body: (await response.json()) as unknown };
+      },
+      [`${api.apiOrigin}/upload`, name] as const
+    );
+  const badName = {
+    status: 400,
+    body: { error: "File names must be 1–255 characters, without slashes or control characters." }
+  };
+
+  expect(await send("tab\there.png")).toEqual(badName);
+  // The browser sends a line feed as %0A, which the API turns back into one.
+  expect(await send("line\nfeed.png")).toEqual(badName);
+  expect(await send("a/..")).toEqual({ status: 400, body: { error: "No file was provided." } });
+  expect(api.uploads).toHaveLength(0);
+});
+
 test("an upload from a session replaced elsewhere is refused and logs the page out", async ({
   page,
   api
@@ -180,7 +239,7 @@ test("a user renames, re-scopes and deletes an upload", async ({ page, api }) =>
   expect(api.uploads[0].originalFileName).toBe("annual report.pdf");
 
   await list.getByRole("button", { name: "Make public" }).click();
-  await expect(list.getByText("Anyone with the link, while it's public")).toBeVisible();
+  await expect(list.getByText("Anyone, even without the link (while it's public)")).toBeVisible();
   expect(api.uploads[0].visibility).toBe("public");
 
   await list.getByRole("button", { name: "Delete", exact: true }).click();
@@ -408,4 +467,92 @@ test("the storage meter splits use by type and warns when nearly full", async ({
   });
   await expect(page.getByText("This upload would go over your storage quota.")).toBeVisible();
   expect(api.uploads).toHaveLength(2);
+});
+
+test("the storage board counts files against the upload cap, which stops uploads past it until one is deleted", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  api.uploadCapIs(2);
+  api.hasUpload("one.png");
+  await page.goto("/upload");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/upload")) sent.push(request.url());
+  });
+
+  const storage = board(page, "Storage");
+  await expect(storage.getByText("1 of 2 files")).toBeVisible();
+
+  // Another upload lands elsewhere after the page counted: the API's 409 is what stops this one,
+  // and the meter catches up.
+  api.hasUpload("two.png");
+  const file = { name: "three.png", mimeType: "image/png", buffer: Buffer.alloc(1024) };
+  await page.getByLabel("Files to upload").setInputFiles(file);
+  const queue = page.getByRole("region", { name: "On the way" });
+  const refusal = queue.getByText("An account can have at most 2 uploads: delete one first.");
+  await expect(refusal).toBeVisible();
+  expect(sent).toHaveLength(1);
+  expect(api.uploads).toHaveLength(2);
+  await expect(storage.getByText("2 of 2 files")).toBeVisible();
+  await expect(
+    storage.getByText("You've reached the 2-file limit. Delete some uploads to make room")
+  ).toBeVisible();
+
+  // Now the page knows, the pre-check stops the next file before anything is sent.
+  await page.getByLabel("Files to upload").setInputFiles({ ...file, name: "four.png" });
+  await expect(refusal).toHaveCount(2);
+  expect(sent).toHaveLength(1);
+
+  // Deleting an upload makes room, and the refused file can be tried again.
+  const list = board(page, "Your uploads");
+  await list.getByRole("button", { name: "one.png" }).click();
+  await list.getByRole("button", { name: "Delete", exact: true }).click();
+  await list.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(storage.getByText("1 of 2 files")).toBeVisible();
+  await queue.getByRole("button", { name: "Retry" }).first().click();
+  await expect(queue.getByText(/^Uploaded/)).toBeVisible();
+  expect(sent).toHaveLength(2);
+  expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["two.png", "three.png"]);
+});
+
+test("a .json file over 1 MB is refused before it's sent, which the API would call an unsupported type", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs();
+  await page.goto("/upload");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/upload")) sent.push(request.url());
+  });
+
+  const MB = 1024 * 1024;
+  await page.getByLabel("Files to upload").setInputFiles([
+    { name: "big.json", mimeType: "application/json", buffer: Buffer.alloc(MB + 1, " ") },
+    {
+      name: "fits.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(`[${" ".repeat(MB - 2)}]`)
+    }
+  ]);
+  const queue = page.getByRole("region", { name: "On the way" });
+  await expect(
+    queue.getByText("JSON files can be at most 1 MB. Zip this one to upload it.")
+  ).toBeVisible();
+  await expect(queue.getByText(/^Uploaded/)).toBeVisible();
+  expect(sent).toHaveLength(1);
+  expect(api.uploads.map((upload) => upload.originalFileName)).toEqual(["fits.json"]);
+
+  // The API itself: the same file sent past the page gets the unsupported type's 415.
+  const answer = await page.evaluate(async (url) => {
+    const body = new FormData();
+    body.append("visibility", "private");
+    body.append("file", new File([" ".repeat(1024 * 1024 + 1)], "big.json"));
+    const response = await fetch(url, { method: "POST", credentials: "include", body });
+    return { status: response.status, body: (await response.json()) as unknown };
+  }, `${api.apiOrigin}/upload`);
+  expect(answer).toEqual({ status: 415, body: { error: "This file type isn't supported." } });
+  expect(api.uploads).toHaveLength(1);
 });

@@ -34,6 +34,7 @@ describe("UploadComposer", () => {
 
     expect(wrapper.find("h1").text()).toBe("Upload");
     expect(wrapper.find(".gate").text()).toContain("Only logged-in users can upload files.");
+    expect(wrapper.find(".gate").text()).toContain("Anyone can find and open public files.");
     expect(wrapper.findAll(".gate a").map((link) => link.attributes("href"))).toEqual([
       "/register",
       "/login"
@@ -84,5 +85,18 @@ describe("UploadComposer", () => {
     expect(wrapper.emitted("uploaded")).toEqual([[anUpload("c")]]);
     await buttonNamed(wrapper, "Clear finished").trigger("click");
     expect(queue.props("items")).toHaveLength(1);
+  });
+
+  it("says when the API refused a file for the upload cap or the quota", async () => {
+    isLoggedIn.value = true;
+    const { wrapper } = await mountWithRouter(UploadComposer, { props: { usage: someUsage() } });
+
+    wrapper.findComponent(UploadDropzone).vm.$emit("files", [aFile("a.png")], "public");
+    requests[0].respond(409, {
+      error: "An account can have at most 10000 uploads: delete one first."
+    });
+    await flushPromises();
+
+    expect(wrapper.emitted("refused")).toEqual([[]]);
   });
 });

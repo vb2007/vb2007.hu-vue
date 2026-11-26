@@ -166,6 +166,7 @@ describe("views", () => {
       usedBytes: 10,
       quotaBytes: 100,
       count: 1,
+      maxCount: 10000,
       maxFileSizeBytes: 50,
       allowedTypes: [],
       byCategory: []
@@ -199,6 +200,14 @@ describe("views", () => {
 
     fetchMock.mockClear();
     wrapper.findComponent(UploadList).vm.$emit("changed");
+    await flushPromises();
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.test/uploads/usage"
+    ]);
+
+    // The API refused one for the cap or the quota: only the meter needs catching up.
+    fetchMock.mockClear();
+    wrapper.findComponent(UploadComposer).vm.$emit("refused");
     await flushPromises();
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "https://api.test/uploads/usage"
@@ -261,6 +270,11 @@ describe("views", () => {
     expect(wrapper.find(".directory").attributes("aria-labelledby")).toBe("admin-sections");
     expect(wrapper.findComponent(ToolDirectory).props("stops")).toEqual(ADMIN_SECTIONS);
     expect(wrapper.find('.directory a[href="/admin/users"]').text()).toContain("Users");
+    // The docs with the admin routes, which take the superuser's session, in a new tab.
+    const docs = wrapper.find('.section-lead a[href="https://api.test/docs/admin"]');
+    expect(docs.element.textContent).toBe("admin API docs (opens in a new tab)");
+    expect(docs.attributes("target")).toBe("_blank");
+    expect(docs.attributes("rel")).toBe("noopener");
   });
 
   it("AdminAreaView shows the superuser the users board as the page heading", async () => {

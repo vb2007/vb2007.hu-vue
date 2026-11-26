@@ -89,7 +89,7 @@ defineExpose({ refresh });
 </script>
 
 <template>
-  <StationBoard title="Your links">
+  <StationBoard id="your-links" title="Your links">
     <BaseInput
       v-model="query"
       type="search"

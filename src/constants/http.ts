@@ -17,6 +17,7 @@ export class HttpStatus {
   static readonly Forbidden = 403;
   static readonly NotFound = 404;
   static readonly Conflict = 409;
+  static readonly ContentTooLarge = 413;
   static readonly TooManyRequests = 429;
   static readonly InternalServerError = 500;
   static readonly ServiceUnavailable = 503;
@@ -29,7 +30,8 @@ export class HttpStatus {
 export class ErrorReason {
   /**
    * A code went out less than a minute ago and still works: the 429 of `POST /auth/register` and
-   * `PATCH /user/email`. A rate limiter's 429 has no `reason`.
+   * `PATCH /user/email`, which sends it over `EmailChangeLimit` when both apply. A rate limiter's
+   * 429 has no `reason`.
    */
   static readonly ResendCooldown = "resendCooldown";
   /**
@@ -43,6 +45,12 @@ export class ErrorReason {
    * (`Limits.Mfa.emailsPerDay`), with `retryAfter`.
    */
   static readonly MfaEmailLimit = "mfaEmailLimit";
+  /**
+   * `PATCH /user/email`'s 429 once the account got `Limits.Code.emailChangeCodesPerDay` e-mail
+   * change codes in 24 hours, counted from the first, with `retryAfter` until those 24 hours end:
+   * nothing was sent, and a waiting change still works.
+   */
+  static readonly EmailChangeLimit = "emailChangeLimit";
   /** The MFA 403 (every `/auth/mfa*` endpoint) without the step's cookie, e.g. the mailed link opened in another browser. */
   static readonly NoChallenge = "noChallenge";
   /** The MFA 403 once the login's second step ran out of time. */

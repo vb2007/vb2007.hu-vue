@@ -102,6 +102,35 @@ describe("validateFile", () => {
     );
   });
 
+  it.each([
+    ["only spaces", "   "],
+    ["a control character", "tab\there.png"],
+    ["over 255 characters", `${"x".repeat(252)}.png`],
+    ["no name after its last slash", "photos/"],
+    ["the name .", "a/."],
+    ["the name ..", "a\\.."],
+    ["an escaped line feed", "a%0Ab.png"],
+    ["an escaped carriage return, whatever its case", "a%0db.png"]
+  ])("rejects a name with %s before usage is known", (_how, name) => {
+    expect(validateFile(aFile(name, 10), null)).toBe(
+      "File names must be 1–255 characters, without slashes or control characters."
+    );
+  });
+
+  it.each([
+    ["padded", "  notes.txt   "],
+    ["after its last backslash", "C:\\fakepath\\notes.txt"],
+    ["after its last slash", "../notes.txt"],
+    ["with an escaped line feed trimmed off", "notes.txt%0A"],
+    ["counted once its escapes are reversed", `${"x".repeat(249)}%22%22.txt`]
+  ])("checks the name the API stores, %s", (_how, name) => {
+    expect(validateFile(aFile(name, 10, ""), someUsage())).toBe("");
+  });
+
+  it("drops . and .. before trimming, as the API does", () => {
+    expect(validateFile(aFile(" . ", 10), null)).toBe("");
+  });
+
   it("rejects a file over the size limit", () => {
     expect(validateFile(aFile("big.png", 10 * MB + 1), someUsage())).toBe(
       "The file is larger than the 10 MB limit."
@@ -113,6 +142,39 @@ describe("validateFile", () => {
     expect(validateFile(aFile("a.png", 5 * MB), usage)).toBe("");
     expect(validateFile(aFile("a.png", 5 * MB), usage, 6 * MB)).toBe(
       "This upload would go over your storage quota."
+    );
+  });
+
+  it("rejects a .json file over the size the API validates, by its trimmed name", () => {
+    const usage = someUsage({
+      allowedTypes: [{ mimeType: "application/json", extension: ".json", category: "document" }]
+    });
+    expect(validateFile(aFile("data.json", MB, "application/json"), usage)).toBe("");
+    expect(validateFile(aFile("data.JSON ", MB + 1, "application/json"), usage)).toBe(
+      "JSON files can be at most 1 MB. Zip this one to upload it."
+    );
+    expect(validateFile(aFile("data.json.txt", MB + 1, "text/plain"), someUsage())).toBe("");
+    // Like the API, the cap and the quota answer first.
+    expect(
+      validateFile(aFile("data.json", MB + 1, "application/json"), { ...usage, count: 10000 })
+    ).toMatch(/^An account can have at most/);
+    expect(
+      validateFile(aFile("data.json", MB + 1, "application/json"), {
+        ...usage,
+        usedBytes: 100 * MB
+      })
+    ).toBe("This upload would go over your storage quota.");
+  });
+
+  it("counts what's already queued against the upload cap, which the API checks first", () => {
+    const usage = someUsage({ count: 9998 });
+    expect(validateFile(aFile("a.png"), usage, 0, 1)).toBe("");
+    expect(validateFile(aFile("a.png"), usage, 0, 2)).toBe(
+      "An account can have at most 10,000 uploads: delete one first."
+    );
+    // Over the quota too, the cap is what the API answers.
+    expect(validateFile(aFile("a.png"), someUsage({ count: 10000, usedBytes: 100 * MB }))).toMatch(
+      /^An account can have/
     );
   });
 });
@@ -156,12 +218,13 @@ describe("sendUpload", () => {
     expect(onProgress).toHaveBeenLastCalledWith(1);
   });
 
-  it("rejects with the API's error message", async () => {
+  it("rejects with the API's error message and status", async () => {
     const requests = mockXhr();
     const sent = sendUpload(aFile("a.png"), "private", vi.fn());
     requests[0].respond(415, { error: "This file type isn't supported." });
 
     await expect(sent).rejects.toEqual(new UploadError("This file type isn't supported."));
+    await expect(sent).rejects.toMatchObject({ cancelled: false, status: 415 });
   });
 
   it("tells the client about an ended session before it rejects, like apiRequest", async () => {

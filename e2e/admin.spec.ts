@@ -26,6 +26,7 @@ test("the admin area stays hidden from everyone but the superuser", async ({ pag
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /^Users/ })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /admin API docs/ })).toHaveCount(0);
   }
 });
 
@@ -60,6 +61,12 @@ test("the overview shows the site's totals and today's mail", async ({ page, api
   await expect(row("Sign-ups waiting").locator("dd")).toHaveText("0");
   await expect(row("Default quota", "Upload settings").locator("dd")).toHaveText("10 GB");
   await expect(row("Largest file", "Upload settings").locator("dd")).toHaveText("100 MB");
+
+  // The docs with the admin routes, named apart from the footer's public ones; checked, not followed.
+  const docs = page.getByRole("link", { name: "admin API docs (opens in a new tab)", exact: true });
+  await expect(docs).toHaveAttribute("href", `${api.apiOrigin}/docs/admin`);
+  await expect(docs).toHaveAttribute("target", "_blank");
+  await expect(docs).toHaveAttribute("rel", "noopener");
 
   const mail = board.getByRole("region", { name: "Mail today" });
   await expect(mail.getByText("12 of 250 sent")).toBeVisible();
@@ -1806,6 +1813,25 @@ test("the superuser lifts a log-in lockout from one IP, or from every IP with th
   await expect(notice).toHaveCount(0);
 });
 
+test("clearing an address empties its account's count of e-mail change codes while it counts", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs("vb2007@example.com", "vb2007", { superuser: true });
+  api.mailedEmailChangeCodes(10);
+  await page.goto("/admin/system");
+  const clear = () =>
+    callApi(page, api, "DELETE", "/admin/rate-limits", { email: "VB2007@example.com" });
+
+  expect((await clear()).body).toMatchObject({ cleared: ["emailChangeSends"] });
+  expect((await clear()).body).toMatchObject({ cleared: [] });
+
+  // A count whose 24 hours are over is emptied too, but isn't named: it no longer counted.
+  api.mailedEmailChangeCodes(3);
+  api.clockRunsFor(24 * 60 * 60 * 1000);
+  expect((await clear()).body).toMatchObject({ cleared: [] });
+});
+
 test("the superuser clears an account's own limits and daily caps with its e-mail, not with an IP", async ({
   page,
   api
@@ -1814,6 +1840,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
   const arrange = (email: string) => {
     api.countsRateLimit("registrationCodeFailures", { email });
     api.countsRateLimit("emailChangeCodeFailures", { email });
+    api.countsRateLimit("emailChangeSends", { email });
     api.countsRateLimit("passwordResetCodeFailures", { email });
     api.countsRateLimit("passwordChecksPerAccount", { email });
     api.countsRateLimit("accountCodeChecksPerAccount", { email });
@@ -1821,6 +1848,8 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     api.countsRateLimit("mfaEmailSends", { email });
     api.countsRateLimit("mfaCodeFailures", { email });
   };
+  // `emailChangeSends` counts for an account, like the codes `PATCH /user/email` mails.
+  api.hasUser("anna");
   arrange("anna@example.com");
   api.countsRateLimit("passwordResetCodeFailures", { email: "milo@example.com" });
   api.countsRateLimit("passwordChecksPerIp", { ip: "203.0.113.7" });
@@ -1858,6 +1887,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     "Rejected API keys from the IP.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
+    "E-mail change codes mailed for the account, 10 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day.",
     "Wrong MFA codes, links and passkeys for the account, 20 a day.",
     "MFA log-in e-mails to the account, 10 a day.",
@@ -1874,6 +1904,7 @@ test("the superuser clears an account's own limits and daily caps with its e-mai
     "Wrong passwords on the account page, per account.",
     "Wrong password reset codes for the account, 20 a day.",
     "Wrong e-mail change codes for the account, 20 a day.",
+    "E-mail change codes mailed for the account, 10 a day.",
     "Wrong sign-up codes for the waiting registration, 20 a day.",
     "Wrong MFA codes, links and passkeys for the account, 20 a day.",
     "MFA log-in e-mails to the account, 10 a day.",

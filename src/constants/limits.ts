@@ -69,6 +69,8 @@ export class Limits {
     static readonly failedChecksPerAccount: number = 10;
     /** Wrong codes a day for one address, per kind of code, before even the right one is refused (vb2007/vb2007.hu-api#257). */
     static readonly failedChecksPerDay: number = 20;
+    /** E-mail change codes mailed for one account in 24 hours, counted from the first (vb2007/vb2007.hu-api#524). */
+    static readonly emailChangeCodesPerDay: number = 10;
   };
 
   static readonly Github = class {
@@ -125,6 +127,15 @@ export class Limits {
       "admin:read",
       "admin:write"
     ] as const satisfies readonly ApiKeyScope[];
+  };
+
+  static readonly Upload = class {
+    /**
+     * The API's `UPLOAD_JSON_VALIDATION_MAX_BYTES` (vb2007/vb2007.hu-api#529): a file it would store
+     * as `.json` (by its trimmed name) over this many bytes isn't read, and gets the unsupported
+     * type's 415.
+     */
+    static readonly jsonMaxBytes: number = 1024 * 1024;
   };
 
   /** An upload's display name (the API's `isUploadFileName`), checked after trimming. */

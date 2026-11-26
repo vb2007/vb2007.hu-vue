@@ -43,7 +43,7 @@ const onDrop = (event: DragEvent) => {
       {{
         visibility === "private"
           ? `Only you${isSuperuser ? "" : " and the admin"} get the link. Anyone you share it with can open the file until the link expires.`
-          : "Anyone with the link can open the file while it's public."
+          : "Anyone can find and open public files, not just people you share the link with. Make anything you don't want found private."
       }}
     </p>
 

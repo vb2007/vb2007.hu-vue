@@ -379,6 +379,13 @@ export class Messages {
      */
     static readonly emailChangeInterrupted: string =
       "No code was sent: your password or session changed in the meantime, maybe in another tab. Try again with your current password.";
+    /**
+     * In place of the API's 429 for its daily cap on e-mail change codes (`ErrorReason.EmailChangeLimit`),
+     * whose "today" would mislead: the 24 hours count from the account's first code.
+     */
+    static readonly emailChangeLimit: string = `No code was sent: this account has had ${Limits.Code.emailChangeCodesPerDay} codes in the last 24 hours, the most it can get.`;
+    /** After `emailChangeLimit` while a change waits: the cap doesn't touch its code. */
+    static readonly emailChangeLimitWaiting: string = "The code already sent still works.";
   };
 
   /** Two-step login (vb2007/vb2007.hu-api#448): the login's second step and its settings. */
@@ -602,6 +609,14 @@ export class Messages {
     static readonly emptyFile: string = "This file is empty.";
     static readonly unsupportedType: string = "This file type isn't supported.";
     static readonly quotaExceeded: string = "This upload would go over your storage quota.";
+    /** The API's own 409 reads the same, with the number unformatted (vb2007/vb2007.hu-api#589). */
+    static tooManyUploads(max: number): string {
+      return `An account can have at most ${max.toLocaleString()} uploads: delete one first.`;
+    }
+    /** `limit` is already formatted, e.g. "1 MB". The API's own 415 reads as an unsupported type. */
+    static jsonTooLarge(limit: string): string {
+      return `JSON files can be at most ${limit}. Zip this one to upload it.`;
+    }
     /** `limit` is already formatted, e.g. "10 MB". */
     static tooLarge(limit: string): string {
       return `The file is larger than the ${limit} limit.`;
@@ -703,6 +718,7 @@ export class Messages {
       apiKeyChecksPerIp: "Rejected API keys from the IP",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
+      emailChangeSends: `E-mail change codes mailed for the account, ${Limits.Code.emailChangeCodesPerDay}\u00a0a\u00a0day`,
       registrationCodeFailures: `Wrong sign-up codes for the waiting registration, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       mfaCodeFailures: `Wrong MFA codes, links and passkeys for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       mfaEmailSends: `MFA log-in e-mails to the account, ${Limits.Mfa.emailsPerDay}\u00a0a\u00a0day`,
