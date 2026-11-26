@@ -1593,10 +1593,7 @@ export class MockApi {
             status: 200,
             body: {
               originalUrl: link.target,
-              addedBy: {
-                ...this.populatedOwner(link.addedBy),
-                createdAt: "2026-07-31T17:16:07.516Z"
-              },
+              addedBy: this.populatedSharer(link.addedBy),
               addedOn: link.addedOn
             }
           }
@@ -1918,7 +1915,9 @@ export class MockApi {
           status: 201,
           body: {
             message: "Paste created successfully.",
-            paste: this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            paste: this.populatedPaste(
+              this.hasPaste(body?.paste ?? "", this.user.username, body?.language)
+            )
           }
         };
       default:
@@ -3282,13 +3281,7 @@ export class MockApi {
       return { status: 404, body: { error: "There is no such paste with that ID." } };
     }
     const paste = this.pastes[index];
-    if (method === "GET") {
-      // Populated like the real API does since vb2007/vb2007.hu-api#124, with the owner's current name.
-      return {
-        status: 200,
-        body: { paste: { ...paste, addedBy: this.populatedOwner(paste.addedBy) } }
-      };
-    }
+    if (method === "GET") return { status: 200, body: { paste: this.populatedPaste(paste) } };
     // The API's `isPasteOwner`: the owner, or the superuser for anyone's paste.
     if (
       !sameUsername(paste.addedBy, this.user!.username) &&
@@ -3306,11 +3299,14 @@ export class MockApi {
         };
       }
       paste.language = language;
-      return { status: 200, body: { message: "Paste updated successfully.", paste } };
+      return {
+        status: 200,
+        body: { message: "Paste updated successfully.", paste: this.populatedPaste(paste) }
+      };
     }
     this.pastes.splice(index, 1);
     // Like the API's `deletePaste`, which sends only the deleted paste's ID.
-    return { status: 200, body: { message: "Paste deleted successfully.", paste: { id } } };
+    return { status: 200, body: { message: "Paste deleted successfully.", paste: { _id: id } } };
   }
 
   private usedBytes() {
@@ -3575,6 +3571,16 @@ export class MockApi {
   private populatedOwner(name: string) {
     const owner = this.ownerNamed(name);
     return { _id: owner?.id ?? "u1", username: owner?.username ?? name };
+  }
+
+  /** A paste as every paste route answers it since vb2007/vb2007.hu-api#554, its owner populated. */
+  private populatedPaste(paste: MockPaste) {
+    return { ...paste, addedBy: this.populatedOwner(paste.addedBy) };
+  }
+
+  /** A short link's owner as `POST /shortenUrl` and the lookup answer it (vb2007/vb2007.hu-api#554). */
+  private populatedSharer(name: string) {
+    return { ...this.populatedOwner(name), createdAt: "2026-07-31T17:16:07.516Z" };
   }
 
   /** Whose an upload is (see `ownerNamed`). */
@@ -4132,7 +4138,12 @@ export class MockApi {
         status,
         body: {
           message,
-          data: { shortenedUrl: code, originalUrl: url, addedOn: link.addedOn, addedBy: "u1" }
+          data: {
+            shortenedUrl: code,
+            originalUrl: url,
+            addedOn: link.addedOn,
+            addedBy: this.populatedSharer(link.addedBy)
+          }
         }
       };
     };
@@ -4308,7 +4319,7 @@ export class MockApi {
       body: {
         pastes: sorted
           .slice((page - 1) * limit, page * limit)
-          .map((paste) => ({ ...paste, addedBy: this.populatedOwner(paste.addedBy) })),
+          .map((paste) => this.populatedPaste(paste)),
         pagination: {
           limit,
           page,

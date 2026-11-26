@@ -4,8 +4,8 @@ import type { ListQuery, MessageResponse, Pagination } from "@/types/api/common"
 export interface Paste {
   _id: string;
   content: string;
-  /** Only the listing populates the author; a single paste carries just the user ID. */
-  addedBy: string | { _id: string; username: string };
+  /** Null once the account is gone. */
+  addedBy: { _id: string; username: string } | null;
   addedOn: string;
   /** A PASTE_LANGUAGES id (vb2007/vb2007.hu-api#123); pastes from before it have none. */
   language?: string;
@@ -34,7 +34,7 @@ export interface PasteSavedResponse extends MessageResponse {
 
 /** `DELETE /paste/:id` */
 export interface PasteDeletedResponse extends MessageResponse {
-  paste: { id: string };
+  paste: { _id: string };
 }
 
 /** `POST /paste` */

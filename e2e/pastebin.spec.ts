@@ -194,6 +194,18 @@ test("content shows its owner's current name, whatever case it was filed under",
   expect.soft(link.body).toMatchObject({ addedBy: owner });
   // The page compares the owner's name exactly, so it offers her the language.
   await expect(page.getByLabel("Language")).toBeVisible();
+
+  // Saving answers the same shape since vb2007/vb2007.hu-api#554, and a deletion the `_id`.
+  const changed = await callApi(page, api, "PATCH", `/paste/${paste._id}`, { language: "go" });
+  expect.soft(changed.body).toMatchObject({ paste: { addedBy: owner } });
+  const created = await callApi(page, api, "POST", "/paste", { paste: "more", language: "go" });
+  expect.soft(created.body).toMatchObject({ paste: { addedBy: owner } });
+  const removed = await callApi(page, api, "DELETE", `/paste/${paste._id}`, {});
+  expect.soft(removed.body).toMatchObject({ paste: { _id: paste._id } });
+  const shortened = await callApi(page, api, "POST", "/shortenUrl", {
+    url: "https://example.com/"
+  });
+  expect.soft(shortened.body).toMatchObject({ data: { addedBy: owner } });
 });
 
 // The API finds the user by its collation, which ignores a flag's tags (vb2007/vb2007.hu-api#478).

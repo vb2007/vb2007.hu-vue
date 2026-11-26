@@ -6,8 +6,7 @@ export interface ShortUrl {
   shortenedUrl: string;
   originalUrl: string;
   addedOn: string;
-  /** The creator's user ID. */
-  addedBy: string;
+  addedBy: ShortUrlSharer | null;
 }
 
 /** `POST /shortenUrl` */
@@ -23,7 +22,7 @@ export interface ShortenUrlResponse extends MessageResponse {
   data: ShortUrl;
 }
 
-/** The sharer, populated by the lookup; null once their account is gone. */
+/** Who made the link; null once their account is gone. */
 export interface ShortUrlSharer {
   _id: string;
   username: string;

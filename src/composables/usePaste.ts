@@ -76,7 +76,7 @@ export const usePaste = () => {
       saveError.value = result.error;
       return "failed";
     }
-    // Keep the loaded paste (its populated author) and only swap the language.
+    // Keep the loaded paste and only swap the language.
     paste.value = { ...paste.value, language };
     return "saved";
   };

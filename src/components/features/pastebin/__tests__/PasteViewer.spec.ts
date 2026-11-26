@@ -9,7 +9,7 @@ import { isSuperuser, username } from "@/scripts/authentication/authState";
 const paste = (id: string, content = "line one\n  line two") => ({
   _id: id,
   content,
-  addedBy: "u1",
+  addedBy: { _id: "u1", username: "anna" },
   addedOn: "2026-10-10T12:00:00.000Z"
 });
 
@@ -148,7 +148,6 @@ describe("PasteViewer", () => {
     const markdown = "# Notes\n\n- one\n- two";
     const owned = (content = "print('hi')", language?: string) => ({
       ...paste("p1", content),
-      addedBy: { _id: "u1", username: "anna" },
       language
     });
 
@@ -298,6 +297,23 @@ describe("PasteViewer", () => {
       await flushPromises();
 
       expect(wrapper.find("select").exists()).toBe(false);
+    });
+
+    it("shows a paste whose account is gone, editable only by the superuser", async () => {
+      username.value = "anna";
+      mockFetch().mockResolvedValueOnce(
+        jsonResponse(200, { paste: { ...owned(), addedBy: null } })
+      );
+      const wrapper = await mountViewer();
+      await flushPromises();
+
+      expect(wrapper.find(".sheet__content").text()).toBe("print('hi')");
+      expect(wrapper.find("select").exists()).toBe(false);
+
+      isSuperuser.value = true;
+      await flushPromises();
+
+      expect(wrapper.find("select").exists()).toBe(true);
     });
   });
 });

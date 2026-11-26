@@ -42,7 +42,11 @@ describe("detectLanguage", () => {
 });
 
 describe("pasteLanguage", () => {
-  const paste = { _id: "p1", addedBy: "u1", addedOn: "2026-10-10T12:00:00.000Z" };
+  const paste = {
+    _id: "p1",
+    addedBy: { _id: "u1", username: "anna" },
+    addedOn: "2026-10-10T12:00:00.000Z"
+  };
 
   it("uses the stored language", () => {
     expect(pasteLanguage({ ...paste, content: "just words", language: "python" })).toBe("python");

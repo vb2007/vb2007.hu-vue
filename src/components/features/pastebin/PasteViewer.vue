@@ -36,11 +36,10 @@ const views = [
 /** Numbered, unwrapped lines suit code; a single line of prose reads better wrapped. */
 const showLineNumbers = ref(false);
 
-/** Only a single paste with its author filled in (vb2007/vb2007.hu-api#124) says who owns it. */
-const canEdit = computed(() => {
-  const author = paste.value?.addedBy;
-  return typeof author === "object" && (author.username === username.value || isSuperuser.value);
-});
+/** The owner, or the superuser for anyone's paste (like the API's `isPasteOwner`). */
+const canEdit = computed(
+  () => isSuperuser.value || paste.value?.addedBy?.username === username.value
+);
 const languageOptions = PASTE_LANGUAGES.map(({ id, label }) => ({ value: id, label }));
 /** Announced once a change is saved. */
 const savedLanguage = ref("");
