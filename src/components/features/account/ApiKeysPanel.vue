@@ -52,8 +52,11 @@ const tokens = ref<
 >([]);
 const creating = ref(false);
 const prefill = ref<ApiKeyPrefill>();
-/** The apps whose scopes the deep link asks for, as the API knows them; the rest are left out. */
-const apps = ref<OauthClient[]>([]);
+/**
+ * The apps whose scopes the deep link asks for, as the API knows them (the rest are left out):
+ * `undefined` while they're looked up.
+ */
+const apps = ref<OauthClient[]>();
 const route = useRoute();
 const router = useRouter();
 const noticeMessage = useTemplateRef<InstanceType<typeof StatusMessage>>("noticeMessage");
@@ -81,6 +84,7 @@ const load = async () => {
 
 /** Looks up the deep link's apps; an unknown one (`404`) or a failed lookup is left out. */
 const findApps = async () => {
+  apps.value = undefined;
   const results = await Promise.all(
     linkedAppIds(route.query).map((clientId) =>
       apiRequest(Endpoints.OAuth.client, {
@@ -93,8 +97,11 @@ const findApps = async () => {
   apps.value = results.flatMap((result) => (result.ok ? [result.data] : []));
 };
 
-/** The deep link's details, once the list is in: a form opened while it loads starts empty. */
-const linked = () => (loaded.value ? apiKeyLink(route.query, apps.value) : undefined);
+/**
+ * The deep link's details, once the list and its apps are in: a form opened while they load starts
+ * empty.
+ */
+const linked = () => (loaded.value && apps.value ? apiKeyLink(route.query, apps.value) : undefined);
 
 /**
  * The deep link opens the create form filled in once per login, when the list shows the account

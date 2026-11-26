@@ -585,6 +585,23 @@ describe("ApiKeysPanel", () => {
       expect(console.error).toHaveBeenCalled();
     });
 
+    it("keeps a form opened by hand while an app is looked up empty", async () => {
+      fetchMock.mockResolvedValueOnce(list());
+      const pending = deferResponse(fetchMock);
+      ({ wrapper } = await mountWithRouter(
+        ApiKeysPanel,
+        { attachTo: document.body },
+        linked("spotdl:submit")
+      ));
+      await flushPromises();
+      await key(wrapper!, "Create an API key").trigger("click");
+      pending.respond(SPOTDL);
+      await flushPromises();
+
+      expect(ticked(wrapper!)).toEqual([]);
+      expect(leftOut(wrapper!).exists()).toBe(false);
+    });
+
     it("offers no app scopes without the link", async () => {
       const panel = await mountPanel();
       await key(panel, "Create an API key").trigger("click");
