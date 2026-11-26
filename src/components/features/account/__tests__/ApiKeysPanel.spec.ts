@@ -718,7 +718,10 @@ describe("ApiKeysPanel", () => {
       );
       await panel.find(".reauth").trigger("submit");
       await flushPromises();
-      await panel.find(".reauth a").trigger("click");
+      vi.stubGlobal("location", { ...window.location, assign: vi.fn() });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: "https://github.com/login" }));
+      await panel.find(".reauth__actions button").trigger("click");
+      await flushPromises();
 
       expect(router.resolve(takeGithubReturn()).query).toMatchObject({
         scopes: "pastes:read,spotdl:submit"

@@ -282,7 +282,7 @@ test("a deep link's app scope is offered ticked, kept through GitHub, and listed
 
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create key" }).click();
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
   await expect(
     page.getByRole("group", { name: "Apps" }).getByLabel("spotdl-web: submit")
   ).toBeChecked();
