@@ -47,7 +47,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * password reset mails nothing (still 200, keeping the code from before); at 250 every mail is refused, and `PATCH /user/email`
  * answers that 503 too with `ACCOUNT_BUDGET_ERROR` (vb2007/vb2007.hu-api#476), keeping the change that waited before. Addresses on
  * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
- * resend's check, which comes before it looks at the address.
+ * resend's check, which comes before it looks at the address, and by an API key create or rotate, refused before it does.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out, and `api.clockAtMiddayUtc()`
  * sets it to 12:00 UTC today (for `page.clock.install({ time })` too), so the budget's wait is about 12 hours whenever the test runs.
@@ -115,6 +115,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `POST /user/api-keys/:id/rotate` gives the key a new token with `createdAt` now and keeps its lifetime when `expiresInDays` is left
  * out; it and `DELETE /user/api-keys/:id` (no confirmation) answer 404 for a key the account doesn't have. `api.usesUpSecurityNotices()`
  * answers create and rotate with the day's used-up security notices' 429 (`retryAfter` 7200), and `api.apiKeysOf()` lists the logged-in account's keys.
+ * Create and rotate then take their notice's mail of the day's budget (see below), which stops at the registration share like the API's
+ * security notices: from `api.sentMailToday(200)` on they answer the budget 503 with `ACCOUNT_BUDGET_ERROR` and change nothing (vb2007/vb2007.hu-api#612).
  * `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` (vb2007/vb2007.hu-api#573) answer anyone with ShareX's custom uploader as JSON,
  * shaped like the API's `sharexUploaders`, its `Authorization` header holding `SHAREX_TOKEN_PLACEHOLDER` for the key's token; `api.sharexFileFails(name)`
  * answers that one's file with a 500 instead.
@@ -425,7 +427,7 @@ const MAIL_PASSWORD_RESET_STOPS_AT = 225;
 /** The API sends nothing to these top-level domains (RFC 6761) and counts nothing for them, whatever the budget. */
 const RESERVED_TLDS = ["test", "example", "invalid", "localhost"];
 /** Which share of the day's mails a mail draws on (see `sendsMail`). */
-type MailKind = "registration" | "passwordReset" | "account";
+type MailKind = "registration" | "passwordReset" | "securityNotice" | "account";
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
@@ -1231,6 +1233,7 @@ export class MockApi {
     const stopsAt = {
       registration: MAIL_REGISTRATION_STOPS_AT,
       passwordReset: MAIL_PASSWORD_RESET_STOPS_AT,
+      securityNotice: MAIL_REGISTRATION_STOPS_AT,
       account: MAIL_DAILY_LIMIT
     }[kind];
     return this.mailSentToday >= stopsAt;
@@ -2495,7 +2498,15 @@ export class MockApi {
     };
   }
 
-  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice. */
+  /** An API key's notice takes its mail before the key is written: the API's `reserveSecurityNoticeMail`. */
+  private apiKeyMailRefusal(): MockResponse | undefined {
+    // Refused before the reserved domains are skipped, like the API's `reserveShare`.
+    if (this.mailRefused("securityNotice")) return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
+    if (this.countsMail(this.user!.email)) this.mailSentToday++;
+    return undefined;
+  }
+
+  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice and its mail. */
   private createApiKey(body: Record<string, unknown> | null): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
@@ -2554,6 +2565,8 @@ export class MockApi {
     }
     const noticesRefusal = this.securityNoticesRefusal();
     if (noticesRefusal) return noticesRefusal;
+    const mailRefusal = this.apiKeyMailRefusal();
+    if (mailRefusal) return mailRefusal;
     const expiresInDays =
       body?.expiresInDays === undefined ? 90 : (body.expiresInDays as number | null);
     const apiKey = this.newApiKey(name.trim(), scopes, this.now(), expiresInDays);
@@ -2592,6 +2605,8 @@ export class MockApi {
     }
     const noticesRefusal = this.securityNoticesRefusal();
     if (noticesRefusal) return noticesRefusal;
+    const mailRefusal = this.apiKeyMailRefusal();
+    if (mailRefusal) return mailRefusal;
     const kept =
       previous.expiresAt === null
         ? null
