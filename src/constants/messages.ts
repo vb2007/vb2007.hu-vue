@@ -723,8 +723,9 @@ export class Messages {
     static readonly removePendingRegistrationFailed: string =
       "Failed to remove the pending registration";
     static readonly clearRateLimitsFailed: string = "Failed to clear the rate limits";
-    /** The API wants an e-mail, an IP or both; it says so too, but nothing is sent without one. */
-    static readonly rateLimitTargetMissing: string = "Enter an e-mail address, an IP or both.";
+    /** The API wants an e-mail, an IP, a client id or several; it says so too, but nothing is sent without one. */
+    static readonly rateLimitTargetMissing: string =
+      "Enter an e-mail address, an IP, an OAuth client id or several of them.";
     static readonly invalidIp: string = "That isn't an IPv4 or IPv6 address.";
     /**
      * What each of the API's rate limiters counts, for the notice of what was cleared. A cap's
@@ -747,6 +748,11 @@ export class Messages {
       passkeyOptionsPerIp: "Passkey requests from the IP",
       passkeyLoginsPerIp: "Failed passkey log-ins from the IP",
       apiKeyChecksPerIp: "Rejected API keys from the IP",
+      clientChecksPerIp: "Rejected OAuth client credentials from the IP",
+      accountStatusPerClient: "Account status lookups by the OAuth client",
+      authorizationsPerAccount: "App sign-in approvals by the account",
+      tokenExchangesPerClient: "Failed token exchanges by the OAuth client",
+      inactiveIntrospectionsPerClient: "Inactive token checks by the OAuth client",
       passwordResetCodeFailures: `Wrong password reset codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeCodeFailures: `Wrong e-mail change codes for the account, ${Limits.Code.failedChecksPerDay}\u00a0a\u00a0day`,
       emailChangeSends: `E-mail change codes mailed for the account, ${Limits.Code.emailChangeCodesPerDay}\u00a0a\u00a0day`,
@@ -759,7 +765,7 @@ export class Messages {
     static rateLimitName(name: string): string {
       return Messages.Admin.rateLimitNames[name as RateLimitName] ?? name;
     }
-    /** `target` names what was cleared, e.g. "anna@example.com and 203.0.113.7". */
+    /** `target` names what was cleared, e.g. "anna@example.com, 203.0.113.7 and spotdl". */
     static rateLimitsCleared(target: string): string {
       return `Cleared for ${target}:`;
     }

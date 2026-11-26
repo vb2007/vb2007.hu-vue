@@ -10,7 +10,7 @@ export interface ClearedRateLimits {
   cleared: string[];
 }
 
-/** Clears the API's rate-limit counters of an e-mail address, an IP or both. */
+/** Clears the API's rate-limit counters of an e-mail address, an IP, an OAuth client or several. */
 export const useClearRateLimits = () => {
   const isClearing = ref(false);
   const clearError = ref("");
@@ -18,12 +18,12 @@ export const useClearRateLimits = () => {
   const outcome = ref<ClearedRateLimits | null>(null);
 
   /** Returns whether it worked. */
-  const clear = async (email: string, ip: string) => {
+  const clear = async (email: string, ip: string, clientId: string) => {
     isClearing.value = true;
     clearError.value = "";
     outcome.value = null;
 
-    const body = rateLimitBody(email, ip);
+    const body = rateLimitBody(email, ip, clientId);
     const result = await apiRequest(Endpoints.Admin.clearRateLimits, {
       body,
       failure: Messages.Admin.clearRateLimitsFailed

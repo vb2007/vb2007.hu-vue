@@ -143,11 +143,11 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * The admin's System page lists `api.hasPendingRegistration(email, { expiresInMinutes })` sign-ups (newest expiry first, apart from the
  * register flow's own codes) and removes them by id. A sign-up past its expiry (the mock's clock, see `clockRunsFor`) is gone like the API's
  * (vb2007/vb2007.hu-api#459): unlisted and uncounted, a remove answers 404, its code is refused as invalid, a resend sends
- * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip })` arranges a limiter counting for a key (`emailChangeSends` the account's own count of e-mail change codes, see `mailedEmailChangeCodes`);
+ * nothing and registering the address again starts afresh. `api.countsRateLimit(name, { email, ip, clientId })` arranges a limiter counting for a key (`emailChangeSends` the account's own count of e-mail change codes, see `mailedEmailChangeCodes`);
  * `DELETE /admin/rate-limits` empties every arranged one whose whole key it's given, answers their names in the API's order
- * (vb2007/vb2007.hu-api#284), and checks the body like the API. An e-mail alone also empties `loginPerAccount` from every IP, and an IP
+ * (vb2007/vb2007.hu-api#284), and checks the body like the API (a `clientId` must be one of `OAUTH_CLIENTS`, vb2007/vb2007.hu-api#617). An e-mail alone also empties `loginPerAccount` from every IP, and an IP
  * with it only that IP's (vb2007/vb2007.hu-api#365). The account's own limiters and the daily caps on wrong codes and e-mails
- * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
+ * (`accountCodeChecksPerAccount`, `passwordChecksPerAccount`, `authorizationsPerAccount`, `passwordResetCodeFailures`, `emailChangeCodeFailures`,
  * `emailChangeSends`, `registrationCodeFailures`, `mfaCodeFailures`, `mfaEmailSends`, `securityNotices`) go with the e-mail alone, with or without an IP, and an IP alone leaves them (vb2007/vb2007.hu-api#384).
  * Upload links point at a cdn host this mock also answers, with a tiny PNG for every file. For a one-off response, register `page.route(...)` in the test itself:
  * routes added later take precedence over this one. Like the API (vb2007/vb2007.hu-api#361), every answer signs a private upload's link
@@ -486,6 +486,11 @@ const RATE_LIMITERS = {
   passkeyOptionsPerIp: ["ip"],
   passkeyLoginsPerIp: ["ip"],
   apiKeyChecksPerIp: ["ip"],
+  clientChecksPerIp: ["ip"],
+  accountStatusPerClient: ["clientId"],
+  authorizationsPerAccount: ["email"],
+  tokenExchangesPerClient: ["clientId"],
+  inactiveIntrospectionsPerClient: ["clientId"],
   passwordResetCodeFailures: ["email"],
   emailChangeCodeFailures: ["email"],
   emailChangeSends: ["email"],
@@ -495,7 +500,7 @@ const RATE_LIMITERS = {
   securityNotices: ["email"]
 } as const;
 export type MockRateLimiter = keyof typeof RATE_LIMITERS;
-type RateLimitKey = { email?: string; ip?: string };
+type RateLimitKey = { email?: string; ip?: string; clientId?: string };
 const normalizeCode = (code?: string) => code?.replace(/\s/g, "");
 
 /** The API's refusal of an address's domain, if it has one. */
@@ -1088,8 +1093,8 @@ export class MockApi {
     return registration;
   }
 
-  /** A rate limiter counting for `email`, `ip` or both, as its key needs. */
-  countsRateLimit(name: MockRateLimiter, { email, ip }: RateLimitKey) {
+  /** A rate limiter counting for `email`, `ip`, `clientId` or several, as its key needs. */
+  countsRateLimit(name: MockRateLimiter, { email, ip, clientId }: RateLimitKey) {
     if (name === "emailChangeSends") {
       // One store with what `PATCH /user/email` counts (see `mailedEmailChangeCodes`), kept per account.
       const account = this.storedAccounts().find(
@@ -1099,7 +1104,7 @@ export class MockApi {
       this.emailChangeSends.set(account.id, { count: 1, since: this.now() });
       return;
     }
-    this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip });
+    this.rateLimitCounts.push({ name, email: email && normalizeEmail(email), ip, clientId });
   }
 
   /** Stores a paste as if `username` had created it, in `language` if given, and returns it. */
@@ -3989,14 +3994,16 @@ export class MockApi {
   }
 
   /** The API's `clearRateLimitLockouts`: each limiter whose whole key is given, in its order. */
-  private clearRateLimits(body: { email?: unknown; ip?: unknown } | null) {
+  private clearRateLimits(body: { email?: unknown; ip?: unknown; clientId?: unknown } | null) {
     const refusal = this.refuseNonSuperuser();
     if (refusal) return refusal;
-    const { email, ip } = body ?? {};
-    if (email === undefined && ip === undefined) {
+    const { email, ip, clientId } = body ?? {};
+    if (email === undefined && ip === undefined && clientId === undefined) {
       return {
         status: 400,
-        body: { error: "Send an email, an ip or both to clear their rate limits." }
+        body: {
+          error: "Send an email, an ip, a clientId or several of them to clear their rate limits."
+        }
       };
     }
     if (email !== undefined && (typeof email !== "string" || !email.trim())) {
@@ -4005,9 +4012,19 @@ export class MockApi {
     if (ip !== undefined && (typeof ip !== "string" || !isIP(ip))) {
       return { status: 400, body: { error: "ip must be a valid IPv4 or IPv6 address." } };
     }
+    if (
+      clientId !== undefined &&
+      (typeof clientId !== "string" || !OAUTH_CLIENTS.some(({ id }) => id === clientId))
+    ) {
+      return {
+        status: 400,
+        body: { error: "clientId must be the id of a registered OAuth client." }
+      };
+    }
     const key: RateLimitKey = {
       email: email === undefined ? undefined : normalizeEmail(email),
-      ip
+      ip,
+      clientId
     };
     // `loginPerAccount` is found by the e-mail alone (from every IP, vb2007/vb2007.hu-api#365); an IP only narrows it.
     const matches = (count: RateLimitKey & { name: MockRateLimiter }) =>

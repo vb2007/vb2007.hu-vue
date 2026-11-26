@@ -19,7 +19,7 @@ describe("useClearRateLimits", () => {
     );
     const limits = useClearRateLimits();
 
-    const clearing = limits.clear(" anna@example.com ", " 203.0.113.7 ");
+    const clearing = limits.clear(" anna@example.com ", " 203.0.113.7 ", "");
     expect(limits.isClearing.value).toBe(true);
     expect(await clearing).toBe(true);
 
@@ -56,7 +56,7 @@ describe("useClearRateLimits", () => {
     );
     const limits = useClearRateLimits();
 
-    await limits.clear("anna@example.com", "");
+    await limits.clear("anna@example.com", "", "");
 
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ email: "anna@example.com" }));
     expect(limits.outcome.value).toEqual({
@@ -71,13 +71,58 @@ describe("useClearRateLimits", () => {
     });
   });
 
+  it("sends an OAuth client's id and names the limiters it clears", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        message: "Rate limits cleared.",
+        cleared: [
+          "clientChecksPerIp",
+          "accountStatusPerClient",
+          "authorizationsPerAccount",
+          "tokenExchangesPerClient",
+          "inactiveIntrospectionsPerClient"
+        ]
+      })
+    );
+    const limits = useClearRateLimits();
+
+    await limits.clear("anna@example.com", "203.0.113.7", " spotdl ");
+
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ email: "anna@example.com", ip: "203.0.113.7", clientId: "spotdl" })
+    );
+    expect(limits.outcome.value).toEqual({
+      target: "anna@example.com, 203.0.113.7 and spotdl",
+      cleared: [
+        "Rejected OAuth client credentials from the IP",
+        "Account status lookups by the OAuth client",
+        "App sign-in approvals by the account",
+        "Failed token exchanges by the OAuth client",
+        "Inactive token checks by the OAuth client"
+      ]
+    });
+  });
+
+  it("shows the API's refusal of an unregistered client", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, { error: "clientId must be the id of a registered OAuth client." })
+    );
+    const limits = useClearRateLimits();
+
+    expect(await limits.clear("", "", "nope")).toBe(false);
+
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ clientId: "nope" }));
+    expect(limits.clearError.value).toBe("clientId must be the id of a registered OAuth client.");
+    expect(limits.outcome.value).toBeNull();
+  });
+
   it("leaves a blank field out and keeps an empty answer", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, { message: "Rate limits cleared.", cleared: [] })
     );
     const limits = useClearRateLimits();
 
-    await limits.clear("", "::1");
+    await limits.clear("", "::1", "");
 
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ ip: "::1" }));
     expect(limits.outcome.value).toEqual({ target: "::1", cleared: [] });
@@ -90,9 +135,9 @@ describe("useClearRateLimits", () => {
         jsonResponse(400, { error: "ip must be a valid IPv4 or IPv6 address." })
       );
     const limits = useClearRateLimits();
-    await limits.clear("anna@example.com", "");
+    await limits.clear("anna@example.com", "", "");
 
-    expect(await limits.clear("", "1.2.3.4")).toBe(false);
+    expect(await limits.clear("", "1.2.3.4", "")).toBe(false);
 
     expect(limits.clearError.value).toBe("ip must be a valid IPv4 or IPv6 address.");
     expect(limits.outcome.value).toBeNull();
