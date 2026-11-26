@@ -54,7 +54,7 @@ import type {
   TotpConfirmBody,
   TotpSetupResponse
 } from "@/types/api/mfa";
-import type { OauthClient } from "@/types/api/oauth";
+import type { AuthorizeBody, AuthorizeResponse, OauthClient } from "@/types/api/oauth";
 import type { SharexUploader } from "@/types/api/sharex";
 import type {
   CreatePasteBody,
@@ -485,6 +485,25 @@ export class Endpoints {
     });
   };
 
+  /** First-party apps (vb2007/vb2007.hu-api#575, #577): app scopes and "Sign in with vb2007.hu". */
+  static readonly OAuth = class {
+    /** An OAuth client's public details, its name and app scopes; `404` for an unknown client. */
+    static readonly client = defineEndpoint<undefined, OauthClient>()({
+      method: HttpMethod.Get,
+      path: "/oauth/clients/:clientId",
+      credentials: false
+    });
+    /**
+     * The user's answer on the authorize page, session only: `redirectTo` is where the browser goes
+     * next (the app's vetted `redirect_uri`), `400` for a request the API won't vet.
+     */
+    static readonly authorize = defineEndpoint<AuthorizeBody, AuthorizeResponse>()({
+      method: HttpMethod.Post,
+      path: "/oauth/authorize",
+      credentials: true
+    });
+  };
+
   /**
    * The ShareX custom uploaders (vb2007/vb2007.hu-api#573), keyed like `Sharex.uploaders`: public,
    * each with the token's placeholder, which the site fills in. The token never goes to them.
@@ -503,16 +522,6 @@ export class Endpoints {
     static readonly shorten = defineEndpoint<undefined, SharexUploader>()({
       method: HttpMethod.Get,
       path: "/sharex/shorten.sxcu",
-      credentials: false
-    });
-  };
-
-  /** "Sign in with vb2007.hu" for first-party apps (vb2007/vb2007.hu-api#575). */
-  static readonly OAuth = class {
-    /** An OAuth client's public details, its name and app scopes; `404` for an unknown client. */
-    static readonly client = defineEndpoint<undefined, OauthClient>()({
-      method: HttpMethod.Get,
-      path: "/oauth/clients/:clientId",
       credentials: false
     });
   };
