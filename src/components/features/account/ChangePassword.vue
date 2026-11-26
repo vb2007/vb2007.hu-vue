@@ -14,6 +14,7 @@ import {
 } from "@/scripts/authentication/register";
 import { useFormValidation } from "@/composables/useFormValidation";
 import BaseButton from "@/components/ui/BaseButton.vue";
+import BaseCheckbox from "@/components/ui/BaseCheckbox.vue";
 import BaseInput from "@/components/ui/BaseInput.vue";
 import StatusMessage from "@/components/ui/StatusMessage.vue";
 import { statusTextId } from "@/components/ui/statusMessage";
@@ -25,11 +26,14 @@ const emit = defineEmits<{ start: [] }>();
 const { isChanging, changeError, changed, change, hold } = useChangePassword();
 const isHeld = computed(() => hold.isHeld());
 const errorId = useId();
+const revokeHintId = useId();
 
 const open = ref(false);
 const currentPassword = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
+/** Off by default: a password change keeps the API keys unless asked (vb2007/vb2007.hu-api#597). */
+const revokeApiKeys = ref(false);
 const { errors, isValid, leave, validate, reset } = useFormValidation({
   current: {
     value: currentPassword,
@@ -63,6 +67,7 @@ const start = async () => {
 const close = async () => {
   open.value = false;
   currentPassword.value = newPassword.value = confirmPassword.value = "";
+  revokeApiKeys.value = false;
   reset();
   changeError.value = "";
   await nextTick();
@@ -77,7 +82,7 @@ const save = async () => {
   if (isHeld.value) return;
   if (!(await validate(form.value))) return;
 
-  if (await change(currentPassword.value, newPassword.value)) return close();
+  if (await change(currentPassword.value, newPassword.value, revokeApiKeys.value)) return close();
 
   await nextTick();
   // A held key is disabled, so the current password takes the focus instead.
@@ -130,6 +135,16 @@ const save = async () => {
       required
       @blur="leave('confirm')"
     />
+    <div class="change__revoke">
+      <BaseCheckbox
+        v-model="revokeApiKeys"
+        label="Also revoke my API keys"
+        :describedby="revokeHintId"
+      />
+      <p :id="revokeHintId" class="change__hint">
+        Deletes all of them, so scripts using one stop working. Do it if a key may have leaked.
+      </p>
+    </div>
     <!-- A held key keeps its reason, also once Cancel cleared the error and the form opened again. -->
     <StatusMessage v-if="hold.shown()" :id="errorId" tone="error" :spoken="hold.spokenFor()">{{
       hold.shown()
@@ -169,6 +184,18 @@ const save = async () => {
 .change {
   display: grid;
   gap: var(--sp-4);
+}
+
+.change__revoke {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+/* Lined up with the label, past the 1.5rem box and its gap. */
+.change__hint {
+  padding-left: calc(1.5rem + var(--sp-3));
+  font-size: var(--fs-sm);
+  color: var(--c-ink-soft);
 }
 
 .change__actions {

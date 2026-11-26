@@ -10,6 +10,14 @@ describe("BaseCheckbox", () => {
     expect(wrapper.text()).toBe("Remember me");
     expect(wrapper.attributes("for")).toBe(input.attributes("id"));
     expect(input.element.checked).toBe(false);
+    expect(input.attributes("aria-describedby")).toBeUndefined();
+  });
+
+  it("points the box itself at the elements that describe it", () => {
+    const wrapper = mount(BaseCheckbox, { props: { label: "Remember me", describedby: "hint" } });
+
+    expect(wrapper.find("input").attributes("aria-describedby")).toBe("hint");
+    expect(wrapper.attributes("aria-describedby")).toBeUndefined();
   });
 
   it("supports v-model", async () => {

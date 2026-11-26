@@ -1566,6 +1566,7 @@ export class MockApi {
       quotaBytes?: number | null;
       currentPassword?: string;
       newPassword?: string;
+      revokeApiKeys?: unknown;
       username?: string;
       token?: string;
       method?: string;
@@ -1857,7 +1858,7 @@ export class MockApi {
         if (this.user && this.codeChecksCapped) return CODE_CHECKS_CAPPED;
         return this.confirmEmail(body?.code);
       case "PATCH /user/password":
-        return this.changePassword(body?.currentPassword, body?.newPassword);
+        return this.changePassword(body?.currentPassword, body?.newPassword, body?.revokeApiKeys);
       case "GET /auth/username-available": {
         this.usernameChecks++;
         if (this.usernameChecksLimited) return USERNAME_CHECKS_LIMITED;
@@ -3048,7 +3049,8 @@ export class MockApi {
     return { status: 200, body: { message: "E-mail address updated successfully." } };
   }
 
-  private changePassword(currentPassword?: string, newPassword?: string) {
+  /** `revokeApiKeys: true` deletes the account's keys with it (vb2007/vb2007.hu-api#597). */
+  private changePassword(currentPassword?: string, newPassword?: string, revokeApiKeys?: unknown) {
     if (!this.user) {
       return NOT_LOGGED_IN;
     }
@@ -3060,6 +3062,9 @@ export class MockApi {
         status: 400,
         body: { error: "You must provide the current password and a new password." }
       };
+    }
+    if (revokeApiKeys !== undefined && typeof revokeApiKeys !== "boolean") {
+      return { status: 400, body: { error: "revokeApiKeys must be true or false." } };
     }
     const length = [...newPassword].length;
     if (length < 8 || length > 128) {
@@ -3083,6 +3088,7 @@ export class MockApi {
     this.voidResetLinks(({ userId }) => userId === this.user!._id);
     this.voidResetCode(this.user.email);
     this.voidsEmailChangeOf(this.user.email, this.user._id);
+    if (revokeApiKeys === true) this.userApiKeys.delete(this.user._id);
     return { status: 200, body: { message: "Password changed successfully." }, newSession: true };
   }
 

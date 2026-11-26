@@ -26,6 +26,7 @@ describe("ChangePassword", () => {
   const inputs = () => wrapper.findAll<HTMLInputElement>("input[type=password]");
   const errors = () => wrapper.findAll(".field__error").map((error) => error.text());
   const buttons = () => wrapper.findAll("form button");
+  const revoke = () => wrapper.find<HTMLInputElement>("input[type=checkbox]");
 
   const open = async () => {
     await key().trigger("click");
@@ -56,7 +57,8 @@ describe("ChangePassword", () => {
     expect(wrapper.findAll("label").map((label) => label.text())).toEqual([
       "Current password",
       "New password",
-      "Confirm new password"
+      "Confirm new password",
+      "Also revoke my API keys"
     ]);
     expect(inputs().map((input) => input.attributes("autocomplete"))).toEqual([
       "current-password",
@@ -69,6 +71,10 @@ describe("ChangePassword", () => {
     expect(account.element.value).toBe("vb@example.com");
     expect(account.element.hidden).toBe(true);
     expect(document.activeElement).toBe(inputs()[0].element);
+    expect(revoke().element.checked).toBe(false);
+    expect(descriptionOf(revoke())).toBe(
+      "Deletes all of them, so scripts using one stop working. Do it if a key may have leaked."
+    );
   });
 
   it("checks each field once it's left, and a confirmation that already differs while typing", async () => {
@@ -159,6 +165,34 @@ describe("ChangePassword", () => {
     await open();
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(inputs().map((input) => input.element.value)).toEqual(["", "", ""]);
+  });
+
+  it("revokes the API keys too once the box is ticked, and says so", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { message: "Password changed successfully." }))
+      .mockResolvedValueOnce(jsonResponse(200, USER));
+    await open();
+    await fill("old-password", "new-password");
+    await revoke().setValue(true);
+
+    await submit();
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/user/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        currentPassword: "old-password",
+        newPassword: "new-password",
+        revokeApiKeys: true
+      })
+    });
+    expect(wrapper.find('[role="status"]').text()).toBe(
+      "Password changed successfully. Your API keys were revoked."
+    );
+
+    await open();
+    expect(revoke().element.checked).toBe(false);
   });
 
   it("shows the API's refusal above the keys and keeps the values", async () => {
@@ -254,7 +288,9 @@ describe("ChangePassword", () => {
     );
     await open();
     await fill("wrong-password", "new-password");
+    await revoke().setValue(true);
     await submit();
+    expect(revoke().element.checked).toBe(true);
 
     await wrapper.find("form").trigger("keydown", { key: "Escape" });
     await flushPromises();
@@ -264,6 +300,7 @@ describe("ChangePassword", () => {
 
     await open();
     expect(inputs().map((input) => input.element.value)).toEqual(["", "", ""]);
+    expect(revoke().element.checked).toBe(false);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
 
     await buttons()[1].trigger("click");

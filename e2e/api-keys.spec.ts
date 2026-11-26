@@ -3,6 +3,43 @@ import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
 const TOKEN = /^vbk_[\w-]{43}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+test("a password change revokes the API keys only when its box is ticked", async ({
+  page,
+  api
+}) => {
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasApiKey("Deploy bot");
+  await page.goto("/account");
+  const details = page.getByRole("region", { name: "Log-in details" });
+  const changePassword = async (current: string, next: string, revoke: boolean) => {
+    await details.getByRole("button", { name: "Change password" }).click();
+    const box = details.getByRole("checkbox", { name: "Also revoke my API keys" });
+    await expect(box).not.toBeChecked();
+    await expect(box).toHaveAccessibleDescription(
+      "Deletes all of them, so scripts using one stop working. Do it if a key may have leaked."
+    );
+    await details.getByLabel("Current password").fill(current);
+    await details.getByLabel("New password", { exact: true }).fill(next);
+    await details.getByLabel("Confirm new password").fill(next);
+    if (revoke) await box.check({ force: true });
+    await details.getByRole("button", { name: "Save password" }).click();
+  };
+
+  await changePassword(MOCK_PASSWORD, "a-new-password", false);
+  await expect(details.getByRole("status")).toHaveText("Password changed successfully.");
+  expect(api.apiKeysOf()).toHaveLength(1);
+
+  await changePassword("a-new-password", "another-password", true);
+  await expect(details.getByRole("status")).toHaveText(
+    "Password changed successfully. Your API keys were revoked."
+  );
+  expect(api.apiKeysOf()).toHaveLength(0);
+
+  // The list loads whenever its page opens, so it's empty from the start.
+  await page.getByRole("link", { name: "Manage API keys" }).click();
+  await expect(page.getByText("No API keys yet.")).toBeVisible();
+});
+
 test("an API key is created from the account page and its token shown once", async ({
   page,
   api
