@@ -28,10 +28,6 @@ describe("oauthErrorMessage", () => {
     ],
     ["notConfigured", "GitHub login isn't available right now."],
     [
-      "passwordRequired",
-      "Linking GitHub takes your password. Press Link GitHub on this page and enter it there."
-    ],
-    [
       "accountSuspended",
       "The account linked to this GitHub account is suspended: it can't log in until the superuser lifts the suspension."
     ],

@@ -336,7 +336,7 @@ export class Messages {
       "Your password is set. You can log in with it from now on.";
     /** Why GitHub may come first, for an account without a password. */
     static githubReauthNote(minutes: number): string {
-      return `If you logged in more than ${minutes} minutes ago, GitHub confirms it's you first.`;
+      return `Unless you logged in with GitHub or relinked it in the last ${minutes} minutes, GitHub confirms it's you first.`;
     }
     /**
      * Back from GitHub, which confirmed it's the user, before setting the password or changing

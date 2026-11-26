@@ -47,7 +47,7 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * password reset mails nothing (still 200, keeping the code from before); at 250 every mail is refused, and `PATCH /user/email`
  * answers that 503 too with `ACCOUNT_BUDGET_ERROR` (vb2007/vb2007.hu-api#476), keeping the change that waited before. Addresses on
  * the reserved top-level domains (`.test`, `.example`, `.invalid`, `.localhost`) are neither counted nor refused, except by the
- * resend's check, which comes before it looks at the address.
+ * resend's check, which comes before it looks at the address, and by an API key create or rotate, refused before it does.
  * Every mailed code takes 5 tries, like the API's (vb2007/vb2007.hu-api#220), and the mock's clock is real time:
  * `api.clockRunsFor(ms)` moves it on, e.g. along with `page.clock.runFor(ms)`, so a cooldown can run out, and `api.clockAtMiddayUtc()`
  * sets it to 12:00 UTC today (for `page.clock.install({ time })` too), so the budget's wait is about 12 hours whenever the test runs.
@@ -56,8 +56,9 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `api.usernameChecks` counts how often it was asked.
  * Linking GitHub skips GitHub: `POST /auth/github/link` checks `api.password` (none for a GitHub-only account; 429 under `limitsPasswordChecks()`, 503 under `api.githubIsNotConfigured()`)
  * and answers a `url` on this mock, `/e2e-github/authorize`, which links @e2e-octocat and comes straight back to `/account?github=linked`, like the API (vb2007/vb2007.hu-api#243).
- * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` does the same at once for a GitHub-only account,
- * which also confirms the user for setting a password or deleting the account, and sends a password account back with `?oauthError=passwordRequired`, and a GitHub-only one with `?oauthError=notConfigured` under `api.githubIsNotConfigured()`. `DELETE /auth/github/link` takes `api.password` too.
+ * For a GitHub-only account that relink also confirms the user for setting a password or deleting the account.
+ * Visiting it without a started link comes back with `?oauthError=invalidState`. `GET /auth/github/link` is gone (vb2007/vb2007.hu-api#534): a visit gets the API's
+ * unknown-route redirect to the site's `/apierror` page. `DELETE /auth/github/link` takes `api.password` too.
  * `DELETE /user` takes `api.password`, or the username for a GitHub-only account once GitHub confirmed it (vb2007/vb2007.hu-api#245).
  * `POST /auth/login` knows `MOCK_EMAIL` and every account arranged with `loggedInAs` or `hasUser(...)` or registered, whatever the address's case, and takes `api.password`.
  * One id is one account, like the API's: `MOCK_EMAIL`'s and the `loggedInAs` one share `MOCK_USER_ID`, so `loggedInAs` with another address
@@ -115,6 +116,8 @@ import { test as base, expect, type Page, type Route } from "@playwright/test";
  * `POST /user/api-keys/:id/rotate` gives the key a new token with `createdAt` now and keeps its lifetime when `expiresInDays` is left
  * out; it and `DELETE /user/api-keys/:id` (no confirmation) answer 404 for a key the account doesn't have. `api.usesUpSecurityNotices()`
  * answers create and rotate with the day's used-up security notices' 429 (`retryAfter` 7200), and `api.apiKeysOf()` lists the logged-in account's keys.
+ * Create and rotate then take their notice's mail of the day's budget (see below), which stops at the registration share like the API's
+ * security notices: from `api.sentMailToday(200)` on they answer the budget 503 with `ACCOUNT_BUDGET_ERROR` and change nothing (vb2007/vb2007.hu-api#612).
  * `GET /sharex/upload.sxcu`, `/sharex/paste.sxcu` and `/sharex/shorten.sxcu` (vb2007/vb2007.hu-api#573) answer anyone with ShareX's custom uploader as JSON,
  * shaped like the API's `sharexUploaders`, its `Authorization` header holding `SHAREX_TOKEN_PLACEHOLDER` for the key's token; `api.sharexFileFails(name)`
  * answers that one's file with a 500 instead.
@@ -425,7 +428,7 @@ const MAIL_PASSWORD_RESET_STOPS_AT = 225;
 /** The API sends nothing to these top-level domains (RFC 6761) and counts nothing for them, whatever the budget. */
 const RESERVED_TLDS = ["test", "example", "invalid", "localhost"];
 /** Which share of the day's mails a mail draws on (see `sendsMail`). */
-type MailKind = "registration" | "passwordReset" | "account";
+type MailKind = "registration" | "passwordReset" | "securityNotice" | "account";
 /** What mongoose's `ObjectId.isValid` accepts as a string: 24 hex characters. */
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
@@ -1231,6 +1234,7 @@ export class MockApi {
     const stopsAt = {
       registration: MAIL_REGISTRATION_STOPS_AT,
       passwordReset: MAIL_PASSWORD_RESET_STOPS_AT,
+      securityNotice: MAIL_REGISTRATION_STOPS_AT,
       account: MAIL_DAILY_LIMIT
     }[kind];
     return this.mailSentToday >= stopsAt;
@@ -1801,21 +1805,11 @@ export class MockApi {
         if (sessionUser) this.user = null;
         return { status: 200 };
       case "GET /auth/github/link":
-        if (!sessionUser) {
-          return { status: 302, location: `${this.appOrigin}/account?oauthError=notLoggedIn` };
-        }
-        // Only an account without a password may link through a plain navigation (vb2007/vb2007.hu-api#243).
-        if (sessionUser.hasPassword) {
-          return {
-            status: 302,
-            location: `${this.appOrigin}/account?oauthError=passwordRequired`
-          };
-        }
-        // Checked after the session and the password, like the API's `githubLink`.
-        if (this.githubUnconfigured) {
-          return { status: 302, location: `${this.appOrigin}/account?oauthError=notConfigured` };
-        }
-        return this.linkGithub();
+        // Removed (vb2007/vb2007.hu-api#534): a visit gets the API's unknown-route redirect.
+        return {
+          status: 302,
+          location: `${this.appOrigin}/apierror?url=%2Fauth%2Fgithub%2Flink`
+        };
       case "POST /auth/github/link":
         return this.startGithubLink(body?.password);
       case "GET /e2e-github/authorize":
@@ -2496,7 +2490,15 @@ export class MockApi {
     };
   }
 
-  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice. */
+  /** An API key's notice takes its mail before the key is written: the API's `reserveSecurityNoticeMail`. */
+  private apiKeyMailRefusal(): MockResponse | undefined {
+    // Refused before the reserved domains are skipped, like the API's `reserveShare`.
+    if (this.mailRefused("securityNotice")) return this.mailBudgetUsedUp(ACCOUNT_BUDGET_ERROR);
+    if (this.countsMail(this.user!.email)) this.mailSentToday++;
+    return undefined;
+  }
+
+  /** `POST /user/api-keys`, in the API's order: the limiter, the body, admin scopes, the confirmation, the cap, the notice and its mail. */
   private createApiKey(body: Record<string, unknown> | null): MockResponse {
     if (!this.user) return NOT_LOGGED_IN;
     if (this.passwordChecksLimited) return PASSWORD_CHECKS_LIMITED;
@@ -2555,6 +2557,8 @@ export class MockApi {
     }
     const noticesRefusal = this.securityNoticesRefusal();
     if (noticesRefusal) return noticesRefusal;
+    const mailRefusal = this.apiKeyMailRefusal();
+    if (mailRefusal) return mailRefusal;
     const expiresInDays =
       body?.expiresInDays === undefined ? 90 : (body.expiresInDays as number | null);
     const apiKey = this.newApiKey(name.trim(), scopes, this.now(), expiresInDays);
@@ -2593,6 +2597,8 @@ export class MockApi {
     }
     const noticesRefusal = this.securityNoticesRefusal();
     if (noticesRefusal) return noticesRefusal;
+    const mailRefusal = this.apiKeyMailRefusal();
+    if (mailRefusal) return mailRefusal;
     const kept =
       previous.expiresAt === null
         ? null

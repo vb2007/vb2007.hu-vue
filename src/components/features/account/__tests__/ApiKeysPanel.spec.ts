@@ -16,6 +16,7 @@ import { deferResponse, jsonResponse, mockFetch } from "@/__tests__/helpers/fetc
 import { mountWithRouter } from "@/__tests__/helpers/mount";
 import type { ApiKey } from "@/types/api/apiKeys";
 
+const BUDGET = "No more e-mails can be sent today: please try again after the daily limit resets.";
 const DEPLOY: ApiKey = {
   id: "3f0c9a7e5b1d4c2a8e6f0b9d7c5a3e1f",
   name: "Deploy bot",
@@ -371,6 +372,22 @@ describe("ApiKeysPanel", () => {
       expect(key(panel, "Try again in 1 hr").attributes("disabled")).toBeDefined();
     });
 
+    it("holds the key quietly through the day's used-up mail, keeping the details", async () => {
+      const panel = await mountPanel();
+      await fillCreate(panel);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, { error: BUDGET, retryAfter: 3600, reason: "mailBudget" })
+      );
+      await confirm(panel);
+
+      expect(panel.find(".reauth").text()).toContain(BUDGET);
+      expect(key(panel, "Try again in 1 hr").attributes("disabled")).toBeDefined();
+      expect(console.error).not.toHaveBeenCalled();
+      await key(panel, "Cancel").trigger("click");
+      await flushPromises();
+      expect((panel.find(".key-form input").element as HTMLInputElement).value).toBe("Deploy bot");
+    });
+
     it("offers GitHub to an account without a password, coming back to the form as it was", async () => {
       hasPassword.value = false;
       fetchMock.mockResolvedValueOnce(list());
@@ -393,8 +410,14 @@ describe("ApiKeysPanel", () => {
       await flushPromises();
 
       expect(bodyOf(1)).not.toHaveProperty("password");
-      expect(panel.find(".reauth a").text()).toContain("Confirm with GitHub");
-      await panel.find(".reauth a").trigger("click");
+      const github = panel.find(".reauth__actions button");
+      expect(github.text()).toContain("Confirm with GitHub");
+      const assign = vi.fn();
+      vi.stubGlobal("location", { ...window.location, assign });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: "https://github.com/login" }));
+      await github.trigger("click");
+      await flushPromises();
+      expect(assign).toHaveBeenCalledWith("https://github.com/login");
       const back = router.resolve(takeGithubReturn());
       expect(back.path).toBe("/account/api-keys");
       expect(back.query).toEqual({
@@ -587,7 +610,10 @@ describe("ApiKeysPanel", () => {
       );
       await panel.find(".reauth").trigger("submit");
       await flushPromises();
-      await panel.find(".reauth a").trigger("click");
+      vi.stubGlobal("location", { ...window.location, assign: vi.fn() });
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { url: "https://github.com/login" }));
+      await panel.find(".reauth__actions button").trigger("click");
+      await flushPromises();
 
       expect(router.resolve(takeGithubReturn()).query).toEqual({
         newApiKey: "1",
@@ -676,6 +702,21 @@ describe("ApiKeysPanel", () => {
         .mockResolvedValueOnce(list(FOREVER));
       await confirm(panel);
       expect(bodyOf(3)).toEqual({ password: "secret", expiresInDays: null });
+    });
+
+    it("holds the key quietly through the day's used-up mail", async () => {
+      const panel = await mountPanel(DEPLOY);
+      await openRotate(panel);
+      await panel.find(".key-form").trigger("submit");
+      await flushPromises();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(503, { error: BUDGET, retryAfter: 3600, reason: "mailBudget" })
+      );
+      await confirm(panel);
+
+      expect(panel.find(".reauth").text()).toContain(BUDGET);
+      expect(key(panel, "Try again in 1 hr").attributes("disabled")).toBeDefined();
+      expect(console.error).not.toHaveBeenCalled();
     });
 
     it.each([

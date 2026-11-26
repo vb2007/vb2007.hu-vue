@@ -144,7 +144,8 @@ const send = async (body: MfaPasswordBody) => {
     const result = await apiRequest(Endpoints.User.createApiKey, {
       body: { ...body, name: name.value.trim(), scopes: scopes.value, expiresInDays },
       failure: Messages.ApiKeys.createFailed,
-      quietStatuses: REAUTH_QUIET_STATUSES
+      // The day's mail for its notice used up (`mailBudgetOf`): an answer, not a fault.
+      quietStatuses: [...REAUTH_QUIET_STATUSES, HttpStatus.ServiceUnavailable]
     });
     if (!result.ok && result.status === HttpStatus.Conflict) emit("full");
     return result;
@@ -153,8 +154,9 @@ const send = async (body: MfaPasswordBody) => {
     params: { id: props.apiKey.id },
     body: { ...body, expiresInDays },
     failure: Messages.ApiKeys.rotateFailed,
-    // A wrong or missing password, GitHub to confirm, a key gone or changed: answers, not faults.
-    quietStatuses: [...REAUTH_QUIET_STATUSES, HttpStatus.NotFound]
+    // A wrong or missing password, GitHub to confirm, a key gone or changed, the day's mail used
+    // up: answers, not faults.
+    quietStatuses: [...REAUTH_QUIET_STATUSES, HttpStatus.NotFound, HttpStatus.ServiceUnavailable]
   });
   if (
     !result.ok &&

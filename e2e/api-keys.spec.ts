@@ -1,4 +1,11 @@
-import { expect, MOCK_EMAIL, MOCK_PASSWORD, test } from "./fixtures";
+import {
+  ACCOUNT_BUDGET_ERROR,
+  BUDGET_WAIT,
+  expect,
+  MOCK_EMAIL,
+  MOCK_PASSWORD,
+  test
+} from "./fixtures";
 
 const TOKEN = /^vbk_[\w-]{43}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -184,6 +191,50 @@ test("the cap and the used-up security notices hold creating back", async ({ pag
   expect(api.apiKeysOf()).toHaveLength(9);
 });
 
+test("the day's used-up mail holds creating and rotating, keeping what was typed", async ({
+  page,
+  api
+}) => {
+  await page.clock.install({ time: api.clockAtMiddayUtc() });
+  api.loggedInAs(MOCK_EMAIL, "e2e");
+  api.hasApiKey("Old");
+  api.sentMailToday(200);
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/account/api-keys");
+
+  await page.getByRole("button", { name: "Create an API key" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Deploy bot");
+  await page.getByRole("group", { name: "Pastes" }).getByLabel("Read").check({ force: true });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Password").fill(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Create key" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    new RegExp(`^${ACCOUNT_BUDGET_ERROR} Try again in (12 hours|11 hours \\d+ minutes?)\\.$`)
+  );
+  const held = page.getByRole("button", { name: /^Try again in/ });
+  await expect(held).toHaveText(new RegExp(`^Try again in ${BUDGET_WAIT.source}`));
+  await expect(held).toBeDisabled();
+  await expect(page.getByLabel("Password")).toHaveValue(MOCK_PASSWORD);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Deploy bot");
+  await expect(page.getByRole("group", { name: "Pastes" }).getByLabel("Read")).toBeChecked();
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  const list = page.getByRole("list", { name: "Your API keys" });
+  await list.getByRole("button", { name: "Rotate Old" }).click();
+  await list.getByRole("button", { name: "Continue" }).click();
+  await list.getByLabel("Password").fill(MOCK_PASSWORD);
+  await list.getByRole("button", { name: "Rotate key" }).click();
+  await expect(list.getByRole("alert")).toContainText(ACCOUNT_BUDGET_ERROR);
+  await expect(list.getByRole("button", { name: /^Try again in/ })).toBeDisabled();
+  expect(api.apiKeysOf()).toHaveLength(1);
+  // An answer, not a fault: nothing logged beyond the browser's own line for the 503.
+  expect(errors.filter((error) => !error.startsWith("Failed to load resource"))).toEqual([]);
+});
+
 test("an account without a password confirms with GitHub and comes back to its API keys", async ({
   page,
   api
@@ -201,7 +252,7 @@ test("an account without a password confirms with GitHub and comes back to its A
   await expect(page.getByText(/^Confirm it's you first: log in with GitHub again/)).toBeVisible();
 
   // The form comes back as it was left, through the deep link's query.
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
   await expect(page).toHaveURL(/\/account\/api-keys\?newApiKey=1&/);
   await expect(page.getByRole("status")).toHaveText(
     "GitHub confirmed it's you. Create or rotate the API key within 10 minutes."
@@ -257,7 +308,7 @@ test("a deep link's form comes back filled in from a GitHub confirmation", async
   await page.goto("/account/api-keys?newApiKey=1&name=Deploy%20bot&scopes=pastes:read");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create key" }).click();
-  await page.getByRole("link", { name: "Confirm with GitHub" }).click();
+  await page.getByRole("button", { name: "Confirm with GitHub" }).click();
 
   await expect(
     page.getByRole("status").filter({
